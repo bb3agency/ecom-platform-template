@@ -51,7 +51,7 @@
 }
 
 :root {
-    /* Raghava Organics — Tasty Daily palette */
+    /* Default storefront palette — override per client (this file is merge=ours protected) */
     /* Background: warm cream #faf3ef */
     --background: oklch(0.974 0.01 68);
     /* Foreground: near-black #212121 */
