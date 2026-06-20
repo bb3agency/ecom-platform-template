@@ -43,11 +43,12 @@ Migrations must be **expand-contract / additive-first** so a MINOR never breaks 
 
 ## 3. The release flow (in the template/core repo)
 
-1. Build the change (dogfood it in a reference client first — see §8).
-2. Classify per `backend/CO_DEVELOPMENT_SYNC_GUIDE.md` (template-worthy vs client-specific).
-3. Add a `CHANGELOG.md` entry with the full **Propagation** block (severity · layers · migration · flag · design impact · breaking · rollback).
-4. Bump the **single source of truth — `backend/package.json` `version` (and/or `frontend/package.json`)** — mirror the same value into `PLATFORM_VERSION`, then tag: `git tag backend-core-vX.Y.Z` (and/or `frontend-core-vX.Y.Z`). The package.json `version` is what `/health` reports at runtime, so these three (package.json · PLATFORM_VERSION · tag) must always match.
-5. Propagate to clients (§4).
+> The end-to-end, copy-paste runbook for the standard "develop in a client → promote → fan out" loop is **§12**. This section is the underlying contract.
+
+1. Get the change into the template. Either **develop it here directly**, or **develop it in a client and cherry-pick it in** (the team's default — see §12). Classify per `backend/CO_DEVELOPMENT_SYNC_GUIDE.md` (template-worthy vs client-specific); design/flags/one-offs never enter core.
+2. Add a `CHANGELOG.md` entry with the full **Propagation** block (severity · layers · migration · flag · design impact · breaking · rollback).
+3. Bump the **single source of truth — `backend/package.json` `version` (and/or `frontend/package.json`)** — mirror the same value into `PLATFORM_VERSION`, then tag: `git tag backend-core-vX.Y.Z` (and/or `frontend-core-vX.Y.Z`). The package.json `version` is what `/health` reports at runtime, so these three (package.json · PLATFORM_VERSION · tag) must always match.
+4. Push the tag → the release-train fans out to every client (§9). Nothing reaches a client before the tag exists — the tag is the "ship it everywhere" switch.
 
 > **One source of truth:** `backend/package.json` and `frontend/package.json` `version` fields are authoritative (they drive `/health` + tracing). `PLATFORM_VERSION` is the fleet-sync ledger that mirrors them; a tag pins the release. The drift check and a simple equality assertion keep all three aligned.
 
@@ -57,29 +58,29 @@ The Propagation block is the heart of the practice: it is the AI-summarised "wha
 
 ## 4. The update flow (in each client repo)
 
-One-time wiring per client:
+How a client receives a release depends on how it was created:
+
+**A. Clients with their own history (raghava, sbgs — NOT cloned from the template).**
+A `git merge` of a template tag fails (`unrelated histories`). These clients are updated **automatically by the release-train** (§9): the tag dispatches their `core-sync` workflow, which runs `sync-core.mjs` (`git checkout <tag> -- <core paths>`, design excluded) and opens a review PR. You merge → CD deploys. Manual equivalent if needed: `npm run sync:core -- --tag backend-core-vX.Y.Z`.
+
+**B. Clients cloned FROM the template (future clients — shared history).**
+These can use native git merge. One-time wiring:
 ```bash
 git remote add template https://github.com/bb3agency/<core-template>.git
 git config merge.ours.driver true            # activates .gitattributes design protection
 ```
-
 Per release:
 ```bash
 git fetch template --tags
-# 1. See what's between you and latest in the relevant CHANGELOG.md
-# 2. Merge the core (design files are protected by .gitattributes merge=ours)
-git merge backend-core-vX.Y.Z      # and/or frontend-core-vX.Y.Z
-# 3. Apply migrations if the entry says so (expand-contract)
-cd backend && npx prisma migrate deploy
-# 4. Leave new flags OFF (enable per client via Ops when desired)
-# 5. Gate checks
+git merge backend-core-vX.Y.Z                # design files protected by merge=ours
+cd backend && npx prisma migrate deploy      # only if the entry says Migration: YES
 bash backend/scripts/check-core-drift.sh
 bash backend/scripts/check-token-contract.sh
 cd frontend && npm run typecheck && npm run build
-# 6. Record the new version
-#    edit PLATFORM_VERSION -> backend-core / frontend-core / requires-backend-core
+# record the new version in PLATFORM_VERSION
 ```
-Typecheck + build are the backstop: if a layer was left behind, the client build fails.
+
+Either way: new flags stay **OFF** (enable per client via Ops), and typecheck + build + drift/token checks are the backstop — if a layer was left behind or a token is missing, the client's PR/build fails before deploy.
 
 ---
 
@@ -177,7 +178,9 @@ Net rule: **after every release, watch the template's release-train run and each
 | `backend/CHANGELOG.md`, `frontend/CHANGELOG.md` | Versioned propagation instruction sets |
 | `backend/scripts/check-core-drift.sh` | Fails on unsanctioned core divergence |
 | `backend/scripts/check-token-contract.sh` | Fails on missing design tokens |
-| `.github/workflows/release-train.yml` | Opt-in fan-out PR automation |
+| `backend/scripts/sync-core.mjs` | Engine: pulls core files for a tag into a client (`npm run sync:core`) |
+| `.github/workflows/release-train.yml` | Template: on a core tag, fans out to clients |
+| `.github/workflows/core-sync.yml` | Client: receives the dispatch, runs the engine, opens the sync PR |
 
 > `chmod +x backend/scripts/check-core-drift.sh backend/scripts/check-token-contract.sh` once, and wire both into CI alongside the existing `typecheck`/`lint`/`build` gates.
 
@@ -191,6 +194,107 @@ Net rule: **after every release, watch the template's release-train run and each
 | sbgs (srisaibabasweets) | 0.1.1 | 0.1.1 | _baseline_ | own palette |
 
 Update this table on every client sync — it is the at-a-glance "who is up to date."
+
+---
+
+## 12. Canonical change flow (develop-in-client → promote → fan out)
+
+The team's default: develop in any client, promote the finished change to the template, let the train ship it everywhere. Propagation is triggered by the **tag**, never by your client pushes — so nothing reaches other clients until the feature is done and tagged.
+
+```
+PHASE A — develop (in a client, e.g. raghava)            ← normal dev
+  commit/push ×N  (feature behind FEATURE_X, default OFF)
+  ➜ deploys only that client; NO other client is touched (no tag yet)
+
+PHASE B — promote to template (after it's done)          ← ~4 commands
+  cherry-pick the commits into the template → CHANGELOG + version bump + tag
+
+PHASE C — fan out                                        ← automated
+  tag push → release-train → core-sync PR in EVERY client → you merge
+```
+
+**Phase A — develop in the client**
+```bash
+# in the client repo: build the feature behind FEATURE_X (default OFF), commit + push as usual.
+# Keep core changes and design changes in SEPARATE commits (clean cherry-pick later).
+```
+
+**Phase B — promote to the template** (one-time: `git remote add raghava <url>` / `git remote add sbgs <url>` in the template)
+```bash
+cd <template>
+git fetch raghava
+git cherry-pick <firstSha>^..<lastSha>      # bring the feature's commits in (design hunks are kept-ours)
+# edit CHANGELOG.md  (Propagation block: note FEATURE_X + any NEW design token)
+# bump version: feature = MINOR (0.1.1 → 0.2.0) in backend/package.json + PLATFORM_VERSION (+ frontend if touched)
+git add -A && git commit -m "feat: <feature> behind FEATURE_X (core 0.2.0)"
+git tag backend-core-v0.2.0                  # + frontend-core-v0.2.0 if frontend core changed
+git push origin main --tags
+```
+
+**Phase C — automated.** The tag fires `release-train` → a `core-sync: …-v0.2.0` PR opens in every client. Review + merge each → CD deploys. Each client gets ONE clean sync commit (not your N commits); design untouched; feature dormant until its flag is switched on in Ops.
+
+**Manual vs automated:** manual = the release decision (cherry-pick + changelog + bump + tag) and the per-client merge click. Automated = pulling core into every client, bumping each ledger, opening each PR.
+
+---
+
+## 13. Onboarding a NEW client (one-time per client)
+
+A new client is **cloned from the template**, so it already contains `sync-core.mjs`, `core-sync.yml`, `core-manifest.json`, `.gitattributes`, the design-token contract, and the guard scripts. You only wire identity + tokens.
+
+**1. Create the repo from the template**
+```bash
+git clone https://github.com/bb3agency/ecom-platform-template.git <new-client>-site
+cd <new-client>-site
+git remote rename origin template            # template stays as the upstream for merges
+gh repo create bb3agency/<new-client>-site --private --source=. --remote=origin
+git push -u origin main
+```
+
+**2. Apply the client's design + identity** (the per-client layer — never touches core):
+`frontend/app/globals.css` (palette tokens), `frontend/lib/fonts.ts`, `frontend/lib/constants.ts` (brand strings), `frontend/public/` (logo/images), `CLIENT_ID`/domains in `.env*.example`. Run `bash backend/scripts/check-token-contract.sh` — every required token must be defined.
+
+**3. Pin the version** in `PLATFORM_VERSION` (`backend-core` / `frontend-core` = current template version) and add a row to §11.
+
+**4. Register it for automation:**
+- Add `bb3agency/<new-client>-site` to the template repo's `CLIENT_REPOS` variable.
+- Configure the per-client secrets/variables (table in §13.1).
+- Add it as a remote in the template for cherry-pick promotes: `git remote add <new-client> https://github.com/bb3agency/<new-client>-site.git`.
+
+**5. Set up CD** (self-hosted runner + `VPS_RUNNER_LABEL`, per `GITHUB_CD_SELF_HOSTED_RUNNER_GUIDE.md`) so a merged sync PR deploys.
+
+### 13.1 All keys & settings — the complete configuration map
+
+**Template repo** (`ecom-platform-template`) — Settings → Secrets and variables → Actions:
+| Name | Kind | Value / scope | Purpose |
+| --- | --- | --- | --- |
+| `RELEASE_TRAIN_ENABLED` | Variable | `true` | Master switch for the fan-out automation. |
+| `CLIENT_REPOS` | Variable | space-separated `owner/repo` of ALL clients | Who receives sync PRs. Append each new client. |
+| `CROSS_REPO_PAT` | Secret | PAT — **Actions: write + Metadata: read** on every client repo | Lets the train dispatch each client's `core-sync`. |
+
+Plus, in the template's local checkout, one git remote per client (for cherry-pick promotes):
+`git remote add <client> https://github.com/bb3agency/<client>-site.git`
+
+**Each client repo** — Settings → Secrets and variables → Actions:
+| Name | Kind | Value / scope | Purpose |
+| --- | --- | --- | --- |
+| `TEMPLATE_REPO` | Variable | `bb3agency/ecom-platform-template` | Which template to pull core from. |
+| `TEMPLATE_READ_PAT` | Secret | PAT — **Contents: read** on the template repo | Lets the client `git fetch` the private template. |
+| `CORE_SYNC_PAT` | Secret | PAT — **Contents: write + Pull requests: write** on this client | Pushes the sync branch + opens the PR; makes the client's CI run on that PR. |
+| `VPS_RUNNER_LABEL` | Variable | e.g. `<client>-vps` | Routes deploy to this client's self-hosted runner. |
+
+**Each client repo** — Settings → Actions → General:
+- Enable **"Allow GitHub Actions to create and approve pull requests."**
+
+**Each client repo** — local one-time git wiring (dev machines):
+```bash
+git remote add template https://github.com/bb3agency/ecom-platform-template.git
+git config merge.ours.driver true
+git fetch template --tags
+```
+
+**Self-hosted runner (VPS):** install `jq` (`sudo apt-get install -y jq`) so the drift/token gates enforce instead of skip.
+
+> **Token custody:** prefer **fine-grained PATs on a dedicated bot account** that's an org member. Set expiry reminders — an expired PAT is the most common silent failure (dispatch/fetch fails loudly in the Actions log, but only if you look). See §9.4 for the full silent-failure list.
 
 ---
 
