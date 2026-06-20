@@ -1,0 +1,99 @@
+# core-sync — runs IN a client repo. Triggered by the template's release-train
+# (via `gh workflow run core-sync.yml -R <client>`), or manually. Pulls the core
+# files for a platform release tag into a branch and opens a PR for review.
+#
+# Required repo secrets (Settings → Secrets and variables → Actions):
+#   TEMPLATE_READ_PAT — token that can READ the private template repo (contents:read).
+#   CORE_SYNC_PAT     — (recommended) token used to push the branch + open the PR.
+#                       Using a PAT (not the default GITHUB_TOKEN) is what lets the
+#                       client's own CI run on the resulting PR. Falls back to
+#                       GITHUB_TOKEN if unset (PR opens, but CI will NOT auto-run on it).
+#
+# Required repo variable:
+#   TEMPLATE_REPO — e.g. bb3agency/ecom-platform-template
+name: core-sync
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Core tag to sync (e.g. backend-core-v0.1.2 or frontend-core-v0.2.0)'
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout client repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.CORE_SYNC_PAT || github.token }}
+
+      - name: Validate inputs + secrets
+        env:
+          TEMPLATE_REPO: ${{ vars.TEMPLATE_REPO }}
+          TEMPLATE_READ_PAT: ${{ secrets.TEMPLATE_READ_PAT }}
+        run: |
+          set -euo pipefail
+          [ -n "${TEMPLATE_REPO:-}" ] || { echo "::error::repo variable TEMPLATE_REPO is not set"; exit 1; }
+          [ -n "${TEMPLATE_READ_PAT:-}" ] || { echo "::error::repo secret TEMPLATE_READ_PAT is not set"; exit 1; }
+          [ -f backend/scripts/sync-core.mjs ] || { echo "::error::backend/scripts/sync-core.mjs missing in this repo"; exit 1; }
+          if [ -z "${{ secrets.CORE_SYNC_PAT }}" ]; then
+            echo "::warning::CORE_SYNC_PAT not set — PR will open with GITHUB_TOKEN and the client's CI will NOT auto-run on it. Review manually."
+          fi
+
+      - name: Wire template remote (read-only) + fetch tag
+        env:
+          TEMPLATE_REPO: ${{ vars.TEMPLATE_REPO }}
+          TEMPLATE_READ_PAT: ${{ secrets.TEMPLATE_READ_PAT }}
+        run: |
+          set -euo pipefail
+          git remote remove template 2>/dev/null || true
+          git remote add template "https://x-access-token:${TEMPLATE_READ_PAT}@github.com/${TEMPLATE_REPO}.git"
+          git fetch template --tags --quiet
+          # verify the requested tag actually exists upstream before proceeding
+          git rev-parse --verify "refs/tags/${{ inputs.tag }}" >/dev/null 2>&1 \
+            || { echo "::error::tag ${{ inputs.tag }} not found in ${TEMPLATE_REPO}"; exit 1; }
+
+      - name: Sync core files for the tag
+        run: node backend/scripts/sync-core.mjs --tag "${{ inputs.tag }}" --remote template
+
+      - name: Scrub token from remote config
+        if: always()
+        run: git remote remove template 2>/dev/null || true
+
+      - name: Commit + open PR
+        env:
+          GH_TOKEN: ${{ secrets.CORE_SYNC_PAT || github.token }}
+        run: |
+          set -euo pipefail
+          BRANCH="core-sync/${{ inputs.tag }}"
+          git config user.name "core-sync[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git diff --quiet && git diff --cached --quiet; then
+            echo "No changes — this repo is already at ${{ inputs.tag }}. Nothing to do."
+            exit 0
+          fi
+
+          git checkout -B "$BRANCH"
+          git add -A
+          git commit -m "chore: sync ${{ inputs.tag }} from platform core"
+          git push -u origin "$BRANCH" --force-with-lease
+
+          if gh pr view "$BRANCH" >/dev/null 2>&1; then
+            echo "PR already exists for $BRANCH — updated branch."
+          else
+            gh pr create --base main --head "$BRANCH" \
+              --title "core-sync: ${{ inputs.tag }}" \
+              --body "Automated platform-core sync to \`${{ inputs.tag }}\`.
+
+          - Only core files (per \`core-manifest.json\`) were updated; design / client / approved-divergence paths are untouched.
+          - Review the diff + the \`CHANGELOG.md\` entry, run the usual checks, then merge to deploy.
+          - ⚠ Core file deletions/renames are NOT auto-applied — verify none are needed for this release."
+          fi

@@ -46,6 +46,7 @@
     "admin:layer-drift-check": "node scripts/admin-layer-drift-check.js",
     "check:token-contract": "bash scripts/check-token-contract.sh",
     "check:core-drift": "bash scripts/check-core-drift.sh",
+    "sync:core": "node scripts/sync-core.mjs",
     "route:discipline-check": "node scripts/route-discipline-check.js",
     "serializer:exposure-check": "node scripts/serializer-exposure-check.js",
     "security:sql-injection-guard": "node scripts/sql-injection-guard.js",

@@ -114,9 +114,55 @@ A core component only auto-adopts a client's look if that client defines every t
 
 ---
 
-## 9. Release-train automation (opt-in)
+## 9. Release-train automation (Level 3 — opt-in, PR-gated)
 
-`/.github/workflows/release-train.yml` (template, disabled by default) fans out a PR into every client repo when a core release is tagged — design files merge-protected, the changelog entry as the PR body. You review + merge. Enable only when you're comfortable with automated PRs into client repos; `SECURITY` entries may additionally auto-merge + deploy.
+Automates propagation end-to-end: **tag a core release in the template → every client repo opens a review PR with the core files updated.** You review + merge each PR (which triggers that client's CD). No manual file copying.
+
+### 9.1 The three moving parts
+
+| Piece | Lives in | Role |
+| --- | --- | --- |
+| `.github/workflows/release-train.yml` | **template** | On a `*-core-v*` tag push, dispatches each client's `core-sync` workflow with the tag. |
+| `.github/workflows/core-sync.yml` | **each client** | Receives the dispatch, wires the template remote, runs the sync engine, opens a PR. |
+| `backend/scripts/sync-core.mjs` | **template + each client** | The engine: `git checkout <tag> -- <core pathspec from core-manifest.json>` (excludes design/client/approved-divergence), refreshes the layer CHANGELOG, bumps `PLATFORM_VERSION`. Leaves changes uncommitted. |
+
+`sync-core.mjs` is core (`backend/scripts/**`) so it self-propagates. The two workflows are **infra, not core** — they are NOT in `core-manifest.json`, so they are bootstrapped once per client (present automatically in repos cloned from the template; copied by hand into pre-existing clients).
+
+### 9.2 One-time setup
+
+**Template repo** — Settings → Secrets and variables → Actions:
+- Variable `RELEASE_TRAIN_ENABLED = true`
+- Variable `CLIENT_REPOS = bb3agency/raghava-organics-site bb3agency/sbgs-site` (space-separated)
+- Secret `CROSS_REPO_PAT` = a PAT with **`actions: write` + `contents: read` on every client repo** (lets it dispatch their `core-sync`).
+
+**Each client repo** — Settings → Secrets and variables → Actions:
+- Variable `TEMPLATE_REPO = bb3agency/ecom-platform-template`
+- Secret `TEMPLATE_READ_PAT` = a PAT with **`contents: read` on the template repo** (lets the client `git fetch` the private template).
+- Secret `CORE_SYNC_PAT` = a PAT with **`contents: write` + `pull-requests: write` on this client repo** (used to push the branch + open the PR). **Strongly recommended** — see 9.4.
+- Settings → Actions → General → enable **"Allow GitHub Actions to create and approve pull requests."**
+
+> Fine-grained PATs are preferable (scope to exactly these repos). One bot account holding all three tokens is the cleanest custody model.
+
+### 9.3 The flow per release
+1. In the template: make the core change → CHANGELOG entry → bump `package.json` + `PLATFORM_VERSION` → `git tag backend-core-vX.Y.Z` → `git push --tags`.
+2. `release-train` fires → dispatches `core-sync` in each client.
+3. Each client's `core-sync` opens PR `core-sync/<tag>` containing only core changes (design untouched).
+4. You review each PR, merge → client CD deploys.
+
+Manual fallback (no automation, or a client without the workflow): `node backend/scripts/sync-core.mjs --tag backend-core-vX.Y.Z` locally, then commit + push.
+
+### 9.4 Silent-failure modes (READ THIS)
+The system is PR-gated, so the worst case is "a sync silently doesn't happen," not "a bad change auto-deploys." Known traps:
+
+- **Core file DELETIONS / renames don't propagate.** `git checkout <tag> -- <paths>` only adds/updates files present in the tag; a file you *removed* in core stays in the client. → For releases that delete/rename core files, note it in the CHANGELOG and remove them by hand in each client.
+- **PRs opened with `GITHUB_TOKEN` don't trigger the client's CI.** If `CORE_SYNC_PAT` is unset, the PR opens but the client's `reliability-ci` won't run on it → a broken sync can look mergeable. → Always set `CORE_SYNC_PAT`. The workflow prints a `::warning::` when it's missing.
+- **A client missing `core-sync.yml` is skipped with only a warning.** `release-train` logs `::warning::` and continues; that client just never gets a PR. → Confirm every `CLIENT_REPOS` entry actually has the workflow on its default branch.
+- **`approved-divergence` paths are never overwritten** (by design) — a client pinning an old fork of a core file won't receive the update silently. → Keep `approved-divergence` entries time-boxed and review them.
+- **`core-manifest.json` drift.** The engine trusts the *client's* manifest for the pathspec. If a client's manifest is stale, the wrong files sync. → The manifest is core; the drift check keeps it aligned.
+- **Token scope/expiry.** An expired/under-scoped PAT fails the dispatch or the fetch. These fail loudly in the Actions log but are easy to miss if you don't watch the run. → After tagging, glance at the template's release-train run and each client's core-sync run.
+- **A non-fast-forward client branch.** The workflow pushes `--force-with-lease` to `core-sync/<tag>`; if that branch exists with unrelated commits it won't clobber blindly — it errors. → Delete a stale `core-sync/*` branch before re-running.
+
+Net rule: **after every release, watch the template's release-train run and each client's core-sync PR appear.** Green PR + your review is the gate; an absent PR means a skip you must chase.
 
 ---
 

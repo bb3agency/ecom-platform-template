@@ -1,7 +1,12 @@
-# Release-train (OPT-IN, inert by default).
-# Fans out a sync PR into each client repo when a core version tag is pushed.
-# Stays a no-op until you set repo Variable RELEASE_TRAIN_ENABLED=true AND
-# provide the CLIENT_REPOS variable + a CROSS_REPO_PAT secret with repo scope.
+# release-train (OPT-IN, inert by default) — runs IN the template repo.
+# When a core version tag is pushed, it triggers each client repo's `core-sync`
+# workflow so that client pulls the release into a review PR.
+#
+# Stays a complete no-op until you set, in THIS template repo:
+#   Variable  RELEASE_TRAIN_ENABLED = true
+#   Variable  CLIENT_REPOS          = space-separated, e.g. "bb3agency/raghava-organics-site bb3agency/sbgs-site"
+#   Secret    CROSS_REPO_PAT        = token with `actions:write` (+ `contents:read`) on every client repo,
+#                                     so it can dispatch their core-sync workflow.
 # See backend/docs/PLATFORM_VERSIONING_AND_SYNC_GUIDE.md §9.
 name: release-train
 
@@ -21,30 +26,45 @@ permissions:
 
 jobs:
   fan-out:
-    # Guard: does nothing until explicitly enabled.
+    # Guard: nothing runs until you explicitly opt in.
     if: ${{ vars.RELEASE_TRAIN_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     steps:
-      - name: Resolve tag + changelog entry
+      - name: Resolve tag
         id: meta
         run: |
+          set -euo pipefail
           TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          case "$TAG" in
+            backend-core-v*|frontend-core-v*) ;;
+            *) echo "::error::'$TAG' is not a core tag (backend-core-v* / frontend-core-v*)"; exit 1 ;;
+          esac
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "Propagating $TAG to client repos: ${{ vars.CLIENT_REPOS }}"
 
-      - name: Open sync PR in each client repo
+      - name: Preflight config
+        env:
+          CLIENTS: ${{ vars.CLIENT_REPOS }}
+          PAT: ${{ secrets.CROSS_REPO_PAT }}
+        run: |
+          set -euo pipefail
+          [ -n "${CLIENTS:-}" ] || { echo "::error::CLIENT_REPOS variable not set — nowhere to fan out"; exit 1; }
+          [ -n "${PAT:-}" ]     || { echo "::error::CROSS_REPO_PAT secret not set — cannot dispatch client workflows"; exit 1; }
+          echo "Will dispatch core-sync(${{ steps.meta.outputs.tag }}) to: $CLIENTS"
+
+      - name: Dispatch core-sync in each client repo
         env:
           GH_TOKEN: ${{ secrets.CROSS_REPO_PAT }}
           TAG: ${{ steps.meta.outputs.tag }}
-          CLIENTS: ${{ vars.CLIENT_REPOS }}   # space-separated: bb3agency/sbgs-site bb3agency/foo-site
+          CLIENTS: ${{ vars.CLIENT_REPOS }}
         run: |
           set -euo pipefail
-          [ -n "${CLIENTS:-}" ] || { echo "CLIENT_REPOS not set — nothing to do"; exit 0; }
+          rc=0
           for repo in $CLIENTS; do
             echo "→ $repo : dispatching core-sync for $TAG"
-            # Each client repo owns a 'core-sync' workflow that merges the tag with
-            # design files protected (merge=ours) and opens the PR. We only trigger it,
-            # so the merge runs with that repo's own checkout + protections.
-            gh workflow run core-sync.yml -R "$repo" -f tag="$TAG" \
-              || echo "WARN: $repo has no core-sync.yml yet (skipping)"
+            if ! gh workflow run core-sync.yml -R "$repo" -f tag="$TAG"; then
+              echo "::warning::failed to dispatch core-sync in $repo (missing core-sync.yml, or PAT lacks actions:write). Sync it manually: node backend/scripts/sync-core.mjs --tag $TAG"
+              rc=1
+            fi
           done
+          # Surface partial failure without hiding which clients succeeded.
+          exit $rc
