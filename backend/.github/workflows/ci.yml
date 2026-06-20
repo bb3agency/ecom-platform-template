@@ -1,0 +1,168 @@
+# Backend-only repos: this file is the CI entrypoint.
+# Monorepos (backend + frontend at repo root): use /.github/workflows/reliability-ci.yml instead.
+
+name: Reliability CI
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  reliability-gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ecom_test
+        options: >-
+          --health-cmd "pg_isready -U postgres -d ecom_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ecom_test?schema=public
+      REDIS_URL: redis://localhost:6379
+      JWT_SECRET: ci-access-secret
+      JWT_ACCESS_SECRET: ci-access-secret
+      JWT_REFRESH_SECRET: ci-refresh-secret
+      RAZORPAY_KEY_ID: ci
+      RAZORPAY_KEY_SECRET: ci
+      RAZORPAY_WEBHOOK_SECRET: ci
+      DELHIVERY_API_KEY: ci
+      PROMTOOL_VERSION: 2.54.1
+      ERROR_BUDGET_CONSUMED_PERCENT: 20
+      PROMETHEUS_ERROR_BUDGET_QUERY: 100 - (max(slo:error_budget_consumed_percent) or vector(0))
+      RELEASE_POLICY_MODE: auto
+      FLASH_SALE_AUTH_MODE: permissive
+      DR_REQUIRE_HOOK: "false"
+      INVOICE_STORAGE_ROOT: ./tmp/invoices
+      OPS_DB_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install promtool deterministically
+        run: |
+          mkdir -p .tools/promtool
+          curl -sSL -o /tmp/promtool.tar.gz "https://github.com/prometheus/prometheus/releases/download/v${PROMTOOL_VERSION}/prometheus-${PROMTOOL_VERSION}.linux-amd64.tar.gz"
+          tar -xzf /tmp/promtool.tar.gz -C /tmp
+          cp "/tmp/prometheus-${PROMTOOL_VERSION}.linux-amd64/promtool" .tools/promtool/promtool
+          chmod +x .tools/promtool/promtool
+          echo "PROMTOOL_BIN=$PWD/.tools/promtool/promtool" >> "$GITHUB_ENV"
+
+      - name: Generate Prisma client
+        run: npm run prisma:generate:safe
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests with coverage thresholds
+        run: npm run test:unit:coverage
+
+      - name: Coverage ratchet (orders/auth/webhooks)
+        run: npm run coverage:ratchet
+
+      - name: Integration tests
+        run: npm run test:e2e
+
+      - name: Security regression tests
+        run: npm run test:security
+
+      - name: Guardrail script tests
+        run: npm run test:guardrails
+
+      - name: Route discipline contract check
+        run: npm run route:discipline-check
+
+      - name: Serializer exposure contract check
+        run: npm run serializer:exposure-check
+
+      - name: Build
+        run: npm run build
+
+      - name: Reliability gates
+        run: |
+          if [[ "$GITHUB_REF" == "refs/heads/main" || "$GITHUB_REF" == "refs/heads/master" || "$GITHUB_REF" == refs/heads/release/* ]]; then
+            # Only require live Prometheus telemetry if PROMETHEUS_BASE_URL is configured.
+            # Template repos without Prometheus gracefully fall back to env-based budget.
+            if [ -n "${PROMETHEUS_BASE_URL:-}" ]; then
+              export RELEASE_POLICY_MODE=live_required
+            fi
+          else
+            export RELEASE_POLICY_MODE=auto
+          fi
+          npm run release:policy-state
+          npm run release:guard
+          npm run test:slo-rules
+          npm run edge:drift-check
+          npm run stress:flash-sale
+          npm run dr:drill:checklist:hooked
+          npm run dr:drill:stale-check
+          npm run parity:scorecard
+
+      - name: Deep endpoint smoke & contract checks
+        run: |
+          npx prisma migrate deploy
+          node scripts/upsert-admin.js
+          npx tsx src/main.ts > /tmp/backend.log 2>&1 &
+          APP_PID=$!
+          trap 'kill "$APP_PID" || true' EXIT
+
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:3000/api/v1/health/live >/dev/null; then
+              break
+            fi
+            sleep 2
+          done
+
+          if ! curl -fsS http://127.0.0.1:3000/api/v1/health/live >/dev/null; then
+            echo "::error::Backend did not become live in time."
+            cat /tmp/backend.log || true
+            exit 1
+          fi
+
+          npm run contract:admin || { cat /tmp/backend.log || true; exit 1; }
+          node scripts/deep-endpoint-smoke.js || { cat /tmp/backend.log || true; exit 1; }
+          FLASH_SALE_ENFORCE_INVARIANTS=false npm run stress:flash-sale:api:matrix || { cat /tmp/backend.log || true; exit 1; }
+
+      - name: Upload coverage artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-coverage
+          path: |
+            artifacts/coverage/unit
+            coverage

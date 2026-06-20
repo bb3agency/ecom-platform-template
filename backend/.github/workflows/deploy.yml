@@ -1,0 +1,174 @@
+# Backend-only repos: this file is the CD entrypoint.
+# Monorepos: use /.github/workflows/deploy.yml instead (frontend script via VPS_CLIENT_PATH).
+
+name: Deploy to VPS
+
+# Triggered automatically after Reliability CI completes on main.
+# Uses a self-hosted GitHub Actions runner installed on the client's Hetzner VPS.
+# The runner polls GitHub via outbound HTTPS — no inbound SSH connection required.
+#
+# To activate for a client repo:
+#   1. Install the runner agent on the VPS (see docs/CLIENT_VPS_SETUP_GUIDE.md §22)
+#   2. Set repository Variable:  VPS_DEPLOY_ENABLED=true
+#   3. Set repository Secret:    VPS_CLIENT_PATH=/var/www/<client-id>/backend
+#
+# To also enable automated frontend deploys (monorepo with Next.js frontend):
+#   4. Set repository Variable:  FRONTEND_DEPLOY_ENABLED=true
+#   5. Set repository Secret:    VPS_FRONTEND_PATH=/var/www/<client-id>/frontend
+#
+# Leave VPS_DEPLOY_ENABLED unset in the template repo — both jobs will be skipped.
+# Backend and frontend deploy independently — changing only CSS will not trigger
+# a Docker rebuild; changing only a Prisma schema will not restart the frontend.
+
+on:
+  workflow_run:
+    workflows: ["Reliability CI"]
+    types:
+      - completed
+    branches:
+      - main
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Job 1: Backend — Docker Compose build + container swap + migration
+  # ---------------------------------------------------------------------------
+  deploy-backend:
+    name: Deploy Backend to Hetzner VPS
+    # Runs on the self-hosted runner installed on the client's VPS.
+    # VPS_RUNNER_LABEL must match the --labels value used when registering the runner
+    # (e.g. 'greengrocer-vps'). This prevents cross-client misfires when multiple
+    # client runners share the same VPS. Falls back to 'self-hosted' for single-client setups.
+    runs-on: ${{ vars.VPS_RUNNER_LABEL || 'self-hosted' }}
+    # Only run when:
+    #   1. The CI workflow succeeded (not just completed)
+    #   2. VPS_DEPLOY_ENABLED variable is set to 'true' for this repo
+    if: |
+      github.event.workflow_run.conclusion == 'success' &&
+      vars.VPS_DEPLOY_ENABLED == 'true'
+
+    steps:
+      - name: Verify deploy variables are set
+        run: |
+          missing=()
+          [ -z "${{ secrets.VPS_CLIENT_PATH }}" ] && missing+=("VPS_CLIENT_PATH (secret)")
+          if [ ${#missing[@]} -ne 0 ]; then
+            echo "::error::Missing required secrets: ${missing[*]}"
+            echo "See docs/CLIENT_VPS_SETUP_GUIDE.md §22 for setup instructions."
+            exit 1
+          fi
+          if [ -z "${{ vars.VPS_RUNNER_LABEL }}" ]; then
+            echo "::warning::VPS_RUNNER_LABEL variable is not set. Using generic 'self-hosted' label."
+            echo "On a VPS hosting multiple clients, set VPS_RUNNER_LABEL to the client-specific"
+            echo "runner label (e.g. 'greengrocer-vps') to prevent cross-client deploy misfires."
+          fi
+
+      - name: Sync monorepo/repo root via git pull
+        env:
+          VPS_CLIENT_PATH: ${{ secrets.VPS_CLIENT_PATH }}
+          COMMIT_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          # Resolves the git root from VPS_CLIENT_PATH. For a monorepo layout
+          # (/var/www/<client-id>/backend) this returns /var/www/<client-id>;
+          # for backend-only repos it returns the backend directory itself.
+          # Either way the pull keeps the on-disk source in sync with `main`
+          # before the deploy script's preflight checks run.
+          if [ ! -d "$VPS_CLIENT_PATH" ]; then
+            echo "::error::VPS_CLIENT_PATH does not exist on this runner: $VPS_CLIENT_PATH"
+            exit 1
+          fi
+          GIT_ROOT=$(git -C "$VPS_CLIENT_PATH" rev-parse --show-toplevel 2>/dev/null || true)
+          if [ -z "$GIT_ROOT" ]; then
+            echo "::error::$VPS_CLIENT_PATH is not inside a git working tree."
+            echo "Clone the client repo first (see docs/CLIENT_VPS_SETUP_GUIDE.md §22)."
+            exit 1
+          fi
+          echo "Pulling git root: $GIT_ROOT (expected SHA: $COMMIT_SHA)"
+          cd "$GIT_ROOT"
+          git fetch --prune origin main
+          git checkout main 2>/dev/null || git checkout -B main origin/main
+          # --ff-only protects against rebased/force-pushed history landing on the VPS.
+          git pull origin main --ff-only
+          ACTUAL_SHA=$(git rev-parse HEAD)
+          if [ "$ACTUAL_SHA" != "$COMMIT_SHA" ]; then
+            echo "::warning::Git root SHA ($ACTUAL_SHA) does not match CI SHA ($COMMIT_SHA)."
+            echo "A newer push may have landed mid-deploy. The deploy script will re-verify."
+          else
+            echo "Git root in sync at $ACTUAL_SHA"
+          fi
+
+      - name: Deploy backend locally via vps-deploy.sh
+        env:
+          VPS_CLIENT_PATH: ${{ secrets.VPS_CLIENT_PATH }}
+          COMMIT_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          bash "$VPS_CLIENT_PATH/scripts/vps-deploy.sh" "$VPS_CLIENT_PATH" "$COMMIT_SHA"
+
+  # ---------------------------------------------------------------------------
+  # Job 2: Frontend — git sync + npm ci + npm run build + pm2 reload
+  # Runs independently of the backend job. vps-frontend-deploy.sh always builds
+  # by default (SKIP_FRONTEND_BUILD=true only for rare backend-only reloads).
+  # ---------------------------------------------------------------------------
+  deploy-frontend:
+    name: Deploy Frontend to Hetzner VPS
+    runs-on: ${{ vars.VPS_RUNNER_LABEL || 'self-hosted' }}
+    # Gate: CI passed + VPS_DEPLOY_ENABLED + FRONTEND_DEPLOY_ENABLED
+    # API-only clients set only VPS_DEPLOY_ENABLED — this job stays dormant.
+    if: |
+      github.event.workflow_run.conclusion == 'success' &&
+      vars.VPS_DEPLOY_ENABLED == 'true' &&
+      vars.FRONTEND_DEPLOY_ENABLED == 'true'
+
+    steps:
+      - name: Verify frontend deploy variables are set
+        run: |
+          missing=()
+          [ -z "${{ secrets.VPS_FRONTEND_PATH }}" ] && missing+=("VPS_FRONTEND_PATH (secret)")
+          if [ ${#missing[@]} -ne 0 ]; then
+            echo "::error::Missing required secrets: ${missing[*]}"
+            echo "See docs/CLIENT_VPS_SETUP_GUIDE.md §22 for frontend setup instructions."
+            exit 1
+          fi
+
+      - name: Sync monorepo root via git pull
+        env:
+          VPS_FRONTEND_PATH: ${{ secrets.VPS_FRONTEND_PATH }}
+          COMMIT_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          # Resolves the monorepo root from VPS_FRONTEND_PATH. If deploy-backend
+          # already ran, this is a no-op (`git pull --ff-only` on a current tree).
+          if [ ! -d "$VPS_FRONTEND_PATH" ]; then
+            echo "::error::VPS_FRONTEND_PATH does not exist on this runner: $VPS_FRONTEND_PATH"
+            exit 1
+          fi
+          GIT_ROOT=$(git -C "$VPS_FRONTEND_PATH" rev-parse --show-toplevel 2>/dev/null || true)
+          if [ -z "$GIT_ROOT" ]; then
+            echo "::error::$VPS_FRONTEND_PATH is not inside a git working tree."
+            echo "Clone the client repo first (see docs/CLIENT_VPS_SETUP_GUIDE.md §22)."
+            exit 1
+          fi
+          echo "Pulling monorepo root: $GIT_ROOT (expected SHA: $COMMIT_SHA)"
+          cd "$GIT_ROOT"
+          git fetch --prune origin main
+          git checkout main 2>/dev/null || git checkout -B main origin/main
+          git pull origin main --ff-only
+          ACTUAL_SHA=$(git rev-parse HEAD)
+          if [ "$ACTUAL_SHA" != "$COMMIT_SHA" ]; then
+            echo "::warning::Monorepo root SHA ($ACTUAL_SHA) does not match CI SHA ($COMMIT_SHA)."
+            echo "A newer push may have landed mid-deploy. The deploy script will re-verify."
+          else
+            echo "Monorepo root in sync at $ACTUAL_SHA"
+          fi
+
+      - name: Deploy frontend (git sync + npm build + pm2 reload)
+        env:
+          VPS_CLIENT_PATH: ${{ secrets.VPS_CLIENT_PATH }}
+          VPS_FRONTEND_PATH: ${{ secrets.VPS_FRONTEND_PATH }}
+          COMMIT_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          bash "$VPS_CLIENT_PATH/scripts/vps-frontend-deploy.sh" "$VPS_FRONTEND_PATH" "$COMMIT_SHA"

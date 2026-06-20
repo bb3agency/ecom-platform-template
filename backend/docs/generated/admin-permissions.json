@@ -1,0 +1,29 @@
+{
+  "generatedAt": "2026-05-10T17:30:00.000Z",
+  "permissions": [
+    "products:read",
+    "products:write",
+    "categories:read",
+    "categories:write",
+    "inventory:read",
+    "inventory:write",
+    "coupons:read",
+    "coupons:write",
+    "settings:read",
+    "settings:write",
+    "reviews:read",
+    "reviews:moderate",
+    "dashboard:read",
+    "analytics:read",
+    "orders:read",
+    "orders:write",
+    "orders:export",
+    "orders:refund",
+    "orders:notify",
+    "analytics:export",
+    "analytics:replay",
+    "users:read",
+    "ops:read",
+    "ops:write"
+  ]
+}

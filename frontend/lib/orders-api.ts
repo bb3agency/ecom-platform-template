@@ -1,0 +1,270 @@
+import { apiClient, ApiError } from "@/lib/api";
+import { getBrowserApiBaseUrl } from "@/lib/api-base";
+import { createIdempotencyKey } from "@/lib/idempotency";
+
+export type CheckoutPaymentMode = "PREPAID" | "COD";
+
+export interface CheckoutShippingAddressInput {
+  fullName: string;
+  phone: string;
+  line1: string;
+  line2?: string;
+  city: string;
+  state: string;
+  pincode: string;
+}
+
+export interface CreateOrderInput {
+  addressId?: string;
+  shippingAddress?: CheckoutShippingAddressInput;
+  notes?: string;
+  paymentMode?: CheckoutPaymentMode;
+  /** Backend-selected cheapest shipping provider from delivery rates response. */
+  selectedShippingProvider?: "DELHIVERY" | "SHIPROCKET";
+  /** Rate shown to the customer by getDeliveryRates (paise). Ensures customer is charged exactly what was shown. */
+  shippingChargePaise?: number;
+  /** Shiprocket courier company ID from the quoted rate — ensures AWB uses the same courier that was priced. */
+  courierCompanyId?: number;
+}
+
+export interface OrderLineItem {
+  id: string;
+  variantId: string;
+  productName: string;
+  variantName: string;
+  sku: string;
+  quantity: number;
+  unitPrice: number;
+  totalPrice: number;
+}
+
+export interface OrderSummary {
+  id: string;
+  orderNumber: string;
+  status: string;
+  paymentMode: CheckoutPaymentMode;
+  shippingAddress: CheckoutShippingAddressInput;
+  subtotal: number;
+  shippingCharge: number;
+  /** Shipping rate quoted at checkout (paise). Immutable — preserved even if shippingCharge is later adjusted. */
+  shippingChargeQuotedPaise?: number | null;
+  /** Provider locked at checkout — used for AWB assignment enforcement. */
+  selectedShippingProvider?: "DELHIVERY" | "SHIPROCKET" | null;
+  discountAmount: number;
+  couponCode?: string | null;
+  total: number;
+  items?: OrderLineItem[];
+  invoice?: { hasPdf: boolean; invoiceNumber: string; issuedAt: string } | null;
+  shipment?: {
+    id: string;
+    provider: string;
+    status: string;
+    awb: string | null;
+    trackingUrl: string | null;
+    events: Array<{
+      status: string;
+      location: string | null;
+      description: string;
+      occurredAt: string;
+    }>;
+  } | null;
+}
+
+export interface InitiatePaymentResponse {
+  orderId: string;
+  provider: string;
+  providerOrderId: string;
+  amount: number;
+  currency: string;
+}
+
+export interface VerifyPaymentInput {
+  orderId: string;
+  razorpayPaymentId: string;
+  razorpaySignature: string;
+}
+
+export async function createOrder(
+  input: CreateOrderInput,
+  accessToken: string,
+  idempotencyKey = createIdempotencyKey(),
+): Promise<OrderSummary> {
+  return apiClient<OrderSummary>("/orders", {
+    method: "POST",
+    accessToken,
+    idempotencyKey,
+    body: JSON.stringify(input),
+  });
+}
+
+export async function initiatePayment(
+  orderId: string,
+  accessToken: string,
+  idempotencyKey = createIdempotencyKey(),
+): Promise<InitiatePaymentResponse> {
+  return apiClient<InitiatePaymentResponse>("/payments/initiate", {
+    method: "POST",
+    accessToken,
+    idempotencyKey,
+    body: JSON.stringify({ orderId }),
+  });
+}
+
+export async function verifyPayment(
+  input: VerifyPaymentInput,
+  accessToken: string,
+  idempotencyKey = createIdempotencyKey(),
+): Promise<{ message: string }> {
+  return apiClient<{ message: string }>("/payments/verify", {
+    method: "POST",
+    accessToken,
+    idempotencyKey,
+    body: JSON.stringify(input),
+  });
+}
+
+export interface PrepareCheckoutInput {
+  addressId?: string;
+  shippingAddress?: CheckoutShippingAddressInput;
+  notes?: string;
+  selectedShippingProvider?: "DELHIVERY" | "SHIPROCKET";
+  /** Rate shown to the customer by getDeliveryRates (paise). Ensures customer is charged exactly what was shown. */
+  shippingChargePaise?: number;
+  /** Shiprocket courier company ID from the quoted rate — ensures AWB uses the same courier that was priced. */
+  courierCompanyId?: number;
+}
+
+export interface PrepareCheckoutResponse {
+  checkoutSessionId: string;
+  razorpayOrderId: string;
+  amount: number;
+  currency: string;
+}
+
+export interface ConfirmPrepaidInput {
+  checkoutSessionId: string;
+  razorpayOrderId: string;
+  razorpayPaymentId: string;
+  razorpaySignature: string;
+}
+
+export async function prepareCheckout(
+  input: PrepareCheckoutInput,
+  accessToken: string,
+  idempotencyKey = createIdempotencyKey(),
+): Promise<PrepareCheckoutResponse> {
+  return apiClient<PrepareCheckoutResponse>("/payments/prepare-checkout", {
+    method: "POST",
+    accessToken,
+    idempotencyKey,
+    body: JSON.stringify(input),
+  });
+}
+
+export async function confirmPrepaid(
+  input: ConfirmPrepaidInput,
+  accessToken: string,
+  idempotencyKey = createIdempotencyKey(),
+): Promise<OrderSummary> {
+  return apiClient<OrderSummary>("/payments/confirm-prepaid", {
+    method: "POST",
+    accessToken,
+    idempotencyKey,
+    body: JSON.stringify(input),
+  });
+}
+
+export async function retryPayment(
+  orderId: string,
+  accessToken: string,
+  idempotencyKey = createIdempotencyKey(),
+): Promise<InitiatePaymentResponse> {
+  return apiClient<InitiatePaymentResponse>("/payments/retry", {
+    method: "POST",
+    accessToken,
+    idempotencyKey,
+    body: JSON.stringify({ orderId }),
+  });
+}
+
+export async function getMyOrder(id: string, accessToken: string): Promise<OrderSummary> {
+  return apiClient<OrderSummary>(`/orders/${id}`, {
+    method: "GET",
+    accessToken,
+  });
+}
+
+export async function cancelMyOrder(
+  id: string,
+  accessToken: string,
+  reason?: string,
+): Promise<{ message: string }> {
+  return apiClient<{ message: string }>(`/orders/${id}/cancel`, {
+    method: "POST",
+    accessToken,
+    idempotencyKey: createIdempotencyKey(),
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export interface ReturnRequestItemInput {
+  orderItemId: string;
+  quantity: number;
+  reason?: string;
+}
+
+export interface CreateReturnRequestInput {
+  items: ReturnRequestItemInput[];
+  reason: string;
+}
+
+export async function createReturnRequest(
+  orderId: string,
+  input: CreateReturnRequestInput,
+  accessToken: string,
+): Promise<{ id: string; status: string }> {
+  return apiClient<{ id: string; status: string }>(`/orders/${orderId}/return-requests`, {
+    method: "POST",
+    accessToken,
+    idempotencyKey: createIdempotencyKey(),
+    body: JSON.stringify(input),
+  });
+}
+
+/** Customer invoice PDF — requires Bearer token (customerGuard), not cookie-only. */
+export async function downloadCustomerInvoicePdf(
+  orderId: string,
+  accessToken: string,
+  filename: string,
+): Promise<void> {
+  const url = `${getBrowserApiBaseUrl()}/orders/${orderId}/invoice.pdf`;
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    credentials: "include",
+  });
+  if (!response.ok) {
+    let body: unknown = null;
+    try {
+      body = await response.json();
+    } catch {
+      body = null;
+    }
+    if (typeof body === "object" && body !== null && "error" in body) {
+      const err = (body as { error?: { code?: string; message?: string; details?: unknown } }).error;
+      throw new ApiError(
+        err?.code ?? "UNKNOWN_ERROR",
+        err?.message ?? "Unable to download invoice.",
+        response.status,
+        err?.details as never,
+      );
+    }
+    throw new ApiError("UNKNOWN_ERROR", "Unable to download invoice.", response.status);
+  }
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = objectUrl;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(objectUrl);
+}

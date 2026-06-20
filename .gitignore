@@ -1,0 +1,6 @@
+# Design reference (local only — not committed)
+frontend-design-reference/
+
+# OS
+.DS_Store
+Thumbs.db

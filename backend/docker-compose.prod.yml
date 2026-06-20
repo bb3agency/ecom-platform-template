@@ -1,0 +1,24 @@
+# VPS / production overlay — PostgreSQL runs on the host (not in Compose).
+#
+# Usage (always with base file):
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d backend workers
+#
+# Requires Docker Compose v2.24+ for depends_on: !reset
+
+services:
+  backend:
+    depends_on: !reset
+      redis:
+        condition: service_healthy
+
+  workers:
+    depends_on: !reset
+      redis:
+        condition: service_healthy
+
+  postgres:
+    profiles:
+      - compose-local-postgres-only
+
+  redis:
+    ports: !reset []

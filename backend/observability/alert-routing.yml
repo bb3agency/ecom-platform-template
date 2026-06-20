@@ -1,0 +1,56 @@
+routes:
+  - matchers:
+      - alertname=~"Queue.*|Outbox.*"
+      - severity="page"
+    receiver: sre-queue-pager
+    continue: false
+    group_by: ['alertname', 'service']
+    group_wait: 20s
+    group_interval: 3m
+    repeat_interval: 20m
+
+  - matchers:
+      - alertname=~"Queue.*|Outbox.*"
+      - severity="ticket"
+    receiver: sre-queue-ticket
+    continue: false
+    group_by: ['alertname', 'service']
+    group_wait: 60s
+    group_interval: 10m
+    repeat_interval: 2h
+
+  - matchers:
+      - severity="page"
+    receiver: sre-pager
+    continue: false
+    group_by: ['alertname', 'service']
+    group_wait: 30s
+    group_interval: 5m
+    repeat_interval: 30m
+
+  - matchers:
+      - severity="ticket"
+    receiver: sre-ticket
+    continue: false
+    group_by: ['alertname', 'service']
+    group_wait: 2m
+    group_interval: 15m
+    repeat_interval: 4h
+
+receivers:
+  - name: sre-queue-pager
+    metadata:
+      runbook_base: https://internal.runbooks/ecom/queue
+      escalation_policy: immediate-page
+  - name: sre-queue-ticket
+    metadata:
+      runbook_base: https://internal.runbooks/ecom/queue
+      escalation_policy: queued-ticket
+  - name: sre-pager
+    metadata:
+      runbook_base: https://internal.runbooks/ecom/reliability
+      escalation_policy: immediate-page
+  - name: sre-ticket
+    metadata:
+      runbook_base: https://internal.runbooks/ecom/reliability
+      escalation_policy: queued-ticket

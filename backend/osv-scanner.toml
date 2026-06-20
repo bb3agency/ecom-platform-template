@@ -1,0 +1,8 @@
+# OSV Scanner configuration
+# Dev dependencies are stripped from production image (npm prune --omit=dev in Dockerfile).
+# Ignore dev-only packages to avoid false positives on non-shipping code.
+
+[[PackageOverrides]]
+group = "dev"
+ignore = true
+reason = "Dev dependencies are pruned from the production Docker image (npm prune --omit=dev)"

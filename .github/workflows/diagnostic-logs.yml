@@ -1,0 +1,26 @@
+# TEMPORARY read-only diagnostic for the product image upload 500.
+# Safe: only reads logs, mutates nothing. Remove after diagnosis.
+name: Diagnostic Logs
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  dump-logs:
+    name: Dump VPS logs
+    runs-on: ${{ vars.VPS_RUNNER_LABEL || 'self-hosted' }}
+    steps:
+      - name: Error-level logs (level 50) with message + url
+        run: docker logs --tail 60000 "${CLIENT_ID:-raghava-organics}-backend" 2>&1 | grep -aE '"level":(50|60)' | tail -40 || echo "no error-level logs in window"
+
+      - name: Any line mentioning the upload route or media
+        run: docker logs --tail 60000 "${CLIENT_ID:-raghava-organics}-backend" 2>&1 | grep -aiE "images/upload|/media|R2|multipart|saveProductImage|productMedia|MEDIA_STORAGE" | tail -40 || echo "NO upload/media/R2 lines in window"
+
+      - name: Lines around the most recent 500s (context)
+        run: docker logs --tail 4000 "${CLIENT_ID:-raghava-organics}-backend" 2>&1 | grep -aE '"statusCode":500|"url":|"err"|FST_|MEDIA_STORAGE_PROVIDER' | tail -40 || echo "no context"
+
+      - name: Active media provider env (names only, values masked)
+        run: docker exec "${CLIENT_ID:-raghava-organics}-backend" sh -c 'env | grep -aiE "MEDIA_STORAGE_PROVIDER|R2_ACCOUNT_ID|R2_BUCKET|R2_PUBLIC_BASE_URL|MEDIA_CDN_BASE_URL" | sed -E "s/=(.{4}).*/=\1****/"' || echo "could not read env"

@@ -1,0 +1,103 @@
+services:
+  backend:
+    build: .
+    container_name: ${CLIENT_ID:-ecom}-backend
+    restart: unless-stopped
+    ports:
+      - "${BACKEND_PORT:-3000}:3000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    env_file: .env
+    environment:
+      # Overrides — these take precedence over env_file values.
+      # Docker services are only used in production/VPS deployments.
+      - NODE_ENV=production
+      - OTEL_SERVICE_NAME=${CLIENT_ID:-ecom}-backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - client-network
+
+  workers:
+    build: .
+    container_name: ${CLIENT_ID:-ecom}-workers
+    restart: unless-stopped
+    command: ["node", "bootstrap-workers.js"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    env_file: .env
+    environment:
+      - NODE_ENV=production
+      - OTEL_SERVICE_NAME=${CLIENT_ID:-ecom}-workers
+      # Payment drain timeout for scheduled-process-restart job (ms). Default: 300000 (5 min).
+      - RESTART_PAYMENT_DRAIN_TIMEOUT_MS=${RESTART_PAYMENT_DRAIN_TIMEOUT_MS:-300000}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - client-network
+
+  # ── Infrastructure services ─────────────────────────────────────
+  # These are the only services most developers need during local dev:
+  #   docker compose up -d postgres redis
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: ${CLIENT_ID:-ecom}-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${POSTGRES_DB:-ecom_template}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    networks:
+      - client-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: ${CLIENT_ID:-ecom}-redis
+    restart: unless-stopped
+    command:
+      [
+        "sh",
+        "-c",
+        "redis-server ${REDIS_PASSWORD:+--requirepass \"$REDIS_PASSWORD\"} --appendonly yes --appendfsync everysec --save 900 1 --save 300 10 --save 60 10000 --maxmemory 100mb --maxmemory-policy noeviction --protected-mode no"
+      ]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ${REDIS_PASSWORD:+-a \"$REDIS_PASSWORD\"} ping | grep PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    # Exposed for host-side dev (dev-up.cmd / npm run dev). docker-compose.prod.yml
+    # removes this mapping on VPS so Redis stays on the Docker network only.
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+    volumes:
+      - redis-data:/data
+    networks:
+      - client-network
+
+networks:
+  client-network:
+    driver: bridge
+
+volumes:
+  pg-data:
+  redis-data:

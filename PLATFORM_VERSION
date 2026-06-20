@@ -1,0 +1,14 @@
+# Platform core versions this client repo is synced up to.
+# Bumped on every merge of a template core release. Read by the fleet
+# version dashboard and the core-drift CI check. See
+# backend/docs/PLATFORM_VERSIONING_AND_SYNC_GUIDE.md.
+backend-core: 0.1.1
+frontend-core: 0.1.1
+
+# Minimum backend-core this frontend-core requires (compatibility contract).
+requires-backend-core: 0.1.1
+
+# Sanctioned, temporary divergences from core (see guide §7). Each entry:
+#   path — justification — owner — expires (YYYY-MM-DD)
+# Empty = no approved divergence (clean).
+approved-divergence: []

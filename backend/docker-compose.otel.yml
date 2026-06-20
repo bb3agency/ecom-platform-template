@@ -1,0 +1,52 @@
+# docker-compose.otel.yml
+#
+# Optional override to add an OTEL collector sidecar for tracing.
+#
+# ── Local development (Jaeger) ───────────────────────────────────────────────
+#   docker compose -f docker-compose.yml -f docker-compose.otel.yml up -d
+#   → Jaeger UI: http://localhost:16686
+#
+# ── Production (hosted collector) ────────────────────────────────────────────
+# For production, skip Jaeger entirely and set these in your .env:
+#
+#   OTEL_TRACING_ENABLED=true
+#   OTEL_EXPORTER_OTLP_ENDPOINT=https://otel.your-provider.com
+#   OTEL_EXPORTER_OTLP_HEADERS=Authorization=Bearer <token>
+#   OTEL_SERVICE_NAME=clientname-backend
+#
+# Supported hosted collectors:
+#   • Grafana Cloud Tempo — https://grafana.com/docs/tempo/latest/
+#   • Datadog OTLP       — https://docs.datadoghq.com/opentelemetry/
+#   • Honeycomb           — https://docs.honeycomb.io/send-data/opentelemetry/
+#   • New Relic           — https://docs.newrelic.com/docs/opentelemetry/
+#   • SigNoz              — https://signoz.io/docs/
+#
+# The backend and workers automatically pick up OTEL_EXPORTER_OTLP_HEADERS
+# from the environment and forward them as HTTP headers to the collector.
+
+services:
+  jaeger:
+    image: jaegertracing/all-in-one:1.62
+    restart: unless-stopped
+    ports:
+      - "16686:16686"   # Jaeger UI
+      - "4317:4317"     # OTLP gRPC receiver
+      - "4318:4318"     # OTLP HTTP receiver
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    networks:
+      - client-network
+
+  backend:
+    environment:
+      - OTEL_TRACING_ENABLED=true
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
+    depends_on:
+      - jaeger
+
+  workers:
+    environment:
+      - OTEL_TRACING_ENABLED=true
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
+    depends_on:
+      - jaeger

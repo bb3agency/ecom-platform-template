@@ -1,0 +1,1030 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  CUSTOMER
+  ADMIN
+}
+
+enum OrderStatus {
+  PENDING_PAYMENT
+  PAYMENT_FAILED
+  CONFIRMED
+  PROCESSING
+  SHIPPED
+  OUT_FOR_DELIVERY
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentStatus {
+  CREATED
+  CAPTURED
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum PaymentProvider {
+  RAZORPAY
+  CASHFREE
+  COD
+}
+
+enum PaymentMode {
+  PREPAID
+  COD
+}
+
+enum ReturnRequestStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+  PICKED_UP
+  REFUNDED
+}
+
+enum ShippingProvider {
+  DELHIVERY
+  SHIPROCKET
+  SELF
+}
+
+enum ShipmentStatus {
+  PENDING
+  BOOKED
+  PICKED_UP
+  IN_TRANSIT
+  OUT_FOR_DELIVERY
+  DELIVERED
+  FAILED_DELIVERY
+  RTO_INITIATED
+  RTO_DELIVERED
+  CANCELLED
+}
+
+enum NotificationChannel {
+  EMAIL
+  SMS
+  WHATSAPP
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+enum CouponType {
+  PERCENTAGE_OFF
+  FLAT_AMOUNT_OFF
+  FREE_SHIPPING
+  BUY_X_GET_Y
+}
+
+enum AnalyticsEventType {
+  PAGE_VIEW
+  PRODUCT_VIEW
+  ADD_TO_CART
+  REMOVE_FROM_CART
+  CHECKOUT_STARTED
+  PAYMENT_INITIATED
+  PURCHASE
+  SEARCH
+}
+
+enum IdempotencyStatus {
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum OutboxStatus {
+  PENDING
+  PUBLISHED
+  FAILED
+}
+
+enum WebhookInboxStatus {
+  PROCESSING
+  ENQUEUED
+  PROCESSED
+  FAILED
+}
+
+enum OpsPermission {
+  OPS_READ
+  OPS_WRITE
+}
+
+enum OpsActionType {
+  LOAD_SHED_CHANGE
+  ENV_READ
+  ENV_UPDATE
+  CONTAINER_RESTART
+  DB_BACKUP
+  DB_RESTORE
+  FEATURE_FLAG_TOGGLE
+  INVITE_CREATED
+  INVITE_CONSUMED
+  INVITE_EXPIRED_CLEANED
+  INVITE_REVOKED
+  OTP_CHALLENGE_REQUESTED
+  OTP_CHALLENGE_VERIFIED
+  OTP_CHALLENGE_FAILED
+  USER_DEACTIVATED
+  OPS_USER_LOGGED_IN
+  OPS_USER_LOGGED_OUT
+}
+
+enum OpsActionStatus {
+  EXECUTED
+  FAILED
+}
+
+enum OpsInviteStatus {
+  CREATED
+  EMAIL_SENT
+  CONSUMED
+  EXPIRED_CLEANED
+  CANCELLED
+}
+
+enum AdminInviteStatus {
+  CREATED
+  EMAIL_SENT
+  CONSUMED
+  EXPIRED_CLEANED
+  CANCELLED
+}
+
+enum OpsOtpChallengeStatus {
+  PENDING
+  VERIFIED
+  EXPIRED
+  FAILED
+}
+
+enum OpsConfigDomain {
+  CORE
+  PAYMENTS
+  SHIPPING
+  NOTIFICATIONS
+  OPS_SECURITY
+}
+
+model User {
+  id           String    @id @default(uuid())
+  email        String?   @unique
+  phone        String?   @unique
+  passwordHash String
+  firstName    String?
+  lastName     String?
+  role         Role      @default(CUSTOMER)
+  isVerified   Boolean   @default(false)
+  addresses    Address[]
+  orders       Order[]
+  wishlistItems WishlistItem[]
+  cart         Cart?
+  reviews      Review[]
+  refreshTokens RefreshToken[]
+  passwordResetTokens PasswordResetToken[]
+  adminPermissionGrants AdminPermissionGrant[]
+  adminAuditLogs AdminAuditLog[]
+  returnRequests ReturnRequest[]
+  isBanned     Boolean   @default(false)
+  bannedAt     DateTime?
+  bannedReason String?
+  adminNotes   UserAdminNote[]
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([email])
+  @@index([phone])
+  @@index([isBanned])
+}
+
+model UserAdminNote {
+  id              String   @id @default(uuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  content         String   @db.Text
+  createdByAdminId String
+  createdAt       DateTime @default(now())
+
+  @@index([userId])
+}
+
+model AdminPermissionGrant {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission  String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([userId, permission])
+  @@index([userId])
+}
+
+model AdminAuditLog {
+  id            String   @id @default(uuid())
+  adminUserId   String
+  adminUser     User     @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+  action        String
+  resourceType  String
+  resourceId    String?
+  correlationId String?
+  requestPath   String
+  method        String
+  outcome       String
+  statusCode    Int
+  summary       Json?
+  createdAt     DateTime @default(now())
+
+  @@index([adminUserId, createdAt])
+  @@index([resourceType, createdAt])
+  @@index([outcome, createdAt])
+}
+
+model OpsUser {
+  id                  String                   @id @default(uuid())
+  email               String                   @unique
+  phone               String?                  @unique
+  name                String
+  apiKeyId            String?                  @unique
+  apiKeyHash          String?
+  mfaSecretEncrypted  String?
+  mfaEnabled          Boolean                  @default(false)
+  ipAllowlist         String[]
+  permissions         OpsPermission[]          @default([OPS_READ])
+  isActive            Boolean                  @default(true)
+  lastLoginAt         DateTime?
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
+  auditLogs           OpsAuditLog[]
+  createdInvites      OpsUserInvite[]          @relation("OpsInviteCreatedBy")
+  createdAdminInvites AdminUserInvite[]        @relation("AdminInviteCreatedByOps")
+  otpChallenges       OpsOtpChallenge[]
+  configSecrets       OpsConfigSecret[]
+}
+
+model OpsUserInvite {
+  id                  String         @id @default(uuid())
+  inviteEmail         String
+  inviteName          String
+  inviteTokenHash     String         @unique
+  setupBaseUrl        String
+  status              OpsInviteStatus @default(CREATED)
+  permissions         OpsPermission[] @default([OPS_READ])
+  ipAllowlist         String[]
+  expiresAt           DateTime
+  consumedAt          DateTime?
+  createdByOpsUserId  String?
+  createdByOpsUser    OpsUser?       @relation("OpsInviteCreatedBy", fields: [createdByOpsUserId], references: [id], onDelete: SetNull)
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  @@index([status, expiresAt])
+  @@index([inviteEmail])
+}
+
+model AdminUserInvite {
+  id                  String            @id @default(uuid())
+  inviteEmail         String
+  inviteName          String
+  inviteTokenHash     String            @unique
+  setupBaseUrl        String
+  status              AdminInviteStatus @default(CREATED)
+  permissions         String[]
+  expiresAt           DateTime
+  consumedAt          DateTime?
+  createdByOpsUserId  String?
+  createdByOpsUser    OpsUser?          @relation("AdminInviteCreatedByOps", fields: [createdByOpsUserId], references: [id], onDelete: SetNull)
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  @@index([status, expiresAt])
+  @@index([inviteEmail])
+}
+
+model OpsOtpChallenge {
+  id             String                 @id @default(uuid())
+  opsUserId      String
+  opsUser        OpsUser                @relation(fields: [opsUserId], references: [id], onDelete: Cascade)
+  action         String
+  codeHash       String
+  status         OpsOtpChallengeStatus  @default(PENDING)
+  expiresAt      DateTime
+  verifiedAt     DateTime?
+  failedAttempts Int                    @default(0)
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  @@index([opsUserId, createdAt])
+  @@index([status, expiresAt])
+}
+
+model OpsConfigSecret {
+  id                String          @id @default(uuid())
+  opsUserId         String
+  opsUser           OpsUser         @relation(fields: [opsUserId], references: [id], onDelete: Cascade)
+  domain            OpsConfigDomain
+  secretKey         String
+  encryptedValue    String
+  keyVersion        Int             @default(1)
+  requiresRestart   Boolean         @default(true)
+  isActive          Boolean         @default(true)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@unique([domain, secretKey])
+  @@index([opsUserId, createdAt])
+  @@index([domain, isActive])
+}
+
+model OpsAuditLog {
+  id                String          @id @default(uuid())
+  opsUserId         String
+  opsUser           OpsUser         @relation(fields: [opsUserId], references: [id], onDelete: Cascade)
+  actionType        OpsActionType
+  actionStatus      OpsActionStatus
+  requestId         String          @unique
+  requestIp         String
+  requestPath       String
+  method            String
+  previousState     Json?
+  newState          Json?
+  summary           Json?
+  chainHash         String
+  previousChainHash String?
+  createdAt         DateTime        @default(now())
+
+  @@index([opsUserId, createdAt])
+  @@index([actionType, createdAt])
+  @@index([actionStatus, createdAt])
+}
+
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String
+  jti       String   @unique
+  sessionId String
+  deviceKeyHash String
+  consumedAt DateTime?
+  revokedAt DateTime?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sessionId])
+  @@index([jti])
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model Address {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName  String
+  phone     String
+  line1     String
+  line2     String?
+  city      String
+  state     String
+  pincode   String
+  gstin     String?
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model Category {
+  id        String     @id @default(uuid())
+  name      String
+  slug      String     @unique
+  parentId  String?
+  parent    Category?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children  Category[] @relation("CategoryTree")
+  imageUrl  String?
+  isActive  Boolean    @default(true)
+  products  Product[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@index([parentId])
+}
+
+model Product {
+  id              String           @id @default(uuid())
+  name            String
+  description     String
+  // search_vector: tsvector GENERATED ALWAYS column — managed by raw SQL migration
+  // (20260427030000_add_product_full_text_search). Not in schema because Prisma's
+  // Unsupported("tsvector") can't represent GENERATED ALWAYS columns and causes drift.
+  slug            String           @unique
+  categoryId      String
+  category        Category         @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  tags            String[]
+  attributes      Json?
+  metaTitle       String?
+  metaDescription String?
+  isActive        Boolean          @default(true)
+  isFeatured      Boolean          @default(false)
+  images          ProductImage[]
+  variants        ProductVariant[]
+  wishlistItems   WishlistItem[]
+  reviews         Review[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@index([slug])
+  @@index([categoryId])
+  @@index([isActive])
+}
+
+model WishlistItem {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, productId])
+  @@index([userId])
+  @@index([productId])
+}
+
+model ProductImage {
+  id        String   @id @default(uuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  url       String
+  altText   String
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([productId])
+}
+
+model ProductVariant {
+  id             String      @id @default(uuid())
+  productId      String
+  product        Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  sku            String      @unique
+  name           String
+  attributes     Json?
+  price          Int
+  compareAtPrice Int?
+  weight          Int?
+  packageLengthCm Int?
+  packageWidthCm  Int?
+  packageHeightCm Int?
+  hsnCode        String?
+  gstRatePercent Int         @default(0)
+  isActive       Boolean     @default(true)
+  inventory      Inventory?
+  cartItems      CartItem[]
+  cartReservations CartReservation[]
+  orderItems     OrderItem[]
+  inventoryAdjustments InventoryAdjustment[]
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  @@index([productId])
+  @@index([sku])
+}
+
+model Inventory {
+  id                String         @id @default(uuid())
+  variantId         String         @unique
+  variant           ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  quantity          Int            @default(0)
+  lowStockThreshold Int            @default(5)
+  lowStockAlerted   Boolean        @default(false)
+  updatedAt         DateTime       @updatedAt
+}
+
+model InventoryAdjustment {
+  id            String   @id @default(uuid())
+  variantId     String
+  variant       ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  delta         Int
+  quantityAfter Int
+  reason        String?
+  adminUserId   String?
+  createdAt     DateTime @default(now())
+
+  @@index([variantId, createdAt])
+}
+
+model Cart {
+  id           String     @id @default(uuid())
+  userId       String?    @unique
+  user         User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessionToken String?    @unique
+  couponId     String?
+  coupon       Coupon?    @relation(fields: [couponId], references: [id], onDelete: SetNull)
+  expiresAt    DateTime
+  items        CartItem[]
+  reservations CartReservation[]
+  updatedAt    DateTime   @updatedAt
+
+  @@index([sessionToken])
+  @@index([couponId])
+}
+
+model CartReservation {
+  id         String         @id @default(uuid())
+  cartId     String
+  cart       Cart           @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  variantId  String
+  variant    ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  quantity   Int
+  expiresAt  DateTime
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  @@unique([cartId, variantId])
+  @@index([variantId, expiresAt])
+  @@index([expiresAt])
+}
+
+model CartItem {
+  id            String         @id @default(uuid())
+  cartId        String
+  cart          Cart           @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  variantId     String
+  variant       ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  quantity      Int
+  priceSnapshot Int
+  updatedAt     DateTime       @updatedAt
+
+  @@unique([cartId, variantId])
+  @@index([cartId])
+  @@index([variantId])
+}
+
+model Order {
+  id              String               @id @default(uuid())
+  orderNumber     String               @unique
+  userId          String
+  user            User                 @relation(fields: [userId], references: [id], onDelete: Restrict)
+  status          OrderStatus          @default(PENDING_PAYMENT)
+  shippingAddress Json
+  subtotal        Int
+  shippingCharge  Int                  @default(0)
+  discountAmount  Int                  @default(0)
+  total           Int
+  notes              String?
+  paymentMode        PaymentMode          @default(PREPAID)
+  courierCompanyId              Int?
+  shiprocketOrderId             String?
+  selectedShippingProvider      ShippingProvider?
+  shippingChargeQuotedPaise     Int?
+  items              OrderItem[]
+  payment            Payment?
+  shipment           Shipment?
+  statusHistory      OrderStatusHistory[]
+  invoice            Invoice?
+  coupons            Coupon[]
+  couponUsages       CouponUsage[]
+  returnRequests     ReturnRequest[]
+  reviews            Review[]
+  creditNotes        CreditNote[]
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([orderNumber])
+  @@index([createdAt])
+  @@index([status, createdAt])
+  @@index([shiprocketOrderId])
+  @@index([paymentMode])
+}
+
+model OrderItem {
+  id          String         @id @default(uuid())
+  orderId     String
+  order       Order          @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  variantId   String
+  variant     ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  productName String
+  variantName String
+  sku         String
+  quantity    Int
+  unitPrice   Int
+  totalPrice  Int
+
+  @@index([orderId])
+  @@index([variantId])
+}
+
+model OrderStatusHistory {
+  id         String       @id @default(uuid())
+  orderId    String
+  order      Order        @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  fromStatus OrderStatus?
+  toStatus   OrderStatus
+  triggeredBy String      @default("SYSTEM")
+  note       String?
+  createdAt  DateTime     @default(now())
+
+  @@index([orderId])
+}
+
+model Payment {
+  id                String          @id @default(uuid())
+  orderId           String          @unique
+  order             Order           @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  provider          PaymentProvider
+  providerOrderId   String
+  providerPaymentId String?
+  amount            Int
+  currency          String          @default("INR")
+  status            PaymentStatus   @default(CREATED)
+  method            String?
+  webhookPayload    Json?
+  capturedAt        DateTime?
+  refundPendingAmountPaise Int      @default(0)
+  refundedAmountPaise Int           @default(0)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@index([providerOrderId])
+  @@index([providerPaymentId])
+}
+
+model Shipment {
+  id                String           @id @default(uuid())
+  orderId           String           @unique
+  order             Order            @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  provider          ShippingProvider
+  awbNumber         String?
+  status            ShipmentStatus   @default(PENDING)
+  trackingUrl       String?
+  estimatedDelivery DateTime?
+  webhookPayload        Json?
+  shiprocketShipmentId  String?
+  labelUrl              String?
+  pickupScheduledDate   DateTime?
+  events                ShipmentEvent[]
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+
+  @@index([awbNumber])
+  @@index([shiprocketShipmentId])
+}
+
+model ShipmentEvent {
+  id          String   @id @default(uuid())
+  shipmentId  String
+  shipment    Shipment @relation(fields: [shipmentId], references: [id], onDelete: Restrict)
+  status      String
+  location    String?
+  description String
+  occurredAt  DateTime
+
+  @@index([shipmentId])
+}
+
+model Coupon {
+  id             String     @id @default(uuid())
+  code           String     @unique
+  type           CouponType
+  value          Int
+  minOrderPaise  Int        @default(0)
+  maxUsesTotal   Int?
+  maxUsesPerUser Int?
+  usesCount      Int        @default(0)
+  isActive       Boolean    @default(true)
+  validFrom      DateTime
+  validUntil     DateTime?
+  applicableTo   Json?
+
+  // Soft delete fields
+  deletedAt      DateTime?
+  deletedBy      String?    // Admin user ID who deleted
+
+  // Audit fields
+  createdBy      String?    // Admin user ID who created (nullable for migration compatibility)
+  updatedBy      String?    // Admin user ID who last updated
+
+  // Relations
+  carts          Cart[]
+  orders         Order[]
+  auditLogs      CouponAuditLog[]
+  usages         CouponUsage[]
+
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  @@index([code])
+  @@index([deletedAt])      // For filtering active coupons
+  @@index([createdBy])
+  @@index([isActive, deletedAt, validFrom, validUntil]) // Common query pattern
+}
+
+model CouponAuditLog {
+  id          String   @id @default(uuid())
+  couponId    String
+  coupon      Coupon   @relation(fields: [couponId], references: [id], onDelete: Cascade)
+
+  action      String   // CREATE, UPDATE, DELETE, RESTORE, PAUSE, RESUME
+  actorId     String   // Admin user ID who performed action
+  actorType   String   // ADMIN, SYSTEM
+
+  // Change tracking
+  previousState Json?    // Full previous state (for updates)
+  newState      Json     // Full new state
+  changes       Json?    // Diff of only changed fields
+
+  // Metadata
+  ipAddress   String?
+  userAgent   String?
+
+  // Tamper-evident hash chain
+  previousChainHash String?
+  chainHash         String
+
+  createdAt   DateTime @default(now())
+
+  @@index([couponId, createdAt])
+  @@index([actorId, createdAt])
+  @@index([action, createdAt])
+  @@index([chainHash])
+}
+
+model CouponUsage {
+  id             String   @id @default(uuid())
+  couponId       String
+  coupon         Coupon   @relation(fields: [couponId], references: [id], onDelete: SetNull)
+  orderId        String
+  order          Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  userId         String
+  discountAmount Int      // Actual discount applied in paise
+  usedAt         DateTime @default(now())
+
+  @@unique([couponId, orderId])
+  @@index([couponId, usedAt])
+  @@index([userId, usedAt])
+}
+
+model LowStockAlertEvent {
+  id                String   @id @default(uuid())
+  inventoryId       String
+  variantId         String
+  sku               String
+  variantName       String
+  productName       String
+  quantity          Int
+  lowStockThreshold Int
+  createdAt         DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([variantId, createdAt])
+}
+
+model Review {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  rating    Int
+  body      String?
+  images    String[]
+  approved  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, orderId, productId])
+  @@index([orderId])
+  @@index([productId])
+  @@index([approved])
+}
+
+model NotificationLog {
+  id                String              @id @default(uuid())
+  channel           NotificationChannel
+  recipient         String
+  template          String
+  status            NotificationStatus  @default(PENDING)
+  provider          String
+  providerMessageId String?
+  errorMessage      String?
+  createdAt         DateTime            @default(now())
+
+  @@index([channel, status])
+  @@index([createdAt])
+}
+
+model Invoice {
+  id                String      @id @default(uuid())
+  orderId           String      @unique
+  order             Order       @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  invoiceNumber     String      @unique
+  pdfUrl            String
+  gstBreakdown      Json?
+  irnNumber         String?
+  einvoiceQrUrl     String?
+  issuedAt          DateTime    @default(now())
+  creditNotes       CreditNote[]
+}
+
+model CreditNote {
+  id                    String   @id @default(uuid())
+  invoiceId             String
+  invoice               Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  orderId               String
+  order                 Order    @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  creditNoteNumber      String   @unique
+  amountPaise           Int
+  reason                String
+  pdfUrl                String?
+  issuedAt              DateTime @default(now())
+
+  @@index([orderId])
+  @@index([invoiceId])
+}
+
+model ReturnRequest {
+  id         String              @id @default(uuid())
+  orderId    String
+  order      Order               @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  userId     String
+  user       User                @relation(fields: [userId], references: [id], onDelete: Restrict)
+  items      Json
+  reason     String
+  status     ReturnRequestStatus @default(REQUESTED)
+  adminNote  String?
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
+
+  @@index([orderId])
+  @@index([userId])
+  @@index([status, createdAt])
+}
+
+model AnalyticsEvent {
+  id         String             @id @default(uuid())
+  eventType  AnalyticsEventType
+  sessionId  String
+  userId     String?
+  payload    Json
+  occurredAt DateTime           @default(now())
+
+  @@index([eventType, occurredAt])
+  @@index([sessionId])
+  @@index([userId])
+}
+
+model IdempotencyRecord {
+  id              String            @id @default(uuid())
+  scopeKey        String
+  route           String
+  method          String
+  idempotencyKey  String
+  requestHash     String
+  status          IdempotencyStatus @default(PROCESSING)
+  responseStatus  Int?
+  responsePayload Json?
+  expiresAt       DateTime
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@unique([scopeKey, route, method, idempotencyKey])
+  @@index([expiresAt])
+}
+
+model OutboxMessage {
+  id          String       @id @default(uuid())
+  queueName   String
+  jobName     String
+  payload     Json
+  jobId       String?
+  status      OutboxStatus @default(PENDING)
+  attemptCount Int         @default(0)
+  publishedAt DateTime?
+  lastError   String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([status, createdAt])
+}
+
+model WebhookInboxEvent {
+  id           String            @id @default(uuid())
+  provider     String
+  eventKey     String
+  payloadHash  String
+  status       WebhookInboxStatus @default(PROCESSING)
+  eventName    String?
+  enqueuedAt   DateTime?
+  processedAt  DateTime?
+  lastError    String?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  @@unique([provider, eventKey])
+  @@index([status, createdAt])
+}
+
+model ReconciliationIssue {
+  id           String   @id @default(uuid())
+  issueType    String
+  aggregateRef String
+  details      Json
+  isResolved   Boolean  @default(false)
+  detectedAt   DateTime @default(now())
+  resolvedAt   DateTime?
+  updatedAt    DateTime @updatedAt
+
+  @@index([isResolved, detectedAt])
+  @@index([issueType, detectedAt])
+}
+
+/// Durable, Postgres-backed source of truth for the runtime load-shed/maintenance
+/// state. Redis is the fast read cache; this table is consulted on cache miss and
+/// on process boot so the chosen mode survives full infrastructure resets
+/// (Redis restart, Redis flush, container redeploy). Single-row table keyed by
+/// `singletonKey = "singleton"`.
+///
+/// `mode` mirrors `load-shed.guard` modes: 'normal' | 'reduced' | 'emergency' | 'maintenance'.
+/// `phase` is only meaningful when `mode = 'maintenance'`:
+///   - 'pending' — 2-minute warning window with emergency-style gating; payment jobs continue.
+///   - 'active'  — Nginx serves maintenance page for all non-ops, non-health, non-webhook traffic.
+/// Maintenance exits only when an ops user changes the mode away from 'maintenance' via
+/// `POST /api/v1/ops/load-shed`. Until then, the state is reapplied on every boot.
+model MaintenanceState {
+  id              String    @id @default(uuid())
+  singletonKey    String    @unique @default("singleton")
+  mode            String    @default("normal")
+  phase           String?
+  pendingUntil    DateTime?
+  activatedAt     DateTime?
+  reason          String?
+  setByOpsUserId  String?
+  setAt           DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+model StoreSettings {
+  id                        String   @id @default(uuid())
+  singletonKey              String   @unique @default("default")
+  storeName                 String?
+  websiteUrl                String?
+  logoUrl                   String?
+  contactEmail              String?
+  contactPhone              String?
+  gstin                     String?
+  fssaiNumber               String?
+  pickupPincode             String
+  minOrderValuePaise        Int      @default(0)
+  isCodEnabled              Boolean  @default(false)
+  couponsEnabled            Boolean  @default(false)
+  mobileOtpSignupEnabled    Boolean  @default(false)
+  cancellationWindowHours   Int      @default(24)
+  notifyEmailEnabled        Boolean  @default(true)
+  notifySmsEnabled          Boolean  @default(false)
+  notifyWhatsappEnabled     Boolean  @default(false)
+  primaryNotificationChannels Json?
+  smsTemplates              Json?
+  defaultLowStockThreshold  Int      @default(5)
+  boxPresets                Json?
+  sellerLegalName           String?
+  sellerAddress             String?
+  sellerState               String?
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+}

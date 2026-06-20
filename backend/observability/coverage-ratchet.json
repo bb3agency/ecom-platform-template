@@ -1,0 +1,27 @@
+{
+  "globalMinLinesPct": 43,
+  "domains": [
+    {
+      "name": "orders",
+      "minLinesPct": 40.5,
+      "includePrefixes": [
+        "src/modules/orders/"
+      ]
+    },
+    {
+      "name": "auth",
+      "minLinesPct": 16.0,
+      "includePrefixes": [
+        "src/modules/auth/"
+      ]
+    },
+    {
+      "name": "webhooks",
+      "minLinesPct": 42,
+      "includePrefixes": [
+        "src/modules/orders/",
+        "queues/workers/order-processing.worker.ts"
+      ]
+    }
+  ]
+}

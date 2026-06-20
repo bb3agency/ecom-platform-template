@@ -1,0 +1,69 @@
+import { BoxPreset, selectBestFitBox } from './select-box-preset';
+
+/**
+ * cm³ per kg used by Indian couriers (Delhivery, Shiprocket, Blue Dart, etc.) to convert
+ * parcel volume into volumetric weight. Standard divisor across the industry.
+ */
+export const VOLUMETRIC_DIVISOR_CM3_PER_KG = 5000;
+
+/**
+ * Default parcel dimensions used when no box preset is selected. MUST mirror the fallback
+ * dimensions sent by the Shiprocket adapter at AWB creation (`createShipment`), otherwise the
+ * rate quote and the actual booking would compute different volumetric weights.
+ */
+export const DEFAULT_PARCEL_BOX: BoxPreset = {
+  name: 'default',
+  lengthCm: 15,
+  widthCm: 15,
+  heightCm: 10
+};
+
+/** Per-unit default dead weight (grams) when a variant has no weight configured. */
+export const DEFAULT_UNIT_WEIGHT_GRAMS = 500;
+
+export type ChargeableWeightItem = {
+  quantity: number;
+  weightGrams?: number | null;
+  lengthCm?: number | null;
+  widthCm?: number | null;
+  heightCm?: number | null;
+};
+
+/**
+ * Computes the chargeable weight (grams) a courier will bill for a cart/parcel:
+ * `max(total dead weight, volumetric weight of the selected box)`.
+ *
+ * Couriers bill on the GREATER of physical weight and volumetric weight. Quoting on dead weight
+ * alone (as the rate APIs do by default) underprices bulky-but-light parcels — the quote shows a
+ * cheap rate while the courier later bills on the volumetric weight derived from the box
+ * dimensions the AWB sends. Computing chargeable weight here, with the SAME box-selection logic
+ * the worker uses at AWB time, keeps "rate shown == rate billed" so the genuinely cheapest
+ * provider wins and the customer is charged what they saw.
+ */
+export function computeChargeableWeightGrams(input: {
+  items: ChargeableWeightItem[];
+  boxPresets?: BoxPreset[];
+}): number {
+  const deadWeightGrams = input.items.reduce((sum, item) => {
+    const unit = item.weightGrams && item.weightGrams > 0 ? item.weightGrams : DEFAULT_UNIT_WEIGHT_GRAMS;
+    return sum + Math.max(unit, 1) * item.quantity;
+  }, 0);
+
+  const totalVolumeCm3 = input.items.reduce((sum, item) => {
+    const l = item.lengthCm ?? 0;
+    const w = item.widthCm ?? 0;
+    const h = item.heightCm ?? 0;
+    if (l > 0 && w > 0 && h > 0) {
+      return sum + l * w * h * item.quantity;
+    }
+    return sum;
+  }, 0);
+
+  // Mirror the worker: pick the best-fit preset box, else fall back to the adapter's default box.
+  const selectedBox =
+    (totalVolumeCm3 > 0 ? selectBestFitBox(totalVolumeCm3, input.boxPresets ?? []) : null) ?? DEFAULT_PARCEL_BOX;
+  const boxVolumeCm3 = selectedBox.lengthCm * selectedBox.widthCm * selectedBox.heightCm;
+  const volumetricWeightGrams = Math.round((boxVolumeCm3 / VOLUMETRIC_DIVISOR_CM3_PER_KG) * 1000);
+
+  return Math.max(deadWeightGrams, volumetricWeightGrams, 1);
+}

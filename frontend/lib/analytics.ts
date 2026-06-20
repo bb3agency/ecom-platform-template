@@ -1,0 +1,46 @@
+import { getBrowserApiBaseUrl } from "@/lib/api-base";
+
+const SESSION_KEY = "ro_analytics_sid";
+
+function getSessionId(): string {
+  if (typeof window === "undefined") return "ssr";
+  let sid = localStorage.getItem(SESSION_KEY);
+  if (!sid) {
+    sid = crypto.randomUUID();
+    localStorage.setItem(SESSION_KEY, sid);
+  }
+  return sid;
+}
+
+type AnalyticsEventType =
+  | "PRODUCT_VIEW"
+  | "ADD_TO_CART"
+  | "CHECKOUT_STARTED"
+  | "PAYMENT_INITIATED"
+  | "PURCHASE"
+  | "SEARCH";
+
+export function trackEvent(
+  eventType: AnalyticsEventType,
+  payload?: Record<string, unknown>,
+  userId?: string,
+): void {
+  if (typeof window === "undefined") return;
+  const base = getBrowserApiBaseUrl();
+
+  const body: Record<string, unknown> = {
+    eventType,
+    sessionId: getSessionId(),
+    ...(userId ? { userId } : {}),
+    ...(payload ? { payload } : {}),
+  };
+
+  void fetch(`${base}/analytics/event`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    keepalive: true,
+  }).catch(() => {
+    // fire-and-forget — never throw
+  });
+}

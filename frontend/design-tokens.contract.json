@@ -1,0 +1,23 @@
+{
+  "$comment": "Required design-token contract. Every client's app/globals.css :root MUST define all of these CSS custom properties so any core component that references them renders correctly under that client's theme. Enforced by backend/scripts/check-token-contract.sh. See PLATFORM_VERSIONING_AND_SYNC_GUIDE.md §5.",
+  "version": 1,
+  "requiredTokens": [
+    "--background", "--foreground",
+    "--card", "--card-foreground",
+    "--popover", "--popover-foreground",
+    "--primary", "--primary-foreground",
+    "--secondary", "--secondary-foreground",
+    "--muted", "--muted-foreground",
+    "--accent", "--accent-foreground",
+    "--destructive",
+    "--border", "--input", "--ring",
+    "--chart-1", "--chart-2", "--chart-3", "--chart-4", "--chart-5",
+    "--sidebar", "--sidebar-foreground",
+    "--sidebar-primary", "--sidebar-primary-foreground",
+    "--sidebar-accent", "--sidebar-accent-foreground",
+    "--sidebar-border", "--sidebar-ring",
+    "--radius"
+  ],
+  "requiredFonts": ["--font-sans", "--font-heading"],
+  "notes": "When core adds a component that needs a NEW token, add the token here in the same release and document it in the CHANGELOG entry's 'Design impact' field so every client adds it before merging."
+}

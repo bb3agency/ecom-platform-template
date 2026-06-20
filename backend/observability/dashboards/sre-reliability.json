@@ -1,0 +1,169 @@
+{
+  "title": "Ecom Reliability SLO",
+  "uid": "ecom-sre-reliability",
+  "schemaVersion": 39,
+  "version": 2,
+  "timezone": "browser",
+  "refresh": "30s",
+  "tags": ["sre", "reliability", "parity99"],
+  "panels": [
+    {
+      "id": 1,
+      "title": "Checkout Success Ratio (5m)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "slo:checkout_success:ratio_5m",
+          "legendFormat": "checkout success ratio"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 0.995 },
+              { "color": "green", "value": 0.999 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 9,
+      "title": "Error Budget Consumed (%)",
+      "type": "gauge",
+      "targets": [
+        {
+          "expr": "slo:error_budget_consumed_percent",
+          "legendFormat": "error budget consumed"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 50 },
+              { "color": "red", "value": 80 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Webhook Latency p95 (5m)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "slo:webhook_latency:p95_5m",
+          "legendFormat": "webhook p95"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Outbox Lag and Dead-letter Depth",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "slo:outbox_lag_seconds:p95_5m",
+          "legendFormat": "outbox lag"
+        },
+        {
+          "expr": "slo:outbox_dead_letter_depth:max_5m",
+          "legendFormat": "dead-letter depth"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Auth Challenge Failure Ratio",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "slo:auth_challenge_failure:ratio_5m",
+          "legendFormat": "challenge failure ratio"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        }
+      }
+    },
+    {
+      "id": 5,
+      "title": "Queue Terminal Failure Ratio (5m)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "slo:queue_terminal_failure_ratio:5m",
+          "legendFormat": "terminal failure ratio"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        }
+      }
+    },
+    {
+      "id": 6,
+      "title": "Queue Backlog and Oldest Waiting",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "slo:queue_backlog:max_5m",
+          "legendFormat": "backlog depth"
+        },
+        {
+          "expr": "slo:queue_oldest_waiting:max_5m",
+          "legendFormat": "oldest waiting (s)"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Queue Worker Stall and Retryable Failures",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "slo:queue_stall:rate_5m",
+          "legendFormat": "stall rate"
+        },
+        {
+          "expr": "slo:queue_retryable_failures:rate_5m",
+          "legendFormat": "retryable failure rate"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "DLQ Depth and Outbox Dead-letter Growth",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "slo:queue_dlq_total_depth:max_5m",
+          "legendFormat": "DLQ total depth"
+        },
+        {
+          "expr": "slo:outbox_dead_letter_growth:rate_5m",
+          "legendFormat": "outbox DL growth rate"
+        }
+      ]
+    }
+  ]
+}

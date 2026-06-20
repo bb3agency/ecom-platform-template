@@ -1,0 +1,12 @@
+# Rate-limit zones for nginx http {} context
+# Include this file from your top-level nginx.conf inside http {}:
+#   include /etc/nginx/snippets/rate-zones.conf;
+
+limit_req_zone $binary_remote_addr zone=api_auth:10m rate=20r/m;
+limit_req_zone $binary_remote_addr zone=api_checkout:10m rate=35r/m;
+limit_req_zone $binary_remote_addr zone=api_admin:10m rate=60r/m;
+limit_req_zone $binary_remote_addr zone=api_catalog:10m rate=240r/m;
+limit_req_zone $binary_remote_addr zone=api_cart:10m rate=90r/m;
+limit_req_zone $binary_remote_addr zone=api_webhook:10m rate=300r/m;
+limit_req_zone $binary_remote_addr zone=api_health:10m rate=60r/m;
+limit_req_zone $binary_remote_addr zone=api_default:10m rate=90r/m;

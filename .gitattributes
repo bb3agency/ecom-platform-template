@@ -1,0 +1,9 @@
+# Per-client DESIGN layer — never let a template/core merge overwrite it.
+# One-time per clone: git config merge.ours.driver true
+# See backend/docs/PLATFORM_VERSIONING_AND_SYNC_GUIDE.md and CO_DEVELOPMENT_SYNC_GUIDE.md.
+frontend/app/globals.css        merge=ours
+frontend/lib/fonts.ts           merge=ours
+frontend/lib/constants.ts       merge=ours
+frontend/public/**              merge=ours
+frontend/.env.production.example merge=ours
+PLATFORM_VERSION                merge=ours

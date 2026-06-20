@@ -1,0 +1,27 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.DS_Store
+coverage/
+
+# IDE / AI tool configs
+
+.tools/
+.vscode/
+.idea/
+
+# CI artifacts (regenerated on each run)
+artifacts/
+
+# Binary docs (keep .md only)
+*.docx
+
+# Postman (regenerable via scripts/generate-postman-collection.js)
+.postman/

@@ -1,0 +1,11 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@modules/*": ["dist/src/modules/*"],
+      "@common/*": ["dist/src/common/*"],
+      "@config/*": ["dist/src/config/*"],
+      "@queues/*": ["dist/queues/*"]
+    }
+  }
+}

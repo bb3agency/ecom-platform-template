@@ -1,0 +1,271 @@
+
+> ecom-backend-template@0.1.0 typecheck
+> tsc --noEmit -p tsconfig.json --pretty false
+
+queues/workers/analytics.worker.ts(2,10): error TS2305: Module '"@prisma/client"' has no exported member 'AnalyticsEventType'.
+queues/workers/analytics.worker.ts(61,51): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'InputJsonValue'.
+queues/workers/analytics.worker.ts(71,60): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'InputJsonValue'.
+queues/workers/inventory-alerts.worker.ts(71,55): error TS7006: Parameter 'item' implicitly has an 'any' type.
+queues/workers/inventory-alerts.worker.ts(73,15): error TS7006: Parameter 'item' implicitly has an 'any' type.
+queues/workers/inventory-alerts.worker.ts(75,62): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+queues/workers/inventory-alerts.worker.ts(81,18): error TS7006: Parameter 'item' implicitly has an 'any' type.
+queues/workers/inventory-alerts.worker.ts(92,37): error TS7006: Parameter 'item' implicitly has an 'any' type.
+queues/workers/inventory-alerts.worker.ts(106,36): error TS7006: Parameter 'item' implicitly has an 'any' type.
+queues/workers/inventory-alerts.worker.ts(116,34): error TS7006: Parameter 'item' implicitly has an 'any' type.
+queues/workers/notifications.worker.ts(2,10): error TS2305: Module '"@prisma/client"' has no exported member 'NotificationChannel'.
+queues/workers/notifications.worker.ts(2,31): error TS2305: Module '"@prisma/client"' has no exported member 'NotificationStatus'.
+queues/workers/order-processing.worker.ts(84,27): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'InputJsonValue'.
+queues/workers/order-processing.worker.ts(106,52): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'InputJsonValue'.
+queues/workers/order-processing.worker.ts(108,42): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'InputJsonValue'.
+queues/workers/order-processing.worker.ts(114,67): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'InputJsonValue'.
+queues/workers/order-processing.worker.ts(116,43): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'InputJsonValue'.
+queues/workers/order-processing.worker.ts(153,39): error TS7006: Parameter 'item' implicitly has an 'any' type.
+queues/workers/order-processing.worker.ts(182,36): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'InputJsonValue'.
+queues/workers/order-processing.worker.ts(304,40): error TS7006: Parameter 'tx' implicitly has an 'any' type.
+queues/workers/order-processing.worker.ts(400,29): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'InputJsonValue'.
+queues/workers/order-processing.worker.ts(459,29): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'InputJsonValue'.
+queues/workers/order-processing.worker.ts(524,38): error TS7006: Parameter 'tx' implicitly has an 'any' type.
+queues/workers/order-processing.worker.ts(708,53): error TS7006: Parameter 'tx' implicitly has an 'any' type.
+queues/workers/order-processing.worker.ts(804,36): error TS7006: Parameter 'tx' implicitly has an 'any' type.
+queues/workers/order-processing.worker.ts(846,23): error TS2347: Untyped function calls may not accept type arguments.
+queues/workers/order-processing.worker.ts(846,57): error TS7006: Parameter 'item' implicitly has an 'any' type.
+queues/workers/order-processing.worker.ts(866,41): error TS7006: Parameter 'sum' implicitly has an 'any' type.
+queues/workers/order-processing.worker.ts(866,46): error TS7006: Parameter 'item' implicitly has an 'any' type.
+queues/workers/order-processing.worker.ts(867,41): error TS7006: Parameter 'sum' implicitly has an 'any' type.
+queues/workers/order-processing.worker.ts(867,46): error TS7006: Parameter 'item' implicitly has an 'any' type.
+queues/workers/order-processing.worker.ts(868,41): error TS7006: Parameter 'sum' implicitly has an 'any' type.
+queues/workers/order-processing.worker.ts(868,46): error TS7006: Parameter 'item' implicitly has an 'any' type.
+queues/workers/order-processing.worker.ts(926,36): error TS7006: Parameter 'tx' implicitly has an 'any' type.
+queues/workers/order-processing.worker.ts(1052,51): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'JsonValue'.
+queues/workers/order-processing.worker.ts(1070,44): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'JsonValue'.
+queues/workers/order-processing.worker.ts(1079,33): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'JsonValue'.
+queues/workers/reconciliation.worker.ts(1,10): error TS2305: Module '"@prisma/client"' has no exported member 'OrderStatus'.
+queues/workers/reconciliation.worker.ts(1,23): error TS2305: Module '"@prisma/client"' has no exported member 'PaymentStatus'.
+queues/workers/reconciliation.worker.ts(184,52): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'InputJsonValue'.
+queues/workers/reconciliation.worker.ts(286,20): error TS7006: Parameter 'order' implicitly has an 'any' type.
+queues/workers/refunds.worker.ts(2,10): error TS2305: Module '"@prisma/client"' has no exported member 'OrderStatus'.
+queues/workers/refunds.worker.ts(2,23): error TS2305: Module '"@prisma/client"' has no exported member 'PaymentStatus'.
+queues/workers/refunds.worker.ts(45,53): error TS7006: Parameter 'tx' implicitly has an 'any' type.
+queues/workers/shipping.worker.ts(2,10): error TS2305: Module '"@prisma/client"' has no exported member 'OrderStatus'.
+queues/workers/shipping.worker.ts(2,23): error TS2305: Module '"@prisma/client"' has no exported member 'ShippingProvider'.
+queues/workers/shipping.worker.ts(2,41): error TS2305: Module '"@prisma/client"' has no exported member 'ShipmentStatus'.
+queues/workers/shipping.worker.ts(31,52): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'InputJsonValue'.
+queues/workers/shipping.worker.ts(33,42): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'InputJsonValue'.
+queues/workers/shipping.worker.ts(39,60): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'InputJsonValue'.
+queues/workers/shipping.worker.ts(59,32): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'InputJsonValue'.
+queues/workers/shipping.worker.ts(62,70): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'InputJsonValue'.
+queues/workers/shipping.worker.ts(73,17): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'InputJsonValue'.
+queues/workers/shipping.worker.ts(79,17): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'InputJsonValue'.
+queues/workers/shipping.worker.ts(81,32): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'InputJsonValue'.
+queues/workers/shipping.worker.ts(97,36): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'InputJsonValue'.
+queues/workers/shipping.worker.ts(187,45): error TS7006: Parameter 'item' implicitly has an 'any' type.
+queues/workers/shipping.worker.ts(200,54): error TS7006: Parameter 'variant' implicitly has an 'any' type.
+queues/workers/shipping.worker.ts(221,15): error TS2365: Operator '<=' cannot be applied to types '{}' and 'number'.
+queues/workers/shipping.worker.ts(226,12): error TS7006: Parameter 'sum' implicitly has an 'any' type.
+queues/workers/shipping.worker.ts(226,17): error TS7006: Parameter 'item' implicitly has an 'any' type.
+queues/workers/shipping.worker.ts(226,32): error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+queues/workers/shipping.worker.ts(280,42): error TS7006: Parameter 'tx' implicitly has an 'any' type.
+queues/workers/shipping.worker.ts(348,40): error TS7006: Parameter 'tx' implicitly has an 'any' type.
+src/common/auth/admin-permissions.ts(228,14): error TS7006: Parameter 'permission' implicitly has an 'any' type.
+src/common/auth/admin-permissions.ts(231,14): error TS7006: Parameter 'permission' implicitly has an 'any' type.
+src/common/auth/admin-permissions.ts(232,47): error TS7006: Parameter 'scope' implicitly has an 'any' type.
+src/common/auth/admin-permissions.ts(244,55): error TS7006: Parameter 'role' implicitly has an 'any' type.
+src/common/guards/admin-permissions.guard.routes.security.test.ts(2,10): error TS2305: Module '"@prisma/client"' has no exported member 'Role'.
+src/common/guards/admin-permissions.guard.security.test.ts(2,10): error TS2305: Module '"@prisma/client"' has no exported member 'Role'.
+src/common/guards/admin-permissions.guard.ts(2,10): error TS2305: Module '"@prisma/client"' has no exported member 'Role'.
+src/common/guards/roles.guard.ts(1,10): error TS2305: Module '"@prisma/client"' has no exported member 'Role'.
+src/common/idempotency/idempotency.ts(105,35): error TS2339: Property 'JsonNull' does not exist on type 'typeof Prisma'.
+src/common/idempotency/idempotency.ts(146,31): error TS2339: Property 'JsonNull' does not exist on type 'typeof Prisma'.
+src/common/idempotency/idempotency.ts(158,52): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'InputJsonValue'.
+src/common/idempotency/idempotency.ts(160,42): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'InputJsonValue'.
+src/common/idempotency/idempotency.ts(162,30): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'InputJsonValue'.
+src/common/idempotency/idempotency.ts(179,28): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'InputJsonValue'.
+src/common/idempotency/idempotency.ts(179,61): error TS2339: Property 'JsonNull' does not exist on type 'typeof Prisma'.
+src/common/idempotency/idempotency.ts(180,73): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'InputJsonValue'.
+src/common/observability/tracing.ts(1,25): error TS2307: Cannot find module '@opentelemetry/sdk-node' or its corresponding type declarations.
+src/common/observability/tracing.ts(2,45): error TS2307: Cannot find module '@opentelemetry/auto-instrumentations-node' or its corresponding type declarations.
+src/common/plugins/observability.plugin.ts(7,10): error TS2305: Module '"@prisma/client"' has no exported member 'Role'.
+src/modules/admin/admin-routes.integration.test.ts(2,10): error TS2305: Module '"@prisma/client"' has no exported member 'Role'.
+src/modules/analytics/analytics.routes.ts(1,10): error TS2305: Module '"@prisma/client"' has no exported member 'Role'.
+src/modules/analytics/analytics.service.ts(1,10): error TS2305: Module '"@prisma/client"' has no exported member 'AnalyticsEventType'.
+src/modules/analytics/analytics.service.ts(1,30): error TS2305: Module '"@prisma/client"' has no exported member 'NotificationStatus'.
+src/modules/analytics/analytics.service.ts(1,50): error TS2305: Module '"@prisma/client"' has no exported member 'OrderStatus'.
+src/modules/analytics/analytics.service.ts(151,33): error TS2339: Property 'PrismaClientKnownRequestError' does not exist on type 'typeof Prisma'.
+src/modules/analytics/analytics.service.ts(152,9): error TS18046: 'error' is of type 'unknown'.
+src/modules/analytics/analytics.service.ts(153,16): error TS18046: 'error' is of type 'unknown'.
+src/modules/analytics/analytics.service.ts(154,9): error TS18046: 'error' is of type 'unknown'.
+src/modules/analytics/analytics.service.ts(289,25): error TS7006: Parameter 'item' implicitly has an 'any' type.
+src/modules/analytics/analytics.service.ts(326,58): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'JsonValue'.
+src/modules/analytics/analytics.service.ts(645,21): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'InputJsonValue'.
+src/modules/analytics/analytics.service.ts(679,25): error TS7006: Parameter 'item' implicitly has an 'any' type.
+src/modules/analytics/analytics.service.ts(716,25): error TS7006: Parameter 'item' implicitly has an 'any' type.
+src/modules/analytics/analytics.service.ts(934,21): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'InputJsonValue'.
+src/modules/auth/admin-invites.service.ts(4,10): error TS2305: Module '"@prisma/client"' has no exported member 'Role'.
+src/modules/auth/admin-invites.service.ts(144,64): error TS7006: Parameter 'tx' implicitly has an 'any' type.
+src/modules/auth/auth.routes.test.ts(2,10): error TS2305: Module '"@prisma/client"' has no exported member 'Role'.
+src/modules/auth/auth.routes.ts(2,10): error TS2305: Module '"@prisma/client"' has no exported member 'Role'.
+src/modules/auth/auth.service.mfa-refresh.test.ts(2,10): error TS2305: Module '"@prisma/client"' has no exported member 'Role'.
+src/modules/auth/auth.service.ts(1,32): error TS2305: Module '"@prisma/client"' has no exported member 'Role'.
+src/modules/auth/auth.service.ts(1,38): error TS2305: Module '"@prisma/client"' has no exported member 'User'.
+src/modules/auth/auth.service.ts(164,38): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'InputJsonValue'.
+src/modules/auth/auth.types.ts(1,10): error TS2305: Module '"@prisma/client"' has no exported member 'Role'.
+src/modules/cart/cart.routes.ts(2,10): error TS2305: Module '"@prisma/client"' has no exported member 'Role'.
+src/modules/cart/cart.service.ts(2,10): error TS2305: Module '"@prisma/client"' has no exported member 'AnalyticsEventType'.
+src/modules/cart/cart.service.ts(2,30): error TS2305: Module '"@prisma/client"' has no exported member 'Coupon'.
+src/modules/cart/cart.service.ts(2,38): error TS2305: Module '"@prisma/client"' has no exported member 'CouponType'.
+src/modules/cart/cart.service.ts(2,50): error TS2305: Module '"@prisma/client"' has no exported member 'OrderStatus'.
+src/modules/cart/cart.service.ts(186,52): error TS7006: Parameter 'tx' implicitly has an 'any' type.
+src/modules/cart/cart.service.ts(257,54): error TS7006: Parameter 'sum' implicitly has an 'any' type.
+src/modules/cart/cart.service.ts(257,59): error TS7006: Parameter 'item' implicitly has an 'any' type.
+src/modules/cart/cart.service.ts(290,45): error TS7006: Parameter 'sum' implicitly has an 'any' type.
+src/modules/cart/cart.service.ts(290,50): error TS7006: Parameter 'item' implicitly has an 'any' type.
+src/modules/cart/cart.service.ts(372,49): error TS7006: Parameter 'sum' implicitly has an 'any' type.
+src/modules/cart/cart.service.ts(372,54): error TS7006: Parameter 'item' implicitly has an 'any' type.
+src/modules/cart/cart.service.ts(812,42): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'JsonValue'.
+src/modules/cart/cart.service.ts(977,38): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'InputJsonValue'.
+src/modules/cart/cart.types.ts(1,10): error TS2305: Module '"@prisma/client"' has no exported member 'CouponType'.
+src/modules/coupons/coupons.routes.ts(1,10): error TS2305: Module '"@prisma/client"' has no exported member 'Role'.
+src/modules/coupons/coupons.service.test.ts(2,10): error TS2305: Module '"@prisma/client"' has no exported member 'CouponType'.
+src/modules/coupons/coupons.service.ts(1,10): error TS2305: Module '"@prisma/client"' has no exported member 'Coupon'.
+src/modules/coupons/coupons.service.ts(1,18): error TS2305: Module '"@prisma/client"' has no exported member 'CouponType'.
+src/modules/coupons/coupons.service.ts(28,25): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'CouponWhereInput'.
+src/modules/coupons/coupons.service.ts(56,25): error TS7006: Parameter 'coupon' implicitly has an 'any' type.
+src/modules/coupons/coupons.service.ts(186,26): error TS7006: Parameter 'coupon' implicitly has an 'any' type.
+src/modules/coupons/coupons.service.ts(236,71): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'InputJsonValue'.
+src/modules/coupons/coupons.service.ts(236,95): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'NullableJsonNullValueInput'.
+src/modules/coupons/coupons.service.ts(238,21): error TS2339: Property 'JsonNull' does not exist on type 'typeof Prisma'.
+src/modules/coupons/coupons.service.ts(250,21): error TS2339: Property 'JsonNull' does not exist on type 'typeof Prisma'.
+src/modules/coupons/coupons.service.ts(253,33): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'InputJsonValue'.
+src/modules/coupons/coupons.service.ts(284,42): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'JsonValue'.
+src/modules/coupons/coupons.types.ts(1,10): error TS2305: Module '"@prisma/client"' has no exported member 'CouponType'.
+src/modules/dashboard/dashboard.routes.ts(1,10): error TS2305: Module '"@prisma/client"' has no exported member 'Role'.
+src/modules/dashboard/dashboard.service.ts(1,10): error TS2305: Module '"@prisma/client"' has no exported member 'OrderStatus'.
+src/modules/inventory/inventory.routes.ts(1,10): error TS2305: Module '"@prisma/client"' has no exported member 'Role'.
+src/modules/inventory/inventory.service.ts(82,53): error TS7006: Parameter 'item' implicitly has an 'any' type.
+src/modules/inventory/inventory.service.ts(85,25): error TS7006: Parameter 'item' implicitly has an 'any' type.
+src/modules/inventory/inventory.service.ts(85,68): error TS2345: Argument of type '{}' is not assignable to parameter of type 'number'.
+src/modules/inventory/inventory.service.ts(120,53): error TS7006: Parameter 'item' implicitly has an 'any' type.
+src/modules/inventory/inventory.service.ts(123,13): error TS7006: Parameter 'item' implicitly has an 'any' type.
+src/modules/inventory/inventory.service.ts(123,56): error TS2345: Argument of type '{}' is not assignable to parameter of type 'number'.
+src/modules/inventory/inventory.service.ts(124,16): error TS7006: Parameter 'item' implicitly has an 'any' type.
+src/modules/orders/orders.routes.ts(1,10): error TS2305: Module '"@prisma/client"' has no exported member 'Role'.
+src/modules/orders/orders.schemas.ts(1,10): error TS2305: Module '"@prisma/client"' has no exported member 'OrderStatus'.
+src/modules/orders/orders.service.admin-board.test.ts(1,10): error TS2305: Module '"@prisma/client"' has no exported member 'OrderStatus'.
+src/modules/orders/orders.service.admin-get-by-id.test.ts(1,10): error TS2305: Module '"@prisma/client"' has no exported member 'OrderStatus'.
+src/modules/orders/orders.service.admin-get-by-id.test.ts(1,23): error TS2305: Module '"@prisma/client"' has no exported member 'PaymentStatus'.
+src/modules/orders/orders.service.admin-ship.test.ts(1,10): error TS2305: Module '"@prisma/client"' has no exported member 'OrderStatus'.
+src/modules/orders/orders.service.admin-ship.test.ts(1,23): error TS2305: Module '"@prisma/client"' has no exported member 'PaymentStatus'.
+src/modules/orders/orders.service.admin-update-status.test.ts(1,10): error TS2305: Module '"@prisma/client"' has no exported member 'OrderStatus'.
+src/modules/orders/orders.service.analytics.test.ts(2,10): error TS2305: Module '"@prisma/client"' has no exported member 'OrderStatus'.
+src/modules/orders/orders.service.analytics.test.ts(2,23): error TS2305: Module '"@prisma/client"' has no exported member 'PaymentProvider'.
+src/modules/orders/orders.service.analytics.test.ts(2,40): error TS2305: Module '"@prisma/client"' has no exported member 'PaymentStatus'.
+src/modules/orders/orders.service.cancel-notifications.test.ts(1,10): error TS2305: Module '"@prisma/client"' has no exported member 'OrderStatus'.
+src/modules/orders/orders.service.cancel-notifications.test.ts(1,23): error TS2305: Module '"@prisma/client"' has no exported member 'PaymentStatus'.
+src/modules/orders/orders.service.checkout-risk-port.test.ts(1,10): error TS2305: Module '"@prisma/client"' has no exported member 'PaymentProvider'.
+src/modules/orders/orders.service.cod.test.ts(1,10): error TS2305: Module '"@prisma/client"' has no exported member 'OrderStatus'.
+src/modules/orders/orders.service.cod.test.ts(1,23): error TS2305: Module '"@prisma/client"' has no exported member 'PaymentStatus'.
+src/modules/orders/orders.service.create-order.pricing.test.ts(1,10): error TS2305: Module '"@prisma/client"' has no exported member 'OrderStatus'.
+src/modules/orders/orders.service.create-order.pricing.test.ts(1,23): error TS2305: Module '"@prisma/client"' has no exported member 'PaymentStatus'.
+src/modules/orders/orders.service.ts(2,10): error TS2305: Module '"@prisma/client"' has no exported member 'AnalyticsEventType'.
+src/modules/orders/orders.service.ts(2,30): error TS2305: Module '"@prisma/client"' has no exported member 'Coupon'.
+src/modules/orders/orders.service.ts(2,38): error TS2305: Module '"@prisma/client"' has no exported member 'CouponType'.
+src/modules/orders/orders.service.ts(2,50): error TS2305: Module '"@prisma/client"' has no exported member 'OrderStatus'.
+src/modules/orders/orders.service.ts(2,63): error TS2305: Module '"@prisma/client"' has no exported member 'PaymentProvider'.
+src/modules/orders/orders.service.ts(2,80): error TS2305: Module '"@prisma/client"' has no exported member 'PaymentStatus'.
+src/modules/orders/orders.service.ts(246,72): error TS7006: Parameter 'tx' implicitly has an 'any' type.
+src/modules/orders/orders.service.ts(296,43): error TS7006: Parameter 'sum' implicitly has an 'any' type.
+src/modules/orders/orders.service.ts(296,48): error TS7006: Parameter 'item' implicitly has an 'any' type.
+src/modules/orders/orders.service.ts(495,72): error TS7006: Parameter 'tx' implicitly has an 'any' type.
+src/modules/orders/orders.service.ts(1065,33): error TS7006: Parameter 'event' implicitly has an 'any' type.
+src/modules/orders/orders.service.ts(1312,25): error TS7006: Parameter 'item' implicitly has an 'any' type.
+src/modules/orders/orders.service.ts(1523,30): error TS7006: Parameter 'order' implicitly has an 'any' type.
+src/modules/orders/orders.service.ts(1609,72): error TS7006: Parameter 'tx' implicitly has an 'any' type.
+src/modules/orders/orders.service.ts(1942,72): error TS7006: Parameter 'tx' implicitly has an 'any' type.
+src/modules/orders/orders.service.ts(2301,42): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'JsonValue'.
+src/modules/orders/orders.service.ts(2367,38): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'InputJsonValue'.
+src/modules/orders/orders.service.ts(2493,43): error TS7006: Parameter 'oi' implicitly has an 'any' type.
+src/modules/orders/orders.types.ts(1,10): error TS2305: Module '"@prisma/client"' has no exported member 'OrderStatus'.
+src/modules/products/products.routes.ts(1,10): error TS2305: Module '"@prisma/client"' has no exported member 'Role'.
+src/modules/products/products.service.ts(1,10): error TS2305: Module '"@prisma/client"' has no exported member 'AnalyticsEventType'.
+src/modules/products/products.service.ts(44,36): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'ProductVariantWhereInput'.
+src/modules/products/products.service.ts(49,39): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'ProductVariantWhereInput'.
+src/modules/products/products.service.ts(81,25): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'ProductWhereInput'.
+src/modules/products/products.service.ts(90,25): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'ProductOrderByWithRelationInput'.
+src/modules/products/products.service.ts(212,93): error TS7006: Parameter 'review' implicitly has an 'any' type.
+src/modules/products/products.service.ts(262,87): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'InputJsonValue'.
+src/modules/products/products.service.ts(286,101): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'InputJsonValue'.
+src/modules/products/products.service.ts(505,87): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'InputJsonValue'.
+src/modules/products/products.service.ts(540,87): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'InputJsonValue'.
+src/modules/products/products.service.ts(574,24): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'ProductUpdateInput'.
+src/modules/products/products.service.ts(583,86): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'InputJsonValue'.
+src/modules/products/products.service.ts(628,31): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'IntFilter'.
+src/modules/products/products.service.ts(634,32): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'ProductVariantWhereInput'.
+src/modules/products/products.service.ts(639,25): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'ProductWhereInput'.
+src/modules/products/products.service.ts(807,24): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'CategoryCreateInput'.
+src/modules/products/products.service.ts(832,24): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'CategoryUpdateInput'.
+src/modules/products/products.service.ts(861,19): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'ProductWhereInput'.
+src/modules/products/products.service.ts(864,21): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'ProductOrderByWithRelationInput'.
+src/modules/products/products.service.ts(865,33): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'ProductVariantWhereInput'.
+src/modules/products/products.service.ts(923,33): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'ProductVariantWhereInput'.
+src/modules/products/products.service.ts(929,16): error TS2339: Property 'sql' does not exist on type 'typeof Prisma'.
+src/modules/products/products.service.ts(930,16): error TS2339: Property 'empty' does not exist on type 'typeof Prisma'.
+src/modules/products/products.service.ts(932,16): error TS2339: Property 'sql' does not exist on type 'typeof Prisma'.
+src/modules/products/products.service.ts(932,49): error TS2339: Property 'join' does not exist on type 'typeof Prisma'.
+src/modules/products/products.service.ts(933,16): error TS2339: Property 'empty' does not exist on type 'typeof Prisma'.
+src/modules/products/products.service.ts(935,16): error TS2339: Property 'sql' does not exist on type 'typeof Prisma'.
+src/modules/products/products.service.ts(936,16): error TS2339: Property 'empty' does not exist on type 'typeof Prisma'.
+src/modules/products/products.service.ts(938,16): error TS2339: Property 'sql' does not exist on type 'typeof Prisma'.
+src/modules/products/products.service.ts(939,16): error TS2339: Property 'empty' does not exist on type 'typeof Prisma'.
+src/modules/products/products.service.ts(940,57): error TS2339: Property 'sql' does not exist on type 'typeof Prisma'.
+src/modules/products/products.service.ts(940,90): error TS2339: Property 'empty' does not exist on type 'typeof Prisma'.
+src/modules/products/products.service.ts(942,30): error TS2347: Untyped function calls may not accept type arguments.
+src/modules/products/products.service.ts(942,104): error TS2339: Property 'sql' does not exist on type 'typeof Prisma'.
+src/modules/products/products.service.ts(970,29): error TS2347: Untyped function calls may not accept type arguments.
+src/modules/products/products.service.ts(970,92): error TS2339: Property 'sql' does not exist on type 'typeof Prisma'.
+src/modules/products/products.service.ts(990,39): error TS7006: Parameter 'row' implicitly has an 'any' type.
+src/modules/products/products.service.ts(1008,48): error TS7006: Parameter 'product' implicitly has an 'any' type.
+src/modules/products/products.service.ts(1010,13): error TS7006: Parameter 'id' implicitly has an 'any' type.
+src/modules/products/products.service.ts(1011,16): error TS7006: Parameter 'product' implicitly has an 'any' type.
+src/modules/products/products.service.ts(1025,33): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'ProductVariantWhereInput'.
+src/modules/products/products.service.ts(1028,16): error TS2339: Property 'sql' does not exist on type 'typeof Prisma'.
+src/modules/products/products.service.ts(1029,16): error TS2339: Property 'empty' does not exist on type 'typeof Prisma'.
+src/modules/products/products.service.ts(1031,16): error TS2339: Property 'sql' does not exist on type 'typeof Prisma'.
+src/modules/products/products.service.ts(1031,49): error TS2339: Property 'join' does not exist on type 'typeof Prisma'.
+src/modules/products/products.service.ts(1032,16): error TS2339: Property 'empty' does not exist on type 'typeof Prisma'.
+src/modules/products/products.service.ts(1034,16): error TS2339: Property 'sql' does not exist on type 'typeof Prisma'.
+src/modules/products/products.service.ts(1035,16): error TS2339: Property 'empty' does not exist on type 'typeof Prisma'.
+src/modules/products/products.service.ts(1037,16): error TS2339: Property 'sql' does not exist on type 'typeof Prisma'.
+src/modules/products/products.service.ts(1038,16): error TS2339: Property 'empty' does not exist on type 'typeof Prisma'.
+src/modules/products/products.service.ts(1039,57): error TS2339: Property 'sql' does not exist on type 'typeof Prisma'.
+src/modules/products/products.service.ts(1039,90): error TS2339: Property 'empty' does not exist on type 'typeof Prisma'.
+src/modules/products/products.service.ts(1041,16): error TS2339: Property 'sql' does not exist on type 'typeof Prisma'.
+src/modules/products/products.service.ts(1042,16): error TS2339: Property 'empty' does not exist on type 'typeof Prisma'.
+src/modules/products/products.service.ts(1044,30): error TS2347: Untyped function calls may not accept type arguments.
+src/modules/products/products.service.ts(1044,90): error TS2339: Property 'sql' does not exist on type 'typeof Prisma'.
+src/modules/products/products.service.ts(1073,29): error TS2347: Untyped function calls may not accept type arguments.
+src/modules/products/products.service.ts(1073,92): error TS2339: Property 'sql' does not exist on type 'typeof Prisma'.
+src/modules/products/products.service.ts(1093,39): error TS7006: Parameter 'row' implicitly has an 'any' type.
+src/modules/products/products.service.ts(1111,48): error TS7006: Parameter 'product' implicitly has an 'any' type.
+src/modules/products/products.service.ts(1113,13): error TS7006: Parameter 'id' implicitly has an 'any' type.
+src/modules/products/products.service.ts(1114,16): error TS7006: Parameter 'product' implicitly has an 'any' type.
+src/modules/products/products.service.ts(1221,38): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'InputJsonValue'.
+src/modules/products/products.service.ts(1249,25): error TS7006: Parameter 'row' implicitly has an 'any' type.
+src/modules/queues/queues.routes.ts(5,10): error TS2305: Module '"@prisma/client"' has no exported member 'Role'.
+src/modules/reviews/reviews.routes.ts(1,10): error TS2305: Module '"@prisma/client"' has no exported member 'Role'.
+src/modules/reviews/reviews.service.ts(1,10): error TS2305: Module '"@prisma/client"' has no exported member 'OrderStatus'.
+src/modules/reviews/reviews.service.ts(8,30): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'ReviewGetPayload'.
+src/modules/reviews/reviews.service.ts(158,19): error TS2694: Namespace '"d:/Agency/templates/ecom-backend-template/node_modules/.prisma/client/default".Prisma' has no exported member 'ReviewWhereInput'.
+src/modules/reviews/reviews.service.ts(186,25): error TS7006: Parameter 'item' implicitly has an 'any' type.
+src/modules/settings/settings.routes.ts(1,10): error TS2305: Module '"@prisma/client"' has no exported member 'Role'.
+src/modules/users/users.routes.ts(2,10): error TS2305: Module '"@prisma/client"' has no exported member 'Role'.
+src/modules/users/users.service.ts(98,52): error TS7006: Parameter 'tx' implicitly has an 'any' type.
+src/modules/users/users.service.ts(131,52): error TS7006: Parameter 'tx' implicitly has an 'any' type.
+src/modules/users/users.service.ts(212,26): error TS7006: Parameter 'order' implicitly has an 'any' type.
+src/modules/users/users.service.ts(275,32): error TS7006: Parameter 'item' implicitly has an 'any' type.
+src/modules/users/users.service.ts(287,23): error TS7006: Parameter 'stat' implicitly has an 'any' type.
+src/modules/users/users.service.ts(291,25): error TS7006: Parameter 'item' implicitly has an 'any' type.
+src/modules/users/users.service.ts(293,50): error TS2339: Property 'totalOrders' does not exist on type '{}'.
+src/modules/users/users.service.ts(294,54): error TS2339: Property 'totalSpendPaise' does not exist on type '{}'.
+src/modules/users/users.service.ts(361,32): error TS7006: Parameter 'order' implicitly has an 'any' type.
+src/modules/wishlist/wishlist.routes.ts(1,10): error TS2305: Module '"@prisma/client"' has no exported member 'Role'.
+src/modules/wishlist/wishlist.service.ts(40,25): error TS7006: Parameter 'item' implicitly has an 'any' type.

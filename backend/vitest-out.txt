@@ -1,0 +1,309 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.6 [39m[90md:/Agency/templates/ecom-backend-template[39m
+
+ [31m❯[39m queues/workers/dead-letter.worker.test.ts [2m([22m[2m3 tests[22m[2m | [22m[31m3 failed[39m[2m)[22m[32m 5[2mms[22m[39m
+[31m     [31m×[31m sends a technical failure alert for every job arriving in the DLQ[39m[32m 3[2mms[22m[39m
+[31m     [31m×[31m uses "unknown" as jobId when job has no id[39m[32m 0[2mms[22m[39m
+[31m     [31m×[31m includes the job name in the error message[39m[32m 0[2mms[22m[39m
+ [31m❯[39m queues/workers/analytics.worker.test.ts [2m([22m[2m5 tests[22m[2m | [22m[31m5 failed[39m[2m)[22m[32m 5[2mms[22m[39m
+[31m     [31m×[31m creates analytics event for record-event job[39m[32m 3[2mms[22m[39m
+[31m     [31m×[31m ignores unknown analytics jobs[39m[32m 0[2mms[22m[39m
+[31m     [31m×[31m throws for invalid event type[39m[32m 0[2mms[22m[39m
+[31m     [31m×[31m sends terminal failure alert when job exhausts all attempts[39m[32m 0[2mms[22m[39m
+[31m     [31m×[31m does NOT send alert when job still has remaining attempts[39m[32m 0[2mms[22m[39m
+ [31m❯[39m queues/workers/refunds.worker.test.ts [2m([22m[2m6 tests[22m[2m | [22m[31m6 failed[39m[2m)[22m[32m 5[2mms[22m[39m
+[31m     [31m×[31m no-ops when order does not exist[39m[32m 3[2mms[22m[39m
+[31m     [31m×[31m updates statuses and enqueues credit note after refund success[39m[32m 0[2mms[22m[39m
+[31m     [31m×[31m supports direct refunded state and partial refund amount[39m[32m 0[2mms[22m[39m
+[31m     [31m×[31m sends terminal failure alert when refund job exhausts all attempts[39m[32m 0[2mms[22m[39m
+[31m     [31m×[31m does NOT send alert when refund job still has remaining attempts[39m[32m 0[2mms[22m[39m
+[31m     [31m×[31m throws when provider payment id is missing[39m[32m 0[2mms[22m[39m
+ [31m❯[39m queues/workers/reconciliation.worker.test.ts [2m([22m[2m5 tests[22m[2m | [22m[31m5 failed[39m[2m)[22m[32m 7[2mms[22m[39m
+[31m     [31m×[31m creates classification-enriched issues for mismatches[39m[32m 4[2mms[22m[39m
+[31m     [31m×[31m auto-heals captured payment orders stuck in pending payment by enqueuing process-order-update[39m[32m 0[2mms[22m[39m
+[31m     [31m×[31m sends terminal failure alert when reconciliation job exhausts all attempts[39m[32m 0[2mms[22m[39m
+[31m     [31m×[31m does NOT send alert when reconciliation job still has remaining attempts[39m[32m 0[2mms[22m[39m
+[31m     [31m×[31m does not auto-heal partially refunded payments to refunded order status[39m[32m 0[2mms[22m[39m
+ [31m❯[39m queues/workers/shipping.worker.test.ts [2m([22m[2m17 tests[22m[2m | [22m[31m17 failed[39m[2m)[22m[32m 8[2mms[22m[39m
+[31m     [31m×[31m creates shipment and marks order shipped for create-shipment job[39m[32m 3[2mms[22m[39m
+[31m     [31m×[31m throws when creating shipment before payment capture[39m[32m 0[2mms[22m[39m
+[31m     [31m×[31m creates COD shipment without requiring CAPTURED payment[39m[32m 0[2mms[22m[39m
+[31m     [31m×[31m ignores create-shipment when order is missing[39m[32m 0[2mms[22m[39m
+[31m     [31m×[31m returns without changes when shipment is missing[39m[32m 0[2mms[22m[39m
+[31m     [31m×[31m throws when shipment update fails so BullMQ can retry[39m[32m 0[2mms[22m[39m
+[31m     [31m×[31m updates shipment and order timeline for out-for-delivery webhook[39m[32m 0[2mms[22m[39m
+[31m     [31m×[31m accepts legacy shipment-webhook job name for backward compatibility[39m[32m 0[2mms[22m[39m
+[31m     [31m×[31m does not coerce unknown shipment statuses to in_transit[39m[32m 0[2mms[22m[39m
+[31m     [31m×[31m enqueues delivered primary notification[39m[32m 0[2mms[22m[39m
+[31m     [31m×[31m enqueues failed-delivery primary notification[39m[32m 0[2mms[22m[39m
+[31m     [31m×[31m auto-captures COD payment when DELIVERED webhook fires[39m[32m 0[2mms[22m[39m
+[31m     [31m×[31m skips COD auto-capture if payment already CAPTURED[39m[32m 0[2mms[22m[39m
+[31m     [31m×[31m does not auto-capture payment for PREPAID DELIVERED orders[39m[32m 0[2mms[22m[39m
+[31m     [31m×[31m enqueues admin email notification for RTO initiated[39m[32m 0[2mms[22m[39m
+[31m     [31m×[31m sends terminal failure alert when shipping job exhausts all attempts[39m[32m 0[2mms[22m[39m
+[31m     [31m×[31m does NOT send alert when shipping job still has remaining attempts[39m[32m 0[2mms[22m[39m
+ [32m✓[39m src/common/observability/tracing.test.ts [2m([22m[2m2 tests[22m[2m)[22m[33m 1262[2mms[22m[39m
+     [33m[2m✓[22m[39m does not initialize sdk when tracing is disabled [33m 897[2mms[22m[39m
+     [33m[2m✓[22m[39m initializes and shuts down sdk when enabled [33m 364[2mms[22m[39m
+ [31m❯[39m queues/workers/order-processing.worker.test.ts [2m([22m[2m16 tests[22m[2m | [22m[31m16 failed[39m[2m)[22m[32m 16[2mms[22m[39m
+[31m     [31m×[31m returns without changes when payment is missing[39m[32m 7[2mms[22m[39m
+[31m     [31m×[31m throws when payment update fails so BullMQ can retry[39m[32m 3[2mms[22m[39m
+[31m     [31m×[31m routes deduct-inventory jobs to process-order-update enqueue[39m[32m 1[2mms[22m[39m
+[31m     [31m×[31m process-order-update confirms order, deducts inventory and enqueues side effects[39m[32m 0[2mms[22m[39m
+[31m     [31m×[31m process-order-update is idempotent when order is already CONFIRMED[39m[32m 0[2mms[22m[39m
+[31m     [31m×[31m skips deduct-inventory when no payment record is found for providerOrderId[39m[32m 0[2mms[22m[39m
+[31m     [31m×[31m enqueues payment failed primary notification on failed payment webhook[39m[32m 0[2mms[22m[39m
+[31m     [31m×[31m confirm-order delegates to process-order-update enqueue[39m[32m 0[2mms[22m[39m
+[31m     [31m×[31m process-order-update enqueues invoice and uses send-primary for OrderConfirmed[39m[32m 0[2mms[22m[39m
+[31m     [31m×[31m creates invoice record for generate-invoice job[39m[32m 0[2mms[22m[39m
+[31m     [31m×[31m does not regenerate invoice after worker restart when invoice already exists[39m[32m 0[2mms[22m[39m
+[31m     [31m×[31m throws when invoice upload fails so BullMQ can retry[39m[32m 0[2mms[22m[39m
+[31m     [31m×[31m uploads credit note PDF when original invoice exists[39m[32m 0[2mms[22m[39m
+[31m     [31m×[31m sends terminal failure alert when order-processing job exhausts all attempts[39m[32m 0[2mms[22m[39m
+[31m     [31m×[31m does NOT send alert when order-processing job still has remaining attempts[39m[32m 0[2mms[22m[39m
+[31m     [31m×[31m throws in production when required DB-backed seller profile fields are missing[39m[32m 0[2mms[22m[39m
+ [32m✓[39m src/modules/users/users.routes.test.ts [2m([22m[2m2 tests[22m[2m)[22m[33m 939[2mms[22m[39m
+     [33m[2m✓[22m[39m admin write routes have idempotencyPreHandler in preHandler chain [33m 532[2mms[22m[39m
+     [33m[2m✓[22m[39m registers customer and admin routes with schema and guards [33m 390[2mms[22m[39m
+ [32m✓[39m src/modules/auth/auth.service.mfa-refresh.test.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 789[2mms[22m[39m
+     [33m[2m✓[22m[39m rotates refresh token on valid single-use refresh [33m 348[2mms[22m[39m
+ [32m✓[39m src/modules/inventory/inventory.routes.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 1184[2mms[22m[39m
+     [33m[2m✓[22m[39m bulk-update and patch routes have idempotencyPreHandler in preHandler chain [33m 405[2mms[22m[39m
+ [32m✓[39m src/modules/cart/cart.routes.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 674[2mms[22m[39m
+     [33m[2m✓[22m[39m registers cart routes with schema and idempotency on mutations [33m 672[2mms[22m[39m
+ [32m✓[39m src/modules/reviews/reviews.routes.test.ts [2m([22m[2m2 tests[22m[2m)[22m[33m 1055[2mms[22m[39m
+     [33m[2m✓[22m[39m registers public, customer, and admin review routes with schema and guards [33m 852[2mms[22m[39m
+ [32m✓[39m src/common/plugins/observability.plugin.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 212[2mms[22m[39m
+ [32m✓[39m src/common/plugins/observability.plugin.security.test.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 658[2mms[22m[39m
+     [33m[2m✓[22m[39m denies metrics access without allowlist or token [33m 494[2mms[22m[39m
+ [32m✓[39m src/modules/auth/auth.service.signup-phone.test.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 382[2mms[22m[39m
+     [33m[2m✓[22m[39m creates a customer from phone OTP with optional profile omitted [33m 377[2mms[22m[39m
+ [32m✓[39m src/modules/settings/settings.routes.test.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 1353[2mms[22m[39m
+     [33m[2m✓[22m[39m serves shipping and inventory settings routes [33m 582[2mms[22m[39m
+     [33m[2m✓[22m[39m serves store profile routes [33m 347[2mms[22m[39m
+ [32m✓[39m src/modules/health/health.routes.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 465[2mms[22m[39m
+     [33m[2m✓[22m[39m returns 200 for healthy /api/v1/health [33m 353[2mms[22m[39m
+ [32m✓[39m src/modules/products/products.routes.test.ts [2m([22m[2m2 tests[22m[2m)[22m[33m 1386[2mms[22m[39m
+     [33m[2m✓[22m[39m registers public and admin product routes with schema and guards [33m 907[2mms[22m[39m
+     [33m[2m✓[22m[39m has idempotencyPreHandler on all admin write routes [33m 477[2mms[22m[39m
+ [32m✓[39m src/modules/analytics/analytics.routes.test.ts [2m([22m[2m2 tests[22m[2m)[22m[33m 1136[2mms[22m[39m
+     [33m[2m✓[22m[39m registers replay routes with schema and guards [33m 730[2mms[22m[39m
+     [33m[2m✓[22m[39m registers analytics read/export routes with schema [33m 404[2mms[22m[39m
+ [32m✓[39m src/modules/coupons/coupons.routes.test.ts [2m([22m[2m2 tests[22m[2m)[22m[33m 1056[2mms[22m[39m
+     [33m[2m✓[22m[39m all coupon write routes have idempotencyPreHandler in preHandler chain [33m 783[2mms[22m[39m
+ [32m✓[39m src/common/plugins/redis.plugin.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 114[2mms[22m[39m
+ [32m✓[39m src/common/hooks/response-envelope.hook.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 117[2mms[22m[39m
+ [32m✓[39m src/modules/auth/auth.service.admin-login-otp.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 157[2mms[22m[39m
+ [32m✓[39m src/common/rate-limit/rate-limit-policies.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 32[2mms[22m[39m
+ [32m✓[39m src/common/plugins/bullmq.plugin.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 67[2mms[22m[39m
+ [32m✓[39m src/common/errors/error-handler.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 115[2mms[22m[39m
+ [32m✓[39m src/modules/ops/ops.service.test.ts [2m([22m[2m26 tests[22m[2m)[22m[32m 41[2mms[22m[39m
+ [32m✓[39m src/modules/notifications-webhook/notifications-webhook.routes.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 251[2mms[22m[39m
+ [32m✓[39m src/common/guards/admin-permissions.guard.routes.security.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 152[2mms[22m[39m
+ [32m✓[39m src/modules/wishlist/wishlist.routes.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 157[2mms[22m[39m
+ [32m✓[39m src/modules/notifications/templates/email-templates.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 56[2mms[22m[39m
+ [32m✓[39m src/modules/dashboard/dashboard.routes.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 324[2mms[22m[39m
+ [32m✓[39m src/modules/notifications/adapters/resend.adapter.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 23[2mms[22m[39m
+ [32m✓[39m src/modules/queues/queues.routes.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 403[2mms[22m[39m
+     [33m[2m✓[22m[39m registers secured ops queue routes [33m 402[2mms[22m[39m
+ [32m✓[39m src/modules/notifications/adapters/fast2sms.adapter.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+ [32m✓[39m src/modules/orders/orders.service.cancel-notifications.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m src/modules/auth/admin-invites.service.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 220[2mms[22m[39m
+ [32m✓[39m src/modules/notifications/notification-provider.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m src/modules/products/products.service.analytics.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 15[2mms[22m[39m
+ [32m✓[39m src/common/guards/admin-permissions.guard.security.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m src/modules/coupons/coupons.service.test.ts [2m([22m[2m22 tests[22m[2m)[22m[32m 18[2mms[22m[39m
+ [32m✓[39m src/modules/shipping/adapters/shiprocket.adapter.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m src/modules/wishlist/wishlist.service.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m src/modules/auth/auth.service.send-otp.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m src/modules/orders/orders.service.admin-list-shipments-payments.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m src/modules/auth/auth.routes.test.ts [2m([22m[2m7 tests[22m[2m)[22m[33m 1686[2mms[22m[39m
+     [33m[2m✓[22m[39m allows customer logout [33m 703[2mms[22m[39m
+     [33m[2m✓[22m[39m registers 2-step admin login routes (request-otp and verify-otp) [33m 321[2mms[22m[39m
+ [32m✓[39m src/modules/cart/cart.service.analytics.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m src/modules/analytics/analytics.service.security.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m src/modules/orders/orders.service.cod.test.ts [2m([22m[2m17 tests[22m[2m)[22m[32m 26[2mms[22m[39m
+ [32m✓[39m src/common/cache/products-list-cache.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 17[2mms[22m[39m
+ [32m✓[39m src/modules/products/products.service.admin-write.test.ts [2m([22m[2m18 tests[22m[2m)[22m[32m 22[2mms[22m[39m
+ [32m✓[39m queues/workers/notifications.worker.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32m✓[39m src/modules/users/users.service.admin-write.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+ [32m✓[39m src/common/security/queue-enqueue.contract.security.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m src/modules/orders/orders.service.admin-print-label.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m src/modules/orders/orders.service.admin-detail.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m src/modules/ops/ops-config-contract.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m src/common/idempotency/idempotency.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m src/modules/cart/cart.service.delivery.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 13[2mms[22m[39m
+ [32m✓[39m src/modules/orders/orders.service.security.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m src/common/plugins/multipart.plugin.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m src/modules/cart/cart.service.snapshot.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m src/modules/orders/orders.service.admin-ship.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m src/modules/orders/orders.service.admin-schedule-pickup.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 13[2mms[22m[39m
+ [32m✓[39m src/modules/orders/orders.service.create-order.auth-required.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m queues/workers/cart-cleanup.worker.test.ts [2m([22m[2m17 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+ [32m✓[39m src/modules/orders/orders.service.admin-update-items.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m src/common/plugins/cors.plugin.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m src/modules/orders/orders.routes.test.ts [2m([22m[2m2 tests[22m[2m)[22m[33m 2053[2mms[22m[39m
+     [33m[2m✓[22m[39m registers customer, admin, and webhook routes with schema and guards [33m 1240[2mms[22m[39m
+     [33m[2m✓[22m[39m all admin write routes have idempotencyPreHandler in preHandler chain [33m 810[2mms[22m[39m
+ [32m✓[39m src/common/auth/admin-policy-registry.validation.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m src/modules/inventory/inventory.service.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m src/common/errors/app-error.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m src/modules/products/products.service.variants.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m src/modules/products/products.service.variant-delete.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m src/modules/users/users.service.admin.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m src/modules/payments/payment-provider.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m src/modules/orders/orders.service.create-order.serviceability.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m src/modules/orders/orders.service.analytics.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 15[2mms[22m[39m
+ [32m✓[39m src/common/security/webhook-allowlist.security.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m src/modules/dashboard/dashboard.service.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m queues/workers/outbox-dispatch.worker.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m src/common/observability/metrics.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m src/modules/coupons/coupons.service.audit.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 21[2mms[22m[39m
+ [32m✓[39m src/modules/orders/orders.service.admin-board.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m src/modules/settings/settings.service.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m queues/workers/worker-logging.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m src/modules/orders/orders.service.retrigger-notifications.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m src/modules/coupons/coupons.service.security.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m src/modules/reviews/reviews.service.security.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m src/modules/orders/orders.service.admin-get-by-id.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m src/modules/orders/orders.service.admin-invoice.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m src/modules/orders/orders.webhook-ack.security.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m src/modules/analytics/analytics.service.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m src/modules/cart/cart.service.guest-coupon-redis.security.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m src/modules/shipping/adapters/delhivery.adapter.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 13[2mms[22m[39m
+ [32m✓[39m src/modules/orders/orders.service.checkout-risk-port.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m src/common/security/ops-config-crypto.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m src/common/reliability/load-shed.guard.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m src/modules/orders/checkout-risk.service.security.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m src/common/orders/webhook-status-mappers.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m src/modules/reviews/reviews.service.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m src/modules/products/products.catalog.security.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m src/modules/products/products.service.images.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m src/common/guards/ops-permissions.guard.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m src/modules/ops/ops-config-runtime.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m src/modules/products/products.service.admin-read.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m src/common/orders/order-state-machine.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m src/common/plugins/swagger.plugin.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m src/modules/invoices/invoice-storage-provider.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m src/modules/orders/orders.service.create-order.pricing.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m src/common/plugins/rate-limit.plugin.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m src/modules/health/health.service.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m src/modules/auth/auth.service.password-reset.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m src/modules/shipping/shipping-provider.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m src/modules/orders/orders.service.create-order.minimum-order.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m src/common/plugins/prisma.plugin.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m queues/workers/inventory-alerts.worker.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m src/modules/cart/cart.service.merge-coupon.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m src/modules/orders/orders.service.export-csv.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m src/modules/notifications/adapters/msg91.adapter.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m src/modules/notifications/adapters/meta-whatsapp.adapter.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m src/modules/notifications/sms-template-registry.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m src/modules/cart/cart.service.security.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m src/common/auth/admin-permissions.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m src/modules/payments/adapters/razorpay.adapter.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m src/modules/payments/adapters/cod-payment.adapter.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m src/common/plugins/helmet.plugin.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m src/common/idempotency/idempotency.security.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m src/modules/products/products.schemas.contract.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m src/common/decorators/current-user.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m src/modules/orders/orders.service.admin-update-status.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m src/common/plugins/jwt.plugin.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m src/modules/orders/orders.service.search-by-name.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m src/modules/ops/ops.routes.test.ts [2m([22m[2m11 tests[22m[2m)[22m[33m 4369[2mms[22m[39m
+     [33m[2m✓[22m[39m declares config overview and config validate route schemas [33m 1172[2mms[22m[39m
+     [33m[2m✓[22m[39m declares invite, otp, and config-save route contracts [33m 519[2mms[22m[39m
+     [33m[2m✓[22m[39m declares session route schema for frontend bootstrap [33m 512[2mms[22m[39m
+     [33m[2m✓[22m[39m declares explicit params/querystring schema for GET load-shed [33m 462[2mms[22m[39m
+     [33m[2m✓[22m[39m declares 200 response schema for POST load-shed with OTP challenge fields [33m 406[2mms[22m[39m
+     [33m[2m✓[22m[39m does NOT declare approval routes (dual-approval removed) [33m 381[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 52 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m queues/workers/analytics.worker.test.ts[2m > [22manalytics worker[2m > [22mcreates analytics event for record-event job
+[41m[1m FAIL [22m[49m queues/workers/analytics.worker.test.ts[2m > [22manalytics worker[2m > [22mignores unknown analytics jobs
+[41m[1m FAIL [22m[49m queues/workers/analytics.worker.test.ts[2m > [22manalytics worker[2m > [22mthrows for invalid event type
+[41m[1m FAIL [22m[49m queues/workers/analytics.worker.test.ts[2m > [22manalytics worker[2m > [22msends terminal failure alert when job exhausts all attempts
+[41m[1m FAIL [22m[49m queues/workers/analytics.worker.test.ts[2m > [22manalytics worker[2m > [22mdoes NOT send alert when job still has remaining attempts
+[31m[1mTypeError[22m: vi.mocked(...).mockReset is not a function[39m
+[90m [2m❯[22m queues/workers/analytics.worker.test.ts:[2m38:42[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/52]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m queues/workers/dead-letter.worker.test.ts[2m > [22mdead-letter worker[2m > [22msends a technical failure alert for every job arriving in the DLQ
+[41m[1m FAIL [22m[49m queues/workers/dead-letter.worker.test.ts[2m > [22mdead-letter worker[2m > [22muses "unknown" as jobId when job has no id
+[41m[1m FAIL [22m[49m queues/workers/dead-letter.worker.test.ts[2m > [22mdead-letter worker[2m > [22mincludes the job name in the error message
+[31m[1mTypeError[22m: vi.mocked(...).mockReset is not a function[39m
+[90m [2m❯[22m queues/workers/dead-letter.worker.test.ts:[2m34:42[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/52]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m queues/workers/order-processing.worker.test.ts[2m > [22morder-processing worker error and retry behavior[2m > [22mreturns without changes when payment is missing
+[41m[1m FAIL [22m[49m queues/workers/order-processing.worker.test.ts[2m > [22morder-processing worker error and retry behavior[2m > [22mthrows when payment update fails so BullMQ can retry
+[41m[1m FAIL [22m[49m queues/workers/order-processing.worker.test.ts[2m > [22morder-processing worker error and retry behavior[2m > [22mroutes deduct-inventory jobs to process-order-update enqueue
+[41m[1m FAIL [22m[49m queues/workers/order-processing.worker.test.ts[2m > [22morder-processing worker error and retry behavior[2m > [22mprocess-order-update confirms order, deducts inventory and enqueues side effects
+[41m[1m FAIL [22m[49m queues/workers/order-processing.worker.test.ts[2m > [22morder-processing worker error and retry behavior[2m > [22mprocess-order-update is idempotent when order is already CONFIRMED
+[41m[1m FAIL [22m[49m queues/workers/order-processing.worker.test.ts[2m > [22morder-processing worker error and retry behavior[2m > [22mskips deduct-inventory when no payment record is found for providerOrderId
+[41m[1m FAIL [22m[49m queues/workers/order-processing.worker.test.ts[2m > [22morder-processing worker error and retry behavior[2m > [22menqueues payment failed primary notification on failed payment webhook
+[41m[1m FAIL [22m[49m queues/workers/order-processing.worker.test.ts[2m > [22morder-processing worker error and retry behavior[2m > [22mconfirm-order delegates to process-order-update enqueue
+[41m[1m FAIL [22m[49m queues/workers/order-processing.worker.test.ts[2m > [22morder-processing worker error and retry behavior[2m > [22mprocess-order-update enqueues invoice and uses send-primary for OrderConfirmed
+[41m[1m FAIL [22m[49m queues/workers/order-processing.worker.test.ts[2m > [22morder-processing worker error and retry behavior[2m > [22mcreates invoice record for generate-invoice job
+[41m[1m FAIL [22m[49m queues/workers/order-processing.worker.test.ts[2m > [22morder-processing worker error and retry behavior[2m > [22mdoes not regenerate invoice after worker restart when invoice already exists
+[41m[1m FAIL [22m[49m queues/workers/order-processing.worker.test.ts[2m > [22morder-processing worker error and retry behavior[2m > [22mthrows when invoice upload fails so BullMQ can retry
+[41m[1m FAIL [22m[49m queues/workers/order-processing.worker.test.ts[2m > [22morder-processing worker error and retry behavior[2m > [22muploads credit note PDF when original invoice exists
+[41m[1m FAIL [22m[49m queues/workers/order-processing.worker.test.ts[2m > [22morder-processing worker error and retry behavior[2m > [22msends terminal failure alert when order-processing job exhausts all attempts
+[41m[1m FAIL [22m[49m queues/workers/order-processing.worker.test.ts[2m > [22morder-processing worker error and retry behavior[2m > [22mdoes NOT send alert when order-processing job still has remaining attempts
+[41m[1m FAIL [22m[49m queues/workers/order-processing.worker.test.ts[2m > [22morder-processing worker error and retry behavior[2m > [22mthrows in production when required DB-backed seller profile fields are missing
+[31m[1mTypeError[22m: vi.mocked(...).mockReset is not a function[39m
+[90m [2m❯[22m queues/workers/order-processing.worker.test.ts:[2m83:42[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/52]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m queues/workers/reconciliation.worker.test.ts[2m > [22mreconciliation worker[2m > [22mcreates classification-enriched issues for mismatches
+[41m[1m FAIL [22m[49m queues/workers/reconciliation.worker.test.ts[2m > [22mreconciliation worker[2m > [22mauto-heals captured payment orders stuck in pending payment by enqueuing process-order-update
+[41m[1m FAIL [22m[49m queues/workers/reconciliation.worker.test.ts[2m > [22mreconciliation worker[2m > [22msends terminal failure alert when reconciliation job exhausts all attempts
+[41m[1m FAIL [22m[49m queues/workers/reconciliation.worker.test.ts[2m > [22mreconciliation worker[2m > [22mdoes NOT send alert when reconciliation job still has remaining attempts
+[41m[1m FAIL [22m[49m queues/workers/reconciliation.worker.test.ts[2m > [22mreconciliation worker[2m > [22mdoes not auto-heal partially refunded payments to refunded order status
+[31m[1mTypeError[22m: vi.mocked(...).mockReset is not a function[39m
+[90m [2m❯[22m queues/workers/reconciliation.worker.test.ts:[2m60:42[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/52]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m queues/workers/refunds.worker.test.ts[2m > [22mrefunds worker[2m > [22mno-ops when order does not exist
+[41m[1m FAIL [22m[49m queues/workers/refunds.worker.test.ts[2m > [22mrefunds worker[2m > [22mupdates statuses and enqueues credit note after refund success
+[41m[1m FAIL [22m[49m queues/workers/refunds.worker.test.ts[2m > [22mrefunds worker[2m > [22msupports direct refunded state and partial refund amount
+[41m[1m FAIL [22m[49m queues/workers/refunds.worker.test.ts[2m > [22mrefunds worker[2m > [22msends terminal failure alert when refund job exhausts all attempts
+[41m[1m FAIL [22m[49m queues/workers/refunds.worker.test.ts[2m > [22mrefunds worker[2m > [22mdoes NOT send alert when refund job still has remaining attempts
+[41m[1m FAIL [22m[49m queues/workers/refunds.worker.test.ts[2m > [22mrefunds worker[2m > [22mthrows when provider payment id is missing
+[31m[1mTypeError[22m: vi.mocked(...).mockReset is not a function[39m
+[90m [2m❯[22m queues/workers/refunds.worker.test.ts:[2m58:42[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/52]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m queues/workers/shipping.worker.test.ts[2m > [22mshipping worker error and retry behavior[2m > [22mcreates shipment and marks order shipped for create-shipment job
+[41m[1m FAIL [22m[49m queues/workers/shipping.worker.test.ts[2m > [22mshipping worker error and retry behavior[2m > [22mthrows when creating shipment before payment capture
+[41m[1m FAIL [22m[49m queues/workers/shipping.worker.test.ts[2m > [22mshipping worker error and retry behavior[2m > [22mcreates COD shipment without requiring CAPTURED payment
+[41m[1m FAIL [22m[49m queues/workers/shipping.worker.test.ts[2m > [22mshipping worker error and retry behavior[2m > [22mignores create-shipment when order is missing
+[41m[1m FAIL [22m[49m queues/workers/shipping.worker.test.ts[2m > [22mshipping worker error and retry behavior[2m > [22mreturns without changes when shipment is missing
+[41m[1m FAIL [22m[49m queues/workers/shipping.worker.test.ts[2m > [22mshipping worker error and retry behavior[2m > [22mthrows when shipment update fails so BullMQ can retry
+[41m[1m FAIL [22m[49m queues/workers/shipping.worker.test.ts[2m > [22mshipping worker error and retry behavior[2m > [22mupdates shipment and order timeline for out-for-delivery webhook
+[41m[1m FAIL [22m[49m queues/workers/shipping.worker.test.ts[2m > [22mshipping worker error and retry behavior[2m > [22maccepts legacy shipment-webhook job name for backward compatibility
+[41m[1m FAIL [22m[49m queues/workers/shipping.worker.test.ts[2m > [22mshipping worker error and retry behavior[2m > [22mdoes not coerce unknown shipment statuses to in_transit
+[41m[1m FAIL [22m[49m queues/workers/shipping.worker.test.ts[2m > [22mshipping worker error and retry behavior[2m > [22menqueues delivered primary notification
+[41m[1m FAIL [22m[49m queues/workers/shipping.worker.test.ts[2m > [22mshipping worker error and retry behavior[2m > [22menqueues failed-delivery primary notification
+[41m[1m FAIL [22m[49m queues/workers/shipping.worker.test.ts[2m > [22mshipping worker error and retry behavior[2m > [22mauto-captures COD payment when DELIVERED webhook fires
+[41m[1m FAIL [22m[49m queues/workers/shipping.worker.test.ts[2m > [22mshipping worker error and retry behavior[2m > [22mskips COD auto-capture if payment already CAPTURED
+[41m[1m FAIL [22m[49m queues/workers/shipping.worker.test.ts[2m > [22mshipping worker error and retry behavior[2m > [22mdoes not auto-capture payment for PREPAID DELIVERED orders
+[41m[1m FAIL [22m[49m queues/workers/shipping.worker.test.ts[2m > [22mshipping worker error and retry behavior[2m > [22menqueues admin email notification for RTO initiated
+[41m[1m FAIL [22m[49m queues/workers/shipping.worker.test.ts[2m > [22mshipping worker error and retry behavior[2m > [22msends terminal failure alert when shipping job exhausts all attempts
+[41m[1m FAIL [22m[49m queues/workers/shipping.worker.test.ts[2m > [22mshipping worker error and retry behavior[2m > [22mdoes NOT send alert when shipping job still has remaining attempts
+[31m[1mTypeError[22m: vi.mocked(...).mockReset is not a function[39m
+[90m [2m❯[22m queues/workers/shipping.worker.test.ts:[2m95:42[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/52]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m6 failed[39m[22m[2m | [22m[1m[32m128 passed[39m[22m[90m (134)[39m
+[2m      Tests [22m [1m[31m52 failed[39m[22m[2m | [22m[1m[32m574 passed[39m[22m[90m (626)[39m
+[2m   Start at [22m 12:56:47
+[2m   Duration [22m 5.38s[2m (transform 13.28s, setup 0ms, import 28.83s, tests 23.68s, environment 391ms)[22m
+

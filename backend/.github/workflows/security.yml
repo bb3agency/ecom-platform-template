@@ -1,0 +1,113 @@
+name: Security Scans
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+  schedule:
+    - cron: '15 3 * * 1'
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  codeql:
+    name: CodeQL
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: javascript
+          queries: security-extended,security-and-quality
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v4
+      - name: Analyze
+        uses: github/codeql-action/analyze@v4
+        with:
+          upload: false
+        id: analyze
+      - name: Upload CodeQL SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: ${{ steps.analyze.outputs.sarif-output }}
+          category: codeql
+        continue-on-error: true
+
+  dependency-scans:
+    name: Dependency and npm Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: npm audit (critical/high blocks)
+        run: |
+          npm audit --omit=dev --json > npm-audit.json || true
+          CRITICAL=$(jq '(.metadata.vulnerabilities.critical // 0) | tonumber' npm-audit.json 2>/dev/null || echo 0)
+          HIGH=$(jq '(.metadata.vulnerabilities.high // 0) | tonumber' npm-audit.json 2>/dev/null || echo 0)
+          echo "critical=$CRITICAL high=$HIGH"
+          if [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ]; then
+            echo "::error::High/Critical vulnerabilities detected."
+            npm audit --omit=dev || true
+            exit 1
+          fi
+
+  # OSV Scanner v2 — uses reusable workflow pattern.
+  # Old google/osv-scanner-action@v1.x tags were deleted.
+  # See: https://google.github.io/osv-scanner/github-action/
+  osv-scan:
+    name: OSV Scanner
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    uses: "google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@v2.3.5"
+    with:
+      scan-args: |-
+        --config=osv-scanner.toml
+        --lockfile=package-lock.json
+      upload-sarif: false
+      fail-on-vuln: true
+
+  container-scan:
+    name: Container Scan (Trivy)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t ecom-backend:${{ github.sha }} .
+      # Trivy migrated all tags to v-prefix after a supply chain attack.
+      # Old tags (0.24.0 etc.) were deleted. See: https://github.com/aquasecurity/trivy-action/releases/tag/v0.35.0
+      - name: Trivy image scan
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ecom-backend:${{ github.sha }}
+          format: sarif
+          output: trivy-image.sarif
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+      - name: Upload Trivy SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy-image.sarif
+          category: trivy-image
+        continue-on-error: true

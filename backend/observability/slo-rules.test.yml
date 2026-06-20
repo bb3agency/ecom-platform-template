@@ -1,0 +1,220 @@
+rule_files:
+  - slo-rules.yml
+
+evaluation_interval: 1m
+
+tests:
+  - interval: 1m
+    input_series:
+      - series: 'checkout_requests_total{result="success"}'
+        values: '0+100x30'
+      - series: 'checkout_requests_total{result="failure"}'
+        values: '0+0x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: CheckoutErrorBudgetFastBurn
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: CheckoutErrorBudgetSlowBurn
+        exp_alerts: []
+
+  - interval: 1m
+    input_series:
+      - series: 'checkout_requests_total{result="success"}'
+        values: '0+90x40'
+      - series: 'checkout_requests_total{result="failure"}'
+        values: '0+10x40'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: CheckoutErrorBudgetFastBurn
+        exp_alerts:
+          - exp_labels:
+              severity: page
+            exp_annotations:
+              summary: "Checkout SLO fast burn (5m/1h)"
+
+  - interval: 1m
+    input_series:
+      - series: 'webhook_processing_duration_seconds_bucket{le="0.1"}'
+        values: '0+1x30'
+      - series: 'webhook_processing_duration_seconds_bucket{le="0.25"}'
+        values: '0+2x30'
+      - series: 'webhook_processing_duration_seconds_bucket{le="0.5"}'
+        values: '0+3x30'
+      - series: 'webhook_processing_duration_seconds_bucket{le="1"}'
+        values: '0+10x30'
+      - series: 'webhook_processing_duration_seconds_bucket{le="+Inf"}'
+        values: '0+10x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: WebhookLatencyFastBurn
+        exp_alerts:
+          - exp_labels:
+              severity: page
+            exp_annotations:
+              summary: "Webhook latency p95 fast burn"
+
+  - interval: 1m
+    input_series:
+      - series: 'outbox_dead_letter_depth'
+        values: '12+0x30'
+      - series: 'auth_challenge_total{result="failed"}'
+        values: '0+40x30'
+      - series: 'auth_challenge_total{result="passed"}'
+        values: '0+40x30'
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: OutboxDeadLetterDepthHigh
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+            exp_annotations:
+              summary: "Outbox dead-letter depth exceeded threshold"
+
+  - interval: 1m
+    input_series:
+      - series: 'queue_jobs_total{queue="order-processing",job_name="process-order-update",result="success"}'
+        values: '0+90x40'
+      - series: 'queue_terminal_failures_total{queue="order-processing",job_name="process-order-update"}'
+        values: '0+20x40'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: QueueFailureFastBurn
+        exp_alerts:
+          - exp_labels:
+              severity: page
+            exp_annotations:
+              summary: "Terminal queue failures are burning error budget quickly"
+
+  - interval: 1m
+    input_series:
+      - series: 'queue_waiting_depth{queue="order-processing"}'
+        values: '1200+0x30'
+      - series: 'queue_oldest_waiting_age_seconds{queue="order-processing"}'
+        values: '700+0x30'
+      - series: 'outbox_oldest_pending_lag_seconds'
+        values: '180+0x30'
+      - series: 'queue_worker_stalled_total{queue="order-processing"}'
+        values: '0+1x30'
+      - series: 'queue_dlq_growth_total{queue="outbox-dispatch",job_name="publish-pending"}'
+        values: '0+10x30'
+      # rate(0+120x30[5m]) ≈ 2/s which exceeds the > 1 threshold
+      - series: 'queue_retryable_failures_total{queue="order-processing",job_name="process-order-update"}'
+        values: '0+120x30'
+    alert_rule_test:
+      - eval_time: 16m
+        alertname: QueueBacklogCritical
+        exp_alerts:
+          - exp_labels:
+              severity: page
+            exp_annotations:
+              summary: "Queue backlog is critical"
+      - eval_time: 16m
+        alertname: QueueOldestWaitingHigh
+        exp_alerts:
+          - exp_labels:
+              severity: page
+            exp_annotations:
+              summary: "Queue oldest waiting job age is too high"
+      - eval_time: 16m
+        alertname: OutboxLagHigh
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+            exp_annotations:
+              summary: "Outbox lag exceeded threshold"
+      - eval_time: 16m
+        alertname: QueueWorkerStallDetected
+        exp_alerts:
+          - exp_labels:
+              severity: page
+            exp_annotations:
+              summary: "Queue worker stall detected"
+      - eval_time: 16m
+        alertname: OutboxDeadLetterGrowthHigh
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+            exp_annotations:
+              summary: "Outbox dead-letter growth rate is elevated"
+      - eval_time: 16m
+        alertname: QueueRetryableFailuresElevated
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+            exp_annotations:
+              summary: "Retryable queue failures are elevated"
+
+  - interval: 1m
+    input_series:
+      - series: 'queue_waiting_depth{queue="dead-letter"}'
+        values: '60+0x30'
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: QueueDLQDepthHigh
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+            exp_annotations:
+              summary: "Dead-letter queue depth is high — terminal failures accumulating"
+
+  - interval: 1m
+    input_series:
+      - series: 'auth_challenge_total{result="failed"}'
+        values: '0+40x30'
+      - series: 'auth_challenge_total{result="passed"}'
+        values: '0+60x30'
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: AuthChallengeFailureSpike
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+            exp_annotations:
+              summary: "Auth challenge failures are spiking"
+
+  # CheckoutErrorBudgetTicket — sustained low-grade budget consumption (6h window)
+  - interval: 1m
+    input_series:
+      - series: 'checkout_requests_total{result="success"}'
+        values: '0+99x400'
+      - series: 'checkout_requests_total{result="failure"}'
+        values: '0+2x400'
+    alert_rule_test:
+      - eval_time: 6h5m
+        alertname: CheckoutErrorBudgetTicket
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+            exp_annotations:
+              summary: "Checkout SLO budget consumption (6h/3d)"
+
+  # QueueFailureSlowBurn — sustained moderate terminal failure ratio (30m window)
+  - interval: 1m
+    input_series:
+      - series: 'queue_jobs_total{queue="order-processing",job_name="process-order-update",result="success"}'
+        values: '0+90x60'
+      - series: 'queue_terminal_failures_total{queue="order-processing",job_name="process-order-update"}'
+        values: '0+5x60'
+    alert_rule_test:
+      - eval_time: 35m
+        alertname: QueueFailureSlowBurn
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+            exp_annotations:
+              summary: "Terminal queue failures are sustaining budget burn"
+
+  # QueueBacklogHigh — queue depth exceeds 200 for 15m
+  - interval: 1m
+    input_series:
+      - series: 'queue_waiting_depth{queue="order-processing"}'
+        values: '350+0x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: QueueBacklogHigh
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+            exp_annotations:
+              summary: "Queue backlog is elevated"

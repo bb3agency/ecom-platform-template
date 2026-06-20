@@ -1,0 +1,57 @@
+{
+  "$comment": "Declares which paths are platform CORE (must stay in sync with the pinned template tag) vs CLIENT (design/extension — allowed to differ). Drives backend/scripts/check-core-drift.sh. See backend/docs/PLATFORM_VERSIONING_AND_SYNC_GUIDE.md §7.",
+  "version": 1,
+  "backendCore": {
+    "include": [
+      "backend/src/**",
+      "backend/prisma/schema.prisma",
+      "backend/prisma/migrations/**",
+      "backend/scripts/**",
+      "backend/tsconfig.json"
+    ],
+    "exclude": [
+      "backend/.env",
+      "backend/.env.*",
+      "backend/docs/clients/**",
+      "backend/src/modules/client/**"
+    ]
+  },
+  "frontendCore": {
+    "include": [
+      "frontend/lib/api.ts",
+      "frontend/lib/utils.ts",
+      "frontend/lib/validators.ts",
+      "frontend/actions/**",
+      "frontend/components/ui/**",
+      "frontend/components/product/**",
+      "frontend/components/cart/**",
+      "frontend/components/checkout/**",
+      "frontend/components/layout/**",
+      "frontend/hooks/**",
+      "frontend/stores/**",
+      "frontend/types/**",
+      "frontend/app/**/page.tsx",
+      "frontend/app/**/layout.tsx",
+      "frontend/next.config.ts",
+      "frontend/middleware.ts"
+    ],
+    "exclude": [
+      "frontend/app/globals.css",
+      "frontend/lib/fonts.ts",
+      "frontend/lib/constants.ts",
+      "frontend/public/**",
+      "frontend/components/marketing/**",
+      "frontend/app/(client)/**",
+      "frontend/.env*"
+    ]
+  },
+  "designLayer": {
+    "$comment": "Per-client. Never overwritten by core sync (also protected via .gitattributes merge=ours).",
+    "paths": [
+      "frontend/app/globals.css",
+      "frontend/lib/fonts.ts",
+      "frontend/lib/constants.ts",
+      "frontend/public/**"
+    ]
+  }
+}

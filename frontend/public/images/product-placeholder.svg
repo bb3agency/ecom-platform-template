@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" role="img" aria-label="Product image placeholder">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f4faf2"/>
+      <stop offset="100%" stop-color="#e8f0e6"/>
+    </linearGradient>
+  </defs>
+  <rect width="400" height="400" fill="url(#bg)"/>
+  <circle cx="200" cy="170" r="72" fill="#dbe8d8" opacity="0.65"/>
+  <path d="M200 118c-18 0-32 14-32 32s14 32 32 32 32-14 32-32-14-32-32-32zm0 88c-40 0-72 18-72 40v18h144v-18c0-22-32-40-72-40z" fill="#23403d" opacity="0.18"/>
+  <text x="200" y="320" text-anchor="middle" font-family="system-ui, sans-serif" font-size="18" fill="#767676">No image yet</text>
+</svg>
