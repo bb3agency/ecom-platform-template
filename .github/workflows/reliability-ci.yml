@@ -85,7 +85,15 @@ jobs:
       - name: Install promtool deterministically
         run: |
           mkdir -p .tools/promtool
-          curl -sSL -o /tmp/promtool.tar.gz "https://github.com/prometheus/prometheus/releases/download/v${PROMTOOL_VERSION}/prometheus-${PROMTOOL_VERSION}.linux-amd64.tar.gz"
+          url="https://github.com/prometheus/prometheus/releases/download/v${PROMTOOL_VERSION}/prometheus-${PROMTOOL_VERSION}.linux-amd64.tar.gz"
+          # -f: fail on HTTP 4xx/5xx instead of saving the error page (that page is what made tar
+          #     report "not in gzip format"). --retry*: ride out transient GitHub/CDN rate-limits.
+          curl -fsSL --retry 5 --retry-delay 3 --retry-all-errors -o /tmp/promtool.tar.gz "$url"
+          # Sanity-check it's actually a gzip before extracting (clear error if the download is bad).
+          if ! gzip -t /tmp/promtool.tar.gz 2>/dev/null; then
+            echo "::error::promtool download from $url is not a valid gzip (first bytes: $(head -c 120 /tmp/promtool.tar.gz))"
+            exit 1
+          fi
           tar -xzf /tmp/promtool.tar.gz -C /tmp
           cp "/tmp/prometheus-${PROMTOOL_VERSION}.linux-amd64/promtool" .tools/promtool/promtool
           chmod +x .tools/promtool/promtool
