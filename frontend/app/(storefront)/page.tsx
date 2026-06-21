@@ -9,13 +9,14 @@ import { TestimonialsSection } from "@/components/storefront/home/TestimonialsSe
 import { TestimonialsSectionSkeleton } from "@/components/storefront/home/TestimonialsSectionSkeleton";
 import { FaqSection } from "@/components/storefront/home/FaqSection";
 import { getPublicStoreConfig } from "@/lib/storefront-settings";
+import { APP_NAME } from "@/lib/constants";
 
 export const metadata = {
-  title: "Raghava Organics — Chemical-free produce, traceable from farm to door",
+  title: `${APP_NAME} — Chemical-free produce, traceable from farm to door`,
   description:
     "Native-seed fruits, vegetables, and traditional spices from 120+ partner farmers across Telangana. Lab-tested for 300+ pesticide residues. Delivered within 48 hours.",
   openGraph: {
-    title: "Raghava Organics — Real food, grown the way your grandparents knew",
+    title: `${APP_NAME} — Real food, grown the way your grandparents knew`,
     description:
       "Chemical-free, traceable produce direct from small farms. Lab-tested every batch.",
     type: "website",

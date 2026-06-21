@@ -4,7 +4,7 @@
  * Connects to the real DB and Redis to show exactly why emails are failing.
  *
  * Usage:
- *   cd /var/www/raghava-organics/backend
+ *   cd /var/www/<client-id>/backend
  *   node scripts/diagnose-notifications.js
  */
 
@@ -239,7 +239,7 @@ async function main() {
           from: resendFrom || 'onboarding@resend.dev',
           to: ['delivered@resend.dev'], // Resend's test address — always succeeds
           subject: 'Diagnostic test',
-          html: '<p>Diagnostic test from raghava-organics backend</p>'
+          html: '<p>Diagnostic test from <client-id> backend</p>'
         })
       });
       const body = await res.json().catch(() => ({}));

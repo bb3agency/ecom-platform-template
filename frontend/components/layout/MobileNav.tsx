@@ -133,7 +133,7 @@ export function MobileNav({ minOrderValuePaise = 0 }: MobileNavProps) {
           >
             <Image
               src={BRAND_LOGO_SRC}
-              alt="Raghava Organics"
+              alt={`${APP_NAME} logo`}
               width={28}
               height={28}
               className="size-7 object-contain"

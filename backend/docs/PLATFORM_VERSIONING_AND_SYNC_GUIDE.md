@@ -103,6 +103,15 @@ A core component only auto-adopts a client's look if that client defines every t
 - Rare, legitimate one-offs go in `PLATFORM_VERSION` → `approved-divergence` as a **time-boxed** entry (`path — justification — owner — expires`). The check warns (doesn't fail) until expiry, then it must be resolved.
 - Add `CODEOWNERS` on core paths so edits to shared files require platform-team review (nudges changes upstream).
 
+### 7.1 Core purity — no client identity in core files (the anti-contamination guard)
+
+Because `sync-core.mjs` checks out the **entire** core pathspec, any client-specific value baked into a core file gets copied to every client on the next sync — overwriting their brand/keys with another client's (this bit us: a sync turned `sbgs-cart` into `raghava-cart`). To make that impossible:
+
+- **Client identity never lives in core code.** Brand name → `APP_NAME`; logo → `BRAND_LOGO_SRC`; storage keys → `STORAGE_PREFIX`; provider/contact values → env or Ops config — all in the **design layer** (`frontend/lib/constants.ts`, excluded from sync). Per-client **content** (legal/about/marketing pages, `Footer`, email templates) is excluded from core in `core-manifest.json`.
+- **`check-core-purity.mjs` (`npm run check:core-purity`)** greps every core file (per `core-manifest.json`) for the patterns in `core-purity-denylist.txt` (client brand names, domains, slugs) and **fails the build** on any hit. It's wired into `ci:reliability-gates`. This is the guard that prevents the whole contamination class — a hardcoded "Raghava Organics" in a core file can no longer reach CI green.
+- **Onboarding a new client:** add their brand/domain/slug to `core-purity-denylist.txt` so their identity can never leak into core either.
+- **Fixing a violation:** move the value to the design layer (parameterize with `APP_NAME`/`STORAGE_PREFIX`/env), or — if the file is genuinely per-client content — exclude it in `core-manifest.json`.
+
 ---
 
 ## 8. Reliability add-ons

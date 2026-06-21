@@ -11,7 +11,7 @@
 # For multi-client VPS, consider client-specific cleanup strategies.
 #
 # TEMPLATE VARIABLES (replace during setup):
-# - {{CLIENT_ID}}: Client identifier (e.g., raghava-organics)
+# - {{CLIENT_ID}}: Client identifier (e.g., <client-id>)
 # - {{FRONTEND_PATH}}: Path to frontend deployment (e.g., /var/www/{{CLIENT_ID}}/frontend)
 # - {{PM2_PROCESS_NAME}}: PM2 process name (e.g., {{CLIENT_ID}}-frontend)
 

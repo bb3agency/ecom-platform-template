@@ -427,7 +427,7 @@ export function CheckoutForm() {
         amount: checkout.amount,
         currency: checkout.currency,
         order_id: checkout.razorpayOrderId,
-        name: process.env.NEXT_PUBLIC_STORE_NAME ?? "Raghava Organics",
+        name: process.env.NEXT_PUBLIC_STORE_NAME ?? "Store",
         description: "Complete your order",
         prefill: {
           name: values.fullName,

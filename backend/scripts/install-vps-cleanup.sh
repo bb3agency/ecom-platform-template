@@ -2,7 +2,7 @@
 # Install VPS Cleanup Script for a Client
 #
 # Usage: ./install-vps-cleanup.sh <CLIENT_ID> <FRONTEND_PATH> <PM2_PROCESS_NAME>
-# Example: ./install-vps-cleanup.sh raghava-organics /var/www/raghava-organics raghava-organics-frontend
+# Example: ./install-vps-cleanup.sh <client-id> /var/www/<client-id> <client-id>-frontend
 
 set -euo pipefail
 
@@ -12,7 +12,7 @@ PM2_PROCESS_NAME="${3:-}"
 
 if [ -z "$CLIENT_ID" ] || [ -z "$FRONTEND_PATH" ] || [ -z "$PM2_PROCESS_NAME" ]; then
     echo "Usage: $0 <CLIENT_ID> <FRONTEND_PATH> <PM2_PROCESS_NAME>"
-    echo "Example: $0 raghava-organics /var/www/raghava-organics raghava-organics-frontend"
+    echo "Example: $0 <client-id> /var/www/<client-id> <client-id>-frontend"
     exit 1
 fi
 

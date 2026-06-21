@@ -13,7 +13,8 @@
       "backend/.env",
       "backend/.env.*",
       "backend/docs/clients/**",
-      "backend/src/modules/client/**"
+      "backend/src/modules/client/**",
+      "backend/src/modules/notifications/templates/**"
     ]
   },
   "frontendCore": {
@@ -41,7 +42,14 @@
       "frontend/lib/constants.ts",
       "frontend/public/**",
       "frontend/components/marketing/**",
+      "frontend/components/storefront/home/**",
+      "frontend/components/layout/Footer.tsx",
       "frontend/app/(client)/**",
+      "frontend/app/(storefront)/about/**",
+      "frontend/app/(storefront)/privacy/**",
+      "frontend/app/(storefront)/terms/**",
+      "frontend/app/(storefront)/returns/**",
+      "frontend/app/(storefront)/shipping/**",
       "frontend/.env*"
     ]
   },

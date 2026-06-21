@@ -11,7 +11,7 @@ export const metadata: Metadata = {
     default: APP_NAME,
     template: `%s | ${APP_NAME}`,
   },
-  description: "Premium chemical free and natural products from Raghava Organics.",
+  description: `Premium chemical free and natural products from ${APP_NAME}.`,
   icons: {
     icon: BRAND_LOGO_SRC,
     shortcut: BRAND_LOGO_SRC,

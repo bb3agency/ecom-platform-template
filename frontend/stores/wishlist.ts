@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { STORAGE_PREFIX } from "@/lib/constants";
 
 interface WishlistState {
   items: Set<string>;
@@ -28,7 +29,7 @@ export const useWishlistStore = create<WishlistState>()(
       clear: () => set({ items: new Set<string>() }),
     }),
     {
-      name: "raghava-wishlist",
+      name: `${STORAGE_PREFIX}-wishlist`,
       storage: {
         getItem: (name) => {
           const str = localStorage.getItem(name);

@@ -17,7 +17,7 @@ export async function fetchExternalImageResponse(sourceUrl: string): Promise<Res
         method: 'GET',
         redirect: 'manual',
         signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-        headers: { 'User-Agent': 'RaghavaOrganics-MediaIngest/1.0' }
+        headers: { 'User-Agent': 'Storefront-MediaIngest/1.0' }
       });
     } catch {
       throw new AppError(ERROR_CODES.VALIDATION_ERROR, 'Failed to fetch external image URL', 400);

@@ -3,6 +3,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { Cart, CartLineItem } from "@/types/cart";
+import { STORAGE_PREFIX } from "@/lib/constants";
 
 interface CartState {
   cart: Cart | null;
@@ -29,7 +30,7 @@ export const useCartStore = create<CartState>()(
       clearPendingMerge: () => set({ pendingMerge: false }),
     }),
     {
-      name: "raghava-cart",
+      name: `${STORAGE_PREFIX}-cart`,
       version: 2,
       migrate: (persisted, version) => {
         if (version < 2) {

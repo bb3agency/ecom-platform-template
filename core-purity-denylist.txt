@@ -1,0 +1,16 @@
+# core-purity denylist — patterns that must NEVER appear in CORE files.
+# These are client-specific identifiers (brand names, domains, slugs) that belong
+# in the design layer (frontend/lib/constants.ts -> APP_NAME / STORAGE_PREFIX, or
+# env / Ops config), NOT in shared core code. check-core-purity.mjs greps every
+# core file (per core-manifest.json) for these and FAILS the build on any hit.
+#
+# When you onboard a new client, add THEIR brand/domain/slug here so their identity
+# can never leak into core either. One JS-regex per line; '#' lines are comments.
+Raghava Organics
+Raghava Ops
+raghavaorganics
+raghava-organics
+Sri Sai Baba
+Sai Baba Ghee
+srisaibabasweets
+ghee sweets

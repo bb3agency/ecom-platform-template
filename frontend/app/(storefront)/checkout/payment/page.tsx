@@ -10,6 +10,7 @@ import { getMyOrder, retryPayment, verifyPayment, type OrderSummary } from "@/li
 import { getApiErrorMessage } from "@/lib/error-messages";
 import { trackEvent } from "@/lib/analytics";
 import { formatPrice } from "@/lib/format-price";
+import { APP_NAME } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
 import { createIdempotencyKey } from "@/lib/idempotency";
 
@@ -83,7 +84,7 @@ function PaymentContent() {
         amount: payment.amount,
         currency: payment.currency,
         order_id: payment.providerOrderId,
-        name: process.env.NEXT_PUBLIC_STORE_NAME ?? "Raghava Organics",
+        name: APP_NAME,
         description: `Order ${order.orderNumber}`,
         prefill: {
           name: order.shippingAddress?.fullName ?? "",
