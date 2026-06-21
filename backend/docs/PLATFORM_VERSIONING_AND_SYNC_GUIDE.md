@@ -222,11 +222,12 @@ PHASE C — fan out                                        ← automated
 # Keep core changes and design changes in SEPARATE commits (clean cherry-pick later).
 ```
 
-**Phase B — promote to the template** (one-time: `git remote add raghava <url>` / `git remote add sbgs <url>` in the template)
+**Phase B — promote to the template** (one-time per client: add a remote NAMED EXACTLY like the repo, e.g. `git remote add raghava-organics-site https://github.com/bb3agency/raghava-organics-site.git`)
 ```bash
 cd <template>
-git fetch raghava
+git fetch raghava-organics-site             # the remote name == the GitHub repo name
 git cherry-pick <firstSha>^..<lastSha>      # bring the feature's commits in (design hunks are kept-ours)
+#   NOTE: the commits must already be PUSHED to the client's GitHub (a local-only commit can't be fetched).
 # edit CHANGELOG.md  (Propagation block: note FEATURE_X + any NEW design token)
 # bump version: feature = MINOR (0.1.1 → 0.2.0) in backend/package.json + PLATFORM_VERSION (+ frontend if touched)
 git add -A && git commit -m "feat: <feature> behind FEATURE_X (core 0.2.0)"
@@ -261,7 +262,7 @@ git push -u origin main
 **4. Register it for automation:**
 - Add `bb3agency/<new-client>-site` to the template repo's `CLIENT_REPOS` variable.
 - Configure the per-client secrets/variables (table in §13.1).
-- Add it as a remote in the template for cherry-pick promotes: `git remote add <new-client> https://github.com/bb3agency/<new-client>-site.git`.
+- Add it as a remote in the template for cherry-pick promotes, naming the remote exactly like the repo: `git remote add <new-client>-site https://github.com/bb3agency/<new-client>-site.git`.
 
 **5. Set up CD** (self-hosted runner + `VPS_RUNNER_LABEL`, per `GITHUB_CD_SELF_HOSTED_RUNNER_GUIDE.md`) so a merged sync PR deploys.
 
@@ -276,7 +277,7 @@ git push -u origin main
 | _Actions enabled_ | Setting | Settings → Actions → General → **Allow all actions** | **Required** — `release-train` runs here. Disable noisy *individual* workflows (Reliability CI / Deploy / Diagnostic), not repo-wide Actions. |
 
 Plus, in the template's local checkout, one git remote per client (for cherry-pick promotes):
-`git remote add <client> https://github.com/bb3agency/<client>-site.git`
+`git remote add <client>-site https://github.com/bb3agency/<client>-site.git` (remote name == repo name; current: `raghava-organics-site`, `sbgs-site`)
 
 **Each client repo** — Settings → Secrets and variables → Actions:
 | Name | Kind | Value / scope | Purpose |
