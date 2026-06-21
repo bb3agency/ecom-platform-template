@@ -64,8 +64,27 @@ const excludes = [
 ];
 const pathspec = [
   ...includes.map((p) => toPathspec(p, false)),
-  ...excludes.map((p) => toPathspec(p, true))
+  ...excludes.map((p) => toPathspec(p, true)),
+  // Tests legitimately use sample brands/domains in fixtures/assertions — not shipped.
+  ':(exclude,glob)**/*.test.*',
+  ':(exclude,glob)**/*.spec.*',
+  // The guard's own config files naturally contain the patterns — don't self-flag.
+  ':(exclude)core-purity-denylist.txt',
+  ':(exclude)core-purity-allow.txt'
 ];
+
+// Per-client allow-list: THIS client's own identifiers (brand/domain/slug) are not a
+// contamination risk — only ANOTHER client's identity leaking into core is. Optional,
+// not synced. One regex per line; '#' comments.
+const allowPath = join(ROOT, 'core-purity-allow.txt');
+const allow = existsSync(allowPath)
+  ? readFileSync(allowPath, 'utf8')
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter((l) => l && !l.startsWith('#'))
+      .map((p) => new RegExp(p, 'i'))
+  : [];
+const isAllowed = (line) => allow.some((re) => re.test(line));
 
 // git grep each pattern across the core surface (case-insensitive, skip binary).
 const violations = [];
@@ -77,7 +96,9 @@ for (const pat of patterns) {
       { cwd: ROOT, encoding: 'utf8' }
     );
     if (out.trim()) {
-      for (const line of out.trim().split('\n')) violations.push(`[${pat}]  ${line}`);
+      for (const line of out.trim().split('\n')) {
+        if (!isAllowed(line)) violations.push(`[${pat}]  ${line}`);
+      }
     }
   } catch (e) {
     if (e.status !== 1) {

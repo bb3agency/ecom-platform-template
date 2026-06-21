@@ -27,6 +27,22 @@
 
 **Why this makes one version number meaningful:** because divergence is forced into config/flags/extension folders, the *core* stays byte-identical across clients — so "raghava is on backend-core 2.3.1" is a true, enforceable statement.
 
+### 1.1 Industry alignment — customization is configuration (data), not forked code
+
+The two rules the white-label/multi-client industry converges on, and that this platform now enforces:
+
+> **"The right answer is a configuration-driven architecture where customization is *data, not code*."** · **"The most common architectural mistake is *forking code for customization*."**
+> — multi-tenant / white-label SaaS architecture guidance (clockwise.software, HiringThing, developex)
+
+We run **separately-deployed** client sites (per-client repo + VPS), not one shared deployment — so we keep per-client repos. But the same rule governs *what may differ*:
+
+- **All client identity is DATA in the design layer**, never hardcoded in core: brand name / logo / storage prefix / contact / domains → `frontend/lib/constants.ts` (the client config); palette → `globals.css` tokens; assets → `public/`; behaviour → `FEATURE_*` flags + Ops/env config. Core reads identity from there and hardcodes none.
+- **Core is byte-identical across clients — enforced, not hoped:** `check-core-purity` (CI) fails on any client identifier in core; `core-manifest.json` declares core vs client; the design layer is `merge=ours`-protected.
+- **The governance config must itself propagate.** Incident lesson (2026-06-21): a sync re-contaminated a client because `core-manifest.json` wasn't synced, so it used stale excludes. Fix: `core-manifest.json` + `core-purity-denylist.txt` are now in the core include — every client enforces the *same* rules. **Rule: anything that governs the sync must itself be synced.**
+- **Sync model mirrors the .NET VMR** ([devblogs.microsoft.com](https://devblogs.microsoft.com/dotnet/how-we-synchronize-dotnets-virtual-monorepo/)): clean upstream (template) → automated downstream sync, with per-client divergence confined to **declared, time-boxed** `approved-divergence` patches — never silent forks. Tests and per-client content (legal/marketing/Footer/email) are excluded from core because they are *content/data*, not shared logic.
+
+If you're ever tempted to branch a core file for one client, that's the anti-pattern: parameterize it via config, gate it behind a flag, or move it to the extension layer (`src/modules/client/**` / `app/(client)/**`).
+
 ---
 
 ## 2. Semver policy

@@ -7,7 +7,9 @@
       "backend/prisma/schema.prisma",
       "backend/prisma/migrations/**",
       "backend/scripts/**",
-      "backend/tsconfig.json"
+      "backend/tsconfig.json",
+      "core-manifest.json",
+      "core-purity-denylist.txt"
     ],
     "exclude": [
       "backend/.env",
@@ -19,9 +21,7 @@
   },
   "frontendCore": {
     "include": [
-      "frontend/lib/api.ts",
-      "frontend/lib/utils.ts",
-      "frontend/lib/validators.ts",
+      "frontend/lib/**",
       "frontend/actions/**",
       "frontend/components/ui/**",
       "frontend/components/product/**",
