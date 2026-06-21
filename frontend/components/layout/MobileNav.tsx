@@ -20,6 +20,7 @@ import { useAuthStore } from "@/stores/auth";
 import { logoutSession } from "@/lib/auth-api";
 import { formatPrice } from "@/lib/format-price";
 import { useCartStore } from "@/stores/cart";
+import { useWishlistStore } from "@/stores/wishlist";
 import { useSessionBootstrap } from "@/hooks/use-session-bootstrap";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { StorefrontSearchDropdown } from "@/components/shared/StorefrontSearchDropdown";
@@ -74,6 +75,7 @@ export function MobileNav({ minOrderValuePaise = 0 }: MobileNavProps) {
     } finally {
       useAuthStore.getState().logoutLocalSession();
       clearCart();
+      useWishlistStore.getState().clear();
       close();
     }
   };

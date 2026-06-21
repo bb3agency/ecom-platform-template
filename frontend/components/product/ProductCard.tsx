@@ -38,22 +38,24 @@ export function ProductCard({
   const handleWishlistToggle = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (loading) return;
+    const next = !inWishlist;
+    // Optimistic local toggle — persists in localStorage for guests too, and
+    // merges into the account on login (mirrors the guest cart).
+    toggleItem(product.id, next);
     if (!accessToken) {
-      alert("Please sign in to save items to your wishlist.");
+      // Guest: saved locally only; nothing to sync until they sign in.
       return;
     }
-    if (loading) return;
     setLoading(true);
-    toggleItem(product.id, !inWishlist);
     try {
-      if (inWishlist) {
-        await removeFromWishlist(product.id, accessToken);
-      } else {
+      if (next) {
         await addToWishlist(product.id, accessToken);
+      } else {
+        await removeFromWishlist(product.id, accessToken);
       }
     } catch {
-      toggleItem(product.id, inWishlist);
-      alert("Failed to update wishlist. Please try again.");
+      toggleItem(product.id, !next);
     } finally {
       setLoading(false);
     }

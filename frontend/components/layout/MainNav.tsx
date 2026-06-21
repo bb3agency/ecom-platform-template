@@ -6,6 +6,7 @@ import { User, LogOut, ShoppingCart } from "lucide-react";
 import { useAuthStore } from "@/stores/auth";
 import { logoutSession } from "@/lib/auth-api";
 import { useCartStore } from "@/stores/cart";
+import { useWishlistStore } from "@/stores/wishlist";
 import { useCartSync } from "@/hooks/use-cart-sync";
 import { useWishlistSync } from "@/hooks/use-wishlist-sync";
 import { useSessionBootstrap } from "@/hooks/use-session-bootstrap";
@@ -38,6 +39,7 @@ export function MainNav() {
     } finally {
       useAuthStore.getState().logoutLocalSession();
       clearCart();
+      useWishlistStore.getState().clear();
       router.push("/login");
     }
   };
