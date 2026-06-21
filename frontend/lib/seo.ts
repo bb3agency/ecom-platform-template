@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 
 /** Canonical storefront origin without trailing slash. */
 export function getSiteUrl(): string {
-  const url = process.env.NEXT_PUBLIC_STOREFRONT_URL ?? "http://localhost:3101";
+  // Neutral shared dev fallback — each client's real port comes from NEXT_PUBLIC_STOREFRONT_URL
+  // (env), so no client-specific port lives in core. (Matches api-base.ts's :3000 convention.)
+  const url = process.env.NEXT_PUBLIC_STOREFRONT_URL ?? "http://localhost:3000";
   return url.replace(/\/$/, "");
 }
 

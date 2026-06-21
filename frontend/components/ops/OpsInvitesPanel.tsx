@@ -181,7 +181,7 @@ export function OpsInvitesPanel() {
               <OpsInput
                 id="invite-url"
                 name="setupBaseUrl"
-                placeholder="https://raghavaorganics.com"
+                placeholder="https://example.com"
                 required
               />
             </OpsField>
@@ -320,7 +320,7 @@ export function OpsInvitesPanel() {
               <OpsInput
                 id="admin-invite-url"
                 name="setupBaseUrl"
-                placeholder="https://raghavaorganics.com"
+                placeholder="https://example.com"
                 required
               />
             </OpsField>

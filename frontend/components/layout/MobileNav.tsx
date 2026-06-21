@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSafeRouter } from "@/lib/use-safe-router";
+import { STORE_TAGLINE_SHORT } from "@/lib/content";
 import Image from "next/image";
 import {
   X,
@@ -298,7 +299,7 @@ export function MobileNav({ minOrderValuePaise = 0 }: MobileNavProps) {
           <p className="text-center text-xs text-[#767676]">
             {minOrderValuePaise > 0
               ? `Minimum order value: ${formatPrice(minOrderValuePaise)}`
-              : "Farm-fresh chemical-free produce"}
+              : STORE_TAGLINE_SHORT}
           </p>
         </div>
       </div>

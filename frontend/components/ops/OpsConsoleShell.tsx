@@ -222,7 +222,7 @@ export function OpsConsoleShell({ children }: OpsConsoleShellProps) {
                 <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
                   Control plane
                 </p>
-                <p className="font-heading text-sm font-semibold">Raghava Ops</p>
+                <p className="font-heading text-sm font-semibold">Ops Console</p>
               </div>
             </div>
             <div className="flex min-w-0 items-center gap-2">

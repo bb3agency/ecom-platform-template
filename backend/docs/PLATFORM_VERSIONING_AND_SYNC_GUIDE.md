@@ -22,7 +22,7 @@
 | Bucket | Examples | Lives in | Versioned how |
 | --- | --- | --- | --- |
 | **Common** (all clients) | API client, cart/checkout/order logic, all backend modules | **Core** (`core-manifest.json` → include) | `backend-core` / `frontend-core` semver |
-| **Configurable** (per client) | palette/fonts (`app/globals.css`, `lib/fonts.ts`), brand strings (`lib/constants.ts`), assets (`public/`), `FEATURE_*` flags | Design layer + Ops/store config | Not core-versioned (orthogonal) |
+| **Configurable** (per client) | palette/fonts (`app/globals.css`, `lib/fonts.ts`), brand identity (`lib/constants.ts`), **copy/content** (`lib/content.ts`), assets (`public/`), legal/marketing/Footer/email content, `FEATURE_*` flags | Design layer + Ops/store config | Not core-versioned (orthogonal) |
 | **Custom** (one client only) | a bespoke module only client X wants | `backend/src/modules/client/**`, `frontend/app/(client)/**` | Tracked per client, excluded from core diff |
 
 **Why this makes one version number meaningful:** because divergence is forced into config/flags/extension folders, the *core* stays byte-identical across clients — so "raghava is on backend-core 2.3.1" is a true, enforceable statement.
@@ -36,7 +36,7 @@ The two rules the white-label/multi-client industry converges on, and that this 
 
 We run **separately-deployed** client sites (per-client repo + VPS), not one shared deployment — so we keep per-client repos. But the same rule governs *what may differ*:
 
-- **All client identity is DATA in the design layer**, never hardcoded in core: brand name / logo / storage prefix / contact / domains → `frontend/lib/constants.ts` (the client config); palette → `globals.css` tokens; assets → `public/`; behaviour → `FEATURE_*` flags + Ops/env config. Core reads identity from there and hardcodes none.
+- **All client identity AND copy are DATA in the design layer**, never hardcoded in core. Two per-client config files (both excluded from sync): **`lib/constants.ts`** = brand IDENTITY (name, logo, `STORAGE_PREFIX`, domains, contact); **`lib/content.ts`** = client COPY (taglines, blurbs, product-attribute defaults, homepage SEO). Palette → `globals.css` tokens; assets → `public/`; legal/marketing/Footer/email/homepage → excluded content files; behaviour → `FEATURE_*` flags + Ops/env config. Core components import identity + copy from these and hardcode neither. **Rule: if a string in core reads like a brand name, location, or marketing line, it belongs in `constants.ts`/`content.ts`, not inline.**
 - **Core is byte-identical across clients — enforced, not hoped:** `check-core-purity` (CI) fails on any client identifier in core; `core-manifest.json` declares core vs client; the design layer is `merge=ours`-protected.
 - **The governance config must itself propagate.** Incident lesson (2026-06-21): a sync re-contaminated a client because `core-manifest.json` wasn't synced, so it used stale excludes. Fix: `core-manifest.json` + `core-purity-denylist.txt` are now in the core include — every client enforces the *same* rules. **Rule: anything that governs the sync must itself be synced.**
 - **Sync model mirrors the .NET VMR** ([devblogs.microsoft.com](https://devblogs.microsoft.com/dotnet/how-we-synchronize-dotnets-virtual-monorepo/)): clean upstream (template) → automated downstream sync, with per-client divergence confined to **declared, time-boxed** `approved-divergence` patches — never silent forks. Tests and per-client content (legal/marketing/Footer/email) are excluded from core because they are *content/data*, not shared logic.
@@ -123,10 +123,11 @@ A core component only auto-adopts a client's look if that client defines every t
 
 Because `sync-core.mjs` checks out the **entire** core pathspec, any client-specific value baked into a core file gets copied to every client on the next sync — overwriting their brand/keys with another client's (this bit us: a sync turned `sbgs-cart` into `raghava-cart`). To make that impossible:
 
-- **Client identity never lives in core code.** Brand name → `APP_NAME`; logo → `BRAND_LOGO_SRC`; storage keys → `STORAGE_PREFIX`; provider/contact values → env or Ops config — all in the **design layer** (`frontend/lib/constants.ts`, excluded from sync). Per-client **content** (legal/about/marketing pages, `Footer`, email templates) is excluded from core in `core-manifest.json`.
-- **`check-core-purity.mjs` (`npm run check:core-purity`)** greps every core file (per `core-manifest.json`) for the patterns in `core-purity-denylist.txt` (client brand names, domains, slugs) and **fails the build** on any hit. It's wired into `ci:reliability-gates`. This is the guard that prevents the whole contamination class — a hardcoded "Raghava Organics" in a core file can no longer reach CI green.
-- **Onboarding a new client:** add their brand/domain/slug to `core-purity-denylist.txt` so their identity can never leak into core either.
-- **Fixing a violation:** move the value to the design layer (parameterize with `APP_NAME`/`STORAGE_PREFIX`/env), or — if the file is genuinely per-client content — exclude it in `core-manifest.json`.
+- **Client identity AND copy never live in core code.** Brand name → `APP_NAME`; logo → `BRAND_LOGO_SRC`; storage keys → `STORAGE_PREFIX`; provider/contact → env or Ops config — all in **`lib/constants.ts`** (excluded). Marketing **copy** (taglines, blurbs, product-attribute defaults, homepage SEO) → **`lib/content.ts`** (excluded). Larger per-client **content** (legal/about pages, homepage `page.tsx`, `Footer`, marketing-home sections, email templates) + **tests** (`**/*.test.*`) are excluded from core in `core-manifest.json` (content & test fixtures are *data*, not shared logic).
+- **`check-core-purity.mjs` (`npm run check:core-purity`)** greps every core file (per `core-manifest.json`, **skipping tests and its own config files**) for `core-purity-denylist.txt` patterns and **fails the build** on any hit. Each client also has a **`core-purity-allow.txt`** listing its OWN identifiers — only *another* client's brand in core is contamination, so a client's own brand in its (rare) core mentions is allowed. Wired into `ci:reliability-gates`. A hardcoded "Raghava Organics" in shared core can no longer reach CI green.
+- **`core-manifest.json` + `core-purity-denylist.txt` are themselves synced** (in the core include) — the governance config must propagate, or a client drifts onto stale rules (this is exactly how a re-contamination happened: a client synced with an out-of-date manifest).
+- **Onboarding a new client:** add their brand/domain/slug to `core-purity-denylist.txt`, create their `core-purity-allow.txt` (their own identifiers), and author their `lib/constants.ts` + `lib/content.ts`.
+- **Fixing a violation:** move the value to the design layer — identity → `constants.ts` (`APP_NAME`/`STORAGE_PREFIX`); copy → `content.ts`; or, if the file is genuinely per-client content, exclude it in `core-manifest.json`.
 
 ---
 
@@ -279,8 +280,8 @@ gh repo create bb3agency/<new-client>-site --private --source=. --remote=origin
 git push -u origin main
 ```
 
-**2. Apply the client's design + identity** (the per-client layer — never touches core):
-`frontend/app/globals.css` (palette tokens), `frontend/lib/fonts.ts`, `frontend/lib/constants.ts` (brand strings), `frontend/public/` (logo/images), `CLIENT_ID`/domains in `.env*.example`. Run `bash backend/scripts/check-token-contract.sh` — every required token must be defined.
+**2. Apply the client's design + identity + copy** (the per-client layer — never touches core):
+`frontend/app/globals.css` (palette tokens), `frontend/lib/fonts.ts`, `frontend/lib/constants.ts` (brand identity: name/logo/`STORAGE_PREFIX`), **`frontend/lib/content.ts`** (taglines/blurbs/product defaults/homepage copy), `frontend/public/` (logo/images), the content pages (`about`/`privacy`/`terms`/`returns`/`shipping`/homepage `page.tsx`/`Footer`/marketing-home/email templates), `CLIENT_ID`/domains in `.env*.example`, plus `core-purity-allow.txt` (this client's own identifiers). Run `bash backend/scripts/check-token-contract.sh` and `node backend/scripts/check-core-purity.mjs` — both must pass.
 
 **3. Pin the version** in `PLATFORM_VERSION` (`backend-core` / `frontend-core` = current template version) and add a row to §11.
 

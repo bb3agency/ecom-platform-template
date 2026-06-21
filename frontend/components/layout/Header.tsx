@@ -4,6 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { Phone, Menu, Leaf } from "lucide-react";
 import { APP_NAME, BRAND_LOGO_SRC } from "@/lib/constants";
+import { STORE_TAGLINE, HEADER_PROMO } from "@/lib/content";
 import { MainNav } from "@/components/layout/MainNav";
 import { SearchInput } from "@/components/shared/SearchInput";
 import { MobileNav } from "@/components/layout/MobileNav";
@@ -34,10 +35,10 @@ export function Header({ categories, minOrderValuePaise = 0 }: HeaderProps) {
             <span className="font-bold text-[#ec6e55]">
               {formatPrice(minOrderValuePaise)}
             </span>
-            . Shop fresh chemical-free produce today!
+            . {HEADER_PROMO}
           </>
         ) : (
-          "Farm-fresh chemical-free produce. Lab-tested. Delivered to your door."
+          STORE_TAGLINE
         )}
       </div>
 

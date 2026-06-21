@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { CART_EMPTY_BLURB } from "@/lib/content";
 import { useCartStore } from "@/stores/cart";
 import { useAuthStore } from "@/stores/auth";
 import { useCartSync } from "@/hooks/use-cart-sync";
@@ -53,7 +54,7 @@ export function CartWorkspace() {
           Your cart is empty
         </h2>
         <p className="mb-8 max-w-sm text-sm font-medium text-[#767676]">
-          Add some fresh, chemical-free products to your cart and come back here to complete your order.
+          {CART_EMPTY_BLURB}
         </p>
         <Link
           href="/products"

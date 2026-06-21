@@ -16,7 +16,9 @@
       "backend/.env.*",
       "backend/docs/clients/**",
       "backend/src/modules/client/**",
-      "backend/src/modules/notifications/templates/**"
+      "backend/src/modules/notifications/templates/**",
+      "backend/**/*.test.ts",
+      "backend/**/*.spec.ts"
     ]
   },
   "frontendCore": {
@@ -40,16 +42,21 @@
       "frontend/app/globals.css",
       "frontend/lib/fonts.ts",
       "frontend/lib/constants.ts",
+      "frontend/lib/content.ts",
       "frontend/public/**",
       "frontend/components/marketing/**",
       "frontend/components/storefront/home/**",
       "frontend/components/layout/Footer.tsx",
       "frontend/app/(client)/**",
+      "frontend/app/(storefront)/page.tsx",
       "frontend/app/(storefront)/about/**",
       "frontend/app/(storefront)/privacy/**",
       "frontend/app/(storefront)/terms/**",
       "frontend/app/(storefront)/returns/**",
       "frontend/app/(storefront)/shipping/**",
+      "frontend/**/*.test.ts",
+      "frontend/**/*.test.tsx",
+      "frontend/**/*.spec.ts",
       "frontend/.env*"
     ]
   },
@@ -59,6 +66,7 @@
       "frontend/app/globals.css",
       "frontend/lib/fonts.ts",
       "frontend/lib/constants.ts",
+      "frontend/lib/content.ts",
       "frontend/public/**"
     ]
   }
