@@ -31,8 +31,8 @@ If `diff` output is non-empty, re-sync and commit the updated `.agents/rules/dev
 2. **Identify the current tier and next incomplete slice** from the Slice Tracker.
 3. **Confirm backend `.env` bootstrap keys are correctly configured** — BEFORE running any script, verify ALL of the following in the backend `.env`.
    > **Architecture note:** Provider API keys (Razorpay, Delhivery, Shiprocket, MSG91, Fast2SMS, Resend, Meta WhatsApp, etc.) are **NOT stored in `.env`** in production. They are stored encrypted in the `OpsConfigSecret` database table and loaded at runtime via the Ops config overlay. The `.env` file only contains **bootstrap keys** that must exist before the DB is reachable.
-   - `CLIENT_ID` is set to a client-specific slug (e.g. `raghava-organics`) — **not** `ecom` or empty. Docker container names are derived from this value (`<CLIENT_ID>-postgres`, `<CLIENT_ID>-redis`).
-   - `POSTGRES_DB` uses **underscores only** (e.g. `raghava_organics`) — **hyphens are invalid in PostgreSQL DB names** and will cause container init or migration failures.
+   - `CLIENT_ID` is set to a client-specific slug (e.g. `your-client-slug`) — **not** `ecom` or empty. Docker container names are derived from this value (`<CLIENT_ID>-postgres`, `<CLIENT_ID>-redis`).
+   - `POSTGRES_DB` uses **underscores only** (e.g. `your_client_db`) — **hyphens are invalid in PostgreSQL DB names** and will cause container init or migration failures.
    - `POSTGRES_DB` and the DB name in `DATABASE_URL` **must match exactly** — mismatch means the bootstrap script creates the wrong DB.
    - `DATABASE_URL` is **not** `ecom_template` and matches the `POSTGRES_DB` value.
    - `REDIS_PASSWORD` is **non-empty** — blank value causes `ECONNABORTED`/`ECONNRESET` loops in ioredis on every reconnect attempt.
@@ -1272,7 +1272,7 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:3000/api/v1
 
 # Site
 NEXT_PUBLIC_STOREFRONT_URL=http://localhost:3101
-NEXT_PUBLIC_STORE_NAME="Raghava Organics"
+NEXT_PUBLIC_STORE_NAME="Acme Store"
 
 # Analytics (production only)
 NEXT_PUBLIC_GA_ID=

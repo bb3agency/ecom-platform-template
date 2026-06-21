@@ -317,7 +317,7 @@ Perform each dry-run as part of the vertical slice that builds the relevant fron
 2. Configure `.env.local` with local backend base URL (`NEXT_PUBLIC_API_BASE_URL` including `/api/v1`).
 3. Build slices in strict order: Foundation -> Ops -> Admin read -> Admin mutation -> Reliability -> Storefront.
 4. For each slice: lock contract -> typed client -> UI states -> real backend integration -> provider dry-run -> checklist ticks.
-5. Upstream reusable backend fixes via `CO_DEVELOPMENT_SYNC_GUIDE.md`; keep client-specific backend changes local.
+5. Upstream reusable backend fixes via `CO_DEVELOPMENT_SYNC_GUIDE.md`; keep client-specific backend changes local. For a NEW client, follow `docs/PLATFORM_VERSIONING_AND_SYNC_GUIDE.md` §13 (clone from template + apply design + wire keys) so it auto-receives core releases; the per-release flow is §12.
 
 **Evidence gate:**
 - All contracted frontend pages and admin views are built and integrated against the **local** backend (not mocked, not deferred).

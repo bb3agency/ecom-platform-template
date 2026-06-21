@@ -1460,6 +1460,8 @@ npx lighthouse-ci       # Core Web Vitals pass (if configured)
 
 Canonical source: `CO_DEVELOPMENT_SYNC_GUIDE.md` (git mechanics) + `backend/docs/PLATFORM_VERSIONING_AND_SYNC_GUIDE.md` (the versioning + changelog + design-isolation + drift-enforcement layer: semver'd `backend-core`/`frontend-core`, `CHANGELOG.md` propagation blocks, `FEATURE_*`-flag feature differences, the `merge=ours` design layer, and the `check-core-drift` / `check-token-contract` gates).
 
+**Canonical change flow (automated — guide §12):** develop in any client (feature behind a `FEATURE_*` flag OFF) → cherry-pick the commits into the template → CHANGELOG + version bump + `git tag <core>-vX.Y.Z` + push. The tag fires `release-train.yml` (template) → each client's `core-sync.yml` runs `sync-core.mjs` (`npm run sync:core`), pulling only core files (design/client excluded) and opening a review PR you merge. The tag is the "ship to every client" trigger; nothing propagates before it. Existing clients (raghava, sbgs) sync via this automation, not `git merge`. Keys/secrets + new-client onboarding: guide §13/§13.1.
+
 When frontend implementation reveals a backend bug/improvement:
 - Classify change as **template-worthy** or **client-specific**.
 - Use the canonical guide for Flow A/Flow B command order.
