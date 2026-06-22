@@ -12,7 +12,7 @@
 - **The changelog entry is the apply-everywhere recipe** — it states layers, migration, flag, design impact, severity, breaking, rollback.
 - **Three buckets:** *common* → core (synced to all) · *configurable* (design + flags) → per client · *custom* → an extension folder the core ignores.
 - **Each client pins `PLATFORM_VERSION`**; updating = replaying changelog entries to the latest tag.
-- **Differences stay out of core code:** design lives in the token layer (`merge=ours`), feature differences live in `FEATURE_*` flags (default OFF), one-offs live in `src/modules/client/**` / `app/(client)/**`.
+- **Differences stay out of core code:** design lives in the token layer (`merge=ours`), feature differences live in `FEATURE_*` flags (default OFF), one-offs live in the client extension layer: `backend/src/modules/client/**`, `frontend/app/(client)/**` (pages), `frontend/components/client/**` (components).
 - **CI enforces it:** `check-core-drift.sh` (no silent fork) + `check-token-contract.sh` (no broken theme) + compatibility check (no mismatched core pair).
 
 ---
@@ -23,7 +23,7 @@
 | --- | --- | --- | --- |
 | **Common** (all clients) | API client, cart/checkout/order logic, all backend modules | **Core** (`core-manifest.json` → include) | `backend-core` / `frontend-core` semver |
 | **Configurable** (per client) | palette/fonts (`app/globals.css`, `lib/fonts.ts`), brand identity (`lib/constants.ts`), **copy/content** (`lib/content.ts`), assets (`public/`), legal/marketing/Footer/email content, `FEATURE_*` flags | Design layer + Ops/store config | Not core-versioned (orthogonal) |
-| **Custom** (one client only) | a bespoke module only client X wants | `backend/src/modules/client/**`, `frontend/app/(client)/**` | Tracked per client, excluded from core diff |
+| **Custom** (one client only) | a bespoke module only client X wants | `backend/src/modules/client/**`, `frontend/app/(client)/**`, `frontend/components/client/**` | Tracked per client, excluded from core diff |
 
 **Why this makes one version number meaningful:** because divergence is forced into config/flags/extension folders, the *core* stays byte-identical across clients — so "raghava is on backend-core 2.3.1" is a true, enforceable statement.
 
@@ -41,7 +41,7 @@ We run **separately-deployed** client sites (per-client repo + VPS), not one sha
 - **The governance config must itself propagate.** Incident lesson (2026-06-21): a sync re-contaminated a client because `core-manifest.json` wasn't synced, so it used stale excludes. Fix: `core-manifest.json` + `core-purity-denylist.txt` are now in the core include — every client enforces the *same* rules. **Rule: anything that governs the sync must itself be synced.**
 - **Sync model mirrors the .NET VMR** ([devblogs.microsoft.com](https://devblogs.microsoft.com/dotnet/how-we-synchronize-dotnets-virtual-monorepo/)): clean upstream (template) → automated downstream sync, with per-client divergence confined to **declared, time-boxed** `approved-divergence` patches — never silent forks. Tests and per-client content (legal/marketing/Footer/email) are excluded from core because they are *content/data*, not shared logic.
 
-If you're ever tempted to branch a core file for one client, that's the anti-pattern: parameterize it via config, gate it behind a flag, or move it to the extension layer (`src/modules/client/**` / `app/(client)/**`).
+If you're ever tempted to branch a core file for one client, that's the anti-pattern: parameterize it via config, gate it behind a flag, or move it to the client extension layer — `backend/src/modules/client/**`, `frontend/app/(client)/**` (pages; route groups keep URLs unchanged, add a `(client)/layout.tsx` for chrome), `frontend/components/client/**` (components).
 
 ---
 

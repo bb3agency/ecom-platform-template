@@ -47,6 +47,7 @@
       "frontend/components/marketing/**",
       "frontend/components/storefront/home/**",
       "frontend/components/layout/Footer.tsx",
+      "frontend/components/client/**",
       "frontend/app/(client)/**",
       "frontend/app/(storefront)/page.tsx",
       "frontend/app/(storefront)/about/**",

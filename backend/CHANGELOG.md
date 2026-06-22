@@ -12,6 +12,21 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.8] — 2026-06-22
+
+### Added
+- **Client extension layer for frontend components.** `core-manifest.json` now excludes `frontend/components/client/**` — the canonical home for per-client component variants (alongside the existing `frontend/app/(client)/**` for pages and `backend/src/modules/client/**` for backend). Client-only UI that previously had to live in core paths (`components/cart`, `components/layout`, …) now has a non-core home and won't trip the drift gate.
+
+### Changed
+- **`check-core-drift.sh` failure message** now spells out the full client extension layer (pages → `app/(client)/**`, components → `components/client/**`, backend → `src/modules/client/**`) so the fix path is obvious when the gate fires.
+
+**Propagation:**
+- Severity: NORMAL (manifest/tooling; no runtime/API change)
+- Layers: `core-manifest.json` [core], `backend/scripts/check-core-drift.sh` [core]
+- Migration: NO · Flag: n/a · Design impact: none · Breaking: NO
+- Rollback: revert the manifest exclude + script message
+- Ops note: existing clients that built client-only UI into core paths should move it to `components/client/**` / `app/(client)/**` (URLs unchanged for route-group page moves). See guide §1.1.
+
 ## [0.1.7] — 2026-06-22
 
 ### Fixed

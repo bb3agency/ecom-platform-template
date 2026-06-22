@@ -178,6 +178,12 @@ app/
 │   ├── addresses/page.tsx
 │   ├── wishlist/page.tsx
 │   └── settings/page.tsx
+├── (client)/                  # CLIENT EXTENSION LAYER — per-client pages ONLY (excluded from core sync)
+│   ├── layout.tsx             # Client chrome (mirror (storefront) layout: Header/Footer)
+│   └── <bespoke>/page.tsx     # e.g. blog, locations, brand-specific landing pages
+│                              # Route groups don't change URLs, so /blog etc. stay the same.
+│                              # Put ANY client-only page here, never in (storefront), or the
+│                              # core-drift gate will fail (these paths are NOT platform core).
 ├── api/                       # Optional frontend-only handlers (never provider webhooks)
 ├── layout.tsx                 # Root layout (fonts, providers, metadata)
 ├── not-found.tsx              # Custom 404
@@ -191,6 +197,7 @@ components/
 ├── checkout/                  # Checkout domain components
 ├── layout/                    # Header, Footer, Navigation, Sidebar
 ├── marketing/                 # Hero, Banners, Newsletter, Testimonials
+├── client/                    # CLIENT EXTENSION LAYER — per-client components ONLY (excluded from core sync)
 └── shared/                    # Rating, PriceDisplay, Badge, EmptyState, Skeleton
 
 lib/

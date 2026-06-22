@@ -107,7 +107,10 @@ if [ "$fail" -ne 0 ]; then
   echo ""
   echo "❌ Core drift found. Fix by ONE of:"
   echo "   • Upstream the change to the template (it becomes core for everyone), or"
-  echo "   • Move it into the client extension layer (src/modules/client/** or app/(client)/**), or"
+  echo "   • Move it into the CLIENT EXTENSION LAYER (never overwritten by core sync):"
+  echo "       - client pages      → frontend/app/(client)/**   (URLs unchanged; add (client)/layout.tsx)"
+  echo "       - client components → frontend/components/client/**"
+  echo "       - client backend    → backend/src/modules/client/**"
   echo "   • Record a time-boxed exception in PLATFORM_VERSION 'approved-divergence'."
   exit 1
 fi
