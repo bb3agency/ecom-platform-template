@@ -53,13 +53,6 @@ fi
 
 git fetch -q "$TEMPLATE_REMOTE" --tags || skip_or_fail "cannot fetch remote '$TEMPLATE_REMOTE'"
 
-# Build include/exclude pathspecs from the manifest.
-mapfile -t INCLUDES < <(jq -r '.backendCore.include[], .frontendCore.include[]' "$MANIFEST")
-mapfile -t EXCLUDES < <(jq -r '.backendCore.exclude[], .frontendCore.exclude[]' "$MANIFEST")
-
-PATHSPEC=("${INCLUDES[@]}")
-for e in "${EXCLUDES[@]}"; do PATHSPEC+=(":(exclude)$e"); done
-
 # Approved, time-boxed divergences are sanctioned — exclude them from the diff so
 # they don't trip the gate. Entry format in PLATFORM_VERSION:
 #   approved-divergence:
@@ -71,9 +64,6 @@ mapfile -t ALLOW < <(
     f && /-[[:space:]]/ { sub(/^[[:space:]]*-[[:space:]]*/, ""); sub(/[[:space:]]*—.*$/, ""); gsub(/[[:space:]]/, ""); if ($0 != "") print }
   ' PLATFORM_VERSION 2>/dev/null || true
 )
-for a in "${ALLOW[@]}"; do
-  [ -n "$a" ] && PATHSPEC+=(":(exclude)$a")
-done
 if [ "${#ALLOW[@]}" -gt 0 ]; then
   echo "Honoring approved-divergence (excluded from gate): ${ALLOW[*]}"
 fi
@@ -81,20 +71,37 @@ fi
 BE_TAG="backend-core-v${be_ver}"
 FE_TAG="frontend-core-v${fe_ver}"
 
+# Diff EACH layer's paths against ITS OWN tag. Tags are full-repo snapshots, so a
+# combined pathspec diffed against both tags cross-checks frontend files against
+# the backend tag (and vice-versa) → false positives whenever the two layers are
+# pinned to different commits. Per-layer diffing is the correct comparison.
 fail=0
-for tag in "$BE_TAG" "$FE_TAG"; do
+check_layer() {
+  local layer_key="$1" tag="$2"
   if ! git rev-parse -q --verify "refs/tags/$tag" >/dev/null 2>&1 && \
      ! git rev-parse -q --verify "$TEMPLATE_REMOTE/$tag" >/dev/null 2>&1; then
     skip_or_fail "pinned tag $tag not found on $TEMPLATE_REMOTE (is the template tagged & pushed?)"
   fi
-  echo "── Diffing core files against $tag ──"
-  drift="$(git diff --name-only "$tag" -- "${PATHSPEC[@]}" 2>/dev/null || true)"
+
+  local pathspec=()
+  mapfile -t inc < <(jq -r ".${layer_key}.include[]" "$MANIFEST")
+  mapfile -t exc < <(jq -r ".${layer_key}.exclude[]" "$MANIFEST")
+  pathspec=("${inc[@]}")
+  for e in "${exc[@]}"; do pathspec+=(":(exclude)$e"); done
+  for a in "${ALLOW[@]}"; do [ -n "$a" ] && pathspec+=(":(exclude)$a"); done
+
+  echo "── Diffing ${layer_key} files against $tag ──"
+  local drift
+  drift="$(git diff --name-only "$tag" -- "${pathspec[@]}" 2>/dev/null || true)"
   if [ -n "$drift" ]; then
-    echo "DRIFT detected in core files (must match $tag):"
+    echo "DRIFT detected in ${layer_key} files (must match $tag):"
     echo "$drift" | sed 's/^/  /'
     fail=1
   fi
-done
+}
+
+check_layer backendCore  "$BE_TAG"
+check_layer frontendCore "$FE_TAG"
 
 if [ "$fail" -ne 0 ]; then
   echo ""

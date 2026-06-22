@@ -12,6 +12,18 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.7] — 2026-06-22
+
+### Fixed
+- **`check-core-drift.sh` false positives across layers.** The gate built one combined backend+frontend pathspec and diffed it against *each* tag. Since tags are full-repo snapshots, that cross-checked frontend files against the backend tag (and vice-versa) → spurious "drift" whenever backend and frontend are pinned to different commits (e.g. backend 0.1.6 / frontend 0.1.4). Now each layer is diffed against **its own** tag (`backendCore`→`backend-core-v*`, `frontendCore`→`frontend-core-v*`). Verified green on raghava at 0.1.6/0.1.4.
+
+**Propagation:**
+- Severity: NORMAL (gate correctness; no runtime/API change)
+- Layers: backend (`scripts/check-core-drift.sh`)
+- Migration: NO · Flag: n/a · Design impact: none · Breaking: NO
+- Rollback: revert the script
+- Ops note: re-enable the gate per client with Variable `CORE_DRIFT_ENABLED=true` once this lands.
+
 ## [0.1.6] — 2026-06-22
 
 > Note: tags `0.1.3`–`0.1.5` were cut without CHANGELOG/`package.json`/`PLATFORM_VERSION` bumps on main; this entry realigns those markers and supersedes the `sync-core.mjs` engine introduced in `0.1.2`.
