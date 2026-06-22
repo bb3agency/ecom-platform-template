@@ -14,6 +14,7 @@
 - **Each client pins `PLATFORM_VERSION`**; updating = replaying changelog entries to the latest tag.
 - **Differences stay out of core code:** design lives in the token layer (`merge=ours`), feature differences live in `FEATURE_*` flags (default OFF), one-offs live in the client extension layer: `backend/src/modules/client/**`, `frontend/app/(client)/**` (pages), `frontend/components/client/**` (components).
 - **CI enforces it:** `check-core-drift.sh` (no silent fork) + `check-token-contract.sh` (no broken theme) + compatibility check (no mismatched core pair).
+- **Conflict-free propagation is implemented (Phase 1, `backend-core` 0.1.6–0.1.8):** a 3-way merge sync engine + a hard drift gate + a client extension layer. The phased roadmap (Phase 1 done; Phase 2/3 = package the core) is **§14**.
 
 ---
 
@@ -209,11 +210,15 @@ Net rule: **after every release, watch the template's release-train run and each
 | `backend/CHANGELOG.md`, `frontend/CHANGELOG.md` | Versioned propagation instruction sets |
 | `backend/scripts/check-core-drift.sh` | Fails on unsanctioned core divergence |
 | `backend/scripts/check-token-contract.sh` | Fails on missing design tokens |
-| `backend/scripts/sync-core.mjs` | Engine: pulls core files for a tag into a client (`npm run sync:core`) |
+| `backend/scripts/sync-core.mjs` | Engine: 3-way-merges a tag's delta into a client (`npm run sync:core`) — §9.1, §14.1 |
+| `backend/scripts/check-core-purity.mjs` | Fails on client identity baked into core files (§7.1) |
 | `.github/workflows/release-train.yml` | Template: on a core tag, fans out to clients |
 | `.github/workflows/core-sync.yml` | Client: receives the dispatch, runs the engine, opens the sync PR |
+| `.github/workflows/core-drift.yml` | Client: hard drift gate — fails PR/push if core diverges from the pinned tag (§7, §14.1) |
+| `core-purity-denylist.txt` / `core-purity-allow.txt` | Brand/slug patterns the purity guard forbids in core / this client's own allowed identifiers |
 
-> `chmod +x backend/scripts/check-core-drift.sh backend/scripts/check-token-contract.sh` once, and wire both into CI alongside the existing `typecheck`/`lint`/`build` gates.
+> Client extension layer (never core-synced): `frontend/app/(client)/**` (pages), `frontend/components/client/**` (components), `backend/src/modules/client/**` (backend).
+> `chmod +x backend/scripts/check-core-drift.sh backend/scripts/check-token-contract.sh` once, and wire the gates into CI alongside `typecheck`/`lint`/`build`.
 
 ---
 
@@ -221,8 +226,8 @@ Net rule: **after every release, watch the template's release-train run and each
 
 | Client | backend-core | frontend-core | Enabled flags (non-default) | Design notes |
 | --- | --- | --- | --- | --- |
-| raghava-organics | 0.1.1 | 0.1.1 | _baseline_ | Tasty-Daily palette (forest green / peach), Inter |
-| sbgs (srisaibabasweets) | 0.1.1 | 0.1.1 | _baseline_ | own palette |
+| raghava-organics | 0.1.8 | 0.1.4 | _baseline_ | Tasty-Daily palette (forest green / peach), Inter; customizes via design layer only |
+| sbgs (srisaibabasweets) | 0.1.8 | 0.1.4 | _baseline_ | own palette; bespoke pages/components in the client extension layer (`app/(client)`, `components/client`) |
 
 Update this table on every client sync — it is the at-a-glance "who is up to date."
 
@@ -312,8 +317,11 @@ Plus, in the template's local checkout, one git remote per client (for cherry-pi
 | --- | --- | --- | --- |
 | `TEMPLATE_REPO` | Variable | `bb3agency/ecom-platform-template` | Which template to pull core from. |
 | `TEMPLATE_READ_PAT` | Secret | PAT — **Contents: read** on the template repo | Lets the client `git fetch` the private template. |
-| `CORE_SYNC_PAT` | Secret | PAT — **Contents: write + Pull requests: write** on this client | Pushes the sync branch + opens the PR; makes the client's CI run on that PR. |
+| `CORE_SYNC_PAT` | Secret | PAT — **Contents: write + Pull requests: write** on this client (must also **read the template** — the checkout token authenticates the core-drift template fetch) | Pushes the sync branch + opens the PR; makes the client's CI run on that PR. |
+| `CORE_DRIFT_ENABLED` | Variable | `true` (omit/`false` to disable) | Master switch for the `core-drift.yml` hard gate. Set `false` only while a client still has un-sanctioned drift to clean up. |
 | `VPS_RUNNER_LABEL` | Variable | e.g. `<client>-vps` | Routes deploy to this client's self-hosted runner. |
+
+> Client repos also carry two **infra workflows** (not core-synced — copy/update per repo): `.github/workflows/core-sync.yml` (receives sync dispatches → opens the PR) and `.github/workflows/core-drift.yml` (the hard gate). A fine-grained PAT used for `TEMPLATE_READ_PAT`/`CORE_SYNC_PAT` must include **Contents: Read on the template repo** or the drift fetch 404s.
 
 **Each client repo** — Settings → Actions → General:
 - Enable **"Allow GitHub Actions to create and approve pull requests."**
@@ -331,4 +339,62 @@ git fetch template --tags
 
 ---
 
-> **Propagation:** This guide, the changelog/version/manifest/contract files, and the two scripts are **template-worthy** — they belong in the core template and should be synced to every client repo. Per the co-development rules, propose the push/PR and get explicit approval before any remote mutation.
+## 14. Conflict-free propagation — phased roadmap
+
+The goal of this whole architecture is **two guarantees**: a core change reaches every client (a) **without merge conflicts** and (b) **without core drift**. There are only two ways to *guarantee* (not merely "usually avoid") this:
+
+| Guarantee | Mechanism | Status |
+| --- | --- | --- |
+| **Enforced** | Clients hold core *source*, but a hard CI gate blocks any divergence | ✅ **Phase 1 — DONE** |
+| **Structural** | Clients consume core as a *package* — they can't edit what they don't own | ⏳ **Phase 2 & 3 — planned** |
+
+Phase 1 is the prerequisite for 2 & 3 (you can't extract clean packages from drifted clients), and it pays for itself immediately. We migrate in ROI order; nothing below is all-or-nothing.
+
+### 14.1 Phase 1 — Hardened copy-sync + hard gate (DONE, 2026-06-22)
+
+Shipped in `backend-core` `0.1.6`→`0.1.8`. The copy-sync model kept, but made conflict- and drift-proof:
+
+1. **3-way merge sync engine** (`backend/scripts/sync-core.mjs`, §9.1). Applies the **delta** between the client's pinned tag and the new tag via `git apply --3way` instead of a wholesale `git checkout` overwrite. → client-local edits to unrelated lines survive; only true overlaps produce conflict markers (which fail CI → resolved in the PR); deletions & renames propagate; `PLATFORM_VERSION` only advances (downgrade guard); first-ever sync falls back to wholesale checkout.
+2. **Hard drift gate** (`backend/scripts/check-core-drift.sh` strict mode + `.github/workflows/core-drift.yml`, §7). Runs on every PR/push in client repos; **fails** the build if any core file diverges from the pinned tag. Diffs **per layer** (backendCore vs backend tag, frontendCore vs frontend tag — tags are full-repo snapshots, so a combined diff cross-checks layers and false-positives). Honors `approved-divergence`. This is what makes "core is read-only in clients" actually enforced.
+3. **Hardened `core-sync.yml`** (§9.1). Open-PR-only gating (a closed/merged PR no longer shadows a fresh one), regenerate-from-current-main (strictly-ahead → clean FF, never a stale merge), never-reopen (avoids head-desync → permanent `UNKNOWN`), `delete_branch_on_merge`, and `core-sync`/`has-conflicts` PR labels.
+4. **Client extension layer** (§1, §1.1, §7). Per-client code lives where core sync never touches it: pages → `frontend/app/(client)/**` (+ a `(client)/layout.tsx`; route groups keep URLs unchanged), components → `frontend/components/client/**`, backend → `backend/src/modules/client/**`.
+
+**Net effect:** the four root-causes of the old churn (closed-PR shadowing, stale-branch shadowing, reopen head-desync, `PLATFORM_VERSION` regression from stale merges) are gone, and a client can no longer silently fork core. Cost still scales linearly with client count (N sync PRs per release) — acceptable to ~3 clients; the reason to go structural beyond that is below.
+
+> **Known limitations carried into 2/3:** (a) `check-core-drift.sh` is unreliable on **Windows-local** (CRLF + git `**`-glob quirks) — trust the Ubuntu CI gate, or run the manual `git diff --name-only <tag> -- <bare dirs> :(exclude)…` form locally. (b) The 3-way auto-sync can occasionally no-op for a given repo's state — deterministic fallback for pure-core files with no client divergence: `git checkout <tag> -- <files>` + bump `PLATFORM_VERSION`, commit, push.
+
+### 14.2 Phase 2 — Package the BACKEND core (planned; trigger ≈ 4–5 clients)
+
+**Why:** copy-sync cost is linear; the package model is **flat** (publish once → Renovate opens a one-line bump PR in every client, auto-merged on green CI). A one-line version bump can't merge-conflict, and a client can't edit a dependency it doesn't hold → conflicts AND drift become **structurally impossible** for everything packaged. Backend is the cleanest first win (Fastify modules/services package cleanly; most core logic + risk lives here).
+
+**Target:** publish `@bb3/backend-core` to **GitHub Packages** (private npm registry under the `bb3agency` org); clients `npm install` it instead of holding the source.
+
+**Implementation outline (do later):**
+1. **Carve the package.** Move shared backend (the `backendCore.include` set: `src/common`, shared `src/modules/*` business logic, etc.) into a publishable package with an explicit **public API** (a barrel `index.ts` exporting exactly what clients consume). Keep client-only code in `src/modules/client/**`.
+2. **Decide the boundary** for the awkward bits: Prisma client + schema (ship schema + a generate step, or a `@bb3/db` sub-package), env/config loading, and DI/plugin registration (export a `registerCore(fastify, opts)` so each client app wires its own server). This boundary design IS the bulk of Phase 2.
+3. **Registry + publish CI.** `.npmrc` → `@bb3:registry=https://npm.pkg.github.com`; publish job triggered on `backend-core-v*` tag (reuse the tag scheme; `package.json version` stays the source of truth, already surfaced at `/health`).
+4. **Client consumption.** Each client's `backend/package.json` depends on `@bb3/backend-core@X.Y.Z`; a thin `src/main.ts` calls `registerCore(...)` + mounts `src/modules/client/**`.
+5. **Renovate** (`renovate.json` per client) grouping `@bb3/*`, auto-merge patch/minor on green CI — replaces the release-train fan-out for the backend.
+6. **Retire** backend copy-sync (drop `backendCore.include` from the manifest as files move into the package; the drift gate then only guards whatever thin backend bits remain in-repo).
+
+**Risks/notes:** package boundary + Prisma generation are the hard parts; keep the Phase-1 drift gate active until the package fully owns the backend; ship behind the same `FEATURE_*` discipline (propagation ≠ activation).
+
+### 14.3 Phase 3 — Package the FRONTEND logic (planned; after frontend stabilizes)
+
+**Why:** same flat-cost, zero-conflict guarantee for the ~90% of the frontend that is shareable logic/components. The remaining ~10% (Next.js app shell) **cannot** be packaged and stays template-synced under the Phase-1 gate → the end state is a **hybrid**.
+
+**Target:** publish `@bb3/frontend-core` (the `frontendCore.include` logic: `lib/`, `hooks/`, `stores/`, `types/`, `actions/`, and `components/{ui,product,cart,checkout,layout}`). Clients import from it.
+
+**Stays in each repo (NOT packageable — Next.js requires it under `app/`):** `app/**/page.tsx`, `app/**/layout.tsx`, `next.config.ts`, `middleware.ts`. These are thin (mostly composition) and keep using template-sync + the drift gate. **Design layer stays local too:** `globals.css`, `lib/fonts.ts`, `lib/constants.ts`, `lib/content.ts`, `public/`, plus the `(client)`/`components/client` extension layer.
+
+**Implementation outline (do later):**
+1. Extract `@bb3/frontend-core` with a clean export surface; client design/content (`constants.ts`/`content.ts`) injected via props/context or a config import so the package stays brand-agnostic (the §1.1 rule already enforces this).
+2. **Next.js integration:** `transpilePackages: ['@bb3/frontend-core']` in `next.config.ts`; Tailwind `content` globs must include the package path under `node_modules`; preserve RSC/`"use client"` boundaries across the package edge; verify tree-shaking.
+3. Publish on `frontend-core-v*` tag; Renovate bump PRs (auto-merge on green CI).
+4. App-shell pages/layouts continue via template-sync + drift gate (Phase-1 mechanism remains for these ~10%).
+
+**End state (hybrid):** backend + frontend logic = packaged (structural zero-conflict/zero-drift, flat cost); app-shell = template-synced + hard-gated. This is the standard architecture for a Next.js + Fastify platform across many client repos and scales cleanly to 10+ clients.
+
+---
+
+> **Propagation:** This guide, the changelog/version/manifest/contract files, and the scripts/workflows are **template-worthy** — they belong in the core template and should be synced to every client repo. Per the co-development rules, propose the push/PR and get explicit approval before any remote mutation.
