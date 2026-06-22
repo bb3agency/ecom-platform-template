@@ -1,0 +1,61 @@
+# core-drift — HARD GATE. Fails the build if this client repo's CORE files
+# diverge from the platform tag pinned in PLATFORM_VERSION. This is what
+# structurally prevents "client edited a core file" → the root cause of every
+# sync merge conflict. Runs ONLY in client repos (guarded on TEMPLATE_REPO var,
+# which the template repo itself does not set) and is opt-outable per-repo via
+# repo Variable CORE_DRIFT_ENABLED=false.
+#
+# Requires (already present on clients for core-sync):
+#   repo Variable TEMPLATE_REPO       — e.g. bb3agency/ecom-platform-template
+#   repo Secret   TEMPLATE_READ_PAT   — read access to the template repo
+# See backend/docs/PLATFORM_VERSIONING_AND_SYNC_GUIDE.md §7.
+name: core-drift
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+jobs:
+  drift:
+    # Inert in the template repo (no TEMPLATE_REPO var) and where explicitly disabled.
+    if: ${{ vars.TEMPLATE_REPO != '' && vars.CORE_DRIFT_ENABLED != 'false' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Preconditions (jq + secret)
+        env:
+          TEMPLATE_READ_PAT: ${{ secrets.TEMPLATE_READ_PAT }}
+        run: |
+          set -euo pipefail
+          command -v jq >/dev/null || sudo apt-get update -y && sudo apt-get install -y jq
+          [ -n "${TEMPLATE_READ_PAT:-}" ] || { echo "::error::TEMPLATE_READ_PAT not set — required for the strict core-drift gate"; exit 1; }
+          [ -f backend/scripts/check-core-drift.sh ] || { echo "::error::check-core-drift.sh missing"; exit 1; }
+
+      - name: Wire template remote (read-only)
+        env:
+          TEMPLATE_REPO: ${{ vars.TEMPLATE_REPO }}
+          TEMPLATE_READ_PAT: ${{ secrets.TEMPLATE_READ_PAT }}
+        run: |
+          set -euo pipefail
+          git remote remove template 2>/dev/null || true
+          git remote add template "https://x-access-token:${TEMPLATE_READ_PAT}@github.com/${TEMPLATE_REPO}.git"
+          git fetch template --tags --quiet
+
+      - name: Strict core-drift check
+        env:
+          CORE_DRIFT_STRICT: "true"
+          TEMPLATE_REMOTE: template
+        run: bash backend/scripts/check-core-drift.sh
+
+      - name: Scrub token from remote config
+        if: always()
+        run: git remote remove template 2>/dev/null || true

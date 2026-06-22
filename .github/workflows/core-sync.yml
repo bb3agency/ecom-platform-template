@@ -67,33 +67,71 @@ jobs:
         if: always()
         run: git remote remove template 2>/dev/null || true
 
-      - name: Commit + open PR
+      - name: Commit + open/refresh PR
         env:
           GH_TOKEN: ${{ secrets.CORE_SYNC_PAT || github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          BRANCH="core-sync/${{ inputs.tag }}"
+          TAG="${{ inputs.tag }}"
+          BRANCH="core-sync/${TAG}"
           git config user.name "core-sync[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           if git diff --quiet && git diff --cached --quiet; then
-            echo "No changes — this repo is already at ${{ inputs.tag }}. Nothing to do."
+            echo "No changes — this repo is already at ${TAG}. Nothing to do."
             exit 0
           fi
 
+          # Detect conflict markers the 3-way engine may have left (client-local
+          # edits overlapping the core change). These are committed on purpose so
+          # the PR's CI goes red and a human resolves them — never silently dropped.
+          CONFLICTS="$(git diff --name-only | while read -r f; do
+            [ -f "$f" ] && grep -lE '^<{7}|^={7}$|^>{7}' "$f" 2>/dev/null || true
+          done)"
+
+          # Always regenerate the branch from CURRENT main (this run's checkout),
+          # so it is strictly ahead of main → clean fast-forward, never a stale merge.
           git checkout -B "$BRANCH"
           git add -A
-          git commit -m "chore: sync ${{ inputs.tag }} from platform core"
+          git commit -m "chore: sync ${TAG} from platform core"
           git push -u origin "$BRANCH" --force-with-lease
 
-          if gh pr view "$BRANCH" >/dev/null 2>&1; then
-            echo "PR already exists for $BRANCH — updated branch."
-          else
-            gh pr create --base main --head "$BRANCH" \
-              --title "core-sync: ${{ inputs.tag }}" \
-              --body "Automated platform-core sync to \`${{ inputs.tag }}\`.
+          # Make future cycles self-cleaning: deleting the head branch on merge stops
+          # closed/merged PRs from shadowing the next sync. Best-effort (needs admin PAT).
+          gh api -X PATCH "repos/${GH_REPO}" -F delete_branch_on_merge=true >/dev/null 2>&1 \
+            || echo "::notice::could not set delete_branch_on_merge (PAT lacks admin) — set it once in repo Settings."
+
+          # Ensure labels exist (best-effort).
+          gh label create core-sync   --color 0e8a16 --description "Automated platform-core sync" >/dev/null 2>&1 || true
+          gh label create has-conflicts --color b60205 --description "Sync left conflict markers — resolve before merge" >/dev/null 2>&1 || true
+
+          LABELS="core-sync"
+          BODY="Automated platform-core sync to \`${TAG}\` via 3-way merge.
 
           - Only core files (per \`core-manifest.json\`) were updated; design / client / approved-divergence paths are untouched.
-          - Review the diff + the \`CHANGELOG.md\` entry, run the usual checks, then merge to deploy.
-          - ⚠ Core file deletions/renames are NOT auto-applied — verify none are needed for this release."
+          - The engine applied the **delta** between the previously-pinned tag and \`${TAG}\` (client-local edits preserved; deletions & renames applied).
+          - Review the diff + the \`CHANGELOG.md\` entry, let CI run, then squash-merge to deploy."
+
+          if [ -n "$CONFLICTS" ]; then
+            LABELS="core-sync,has-conflicts"
+            BODY="${BODY}
+
+          ⚠ **CONFLICT MARKERS present** (client-local edits overlapped the core change). CI will stay red until resolved:
+          $(echo "$CONFLICTS" | sed 's/^/          - /')
+
+          Resolve each, then push to this branch."
+          fi
+
+          # Gate on OPEN PRs only — a CLOSED/merged PR on this branch must NOT block a
+          # fresh one (that was the old 'gh pr view' bug). Never reopen (head desync).
+          OPEN_PR="$(gh pr list --state open --head "$BRANCH" --json number --jq '.[0].number // empty')"
+          if [ -n "$OPEN_PR" ]; then
+            echo "Open PR #$OPEN_PR already tracks $BRANCH — branch refreshed."
+            gh pr edit "$OPEN_PR" --add-label "$LABELS" >/dev/null 2>&1 || true
+          else
+            gh pr create --base main --head "$BRANCH" \
+              --title "core-sync: ${TAG}" \
+              --label "$LABELS" \
+              --body "$BODY"
           fi

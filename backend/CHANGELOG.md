@@ -12,6 +12,28 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.6] — 2026-06-22
+
+> Note: tags `0.1.3`–`0.1.5` were cut without CHANGELOG/`package.json`/`PLATFORM_VERSION` bumps on main; this entry realigns those markers and supersedes the `sync-core.mjs` engine introduced in `0.1.2`.
+
+### Changed
+- **`backend/scripts/sync-core.mjs` rewritten as a cruft/copier-style THREE-WAY MERGE engine.** Instead of `git checkout <tag> -- <paths>` (a wholesale overwrite that silently discarded client-local edits and could regress markers), it now applies the **delta** between the client's currently-pinned core tag and the requested tag via `git apply --3way`. Result: client-local edits to unrelated lines survive; only genuine overlaps produce conflict markers (which fail CI → resolved in the PR); **file deletions and renames between versions are now applied** (the old engine could not); `PLATFORM_VERSION` only ever advances (downgrade guard); first-time syncs (no baseline tag) fall back to wholesale checkout.
+- **`backend/scripts/check-core-drift.sh` is now a true HARD GATE.** Adds `CORE_DRIFT_STRICT=true` mode (CI): a missing prerequisite (jq / `template` remote / pinned tag) becomes a build FAILURE instead of a silent skip; local dev still skips cleanly. Also now actually honors `approved-divergence` (previously read but unused — those paths are excluded from the gate).
+
+### Added
+- **`.github/workflows/core-drift.yml`** (infra, per-client) — runs the strict drift gate on every PR/push: wires the template remote + jq and fails the build on unsanctioned core drift. Self-guards to client repos (inert where `TEMPLATE_REPO` var is unset); opt-out via repo Variable `CORE_DRIFT_ENABLED=false`.
+- **`.github/workflows/core-sync.yml`** (infra, per-client) hardened: gates on OPEN PRs only (a closed/merged PR no longer blocks a fresh one); always regenerates the branch from current main (strictly-ahead → clean FF, no stale merge); never reopens (avoids head-desync); sets `delete_branch_on_merge` best-effort; labels PRs `core-sync` / `has-conflicts` and surfaces conflict files in the body.
+
+**Propagation:**
+- Severity: NORMAL (process/tooling hardening; no runtime/API change)
+- Layers: backend (`scripts/sync-core.mjs`, `scripts/check-core-drift.sh`) [core-synced] · workflows `core-sync.yml`+`core-drift.yml` [infra, copy per repo]
+- Migration: NO
+- Flag: n/a (gate opt-out via `CORE_DRIFT_ENABLED=false`)
+- Design impact: none
+- Breaking: NO — but after adopting, clients MUST keep core files identical to the pinned tag (the new gate enforces it); pre-existing drift must be upstreamed or recorded as `approved-divergence` before the gate goes green
+- Rollback: revert the two scripts + remove `core-drift.yml`
+- Ops note: workflows are infra (not core-synced) — copy `core-sync.yml`+`core-drift.yml` into each client once. The engine (`sync-core.mjs`, `check-core-drift.sh`) propagates via the normal core sync.
+
 ## [0.1.2] — 2026-06-21
 
 ### Added

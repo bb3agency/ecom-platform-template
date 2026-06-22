@@ -4,8 +4,17 @@
 # core) or move into the client extension/design layer. Never lets a client
 # silently fork the shared core.
 #
+# Modes:
+#   • default (local dev): if prerequisites are missing (no jq / no template
+#     remote / tag not pushed yet) it SKIPS cleanly so it never blocks a laptop.
+#   • strict (CI): set CORE_DRIFT_STRICT=true and a missing prerequisite becomes
+#     a hard FAILURE — this is what makes the gate real in CI (it can't silently
+#     no-op). The client CI workflow wires the template remote + jq, then runs
+#     this in strict mode.
+#
 # Usage:
 #   TEMPLATE_REMOTE=template ./backend/scripts/check-core-drift.sh
+#   CORE_DRIFT_STRICT=true TEMPLATE_REMOTE=template ./backend/scripts/check-core-drift.sh
 # Requires: jq, git, and a `template` remote pointing at the core template repo.
 # Reads: ../core-manifest.json (relative to repo root) and PLATFORM_VERSION.
 # See backend/docs/PLATFORM_VERSIONING_AND_SYNC_GUIDE.md §7.
@@ -16,24 +25,33 @@ cd "$ROOT"
 
 MANIFEST="core-manifest.json"
 TEMPLATE_REMOTE="${TEMPLATE_REMOTE:-template}"
+STRICT="${CORE_DRIFT_STRICT:-false}"
 
-command -v jq >/dev/null || { echo "ℹ️  jq not installed — skipping core-drift check (install jq to enable)."; exit 0; }
+# In strict mode a missing prerequisite is a build failure; otherwise it's a
+# clean skip so local laptops without the template remote aren't blocked.
+skip_or_fail() {
+  local msg="$1"
+  if [ "$STRICT" = "true" ]; then
+    echo "❌ $msg (strict mode: this is a CI failure — wire the prerequisite)."
+    exit 1
+  fi
+  echo "ℹ️  $msg — skipping core-drift check."
+  exit 0
+}
+
+command -v jq >/dev/null || skip_or_fail "jq not installed"
 [ -f "$MANIFEST" ] || { echo "ERROR: $MANIFEST not found"; exit 2; }
 
 # Resolve the pinned core versions -> template tags to diff against.
 be_ver="$(awk -F': ' '/^backend-core:/  {print $2}' PLATFORM_VERSION | tr -d ' \r')"
 fe_ver="$(awk -F': ' '/^frontend-core:/ {print $2}' PLATFORM_VERSION | tr -d ' \r')"
-echo "Pinned: backend-core=$be_ver  frontend-core=$fe_ver"
+echo "Pinned: backend-core=$be_ver  frontend-core=$fe_ver  (strict=$STRICT)"
 
-# No template remote yet (e.g. existing clients before the template repo exists,
-# or CI without the remote wired) → nothing to diff against. Skip cleanly rather
-# than failing the build; the check activates automatically once `template` is added.
 if ! git remote get-url "$TEMPLATE_REMOTE" >/dev/null 2>&1; then
-  echo "ℹ️  No '$TEMPLATE_REMOTE' remote configured — skipping core-drift check (wire the template remote to enable)."
-  exit 0
+  skip_or_fail "no '$TEMPLATE_REMOTE' remote configured"
 fi
 
-git fetch -q "$TEMPLATE_REMOTE" --tags || { echo "ERROR: cannot fetch remote '$TEMPLATE_REMOTE'"; exit 2; }
+git fetch -q "$TEMPLATE_REMOTE" --tags || skip_or_fail "cannot fetch remote '$TEMPLATE_REMOTE'"
 
 # Build include/exclude pathspecs from the manifest.
 mapfile -t INCLUDES < <(jq -r '.backendCore.include[], .frontendCore.include[]' "$MANIFEST")
@@ -42,8 +60,23 @@ mapfile -t EXCLUDES < <(jq -r '.backendCore.exclude[], .frontendCore.exclude[]' 
 PATHSPEC=("${INCLUDES[@]}")
 for e in "${EXCLUDES[@]}"; do PATHSPEC+=(":(exclude)$e"); done
 
-# Approved, time-boxed divergences are allowed (warn, not fail).
-mapfile -t ALLOW < <(awk '/^approved-divergence:/{f=1} f&&/path/{print}' PLATFORM_VERSION 2>/dev/null || true)
+# Approved, time-boxed divergences are sanctioned — exclude them from the diff so
+# they don't trip the gate. Entry format in PLATFORM_VERSION:
+#   approved-divergence:
+#     - path/to/file — justification — owner — YYYY-MM-DD
+mapfile -t ALLOW < <(
+  awk '
+    /^approved-divergence:/ { if ($0 ~ /\[[[:space:]]*\]/) next; f=1; next }
+    f && /^[^[:space:]]/ { f=0 }
+    f && /-[[:space:]]/ { sub(/^[[:space:]]*-[[:space:]]*/, ""); sub(/[[:space:]]*—.*$/, ""); gsub(/[[:space:]]/, ""); if ($0 != "") print }
+  ' PLATFORM_VERSION 2>/dev/null || true
+)
+for a in "${ALLOW[@]}"; do
+  [ -n "$a" ] && PATHSPEC+=(":(exclude)$a")
+done
+if [ "${#ALLOW[@]}" -gt 0 ]; then
+  echo "Honoring approved-divergence (excluded from gate): ${ALLOW[*]}"
+fi
 
 BE_TAG="backend-core-v${be_ver}"
 FE_TAG="frontend-core-v${fe_ver}"
@@ -52,8 +85,7 @@ fail=0
 for tag in "$BE_TAG" "$FE_TAG"; do
   if ! git rev-parse -q --verify "refs/tags/$tag" >/dev/null 2>&1 && \
      ! git rev-parse -q --verify "$TEMPLATE_REMOTE/$tag" >/dev/null 2>&1; then
-    echo "WARN: tag $tag not found on $TEMPLATE_REMOTE — skipping (is the template tagged?)"
-    continue
+    skip_or_fail "pinned tag $tag not found on $TEMPLATE_REMOTE (is the template tagged & pushed?)"
   fi
   echo "── Diffing core files against $tag ──"
   drift="$(git diff --name-only "$tag" -- "${PATHSPEC[@]}" 2>/dev/null || true)"

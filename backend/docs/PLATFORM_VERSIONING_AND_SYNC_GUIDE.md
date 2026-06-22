@@ -77,7 +77,7 @@ The Propagation block is the heart of the practice: it is the AI-summarised "wha
 How a client receives a release depends on how it was created:
 
 **A. Clients with their own history (raghava, sbgs — NOT cloned from the template).**
-A `git merge` of a template tag fails (`unrelated histories`). These clients are updated **automatically by the release-train** (§9): the tag dispatches their `core-sync` workflow, which runs `sync-core.mjs` (`git checkout <tag> -- <core paths>`, design excluded) and opens a review PR. You merge → CD deploys. Manual equivalent if needed: `npm run sync:core -- --tag backend-core-vX.Y.Z`.
+A `git merge` of a template tag fails (`unrelated histories`). These clients are updated **automatically by the release-train** (§9): the tag dispatches their `core-sync` workflow, which runs `sync-core.mjs` (3-way delta apply over the core paths, design excluded) and opens a review PR. You merge → CD deploys. Manual equivalent if needed: `npm run sync:core -- --tag backend-core-vX.Y.Z`.
 
 **B. Clients cloned FROM the template (future clients — shared history).**
 These can use native git merge. One-time wiring:
@@ -116,7 +116,8 @@ A core component only auto-adopts a client's look if that client defines every t
 ## 7. Drift enforcement & sanctioned exceptions
 
 - `core-manifest.json` declares core-owned vs client paths. `check-core-drift.sh` diffs the client's core files against the pinned template tag and **fails on any unsanctioned divergence** — forcing the change upstream (becomes core) or into the extension folder.
-- Rare, legitimate one-offs go in `PLATFORM_VERSION` → `approved-divergence` as a **time-boxed** entry (`path — justification — owner — expires`). The check warns (doesn't fail) until expiry, then it must be resolved.
+- **The gate runs in CI via `.github/workflows/core-drift.yml`** (since `0.1.6`), which wires the template remote + jq and runs the check in **strict mode** (`CORE_DRIFT_STRICT=true`) on every PR/push — so a missing prerequisite is a build FAILURE, never a silent skip. Locally the same script skips cleanly when run without the template remote. This is what makes "core is read-only in clients" actually enforced (and is the prerequisite for ever extracting core into packages — Phase 2/3). Opt-out per repo with Variable `CORE_DRIFT_ENABLED=false`.
+- Rare, legitimate one-offs go in `PLATFORM_VERSION` → `approved-divergence` as a **time-boxed** entry (`path — justification — owner — expires`). Those paths are excluded from the gate (honored since `0.1.6`) until you remove them.
 - Add `CODEOWNERS` on core paths so edits to shared files require platform-team review (nudges changes upstream).
 
 ### 7.1 Core purity — no client identity in core files (the anti-contamination guard)
@@ -151,7 +152,8 @@ Automates propagation end-to-end: **tag a core release in the template → every
 | --- | --- | --- |
 | `.github/workflows/release-train.yml` | **template** | On a `*-core-v*` tag push, dispatches each client's `core-sync` workflow with the tag. |
 | `.github/workflows/core-sync.yml` | **each client** | Receives the dispatch, wires the template remote, runs the sync engine, opens a PR. |
-| `backend/scripts/sync-core.mjs` | **template + each client** | The engine: `git checkout <tag> -- <core pathspec from core-manifest.json>` (excludes design/client/approved-divergence), refreshes the layer CHANGELOG, bumps `PLATFORM_VERSION`. Leaves changes uncommitted. |
+| `backend/scripts/sync-core.mjs` | **template + each client** | The engine (3-way, since `0.1.6`): applies the **delta** between the client's currently-pinned core tag and the requested tag via `git apply --3way` over the core pathspec (excludes design/client/approved-divergence), refreshes the layer CHANGELOG, advances `PLATFORM_VERSION` (downgrade-guarded). Client-local edits to unrelated lines survive; real overlaps become conflict markers; deletions/renames apply. First-ever sync (no baseline tag) falls back to wholesale checkout. Leaves changes uncommitted. |
+| `.github/workflows/core-drift.yml` | **each client** | HARD GATE: on every PR/push, runs `check-core-drift.sh` in strict mode (fails the build if any core file diverges from the pinned tag). Self-guards to clients; opt-out via `CORE_DRIFT_ENABLED=false`. |
 
 `sync-core.mjs` is core (`backend/scripts/**`) so it self-propagates. The two workflows are **infra, not core** — they are NOT in `core-manifest.json`, so they are bootstrapped once per client (present automatically in repos cloned from the template; copied by hand into pre-existing clients).
 
@@ -184,7 +186,7 @@ The system is PR-gated, so the worst case is "a sync silently doesn't happen," n
 
 - **Actions disabled in the template → nothing fires (we hit this).** If GitHub Actions is turned OFF for the template repo, a pushed `*-core-v*` tag is silently dropped — `release-train` never runs, no PRs appear, and `gh run list` shows "no runs found." → Keep Actions ENABLED in the template; quiet noise by disabling individual workflows (`gh workflow disable "Reliability CI"` etc.), never repo-wide Actions. Verify with `gh api repos/<org>/<template>/actions/permissions` → `{"enabled":true}`.
 - **Tagging in a CLIENT repo does nothing.** The fan-out trigger is a tag pushed to the **template** (where `release-train` lives). A tag on raghava/sbgs is inert. → Always tag in the template; never tag the client. A pushed tag whose event happened while Actions was off must be re-fired via `gh workflow run release-train.yml -R <template> -f tag=<tag>` (re-pushing the same tag name does not re-emit the event).
-- **Core file DELETIONS / renames don't propagate.** `git checkout <tag> -- <paths>` only adds/updates files present in the tag; a file you *removed* in core stays in the client. → For releases that delete/rename core files, note it in the CHANGELOG and remove them by hand in each client.
+- **Core file DELETIONS / renames** — since `0.1.6` the 3-way engine applies the old→new tag delta, so deletions and renames between versions **do** propagate. (Pre-`0.1.6` wholesale-checkout engine could not — if a client is still on the old engine, the first sync that upgrades it will install the new engine, and subsequent syncs handle deletions.)
 - **PRs opened with `GITHUB_TOKEN` don't trigger the client's CI.** If `CORE_SYNC_PAT` is unset, the PR opens but the client's `reliability-ci` won't run on it → a broken sync can look mergeable. → Always set `CORE_SYNC_PAT`. The workflow prints a `::warning::` when it's missing.
 - **A client missing `core-sync.yml` is skipped with only a warning.** `release-train` logs `::warning::` and continues; that client just never gets a PR. → Confirm every `CLIENT_REPOS` entry actually has the workflow on its default branch.
 - **`approved-divergence` paths are never overwritten** (by design) — a client pinning an old fork of a core file won't receive the update silently. → Keep `approved-divergence` entries time-boxed and review them.
