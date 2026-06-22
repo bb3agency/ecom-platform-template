@@ -5,15 +5,9 @@
 # which the template repo itself does not set) and is opt-outable per-repo via
 # repo Variable CORE_DRIFT_ENABLED=false.
 #
-# Auth note: the template fetch is authenticated by the CHECKOUT token's persisted
-# git auth header (a token that can READ the template). We use CORE_SYNC_PAT for
-# this (it already has that access — it's what core-sync uses). A dedicated
-# read-only TEMPLATE_READ_PAT is preferred long-term; if you set one with
-# Contents:Read on the template, swap it into the checkout token below.
-#
-# Requires (already present on clients):
-#   repo Variable TEMPLATE_REPO   — e.g. bb3agency/ecom-platform-template
-#   repo Secret   CORE_SYNC_PAT   — can read the template (used as checkout token)
+# Requires (already present on clients for core-sync):
+#   repo Variable TEMPLATE_REPO      — e.g. bb3agency/ecom-platform-template
+#   repo Secret   TEMPLATE_READ_PAT  — read access (Contents:Read) to the template repo
 # See backend/docs/PLATFORM_VERSIONING_AND_SYNC_GUIDE.md §7.
 name: core-drift
 
@@ -36,27 +30,29 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          # The persisted auth header for THIS token authenticates the plain-URL
-          # template fetch below (same mechanism core-sync relies on). It must be a
-          # token that can read the template — TEMPLATE_READ_PAT currently cannot,
-          # so we use CORE_SYNC_PAT.
-          token: ${{ secrets.CORE_SYNC_PAT || secrets.TEMPLATE_READ_PAT || github.token }}
+          # Must be false: the default credential helper installs a global
+          # extraheader for GITHUB_TOKEN (scoped to THIS repo only) that would
+          # hijack the PAT-authenticated `template` remote fetch and 404 it.
+          persist-credentials: false
 
-      - name: Preconditions (jq + check script)
+      - name: Preconditions (jq + secret + script)
+        env:
+          TEMPLATE_READ_PAT: ${{ secrets.TEMPLATE_READ_PAT }}
         run: |
           set -euo pipefail
           command -v jq >/dev/null || { sudo apt-get update -y && sudo apt-get install -y jq; }
+          [ -n "${TEMPLATE_READ_PAT:-}" ] || { echo "::error::TEMPLATE_READ_PAT not set — required for the strict core-drift gate"; exit 1; }
           [ -f backend/scripts/check-core-drift.sh ] || { echo "::error::check-core-drift.sh missing"; exit 1; }
 
       - name: Wire template remote (read-only)
         env:
           TEMPLATE_REPO: ${{ vars.TEMPLATE_REPO }}
+          TEMPLATE_READ_PAT: ${{ secrets.TEMPLATE_READ_PAT }}
         run: |
           set -euo pipefail
           [ -n "${TEMPLATE_REPO:-}" ] || { echo "::error::repo variable TEMPLATE_REPO is not set"; exit 1; }
           git remote remove template 2>/dev/null || true
-          # Plain URL — authenticated by the checkout token's persisted auth header.
-          git remote add template "https://github.com/${TEMPLATE_REPO}.git"
+          git remote add template "https://x-access-token:${TEMPLATE_READ_PAT}@github.com/${TEMPLATE_REPO}.git"
           git fetch template --tags --quiet
 
       - name: Strict core-drift check
@@ -65,6 +61,6 @@ jobs:
           TEMPLATE_REMOTE: template
         run: bash backend/scripts/check-core-drift.sh
 
-      - name: Scrub template remote
+      - name: Scrub token from remote config
         if: always()
         run: git remote remove template 2>/dev/null || true
