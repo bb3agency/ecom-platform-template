@@ -12,6 +12,23 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.9] — 2026-06-22
+
+### Added
+- **Multi-item box cartonization** (`src/common/shipping/cartonize.ts`) — computes the ACTUAL shipping box for an order so the dimensions sent to Shiprocket/Delhivery match the parcel couriers bill on (volumetric weight = L×W×H ÷ 5000). A conservative 3D Extreme-Point first-fit-decreasing packer (never undersizes): uses the smallest Ops **catalog box** the items physically fit into, else a **computed bounding box**, then adds +2 cm safety padding. Returns L×W×H + total weight.
+- **`core-manifest.json`**: `frontend/components/admin/**` added to `frontendCore.include` so the admin console is now core-synced (it was the only admin path missing — `app/(admin)` pages, `actions/`, `hooks/` were already core). Verified both clients' admin was already identical to template (zero divergence) before enabling.
+
+### Changed
+- **AWB worker** (`queues/workers/shipping.worker.ts`) now sends cartonized dimensions on every shipment (was: volume-only best-fit that only set dims when presets existed, else the adapter's `15×15×10` default).
+- **`chargeable-weight.ts`** routes through the same `cartonize` engine, so the cart rate quote's volumetric weight equals what the courier later bills (quote == billed).
+
+**Propagation:**
+- Severity: NORMAL (shipping accuracy + manifest scope; no breaking API change)
+- Layers: backend (`common/shipping/cartonize.ts` [new], `chargeable-weight.ts`, `queues/workers/shipping.worker.ts`), `core-manifest.json`
+- Migration: NO · Flag: n/a · Design impact: none · Breaking: NO
+- Rollback: revert the three shipping files + the manifest include line
+- Ops note: per-variant box dimensions (length/width/height) drive accuracy — ensure variants have them set (now fully editable in the admin product editor, frontend-core 0.1.5). Optional: configure standard carton sizes as box presets in Ops to switch to catalog cartonization.
+
 ## [0.1.8] — 2026-06-22
 
 ### Added

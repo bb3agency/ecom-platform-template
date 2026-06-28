@@ -34,12 +34,13 @@ describe('computeChargeableWeightGrams', () => {
     expect(result).toBe(4800);
   });
 
-  it('falls back to the default 15×15×10 box when no dimensions and no presets', () => {
-    // dead = 300g; default box volumetric = 15*15*10/5000*1000 = 450g → 450g wins.
+  it('falls back to the default per-unit box (cartonized) when no dimensions and no presets', () => {
+    // No item dims → cartonize uses the default unit box 15×12×6 +2cm padding = 17×14×8.
+    // dead = 300g; volumetric = 17*14*8/5000*1000 = 381g → 381g wins.
     const result = computeChargeableWeightGrams({
       items: [{ quantity: 1, weightGrams: 300 }]
     });
-    expect(result).toBe(450);
+    expect(result).toBe(381);
   });
 
   it('multiplies dead weight by quantity', () => {

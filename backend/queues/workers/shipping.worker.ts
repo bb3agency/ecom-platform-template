@@ -17,7 +17,8 @@ import {
   normalizeIndianShippingPhone,
   resolveShiprocketCustomerEmail
 } from '@common/shipping/shiprocket-payload';
-import { parseBoxPresets, selectBestFitBox } from '@common/shipping/select-box-preset';
+import { parseBoxPresets } from '@common/shipping/select-box-preset';
+import { cartonize } from '@common/shipping/cartonize';
 import { sendTechnicalFailureAlert } from '../../src/modules/notifications/notification-failure-alert';
 
 type NotificationsQueue = Pick<Queue, 'add'>;
@@ -423,16 +424,25 @@ export function createShippingWorker(
         });
         const primaryHsnCode = shipmentItems[0]?.hsnCode ?? defaultShippingHsn;
 
-        // Box preset selection: sum variant volumes × quantities, pick best-fit box.
-        const totalVolumeCm3 = order.items.reduce((sum, item) => {
+        // Cartonization: 3D-pack the ordered items into the actual shipping box so the
+        // dimensions sent to the courier match the parcel that ships (couriers bill
+        // volumetric weight from L×W×H). Catalog box if configured & fits, else a
+        // computed bounding box; +2cm safety padding. See common/shipping/cartonize.ts.
+        const cartonItems = order.items.map((item) => {
           const v = variantById.get(item.variantId);
-          if (v?.packageLengthCm && v?.packageWidthCm && v?.packageHeightCm) {
-            return sum + v.packageLengthCm * v.packageWidthCm * v.packageHeightCm * item.quantity;
-          }
-          return sum;
-        }, 0);
+          return {
+            lengthCm: v?.packageLengthCm ?? 0,
+            widthCm: v?.packageWidthCm ?? 0,
+            heightCm: v?.packageHeightCm ?? 0,
+            weightGrams: variantWeights.get(item.variantId) ?? 0,
+            quantity: item.quantity
+          };
+        });
         const boxPresets = parseBoxPresets(settings?.boxPresets);
-        const selectedBox = totalVolumeCm3 > 0 ? selectBestFitBox(totalVolumeCm3, boxPresets) : null;
+        const carton = cartonize({
+          items: cartonItems,
+          boxPresets: boxPresets.map((b) => ({ name: b.name, lengthCm: b.lengthCm, widthCm: b.widthCm, heightCm: b.heightCm }))
+        });
 
         const shipmentInput = {
           orderNumber: order.orderNumber,
@@ -458,15 +468,11 @@ export function createShippingWorker(
             state: shippingAddress.state
           },
           ...(order.courierCompanyId != null ? { courierCompanyId: order.courierCompanyId } : {}),
-          ...(selectedBox
-            ? {
-                dimensions: {
-                  lengthCm: selectedBox.lengthCm,
-                  breadthCm: selectedBox.widthCm,
-                  heightCm: selectedBox.heightCm
-                }
-              }
-            : {})
+          dimensions: {
+            lengthCm: carton.lengthCm,
+            breadthCm: carton.widthCm,
+            heightCm: carton.heightCm
+          }
         };
 
         // --- Phase 2: external provider call (no DB connection held) ---

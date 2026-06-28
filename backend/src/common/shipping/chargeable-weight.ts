@@ -1,4 +1,5 @@
-import { BoxPreset, selectBestFitBox } from './select-box-preset';
+import { BoxPreset } from './select-box-preset';
+import { cartonize, type CartonBoxPreset } from './cartonize';
 
 /**
  * cm³ per kg used by Indian couriers (Delhivery, Shiprocket, Blue Dart, etc.) to convert
@@ -44,26 +45,28 @@ export function computeChargeableWeightGrams(input: {
   items: ChargeableWeightItem[];
   boxPresets?: BoxPreset[];
 }): number {
-  const deadWeightGrams = input.items.reduce((sum, item) => {
-    const unit = item.weightGrams && item.weightGrams > 0 ? item.weightGrams : DEFAULT_UNIT_WEIGHT_GRAMS;
-    return sum + Math.max(unit, 1) * item.quantity;
-  }, 0);
+  if (input.items.length === 0) return 1;
 
-  const totalVolumeCm3 = input.items.reduce((sum, item) => {
-    const l = item.lengthCm ?? 0;
-    const w = item.widthCm ?? 0;
-    const h = item.heightCm ?? 0;
-    if (l > 0 && w > 0 && h > 0) {
-      return sum + l * w * h * item.quantity;
-    }
-    return sum;
-  }, 0);
+  // Use the SAME cartonization engine the AWB worker uses, so the quoted box (and
+  // therefore the quoted volumetric weight) equals what the courier is later billed.
+  const presets: CartonBoxPreset[] = (input.boxPresets ?? []).map((b) => ({
+    name: b.name,
+    lengthCm: b.lengthCm,
+    widthCm: b.widthCm,
+    heightCm: b.heightCm
+  }));
+  const carton = cartonize({
+    items: input.items.map((it) => ({
+      lengthCm: it.lengthCm ?? 0,
+      widthCm: it.widthCm ?? 0,
+      heightCm: it.heightCm ?? 0,
+      weightGrams: it.weightGrams ?? 0,
+      quantity: it.quantity
+    })),
+    boxPresets: presets
+  });
 
-  // Mirror the worker: pick the best-fit preset box, else fall back to the adapter's default box.
-  const selectedBox =
-    (totalVolumeCm3 > 0 ? selectBestFitBox(totalVolumeCm3, input.boxPresets ?? []) : null) ?? DEFAULT_PARCEL_BOX;
-  const boxVolumeCm3 = selectedBox.lengthCm * selectedBox.widthCm * selectedBox.heightCm;
+  const boxVolumeCm3 = carton.lengthCm * carton.widthCm * carton.heightCm;
   const volumetricWeightGrams = Math.round((boxVolumeCm3 / VOLUMETRIC_DIVISOR_CM3_PER_KG) * 1000);
-
-  return Math.max(deadWeightGrams, volumetricWeightGrams, 1);
+  return Math.max(carton.weightGrams, volumetricWeightGrams, 1);
 }

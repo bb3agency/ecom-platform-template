@@ -1890,6 +1890,9 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                         <th className="px-3 py-3">Price (₹)</th>
                         <th className="px-3 py-3">Cmp. At (₹)</th>
                         <th className="px-3 py-3">Weight (g)</th>
+                        <th className="px-3 py-3">L (cm)</th>
+                        <th className="px-3 py-3">W (cm)</th>
+                        <th className="px-3 py-3">H (cm)</th>
                         <th className="px-3 py-3">Active</th>
                         <th className="px-3 py-3 text-right">Actions</th>
                       </tr>
@@ -2332,6 +2335,45 @@ function VariantEditRow({
           value={draft.weightGrams}
           onChange={(event) =>
             setDraft({ ...draft, weightGrams: event.target.value })
+          }
+          disabled={!canWrite}
+        />
+      </td>
+      <td className="px-3 py-2">
+        <input
+          className={inputClass}
+          type="number"
+          min="1"
+          placeholder="L"
+          value={draft.packageLengthCm}
+          onChange={(event) =>
+            setDraft({ ...draft, packageLengthCm: event.target.value })
+          }
+          disabled={!canWrite}
+        />
+      </td>
+      <td className="px-3 py-2">
+        <input
+          className={inputClass}
+          type="number"
+          min="1"
+          placeholder="W"
+          value={draft.packageWidthCm}
+          onChange={(event) =>
+            setDraft({ ...draft, packageWidthCm: event.target.value })
+          }
+          disabled={!canWrite}
+        />
+      </td>
+      <td className="px-3 py-2">
+        <input
+          className={inputClass}
+          type="number"
+          min="1"
+          placeholder="H"
+          value={draft.packageHeightCm}
+          onChange={(event) =>
+            setDraft({ ...draft, packageHeightCm: event.target.value })
           }
           disabled={!canWrite}
         />

@@ -30,6 +30,7 @@
       "frontend/components/cart/**",
       "frontend/components/checkout/**",
       "frontend/components/layout/**",
+      "frontend/components/admin/**",
       "frontend/hooks/**",
       "frontend/stores/**",
       "frontend/types/**",
