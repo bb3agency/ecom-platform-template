@@ -2,7 +2,7 @@
 # Bumped on every merge of a template core release. Read by the fleet
 # version dashboard and the core-drift CI check. See
 # backend/docs/PLATFORM_VERSIONING_AND_SYNC_GUIDE.md.
-backend-core: 0.1.9
+backend-core: 0.1.10
 frontend-core: 0.1.5
 
 # Minimum backend-core this frontend-core requires (compatibility contract).

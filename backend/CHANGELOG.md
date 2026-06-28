@@ -12,6 +12,17 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.10] — 2026-06-22
+
+### Added
+- **`core-manifest.json`**: `backend/queues/**` added to `backendCore.include`. The BullMQ workers/queues are shared core but were never core-synced — so the 0.1.9 cartonization wiring in `queues/workers/shipping.worker.ts` could not propagate. Now they're in scope (clients verified identical to template before enabling, zero drift). This + the 0.1.9 `components/admin/**` inclusion close the two remaining "core code that wasn't core-synced" gaps.
+
+**Propagation:**
+- Severity: NORMAL (manifest scope only) · Layers: `core-manifest.json` + `backend/queues/**` now in scope
+- Migration: NO · Flag: n/a · Design impact: none · Breaking: NO
+- Rollback: revert the manifest include line
+- Ops note: because `queues/**` and `components/admin/**` were newly added to scope, the 0.1.9→0.1.10 worker + admin-editor files were delivered to existing clients by a one-time deterministic `git checkout <tag> -- <file>` (version-delta sync can't retroactively pull files for a path that wasn't in the client's manifest when the change shipped). Future changes in these paths propagate normally.
+
 ## [0.1.9] — 2026-06-22
 
 ### Added
