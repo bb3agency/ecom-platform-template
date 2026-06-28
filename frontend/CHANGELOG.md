@@ -12,6 +12,16 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.6] — 2026-06-22
+
+### Changed
+- **`BoxPresetsPanel`** (admin → Settings → Shipping) now explains cartonization: presets are the real cartons the order's items are 3D-packed into (smallest fitting box wins; bounding-box fallback; +2cm padding; volumetric billing), and that accuracy depends on per-variant box dimensions set in the product editor.
+
+**Propagation:**
+- Severity: LOW (admin copy only) · Layers: frontend (`components/admin/BoxPresetsPanel.tsx`)
+- Migration: NO · Flag: n/a · Design impact: none · Breaking: NO
+- Rollback: revert the component
+
 ## [0.1.5] — 2026-06-22
 
 > Note: tags `0.1.2`–`0.1.4` were cut without CHANGELOG/`package.json` bumps on main; this entry realigns frontend-core to 0.1.5.

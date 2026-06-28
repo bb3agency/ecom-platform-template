@@ -12,6 +12,20 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.11] — 2026-06-22
+
+### Removed
+- **Dead `selectBestFitBox`** (volume-only box picker) deleted from `common/shipping/select-box-preset.ts` — superseded by the 3D `cartonize` engine (0.1.9). `parseBoxPresets` + the `BoxPreset` type remain (used by cart/worker/settings). Its volume-only tests were dropped; 3D box selection is covered by `cartonize.test.ts`.
+
+### Changed
+- **`shiprocket.adapter.ts`**: clarified the `15×15×10` dimension fallback is a last-resort guard only (the AWB worker always passes cartonized dimensions now).
+- **Docs**: integration guide §6.0 documents shipping cartonization (variant dims → box presets / bounding box → volumetric billing; quote == billed).
+
+**Propagation:**
+- Severity: LOW (dead-code removal + comments/docs; no behavior change) · Layers: backend (`common/shipping/select-box-preset.ts`, `modules/shipping/adapters/shiprocket.adapter.ts`)
+- Migration: NO · Flag: n/a · Design impact: none · Breaking: NO (no remaining callers of `selectBestFitBox`)
+- Rollback: restore the function
+
 ## [0.1.10] — 2026-06-22
 
 ### Added

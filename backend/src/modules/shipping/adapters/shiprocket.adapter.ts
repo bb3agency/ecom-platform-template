@@ -344,6 +344,8 @@ export default class ShiprocketAdapter implements ShippingProviderAdapter {
     }
 
     const weightKg = Math.max(0.001, input.totalWeightGrams / 1000);
+    // Last-resort fallback only. The AWB worker always passes cartonized dimensions
+    // (see common/shipping/cartonize.ts) — this guards any caller that doesn't.
     const dimensions = input.dimensions ?? { lengthCm: 15, breadthCm: 15, heightCm: 10 };
     const subTotalRupees = input.subtotalRupees ?? input.amountRupees;
     const shippingChargeRupees = input.shippingChargeRupees ?? 0;

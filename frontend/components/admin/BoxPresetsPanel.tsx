@@ -122,6 +122,16 @@ export function BoxPresetsPanel({ canWrite }: BoxPresetsPanelProps) {
         </h3>
       </div>
 
+      <p className="text-xs leading-relaxed text-muted-foreground">
+        These are the real carton sizes you stock. At shipping, the system 3D-packs each
+        order&apos;s items and picks the <strong>smallest preset they physically fit into</strong>,
+        then sends that box&apos;s dimensions to the courier (couriers bill on volumetric weight =
+        L × W × H ÷ 5000). If no preset fits — or none is configured — it falls back to a
+        <strong> computed bounding box</strong> around the items with a small safety padding.
+        Accuracy depends on each product variant having correct box dimensions set in the product
+        editor.
+      </p>
+
       {error && (
         <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 flex gap-2">
           <AlertCircle className="h-4 w-4 text-destructive flex-shrink-0 mt-0.5" />

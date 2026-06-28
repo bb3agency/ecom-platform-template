@@ -25,23 +25,7 @@ export function parseBoxPresets(raw: unknown): BoxPreset[] {
   );
 }
 
-/**
- * Selects the smallest box preset whose volume is >= totalVolumeCm3.
- * Falls back to the largest preset if none fits, so shipments are never blocked.
- * Returns null when no presets are configured.
- */
-export function selectBestFitBox(
-  totalVolumeCm3: number,
-  presets: BoxPreset[]
-): BoxPreset | null {
-  if (presets.length === 0) return null;
-  const sorted = [...presets].sort(
-    (a, b) =>
-      a.lengthCm * a.widthCm * a.heightCm - b.lengthCm * b.widthCm * b.heightCm
-  );
-  return (
-    sorted.find((p) => p.lengthCm * p.widthCm * p.heightCm >= totalVolumeCm3) ??
-    sorted[sorted.length - 1] ??
-    null
-  );
-}
+// NOTE: the old volume-only `selectBestFitBox` was removed in backend-core 0.1.11 —
+// box selection now goes through the 3D cartonization engine (`cartonize.ts`), which
+// checks real geometric fit, not just total volume. `parseBoxPresets` + the `BoxPreset`
+// type remain the shared helpers for reading the admin box catalog (storeSettings.boxPresets).

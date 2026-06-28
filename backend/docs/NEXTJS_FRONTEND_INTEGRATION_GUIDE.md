@@ -562,6 +562,15 @@ UI should treat these as authenticated customer-only resources and apply the sam
 
 ## 6. Checkout sequences
 
+### 6.0 Shipping box dimensions — cartonization (backend-core 0.1.9+)
+
+Courier rate quotes and AWB bookings send the **real shipping box** dimensions, computed by `backend/src/common/shipping/cartonize.ts`, because couriers bill **volumetric weight = L × W × H ÷ 5000** (charged as `max(dead weight, volumetric weight)`).
+
+- **Inputs:** each order item's per-variant box dimensions — `ProductVariant.weight / packageLengthCm / packageWidthCm / packageHeightCm`. These are editable in the admin product editor (add **and** edit rows). Missing dims fall back to a default unit box, so accuracy depends on setting them.
+- **Box selection:** if the merchant has configured carton sizes (admin → Settings → Shipping → **Box Presets**, `GET/PATCH /admin/settings/box-presets`), the engine 3D-packs the items and picks the **smallest preset they physically fit into**. If none is configured or none fits, it computes a **bounding box** around the items. Either way it adds **+2 cm** safety padding.
+- **Quote == billed:** the cart delivery-rate quote and the AWB worker use the **same** `cartonize` engine, so the rate shown to the customer matches what the courier bills.
+- **Frontend impact:** none on the checkout request shape — dimensions are computed server-side. Just ensure variant dimensions are captured in the product editor; surface the Box Presets panel under shipping settings.
+
 ### 6.1 Razorpay (PREPAID) sequence — New flow (no DB order until payment succeeds)
 
 1. **`POST /payments/prepare-checkout`** with `addressId` or `shippingAddress` + optional `notes` → returns `{ checkoutSessionId, razorpayOrderId, amount, currency }`. **No order created yet — only Redis checkout session + Razorpay order.**
