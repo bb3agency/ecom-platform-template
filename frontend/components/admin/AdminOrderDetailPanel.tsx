@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FileDown, User, MapPin, CreditCard, Truck, Tag } from "lucide-react";
+import { FileDown, User, MapPin, CreditCard, Truck, Tag, Package } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { AdminStatusBadge } from "@/components/admin/AdminStatusBadge";
 import { useAuthenticatedApi } from "@/hooks/use-authenticated-api";
@@ -208,6 +208,28 @@ export function AdminOrderDetailPanel({ orderId }: AdminOrderDetailPanelProps) {
           )}
         </InfoCard>
 
+        <InfoCard icon={<Package className="h-4 w-4" />} title="Packing box">
+          {order.packingBox ? (
+            <div className="grid gap-1.5">
+              <Row
+                label="Dimensions"
+                value={`${order.packingBox.lengthCm} × ${order.packingBox.widthCm} × ${order.packingBox.heightCm} cm`}
+              />
+              <Row
+                label="Weight"
+                value={`${(order.packingBox.weightGrams / 1000).toFixed(2)} kg`}
+              />
+              <Row label="Box" value={packingBoxSourceLabel(order.packingBox)} />
+              <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                Recommended carton — the same dimensions used to rate this order with the
+                courier (incl. packing allowance). Pack into a box at least this size.
+              </p>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">No items to pack</p>
+          )}
+        </InfoCard>
+
         <InfoCard icon={<Tag className="h-4 w-4" />} title="Coupon">
           {order.coupon ? (
             <div className="grid gap-1.5">
@@ -294,6 +316,16 @@ function TotalItem({
       </span>
     </div>
   );
+}
+
+function packingBoxSourceLabel(box: {
+  source: "catalog" | "computed" | "single-item" | "default-fallback";
+  boxName: string | null;
+}): string {
+  if (box.source === "catalog") return box.boxName ?? "Catalog box";
+  if (box.source === "single-item") return "Single item";
+  if (box.source === "default-fallback") return "Default box (set variant dims)";
+  return "Computed (best fit)";
 }
 
 function getCouponDiscountDisplay(coupon: {

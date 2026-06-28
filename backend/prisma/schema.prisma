@@ -507,6 +507,7 @@ model ProductVariant {
   packageLengthCm Int?
   packageWidthCm  Int?
   packageHeightCm Int?
+  keepUpright    Boolean     @default(false)
   hsnCode        String?
   gstRatePercent Int         @default(0)
   isActive       Boolean     @default(true)

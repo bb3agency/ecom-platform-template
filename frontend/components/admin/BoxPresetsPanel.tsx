@@ -127,7 +127,9 @@ export function BoxPresetsPanel({ canWrite }: BoxPresetsPanelProps) {
         order&apos;s items and picks the <strong>smallest preset they physically fit into</strong>,
         then sends that box&apos;s dimensions to the courier (couriers bill on volumetric weight =
         L × W × H ÷ 5000). If no preset fits — or none is configured — it falls back to a
-        <strong> computed bounding box</strong> around the items with a small safety padding.
+        <strong> computed bounding box</strong> around the items with a small safety padding (+1 cm
+        per side). Items marked <strong>&ldquo;Keep upright&rdquo;</strong> in the product editor are
+        only rotated about their vertical axis so the packed box reflects how they really ship.
         Accuracy depends on each product variant having correct box dimensions set in the product
         editor.
       </p>

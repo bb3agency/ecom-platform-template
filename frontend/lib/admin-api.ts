@@ -329,6 +329,14 @@ export interface AdminOrderDetailFull {
     hasPdf: boolean;
     issuedAt: string;
   } | null;
+  packingBox?: {
+    lengthCm: number;
+    widthCm: number;
+    heightCm: number;
+    weightGrams: number;
+    source: "catalog" | "computed" | "single-item" | "default-fallback";
+    boxName: string | null;
+  } | null;
 }
 
 export interface AdminOrderTimeline {
@@ -384,6 +392,7 @@ export interface AdminProductVariant {
   packageLengthCm?: number | null;
   packageWidthCm?: number | null;
   packageHeightCm?: number | null;
+  keepUpright?: boolean;
   hsnCode?: string | null;
   gstRatePercent?: number;
   isActive: boolean;
@@ -433,6 +442,7 @@ export interface AdminCreateProductInput {
     packageLengthCm?: number;
     packageWidthCm?: number;
     packageHeightCm?: number;
+    keepUpright?: boolean;
     isActive?: boolean;
     quantity?: number;
     lowStockThreshold?: number;

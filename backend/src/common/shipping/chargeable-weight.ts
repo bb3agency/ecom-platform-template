@@ -28,6 +28,7 @@ export type ChargeableWeightItem = {
   lengthCm?: number | null;
   widthCm?: number | null;
   heightCm?: number | null;
+  keepUpright?: boolean | null;
 };
 
 /**
@@ -61,7 +62,8 @@ export function computeChargeableWeightGrams(input: {
       widthCm: it.widthCm ?? 0,
       heightCm: it.heightCm ?? 0,
       weightGrams: it.weightGrams ?? 0,
-      quantity: it.quantity
+      quantity: it.quantity,
+      keepUpright: it.keepUpright ?? false
     })),
     boxPresets: presets
   });

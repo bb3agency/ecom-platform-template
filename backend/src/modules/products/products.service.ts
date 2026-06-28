@@ -361,6 +361,7 @@ export class ProductsService {
                   ...(variant.packageLengthCm !== undefined ? { packageLengthCm: Math.floor(variant.packageLengthCm) } : {}),
                   ...(variant.packageWidthCm !== undefined ? { packageWidthCm: Math.floor(variant.packageWidthCm) } : {}),
                   ...(variant.packageHeightCm !== undefined ? { packageHeightCm: Math.floor(variant.packageHeightCm) } : {}),
+                  ...(variant.keepUpright !== undefined ? { keepUpright: variant.keepUpright } : {}),
                   ...(variant.attributes !== undefined ? { attributes: variant.attributes as Prisma.InputJsonValue } : {}),
                   ...(variantTaxFields.hsnCode ? { hsnCode: variantTaxFields.hsnCode } : {}),
                   gstRatePercent: variantTaxFields.gstRatePercent,
@@ -645,6 +646,7 @@ export class ProductsService {
           ...(input.packageLengthCm !== undefined ? { packageLengthCm: Math.floor(input.packageLengthCm) } : {}),
           ...(input.packageWidthCm !== undefined ? { packageWidthCm: Math.floor(input.packageWidthCm) } : {}),
           ...(input.packageHeightCm !== undefined ? { packageHeightCm: Math.floor(input.packageHeightCm) } : {}),
+          ...(input.keepUpright !== undefined ? { keepUpright: input.keepUpright } : {}),
           ...(input.attributes !== undefined ? { attributes: input.attributes as Prisma.InputJsonValue } : {}),
           ...(variantTaxFields.hsnCode ? { hsnCode: variantTaxFields.hsnCode } : {}),
           gstRatePercent: variantTaxFields.gstRatePercent,
@@ -693,6 +695,7 @@ export class ProductsService {
       ...(input.packageLengthCm !== undefined ? { packageLengthCm: Math.floor(input.packageLengthCm) } : {}),
       ...(input.packageWidthCm !== undefined ? { packageWidthCm: Math.floor(input.packageWidthCm) } : {}),
       ...(input.packageHeightCm !== undefined ? { packageHeightCm: Math.floor(input.packageHeightCm) } : {}),
+      ...(input.keepUpright !== undefined ? { keepUpright: input.keepUpright } : {}),
       ...(input.attributes !== undefined ? { attributes: input.attributes as Prisma.InputJsonValue } : {}),
       ...(input.isActive !== undefined ? { isActive: input.isActive } : {})
     } as Record<string, unknown>;

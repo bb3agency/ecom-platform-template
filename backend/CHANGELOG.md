@@ -12,6 +12,23 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.13] — 2026-06-28
+
+### Added
+- **Per-variant `keepUpright` packing constraint.** New `ProductVariant.keepUpright` boolean (default `false`) for fragile / "this side up" / liquid items. When set, the cartonization packer only rotates the item about its vertical axis (its configured height stays the height) so the computed box reflects how the parcel actually ships. Wired through products schemas/types/service (create + single variant create/update), the admin product editor (checkbox on add + edit rows and the primary-variant card), the shipping worker, and the cart chargeable-weight quote.
+- **Recommended packing box on the admin order detail** (`GET /admin/orders/:id` → `packingBox`). `adminGetOrderById` now runs the live `cartonize` engine over the order's variant dimensions + configured box presets and returns the exact L×W×H + weight + source/boxName used to rate the order, so the merchant sees which carton to pack into. Optional field (only on the detail route; other order responses omit it).
+
+### Changed
+- **Cartonization model is now stable flat-stacking instead of pure min-volume.** `computeBoundingBox` pre-orients every free item to its stable flat orientation (largest face down, smallest dimension vertical) and packs with vertical-axis rotation only. This fixes a latent **under-billing** risk where the old min-volume search could stand a large item on its end to find an unrealistically tight "thin column" box (smaller than the parcel the merchant actually ships). Candidate footprints now also include the actual item dimensions, and ties are broken by **smallest footprint then smallest longest side**, so the packer finds the realistic stacked box for the common "large item fills the floor, smaller items stack on top" pack (e.g. base 15×10×4 + two 10×5×2 → exactly 15×10×6, not the equal-volume 15×15×4; base 38×25×10 + two 25×13×5 → 38×25×15).
+- **Default safety padding reduced from +2 cm to +1 cm** per dimension (`DEFAULT_PACKING_PADDING_CM`), better matching tight-packing merchants while still never undersizing.
+
+**Propagation:**
+- Severity: NORMAL (shipping accuracy + new optional fields) · Layers: backend (`common/shipping/cartonize.ts`, `chargeable-weight.ts`, `queues/workers/shipping.worker.ts`, `modules/products/products.{schemas,types,service}.ts`, `modules/cart/cart.service.ts`, `modules/orders/orders.{service,schemas}.ts`, `prisma/schema.prisma`)
+- Migration: **YES** — `20260628120000_add_variant_keep_upright` adds `ProductVariant.keepUpright BOOLEAN NOT NULL DEFAULT false` (non-breaking; backfills `false`). Run `prisma migrate deploy` + `prisma generate` on each client.
+- Flag: n/a (additive; defaults to old free-rotation behavior when `keepUpright=false`) · Design impact: none · Breaking: NO
+- Rollback: revert the listed files + the migration (drop the column).
+- Ops note: pairs with frontend-core 0.1.8 (admin editor keepUpright checkbox). Padding change slightly lowers computed box sizes — re-quotes remain quote==billed.
+
 ## [0.1.12] — 2026-06-22
 
 ### Added

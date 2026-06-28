@@ -172,7 +172,8 @@ const adminVariantItemSchema = {
     },
     packageHeightCm: {
       anyOf: [{ type: 'integer', minimum: 1, maximum: 10000 }, { type: 'null' }]
-    }
+    },
+    keepUpright: { type: 'boolean' }
   }
 } as const;
 
@@ -351,6 +352,7 @@ const adminProductInputProperties = {
         packageLengthCm: { type: 'integer', minimum: 1, maximum: 10000 },
         packageWidthCm: { type: 'integer', minimum: 1, maximum: 10000 },
         packageHeightCm: { type: 'integer', minimum: 1, maximum: 10000 },
+        keepUpright: { type: 'boolean' },
         quantity: { type: 'integer', minimum: 0, maximum: 1000000000 },
         lowStockThreshold: { type: 'integer', minimum: 0, maximum: 1000000 },
         attributes: {

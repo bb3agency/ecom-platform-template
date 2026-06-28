@@ -15,6 +15,8 @@ import { AppError } from '@common/errors/app-error';
 import { ERROR_CODES } from '@common/errors/error-codes';
 import { decryptOpsConfigValue } from '@common/security/ops-config-crypto';
 import { resolvePickupPincode } from '@common/shipping/resolve-pickup-pincode';
+import { cartonize } from '@common/shipping/cartonize';
+import { parseBoxPresets } from '@common/shipping/select-box-preset';
 import { normalizeShippingWebhookPayload, readStrictDelhiveryOccurredAt } from '@common/shipping/normalize-shipping-webhook-payload';
 import type { CheckoutRiskAssessmentPort } from '@common/interfaces/checkout-risk.interface';
 import { PaymentProviderAdapter } from '@common/interfaces/payment-provider.interface';
@@ -2496,7 +2498,63 @@ export class OrdersService {
       throw new AppError(ERROR_CODES.NOT_FOUND, 'Order not found', 404);
     }
 
-    return this.serializeOrder(order);
+    const packingBox = await this.computeOrderPackingBox(order.items);
+    return { ...this.serializeOrder(order), packingBox };
+  }
+
+  /**
+   * Compute the recommended packing box (the SAME dimensions cartonization sends to the
+   * courier for rating/AWB) so the admin order detail can show the merchant exactly which
+   * carton to pack into. Uses the live `cartonize` engine over the order's variant box
+   * dimensions + the configured box presets. Returns null when there are no items.
+   */
+  private async computeOrderPackingBox(
+    items: Array<{ variantId: string; quantity: number }>
+  ) {
+    if (items.length === 0) return null;
+    const variantIds = items.map((i) => i.variantId);
+    const variants = await this.fastify.prisma.productVariant.findMany({
+      where: { id: { in: variantIds } },
+      select: {
+        id: true,
+        weight: true,
+        packageLengthCm: true,
+        packageWidthCm: true,
+        packageHeightCm: true,
+        keepUpright: true
+      }
+    });
+    const variantById = new Map(variants.map((v) => [v.id, v]));
+    const settings = await this.fastify.prisma.storeSettings.findUnique({
+      where: { singletonKey: 'default' },
+      select: { boxPresets: true }
+    });
+    const boxPresets = parseBoxPresets(settings?.boxPresets).map((b) => ({
+      name: b.name,
+      lengthCm: b.lengthCm,
+      widthCm: b.widthCm,
+      heightCm: b.heightCm
+    }));
+    const cartonItems = items.map((it) => {
+      const v = variantById.get(it.variantId);
+      return {
+        lengthCm: v?.packageLengthCm ?? 0,
+        widthCm: v?.packageWidthCm ?? 0,
+        heightCm: v?.packageHeightCm ?? 0,
+        weightGrams: v?.weight ?? 0,
+        quantity: it.quantity,
+        keepUpright: v?.keepUpright ?? false
+      };
+    });
+    const carton = cartonize({ items: cartonItems, boxPresets });
+    return {
+      lengthCm: carton.lengthCm,
+      widthCm: carton.widthCm,
+      heightCm: carton.heightCm,
+      weightGrams: carton.weightGrams,
+      source: carton.source,
+      boxName: carton.boxName ?? null
+    };
   }
 
   async adminGetInvoicePdf(orderId: string): Promise<{ invoiceNumber: string; content: Buffer }> {

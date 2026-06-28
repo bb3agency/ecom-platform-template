@@ -658,6 +658,7 @@ export class CartService {
           packageLengthCm?: number | null;
           packageWidthCm?: number | null;
           packageHeightCm?: number | null;
+          keepUpright?: boolean | null;
         };
       }>;
     };
@@ -679,7 +680,8 @@ export class CartService {
         weightGrams: item.variant.weight ?? null,
         lengthCm: item.variant.packageLengthCm ?? null,
         widthCm: item.variant.packageWidthCm ?? null,
-        heightCm: item.variant.packageHeightCm ?? null
+        heightCm: item.variant.packageHeightCm ?? null,
+        keepUpright: item.variant.keepUpright ?? null
       }))
     });
 
@@ -887,6 +889,7 @@ export class CartService {
           packageLengthCm?: number | null;
           packageWidthCm?: number | null;
           packageHeightCm?: number | null;
+          keepUpright?: boolean | null;
         };
       }>;
     };
@@ -928,6 +931,7 @@ export class CartService {
           packageLengthCm?: number | null;
           packageWidthCm?: number | null;
           packageHeightCm?: number | null;
+          keepUpright?: boolean | null;
         };
       }>;
     };
@@ -959,7 +963,8 @@ export class CartService {
         weightGrams: item.variant.weight ?? null,
         lengthCm: item.variant.packageLengthCm ?? null,
         widthCm: item.variant.packageWidthCm ?? null,
-        heightCm: item.variant.packageHeightCm ?? null
+        heightCm: item.variant.packageHeightCm ?? null,
+        keepUpright: item.variant.keepUpright ?? null
       }))
     });
 

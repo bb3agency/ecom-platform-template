@@ -594,6 +594,28 @@ const adminOrderDetailSchema = {
         },
         { type: 'null' }
       ]
+    },
+    packingBox: {
+      anyOf: [
+        {
+          type: 'object',
+          additionalProperties: false,
+          required: ['lengthCm', 'widthCm', 'heightCm', 'weightGrams', 'source', 'boxName'],
+          properties: {
+            lengthCm: { type: 'integer', minimum: 1, maximum: 100000 },
+            widthCm: { type: 'integer', minimum: 1, maximum: 100000 },
+            heightCm: { type: 'integer', minimum: 1, maximum: 100000 },
+            weightGrams: { type: 'integer', minimum: 1, maximum: 100000000 },
+            source: {
+              type: 'string',
+              enum: ['catalog', 'computed', 'single-item', 'default-fallback'],
+              maxLength: 24
+            },
+            boxName: { anyOf: [{ type: 'string', maxLength: 120 }, { type: 'null' }] }
+          }
+        },
+        { type: 'null' }
+      ]
     }
   }
 } as const;

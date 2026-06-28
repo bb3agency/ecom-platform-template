@@ -41,6 +41,7 @@ export type CreateProductInput = {
     packageLengthCm?: number;
     packageWidthCm?: number;
     packageHeightCm?: number;
+    keepUpright?: boolean;
     quantity?: number;
     lowStockThreshold?: number;
     attributes?: Record<string, unknown>;
@@ -86,6 +87,7 @@ export type CreateProductVariantInput = {
   packageLengthCm?: number;
   packageWidthCm?: number;
   packageHeightCm?: number;
+  keepUpright?: boolean;
   quantity?: number;
   lowStockThreshold?: number;
   attributes?: Record<string, unknown>;

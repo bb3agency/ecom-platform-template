@@ -90,6 +90,7 @@ interface VariantDraft {
   packageLengthCm: string;
   packageWidthCm: string;
   packageHeightCm: string;
+  keepUpright: boolean;
   initialQuantity: string;
   isActive: boolean;
 }
@@ -121,6 +122,7 @@ function emptyVariant(): VariantDraft {
     packageLengthCm: "",
     packageWidthCm: "",
     packageHeightCm: "",
+    keepUpright: false,
     initialQuantity: "",
     isActive: true,
   };
@@ -175,6 +177,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
   const [editPrimaryLength, setEditPrimaryLength] = useState("");
   const [editPrimaryWidth, setEditPrimaryWidth] = useState("");
   const [editPrimaryHeight, setEditPrimaryHeight] = useState("");
+  const [editPrimaryKeepUpright, setEditPrimaryKeepUpright] = useState(false);
   const [status, setStatus] = useState("Draft");
   const [categoryId, setCategoryId] = useState("");
   const [tagsText, setTagsText] = useState("");
@@ -270,6 +273,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
             ? String(primaryVariant.packageHeightCm)
             : ""
         );
+        setEditPrimaryKeepUpright(primaryVariant.keepUpright === true);
       }
     } catch (err) {
       setError(getApiErrorMessage(err));
@@ -426,6 +430,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
               ...(packageLengthCm !== undefined ? { packageLengthCm } : {}),
               ...(packageWidthCm !== undefined ? { packageWidthCm } : {}),
               ...(packageHeightCm !== undefined ? { packageHeightCm } : {}),
+              ...(variant.keepUpright ? { keepUpright: true } : {}),
               quantity,
               isActive: variant.isActive,
               ...(Number.isFinite(threshold) && threshold >= 0
@@ -585,6 +590,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
             packageLengthCm,
             packageWidthCm,
             packageHeightCm,
+            keepUpright: editPrimaryKeepUpright,
           }),
         });
         normalizedUpdated = mergePrimaryVariantPrices(
@@ -719,6 +725,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
           packageLengthCm,
           packageWidthCm,
           packageHeightCm,
+          keepUpright: draft.keepUpright,
           isActive: draft.isActive,
         }),
       });
@@ -780,6 +787,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
           ...(packageLengthCm !== undefined ? { packageLengthCm } : {}),
           ...(packageWidthCm !== undefined ? { packageWidthCm } : {}),
           ...(packageHeightCm !== undefined ? { packageHeightCm } : {}),
+          ...(newVariant.keepUpright ? { keepUpright: true } : {}),
           isActive: newVariant.isActive,
         }),
       });
@@ -994,7 +1002,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
     event.target.value = "";
   };
 
-  const updateFirstVariant = (key: keyof VariantDraft, value: string) => {
+  const updateFirstVariant = (key: keyof VariantDraft, value: string | boolean) => {
     const next = [...createVariants];
     if (next[0]) {
       next[0] = { ...next[0], [key]: value };
@@ -1650,6 +1658,26 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                     disabled={!canWrite}
                   />
                 </label>
+                <label className="flex items-center gap-2 text-xs font-bold text-muted-foreground uppercase tracking-wider sm:col-span-2">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-border/50"
+                    checked={
+                      isCreate
+                        ? createVariants[0]?.keepUpright ?? false
+                        : editPrimaryKeepUpright
+                    }
+                    onChange={(event) => {
+                      if (isCreate) {
+                        updateFirstVariant("keepUpright", event.target.checked);
+                      } else {
+                        setEditPrimaryKeepUpright(event.target.checked);
+                      }
+                    }}
+                    disabled={!canWrite}
+                  />
+                  Keep upright (fragile / this-side-up)
+                </label>
                 <label className="grid gap-1.5 text-xs font-bold text-muted-foreground uppercase tracking-wider">
                   Stock Quantity <span className="text-rose-500">*</span>
                   <input
@@ -1893,6 +1921,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                         <th className="px-3 py-3">L (cm)</th>
                         <th className="px-3 py-3">W (cm)</th>
                         <th className="px-3 py-3">H (cm)</th>
+                        <th className="px-3 py-3">Upright</th>
                         <th className="px-3 py-3">Active</th>
                         <th className="px-3 py-3 text-right">Actions</th>
                       </tr>
@@ -2020,6 +2049,20 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                         })
                       }
                     />
+                    <label className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-border/50"
+                        checked={newVariant.keepUpright}
+                        onChange={(event) =>
+                          setNewVariant({
+                            ...newVariant,
+                            keepUpright: event.target.checked,
+                          })
+                        }
+                      />
+                      Keep upright (fragile / this-side-up)
+                    </label>
                     <button
                       type="button"
                       disabled={saving}
@@ -2259,6 +2302,7 @@ function VariantEditRow({
       variant.packageWidthCm !== null ? String(variant.packageWidthCm) : "",
     packageHeightCm:
       variant.packageHeightCm !== null ? String(variant.packageHeightCm) : "",
+    keepUpright: variant.keepUpright === true,
     initialQuantity: "",
     isActive: variant.isActive,
   });
@@ -2280,6 +2324,7 @@ function VariantEditRow({
         variant.packageWidthCm !== null ? String(variant.packageWidthCm) : "",
       packageHeightCm:
         variant.packageHeightCm !== null ? String(variant.packageHeightCm) : "",
+      keepUpright: variant.keepUpright === true,
       initialQuantity: "",
       isActive: variant.isActive,
     });
@@ -2374,6 +2419,17 @@ function VariantEditRow({
           value={draft.packageHeightCm}
           onChange={(event) =>
             setDraft({ ...draft, packageHeightCm: event.target.value })
+          }
+          disabled={!canWrite}
+        />
+      </td>
+      <td className="px-3 py-2 text-center">
+        <input
+          type="checkbox"
+          aria-label="Keep upright"
+          checked={draft.keepUpright}
+          onChange={(event) =>
+            setDraft({ ...draft, keepUpright: event.target.checked })
           }
           disabled={!canWrite}
         />

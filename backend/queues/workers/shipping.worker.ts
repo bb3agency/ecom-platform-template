@@ -316,6 +316,7 @@ export function createShippingWorker(
             packageLengthCm: true,
             packageWidthCm: true,
             packageHeightCm: true,
+            keepUpright: true,
             hsnCode: true,
             product: {
               select: {
@@ -427,7 +428,7 @@ export function createShippingWorker(
         // Cartonization: 3D-pack the ordered items into the actual shipping box so the
         // dimensions sent to the courier match the parcel that ships (couriers bill
         // volumetric weight from L×W×H). Catalog box if configured & fits, else a
-        // computed bounding box; +2cm safety padding. See common/shipping/cartonize.ts.
+        // computed bounding box; +1cm safety padding. See common/shipping/cartonize.ts.
         const cartonItems = order.items.map((item) => {
           const v = variantById.get(item.variantId);
           return {
@@ -435,7 +436,8 @@ export function createShippingWorker(
             widthCm: v?.packageWidthCm ?? 0,
             heightCm: v?.packageHeightCm ?? 0,
             weightGrams: variantWeights.get(item.variantId) ?? 0,
-            quantity: item.quantity
+            quantity: item.quantity,
+            keepUpright: v?.keepUpright ?? false
           };
         });
         const boxPresets = parseBoxPresets(settings?.boxPresets);

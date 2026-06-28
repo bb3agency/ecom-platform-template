@@ -8,13 +8,17 @@
  *                box the items physically fit into (3D feasibility check).
  *  2. COMPUTED — otherwise, 3D-pack the items (with rotation) into the tightest
  *                enclosing bounding box.
- * In both modes a safety padding (default +2 cm/side) is added for void-fill +
+ * In both modes a safety padding (default +1 cm/side) is added for void-fill +
  * carton walls so the parcel is never undersized.
  *
  * The packer is a conservative Extreme-Point First-Fit-Decreasing heuristic: when
  * uncertain it errs toward a LARGER box, never a smaller one — so the billed box is
  * never undersized. Exact 3D bin packing is NP-hard; this is accurate and fast for
  * the small line-item counts of real e-commerce orders.
+ *
+ * Items flagged `keepUpright` (fragile / "this side up" / liquids) are only rotated
+ * about their vertical axis — their configured height stays the height — so the
+ * computed box reflects how the parcel will really be packed.
  */
 
 export type CartonItem = {
@@ -23,6 +27,8 @@ export type CartonItem = {
   heightCm: number;
   weightGrams: number;
   quantity: number;
+  /** If true, the item must stay upright — only length/width rotation is allowed. */
+  keepUpright?: boolean;
 };
 
 export type BoxDimensions = {
@@ -45,23 +51,32 @@ export const DEFAULT_UNIT_BOX: BoxDimensions = { lengthCm: 15, widthCm: 12, heig
 /** Per-unit fallback dead weight (grams) when a variant has no weight. */
 export const DEFAULT_UNIT_WEIGHT_GRAMS = 500;
 /** Default safety padding added to EACH dimension of the final box (cm). */
-export const DEFAULT_PACKING_PADDING_CM = 2;
+export const DEFAULT_PACKING_PADDING_CM = 1;
 
-type Unit = { l: number; w: number; h: number };
+type Unit = { l: number; w: number; h: number; keepUpright?: boolean };
 type Placed = { x: number; y: number; z: number; l: number; w: number; h: number };
 
 const EPS = 1e-6;
 
-/** The (up to 6) axis-aligned orientations of a box, de-duplicated for cubes/squares. */
+/**
+ * The axis-aligned orientations of a box, de-duplicated for cubes/squares.
+ * Upright items keep their height fixed (only length/width swap → up to 2);
+ * free items use all 6 permutations.
+ */
 function orientations(u: Unit): Unit[] {
-  const perms: Unit[] = [
-    { l: u.l, w: u.w, h: u.h },
-    { l: u.l, w: u.h, h: u.w },
-    { l: u.w, w: u.l, h: u.h },
-    { l: u.w, w: u.h, h: u.l },
-    { l: u.h, w: u.l, h: u.w },
-    { l: u.h, w: u.w, h: u.l }
-  ];
+  const perms: Unit[] = u.keepUpright
+    ? [
+        { l: u.l, w: u.w, h: u.h },
+        { l: u.w, w: u.l, h: u.h }
+      ]
+    : [
+        { l: u.l, w: u.w, h: u.h },
+        { l: u.l, w: u.h, h: u.w },
+        { l: u.w, w: u.l, h: u.h },
+        { l: u.w, w: u.h, h: u.l },
+        { l: u.h, w: u.l, h: u.w },
+        { l: u.h, w: u.w, h: u.l }
+      ];
   const seen = new Set<string>();
   return perms.filter((p) => {
     const k = `${p.l}x${p.w}x${p.h}`;
@@ -135,7 +150,7 @@ function toUnits(items: CartonItem[]): Unit[] {
     const w = it.widthCm > 0 ? it.widthCm : DEFAULT_UNIT_BOX.widthCm;
     const h = it.heightCm > 0 ? it.heightCm : DEFAULT_UNIT_BOX.heightCm;
     const qty = Math.max(1, Math.floor(it.quantity));
-    for (let i = 0; i < qty; i++) units.push({ l, w, h });
+    for (let i = 0; i < qty; i++) units.push({ l, w, h, keepUpright: it.keepUpright === true });
   }
   return units;
 }
@@ -148,15 +163,34 @@ function totalWeightGrams(items: CartonItem[]): number {
 }
 
 /**
+ * Re-orient an item to its stable "flat" resting orientation — the way it would
+ * actually sit in a carton: largest face down, smallest dimension vertical. Upright
+ * items keep their configured orientation. The returned unit is marked keepUpright
+ * so the packer never tips it onto an end (which would produce an unrealistic, and
+ * dangerously UNDER-sized, thin-column box that the merchant would never ship).
+ */
+function stableFlat(u: Unit): Unit {
+  if (u.keepUpright) return { l: u.l, w: u.w, h: u.h, keepUpright: true };
+  const [a, b, c] = [u.l, u.w, u.h].sort((x, y) => y - x);
+  return { l: a!, w: b!, h: c!, keepUpright: true };
+}
+
+/**
  * Compute the tightest enclosing box for a set of units by 3D-packing them onto
  * several candidate footprints and keeping the minimum-volume feasible result.
+ * Items are packed in their stable flat orientation (heaviest/largest face down,
+ * stacked upward) — matching how parcels are really packed — so the billed box is
+ * realistic and never under-sized.
  */
-function computeBoundingBox(units: Unit[]): BoxDimensions {
+function computeBoundingBox(rawUnits: Unit[]): BoxDimensions {
+  // Lock every item to its stable flat orientation before packing.
+  const units = rawUnits.map(stableFlat);
+
   if (units.length === 1) {
     const u = units[0]!;
-    // Lay the single item flat: smallest dimension becomes height.
-    const dims = [u.l, u.w, u.h].sort((a, b) => b - a);
-    return { lengthCm: dims[0]!, widthCm: dims[1]!, heightCm: dims[2]! };
+    // Footprint is the two larger dims (length ≥ width); height is fixed.
+    const [a, b] = [u.l, u.w].sort((x, y) => y - x);
+    return { lengthCm: a!, widthCm: b!, heightCm: u.h };
   }
 
   const totalVol = units.reduce((s, u) => s + u.l * u.w * u.h, 0);
@@ -174,16 +208,46 @@ function computeBoundingBox(units: Unit[]): BoxDimensions {
     Math.ceil(maxDim),
     Math.ceil(maxDim * 2)
   ]);
+  // Seed the actual item dimensions as candidate footprint sides so a tight box
+  // matching the largest item (e.g. its base) is tried — yields the exact bounding
+  // box for "big item fills the floor, small items stack on top" packs.
+  for (const u of units) {
+    candidateSides.add(Math.ceil(u.l));
+    candidateSides.add(Math.ceil(u.w));
+    candidateSides.add(Math.ceil(u.h));
+  }
 
+  // Selection: minimum volume, then SMALLEST FOOTPRINT, then smallest longest side.
+  // The footprint tie-break is what makes equal-volume packs resolve to the realistic
+  // "stack on the base" box (e.g. 15×10×6) instead of an equal-volume but spread-out
+  // shape (e.g. 15×15×4) the merchant would never use — important because this box is
+  // shown to the merchant as the carton to pack into.
   let best: BoxDimensions | null = null;
+  let bestVol = Infinity;
+  let bestFootprint = Infinity;
+  let bestMaxSide = Infinity;
   for (const L of candidateSides) {
     for (const W of candidateSides) {
-      if (L < maxFootprintSide && W < maxFootprintSide) continue; // at least one side must fit the longest item lying down
+      // packInto is the source of truth for feasibility (it respects per-item
+      // keepUpright), so we try every candidate footprint and keep the best
+      // that actually packs — no blunt size pre-filter that could skip the tight box.
       const { fits, usedHeight } = packInto(units, L, W, Infinity);
       if (!fits) continue;
       const box = { lengthCm: L, widthCm: W, heightCm: Math.ceil(usedHeight) };
       const vol = box.lengthCm * box.widthCm * box.heightCm;
-      if (!best || vol < best.lengthCm * best.widthCm * best.heightCm) best = box;
+      const footprint = box.lengthCm * box.widthCm;
+      const maxSide = Math.max(box.lengthCm, box.widthCm, box.heightCm);
+      const better =
+        !best ||
+        vol < bestVol ||
+        (vol === bestVol && footprint < bestFootprint) ||
+        (vol === bestVol && footprint === bestFootprint && maxSide < bestMaxSide);
+      if (better) {
+        best = box;
+        bestVol = vol;
+        bestFootprint = footprint;
+        bestMaxSide = maxSide;
+      }
     }
   }
 
@@ -214,7 +278,7 @@ function pad(box: BoxDimensions, paddingCm: number): BoxDimensions {
  *
  * @param items       line items with per-unit dimensions/weight + quantity
  * @param boxPresets  optional catalog of real carton sizes (Ops config)
- * @param paddingCm   safety padding per dimension (default +2 cm)
+ * @param paddingCm   safety padding per dimension (default +1 cm)
  */
 export function cartonize(input: {
   items: CartonItem[];

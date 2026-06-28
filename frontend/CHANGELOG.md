@@ -12,6 +12,19 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.8] — 2026-06-28
+
+### Added
+- **"Keep upright" packing flag in the admin product editor.** `AdminProductVariant` carries `keepUpright`; the variant edit row (new "Upright" column), the add-variant form, and the create-product primary-variant card each expose a checkbox. It is sent on variant create/update so fragile / this-side-up / liquid items are only rotated about their vertical axis during shipping cartonization. `BoxPresetsPanel` copy now notes the +1 cm padding and the keep-upright behavior.
+- **"Packing box" card on the admin order detail.** `AdminOrderDetailPanel` renders the `packingBox` returned by `GET /admin/orders/:id` (dimensions, weight, source/box name) so the merchant sees the exact carton used to rate the order and can pack into it. `AdminOrderDetailFull` carries the optional `packingBox`.
+
+**Propagation:**
+- Severity: NORMAL · Layers: frontend (`lib/admin-api.ts`, `components/admin/AdminProductEditor.tsx`, `components/admin/BoxPresetsPanel.tsx`, `components/admin/AdminOrderDetailPanel.tsx`)
+- Migration: NO · Flag: n/a · Design impact: none (uses existing admin form controls) · Breaking: NO
+- Rollback: revert the three files
+- Note: requires backend-core 0.1.13 (the `keepUpright` field + cartonization refinement).
+
+
 ## [0.1.7] — 2026-06-22
 
 ### Added

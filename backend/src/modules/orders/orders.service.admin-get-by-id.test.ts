@@ -105,4 +105,55 @@ describe('OrdersService admin get order by id', () => {
       shipmentLabelUrl: null
     });
   });
+
+  it('computes the recommended packing box from the order variant dimensions', async () => {
+    const fastify = {
+      prisma: {
+        order: {
+          findUnique: vi.fn().mockResolvedValue({
+            id: 'order_3',
+            orderNumber: 'ORD-2026-00003',
+            userId: 'user_3',
+            status: OrderStatus.CONFIRMED,
+            shippingAddress: { city: 'Pune' },
+            subtotal: 30000,
+            shippingCharge: 0,
+            discountAmount: 0,
+            total: 30000,
+            notes: null,
+            createdAt: new Date('2026-06-28T00:00:00.000Z'),
+            updatedAt: new Date('2026-06-28T00:00:00.000Z'),
+            items: [
+              { id: 'oi_1', variantId: 'v_base', productName: 'Base', variantName: 'D', sku: 'B', quantity: 1, unitPrice: 10000, totalPrice: 10000 },
+              { id: 'oi_2', variantId: 'v_top', productName: 'Top', variantName: 'D', sku: 'T', quantity: 2, unitPrice: 10000, totalPrice: 20000 }
+            ],
+            statusHistory: [],
+            payment: null,
+            shipment: null
+          })
+        },
+        productVariant: {
+          findMany: vi.fn().mockResolvedValue([
+            { id: 'v_base', weight: 1000, packageLengthCm: 15, packageWidthCm: 10, packageHeightCm: 4, keepUpright: false },
+            { id: 'v_top', weight: 200, packageLengthCm: 10, packageWidthCm: 5, packageHeightCm: 2, keepUpright: false }
+          ])
+        },
+        storeSettings: {
+          findUnique: vi.fn().mockResolvedValue({ boxPresets: null })
+        }
+      }
+    } as unknown as FastifyInstance;
+
+    const service = new OrdersService(fastify);
+    const result = await service.adminGetOrderById('order_3');
+    // Raw bounding box 15×10×6, +1cm padding → 16×11×7. Weight 1000 + 2×200 = 1400.
+    expect(result.packingBox).toEqual({
+      lengthCm: 16,
+      widthCm: 11,
+      heightCm: 7,
+      weightGrams: 1400,
+      source: 'computed',
+      boxName: null
+    });
+  });
 });
