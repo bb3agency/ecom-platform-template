@@ -12,6 +12,18 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.12] — 2026-06-22
+
+### Added
+- **Store identity/contact in the public store config.** `GET /store/config` (`getPublicStoreConfig`) now returns `storeName`, `storeAddress` (from `StoreSettings.sellerAddress`), `storeState`, `contactEmail`, `contactPhone` so the storefront can render a merchant-managed address/contact (footer, contact surfaces) without admin auth. All merchant-editable in Admin → Settings → Store; no schema change (reuses existing fields).
+
+**Propagation:**
+- Severity: NORMAL (additive public-config fields) · Layers: backend (`modules/settings/settings.service.ts`, `settings.schemas.ts`)
+- Migration: NO · Flag: n/a · Design impact: none · Breaking: NO (purely additive)
+- Rollback: revert the two settings files
+- Ops note: pairs with frontend-core 0.1.7 (footer reads these). Address shown = `StoreSettings.sellerAddress`.
+
+
 ## [0.1.11] — 2026-06-22
 
 ### Removed

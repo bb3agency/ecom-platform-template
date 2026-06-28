@@ -367,7 +367,12 @@ export const getPublicStoreConfigSchema = {
         },
         reviewsEnabled: { type: 'boolean' },
         wishlistEnabled: { type: 'boolean' },
-        gstInvoicingEnabled: { type: 'boolean' }
+        gstInvoicingEnabled: { type: 'boolean' },
+        storeName: { type: ['string', 'null'] },
+        storeAddress: { type: ['string', 'null'] },
+        storeState: { type: ['string', 'null'] },
+        contactEmail: { type: ['string', 'null'] },
+        contactPhone: { type: ['string', 'null'] }
       }
     }
   }

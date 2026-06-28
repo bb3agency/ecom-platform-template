@@ -5,6 +5,14 @@ import {
   parsePublicStoreConfig,
 } from "@/lib/storefront-settings";
 
+const STORE_FIELDS = {
+  storeName: null,
+  storeAddress: null,
+  storeState: null,
+  contactEmail: null,
+  contactPhone: null,
+};
+
 const FAIL_CLOSED_EXPECTED = {
   isCodEnabled: false,
   minOrderValuePaise: 0,
@@ -13,6 +21,7 @@ const FAIL_CLOSED_EXPECTED = {
   reviewsEnabled: false,
   wishlistEnabled: false,
   gstInvoicingEnabled: false,
+  ...STORE_FIELDS,
   configAvailable: false,
 };
 
@@ -64,6 +73,7 @@ describe("storefront-settings", () => {
       reviewsEnabled: false,
       wishlistEnabled: true,
       gstInvoicingEnabled: true,
+      ...STORE_FIELDS,
       configAvailable: true,
     });
   });
@@ -96,6 +106,7 @@ describe("storefront-settings", () => {
       reviewsEnabled: true,
       wishlistEnabled: false,
       gstInvoicingEnabled: false,
+      ...STORE_FIELDS,
       configAvailable: true,
     });
   });
@@ -124,6 +135,7 @@ describe("storefront-settings", () => {
       reviewsEnabled: false,
       wishlistEnabled: false,
       gstInvoicingEnabled: false,
+      ...STORE_FIELDS,
       configAvailable: true,
     });
     expect(global.fetch).toHaveBeenCalledWith(

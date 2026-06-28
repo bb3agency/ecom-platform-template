@@ -467,6 +467,11 @@ export class SettingsService {
     reviewsEnabled: boolean;
     wishlistEnabled: boolean;
     gstInvoicingEnabled: boolean;
+    storeName: string | null;
+    storeAddress: string | null;
+    storeState: string | null;
+    contactEmail: string | null;
+    contactPhone: string | null;
   }> {
     const [settings, couponsEnabled] = await Promise.all([
       this.fastify.prisma.storeSettings.findUnique({
@@ -474,7 +479,14 @@ export class SettingsService {
         select: {
           isCodEnabled: true,
           minOrderValuePaise: true,
-          mobileOtpSignupEnabled: true
+          mobileOtpSignupEnabled: true,
+          // Public store identity/contact — merchant-editable in Admin → Settings → Store,
+          // rendered in the storefront footer + contact surfaces.
+          storeName: true,
+          sellerAddress: true,
+          sellerState: true,
+          contactEmail: true,
+          contactPhone: true
         }
       }),
       isStorefrontCouponsEnabled(this.fastify.prisma)
@@ -486,7 +498,12 @@ export class SettingsService {
       couponsEnabled,
       reviewsEnabled: featureFlags.reviews,
       wishlistEnabled: featureFlags.wishlist,
-      gstInvoicingEnabled: featureFlags.gstInvoicing
+      gstInvoicingEnabled: featureFlags.gstInvoicing,
+      storeName: settings?.storeName ?? null,
+      storeAddress: settings?.sellerAddress ?? null,
+      storeState: settings?.sellerState ?? null,
+      contactEmail: settings?.contactEmail ?? null,
+      contactPhone: settings?.contactPhone ?? null
     };
   }
 }

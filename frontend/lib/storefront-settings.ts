@@ -28,6 +28,12 @@ export interface PublicStoreConfig {
   reviewsEnabled: boolean;
   wishlistEnabled: boolean;
   gstInvoicingEnabled: boolean;
+  /** Merchant store identity/contact (Admin → Settings → Store) — shown in footer/contact. */
+  storeName: string | null;
+  storeAddress: string | null;
+  storeState: string | null;
+  contactEmail: string | null;
+  contactPhone: string | null;
   /** False when GET /store/config failed — block checkout until config loads. */
   configAvailable: boolean;
 }
@@ -41,6 +47,11 @@ const FAIL_CLOSED_CONFIG: PublicStoreConfig = {
   reviewsEnabled: false,
   wishlistEnabled: false,
   gstInvoicingEnabled: false,
+  storeName: null,
+  storeAddress: null,
+  storeState: null,
+  contactEmail: null,
+  contactPhone: null,
   configAvailable: false,
 };
 
@@ -87,6 +98,11 @@ export function parsePublicStoreConfig(body: unknown): PublicStoreConfig {
       typeof record.gstInvoicingEnabled === "boolean"
         ? record.gstInvoicingEnabled
         : FAIL_CLOSED_CONFIG.gstInvoicingEnabled,
+    storeName: typeof record.storeName === "string" ? record.storeName : null,
+    storeAddress: typeof record.storeAddress === "string" ? record.storeAddress : null,
+    storeState: typeof record.storeState === "string" ? record.storeState : null,
+    contactEmail: typeof record.contactEmail === "string" ? record.contactEmail : null,
+    contactPhone: typeof record.contactPhone === "string" ? record.contactPhone : null,
     configAvailable: true,
   };
 }

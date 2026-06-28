@@ -34,7 +34,12 @@ describe('SettingsService getPublicStoreConfig', () => {
       return Promise.resolve({
         isCodEnabled: true,
         minOrderValuePaise: 25000,
-        mobileOtpSignupEnabled: true
+        mobileOtpSignupEnabled: true,
+        storeName: 'Acme Store',
+        sellerAddress: '12 Market Rd, Hyderabad',
+        sellerState: 'Telangana',
+        contactEmail: 'hello@acme.test',
+        contactPhone: '+91 90000 00000'
       });
     });
 
@@ -53,7 +58,13 @@ describe('SettingsService getPublicStoreConfig', () => {
       couponsEnabled: true,
       reviewsEnabled: false,
       wishlistEnabled: true,
-      gstInvoicingEnabled: false
+      gstInvoicingEnabled: false,
+      // store identity/contact exposed for the storefront footer (sellerAddress → storeAddress)
+      storeName: 'Acme Store',
+      storeAddress: '12 Market Rd, Hyderabad',
+      storeState: 'Telangana',
+      contactEmail: 'hello@acme.test',
+      contactPhone: '+91 90000 00000'
     });
   });
 

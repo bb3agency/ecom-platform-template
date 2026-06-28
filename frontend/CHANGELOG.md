@@ -12,6 +12,18 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.7] — 2026-06-22
+
+### Added
+- **Merchant-managed store address/contact in the storefront footer.** `PublicStoreConfig` (`lib/storefront-settings.ts`) now carries `storeName`/`storeAddress`/`storeState`/`contactEmail`/`contactPhone` from `GET /store/config`; the storefront `Footer` reads them via `useStoreConfig()` (now a client component) with safe fallbacks, so the address/phone/email update from Admin → Settings → Store without a code change. `StoreSettingsPanel` clarifies the address is shown on the storefront.
+
+**Propagation:**
+- Severity: NORMAL · Layers: frontend (`lib/storefront-settings.ts`, `components/admin/StoreSettingsPanel.tsx`); `components/layout/Footer.tsx` is per-client (design layer) — wire each client's footer to `useStoreConfig()` as desired.
+- Migration: NO · Flag: n/a · Design impact: none (footer markup unchanged, values now dynamic) · Breaking: NO
+- Rollback: revert the lib + panel
+- Note: requires backend-core 0.1.12 (public config exposes the fields).
+
+
 ## [0.1.6] — 2026-06-22
 
 ### Changed

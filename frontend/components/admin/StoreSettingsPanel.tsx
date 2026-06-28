@@ -235,16 +235,19 @@ export function StoreSettingsPanel() {
               </label>
 
               <label className="grid gap-1.5 text-sm font-medium text-foreground sm:col-span-2">
-                Seller Address
+                Seller / Store Address
                 <textarea
                   rows={3}
-                  placeholder="Full registered address printed on tax invoices"
+                  placeholder="Full registered address — printed on tax invoices AND shown on the storefront footer"
                   maxLength={500}
                   className={inputClass}
                   value={sellerAddress}
                   onChange={(e) => setSellerAddress(e.target.value)}
                   disabled={!canWrite}
                 />
+                <span className="text-xs font-normal text-muted-foreground">
+                  Shown to customers in the storefront footer. Updates appear within ~a minute of saving.
+                </span>
               </label>
 
               <label className="grid gap-1.5 text-sm font-medium text-foreground">
