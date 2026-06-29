@@ -1911,7 +1911,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                   Manage All Product Variants
                 </h3>
                 <AdminTableScroll className="rounded-lg border border-border/50">
-                  <table className="w-full min-w-[600px] text-left text-sm">
+                  <table className="w-full min-w-[1180px] text-left text-sm">
                     <thead className="border-b border-border/40 bg-muted/20 text-xs font-bold text-muted-foreground uppercase tracking-wider">
                       <tr>
                         <th className="px-3 py-3">SKU</th>
@@ -2335,7 +2335,7 @@ function VariantEditRow({
     <tr className="border-b border-border last:border-0">
       <td className="px-3 py-2">
         <input
-          className={inputClass}
+          className={`${inputClass} min-w-[110px]`}
           value={draft.sku}
           onChange={(event) => setDraft({ ...draft, sku: event.target.value })}
           disabled={!canWrite}
@@ -2343,7 +2343,7 @@ function VariantEditRow({
       </td>
       <td className="px-3 py-2">
         <input
-          className={inputClass}
+          className={`${inputClass} min-w-[140px]`}
           value={draft.name}
           onChange={(event) => setDraft({ ...draft, name: event.target.value })}
           disabled={!canWrite}
@@ -2351,7 +2351,7 @@ function VariantEditRow({
       </td>
       <td className="px-3 py-2">
         <input
-          className={inputClass}
+          className={`${inputClass} min-w-[104px]`}
           value={draft.pricePaise}
           onChange={(event) =>
             setDraft({ ...draft, pricePaise: event.target.value })
@@ -2364,7 +2364,7 @@ function VariantEditRow({
       </td>
       <td className="px-3 py-2">
         <input
-          className={inputClass}
+          className={`${inputClass} min-w-[104px]`}
           value={draft.compareAtPricePaise}
           onChange={(event) =>
             setDraft({ ...draft, compareAtPricePaise: event.target.value })
@@ -2374,7 +2374,7 @@ function VariantEditRow({
       </td>
       <td className="px-3 py-2">
         <input
-          className={inputClass}
+          className={`${inputClass} min-w-[84px]`}
           type="number"
           min="1"
           placeholder="g"
@@ -2387,7 +2387,7 @@ function VariantEditRow({
       </td>
       <td className="px-3 py-2">
         <input
-          className={inputClass}
+          className={`${inputClass} min-w-[68px]`}
           type="number"
           min="1"
           placeholder="L"
@@ -2400,7 +2400,7 @@ function VariantEditRow({
       </td>
       <td className="px-3 py-2">
         <input
-          className={inputClass}
+          className={`${inputClass} min-w-[68px]`}
           type="number"
           min="1"
           placeholder="W"
@@ -2413,7 +2413,7 @@ function VariantEditRow({
       </td>
       <td className="px-3 py-2">
         <input
-          className={inputClass}
+          className={`${inputClass} min-w-[68px]`}
           type="number"
           min="1"
           placeholder="H"

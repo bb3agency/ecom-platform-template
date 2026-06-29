@@ -12,6 +12,16 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.10] — 2026-06-30
+
+### Fixed
+- **Admin product editor — "Manage All Product Variants" table no longer cramped on desktop.** The 11-column variant edit table was constrained to `min-w-[600px]` (~54px/column), squishing every input to an unusable box with truncated values. Widened the table to `min-w-[1180px]` and gave each editable cell a sensible min-width (SKU 110, Name 140, Price/Compare 104, Weight 84, L/W/H 68px), so fields are fully readable; the table continues to scroll horizontally within `AdminTableScroll`.
+
+**Propagation:**
+- Severity: LOW (admin CSS/layout only) · Layers: frontend (`components/admin/AdminProductEditor.tsx`)
+- Migration: NO · Flag: n/a · Design impact: none (Tailwind width utilities only) · Breaking: NO
+- Rollback: revert the component
+
 ## [0.1.9] — 2026-06-29
 
 ### Fixed

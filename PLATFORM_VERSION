@@ -3,7 +3,7 @@
 # version dashboard and the core-drift CI check. See
 # backend/docs/PLATFORM_VERSIONING_AND_SYNC_GUIDE.md.
 backend-core: 0.1.14
-frontend-core: 0.1.9
+frontend-core: 0.1.10
 
 # Minimum backend-core this frontend-core requires (compatibility contract).
 requires-backend-core: 0.1.1
