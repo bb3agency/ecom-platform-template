@@ -12,6 +12,17 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.14] — 2026-06-29
+
+### Fixed
+- **`compareAtPrice` is now truly optional and clearable (was effectively mandatory on edit).** The admin edit form sends `compareAtPrice: null` when the field is blank, but the variant schema only allowed an integer → schema rejected it as "must be integer", and `assertValidCompareAtPrice(price, null)` also threw "must be greater than price" (since `null <= price`). Net effect: you couldn't save a product/variant edit without entering a valid compare-at price. Now: the variant `compareAtPrice` schema accepts `integer | null`; `assertValidCompareAtPrice` ignores `null`/`undefined` and only validates a positive value (`> price`); and the create/update write-sites map `null → null` (clears the column) instead of `Math.floor(null) → 0`. Error message reworded to "Compare-at price must be greater than the price".
+
+**Propagation:**
+- Severity: NORMAL (admin UX bug fix) · Layers: backend (`modules/products/products.schemas.ts`, `products.service.ts`, `products.types.ts`)
+- Migration: NO · Flag: n/a · Design impact: none · Breaking: NO (additive — `null` now accepted where it was rejected)
+- Rollback: revert the three files
+- Pairs with frontend-core 0.1.9 (Compare-at-Price marked optional; `weightGrams→weight` add-variant fix; store-address always editable).
+
 ## [0.1.13] — 2026-06-28
 
 ### Added

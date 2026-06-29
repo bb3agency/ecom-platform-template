@@ -347,7 +347,9 @@ const adminProductInputProperties = {
         sku: { type: 'string', maxLength: 100 },
         name: { type: 'string', maxLength: 100 },
         price: { type: 'integer', minimum: 0, maximum: 1000000000 },
-        compareAtPrice: { type: 'integer', minimum: 0, maximum: 1000000000 },
+        compareAtPrice: {
+          anyOf: [{ type: 'integer', minimum: 0, maximum: 1000000000 }, { type: 'null' }]
+        },
         weight: { type: 'integer', minimum: 0, maximum: 10000000 },
         packageLengthCm: { type: 'integer', minimum: 1, maximum: 10000 },
         packageWidthCm: { type: 'integer', minimum: 1, maximum: 10000 },

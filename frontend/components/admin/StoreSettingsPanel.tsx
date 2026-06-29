@@ -94,7 +94,7 @@ export function StoreSettingsPanel() {
           sellerState: sellerState.trim() ? sellerState.trim() : null,
         }),
       });
-      setSuccess("Compliance IDs saved successfully.");
+      setSuccess("Store settings saved successfully.");
       setTimeout(() => setSuccess(null), 4000);
     } catch (err) {
       setError(getApiErrorMessage(err));
@@ -114,8 +114,8 @@ export function StoreSettingsPanel() {
       <div>
         <h3 className="text-lg font-medium text-foreground">Store Profile</h3>
         <p className="text-sm text-muted-foreground">
-          Compliance registration IDs used on GST invoices. Brand identity and contact
-          details are configured at deployment time by your platform admin.
+          Your store address (shown on the storefront footer) and the compliance IDs used on GST
+          invoices. Brand name and website URL are set at deployment time by your platform admin.
         </p>
       </div>
 
@@ -191,6 +191,78 @@ export function StoreSettingsPanel() {
         }}
         className="space-y-6"
       >
+        {/* ------------------------------------------------------------------ */}
+        {/* Always editable: Store details (footer address + invoice seller)    */}
+        {/* ------------------------------------------------------------------ */}
+        <div className="rounded-xl border border-border bg-muted/10 p-4 sm:p-5 space-y-4">
+          <h4 className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            <Store className="h-4 w-4 text-primary" aria-hidden />
+            Store Details &amp; Address
+            <span className="ml-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+              Shown on storefront
+            </span>
+          </h4>
+
+          {!loaded && !error ? (
+            <div className="space-y-3">
+              <div className="h-14 animate-pulse rounded-lg bg-muted/60" />
+              <div className="h-20 animate-pulse rounded-lg bg-muted/60" />
+            </div>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="grid gap-1.5 text-sm font-medium text-foreground sm:col-span-2">
+                Seller Legal Name
+                <input
+                  type="text"
+                  placeholder="Registered business / store name"
+                  maxLength={200}
+                  className={inputClass}
+                  value={sellerLegalName}
+                  onChange={(e) => setSellerLegalName(e.target.value)}
+                  disabled={!canWrite}
+                />
+              </label>
+
+              <label className="grid gap-1.5 text-sm font-medium text-foreground sm:col-span-2">
+                Store Address
+                <textarea
+                  rows={3}
+                  placeholder="e.g. D.No.4-15, Tadikonda Mandalam, Bandarupalle, Guntur, Andhra Pradesh, 522018"
+                  maxLength={500}
+                  className={inputClass}
+                  value={sellerAddress}
+                  onChange={(e) => setSellerAddress(e.target.value)}
+                  disabled={!canWrite}
+                />
+                <span className="text-xs font-normal text-muted-foreground">
+                  Shown to customers in the storefront footer (and printed on tax invoices when GST
+                  invoicing is on). Updates appear within ~a minute of saving.
+                </span>
+              </label>
+
+              <label className="grid gap-1.5 text-sm font-medium text-foreground sm:col-span-2">
+                Operating State
+                <input
+                  type="text"
+                  placeholder="Andhra Pradesh"
+                  maxLength={100}
+                  className={inputClass}
+                  value={sellerState}
+                  onChange={(e) => setSellerState(e.target.value)}
+                  disabled={!canWrite}
+                />
+                <span className="text-xs text-muted-foreground/80">
+                  State where the business is registered — also used for GST place-of-supply on
+                  invoices.
+                </span>
+              </label>
+            </div>
+          )}
+        </div>
+
+        {/* ------------------------------------------------------------------ */}
+        {/* GST-only: Compliance IDs (GSTIN + FSSAI) — gated by invoicing flag  */}
+        {/* ------------------------------------------------------------------ */}
         {gstInvoicingEnabled ? (
           <>
         {/* Fail-case warning when GST invoicing is on but IDs are missing */}
@@ -206,7 +278,7 @@ export function StoreSettingsPanel() {
         )}
 
         <div className="rounded-xl border border-border bg-muted/10 p-4 sm:p-5 space-y-4">
-          <h4 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          <h4 className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             <FileText className="h-4 w-4 text-primary" aria-hidden />
             Taxation &amp; Compliance IDs
             <span className="ml-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
@@ -221,51 +293,6 @@ export function StoreSettingsPanel() {
             </div>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2">
-              <label className="grid gap-1.5 text-sm font-medium text-foreground sm:col-span-2">
-                Seller Legal Name
-                <input
-                  type="text"
-                  placeholder="Registered business name on GST certificate"
-                  maxLength={200}
-                  className={inputClass}
-                  value={sellerLegalName}
-                  onChange={(e) => setSellerLegalName(e.target.value)}
-                  disabled={!canWrite}
-                />
-              </label>
-
-              <label className="grid gap-1.5 text-sm font-medium text-foreground sm:col-span-2">
-                Seller / Store Address
-                <textarea
-                  rows={3}
-                  placeholder="Full registered address — printed on tax invoices AND shown on the storefront footer"
-                  maxLength={500}
-                  className={inputClass}
-                  value={sellerAddress}
-                  onChange={(e) => setSellerAddress(e.target.value)}
-                  disabled={!canWrite}
-                />
-                <span className="text-xs font-normal text-muted-foreground">
-                  Shown to customers in the storefront footer. Updates appear within ~a minute of saving.
-                </span>
-              </label>
-
-              <label className="grid gap-1.5 text-sm font-medium text-foreground">
-                Operating State
-                <input
-                  type="text"
-                  placeholder="Telangana"
-                  maxLength={100}
-                  className={inputClass}
-                  value={sellerState}
-                  onChange={(e) => setSellerState(e.target.value)}
-                  disabled={!canWrite}
-                />
-                <span className="text-xs text-muted-foreground/80">
-                  State where the business is registered — used for GST place-of-supply on invoices.
-                </span>
-              </label>
-
               <label className="grid gap-1.5 text-sm font-medium text-foreground">
                 GSTIN
                 <input
@@ -307,8 +334,8 @@ export function StoreSettingsPanel() {
           </>
         ) : (
           <p className="text-sm text-muted-foreground">
-            GST invoicing fields are hidden because{" "}
-            GST invoice fields are hidden because GST invoicing is disabled in backend store config.
+            GSTIN &amp; FSSAI fields are hidden because GST invoicing is disabled in backend store
+            config. Your store address above is still saved and shown on the storefront.
           </p>
         )}
 
@@ -339,7 +366,7 @@ export function StoreSettingsPanel() {
                   Saving…
                 </>
               ) : (
-                "Save Compliance IDs"
+                "Save Store Settings"
               )}
             </button>
           </div>
@@ -347,7 +374,7 @@ export function StoreSettingsPanel() {
 
         {!canWrite && loaded && (
           <p className="text-xs text-muted-foreground">
-            You don&apos;t have permission to update compliance IDs. Contact your admin.
+            You don&apos;t have permission to update store settings. Contact your admin.
           </p>
         )}
       </form>

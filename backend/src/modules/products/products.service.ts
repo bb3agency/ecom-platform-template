@@ -356,7 +356,7 @@ export class ProductsService {
                   sku: variant.sku.trim(),
                   name: variant.name,
                   price: Math.floor(variant.price),
-                  ...(variant.compareAtPrice !== undefined ? { compareAtPrice: Math.floor(variant.compareAtPrice) } : {}),
+                  ...(variant.compareAtPrice !== undefined ? { compareAtPrice: variant.compareAtPrice === null ? null : Math.floor(variant.compareAtPrice) } : {}),
                   ...(variant.weight !== undefined ? { weight: Math.floor(variant.weight) } : {}),
                   ...(variant.packageLengthCm !== undefined ? { packageLengthCm: Math.floor(variant.packageLengthCm) } : {}),
                   ...(variant.packageWidthCm !== undefined ? { packageWidthCm: Math.floor(variant.packageWidthCm) } : {}),
@@ -641,7 +641,7 @@ export class ProductsService {
           sku: input.sku.trim(),
           name: input.name,
           price: Math.floor(input.price),
-          ...(input.compareAtPrice !== undefined ? { compareAtPrice: Math.floor(input.compareAtPrice) } : {}),
+          ...(input.compareAtPrice !== undefined ? { compareAtPrice: input.compareAtPrice === null ? null : Math.floor(input.compareAtPrice) } : {}),
           ...(input.weight !== undefined ? { weight: Math.floor(input.weight) } : {}),
           ...(input.packageLengthCm !== undefined ? { packageLengthCm: Math.floor(input.packageLengthCm) } : {}),
           ...(input.packageWidthCm !== undefined ? { packageWidthCm: Math.floor(input.packageWidthCm) } : {}),
@@ -690,7 +690,7 @@ export class ProductsService {
       ...(input.sku !== undefined ? { sku: input.sku.trim() } : {}),
       ...(input.name !== undefined ? { name: input.name } : {}),
       ...(input.price !== undefined ? { price: Math.floor(input.price) } : {}),
-      ...(input.compareAtPrice !== undefined ? { compareAtPrice: Math.floor(input.compareAtPrice) } : {}),
+      ...(input.compareAtPrice !== undefined ? { compareAtPrice: input.compareAtPrice === null ? null : Math.floor(input.compareAtPrice) } : {}),
       ...(input.weight !== undefined ? { weight: Math.floor(input.weight) } : {}),
       ...(input.packageLengthCm !== undefined ? { packageLengthCm: Math.floor(input.packageLengthCm) } : {}),
       ...(input.packageWidthCm !== undefined ? { packageWidthCm: Math.floor(input.packageWidthCm) } : {}),
@@ -1588,9 +1588,11 @@ export class ProductsService {
     return { items, total };
   }
 
-  private assertValidCompareAtPrice(price: number, compareAtPrice: number | undefined) {
-    if (compareAtPrice !== undefined && compareAtPrice <= price) {
-      throw new AppError(ERROR_CODES.VALIDATION_ERROR, 'compareAtPrice must be greater than price', 400);
+  private assertValidCompareAtPrice(price: number, compareAtPrice: number | null | undefined) {
+    // null/undefined = no compare-at price (optional / cleared). Only a positive
+    // compare-at price is validated; it must exceed the selling price.
+    if (compareAtPrice != null && compareAtPrice <= price) {
+      throw new AppError(ERROR_CODES.VALIDATION_ERROR, 'Compare-at price must be greater than the price', 400);
     }
   }
 

@@ -12,6 +12,18 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.9] — 2026-06-29
+
+### Fixed
+- **Admin product editor — add-variant `weight` bug + Compare-at-Price clarity.** `addVariant` sent `weightGrams` (rejected by the backend schema's `additionalProperties:false`, so adding a variant *with a weight* failed); now sends `weight`. Compare-at-Price is labelled **(optional)** with a clearer tooltip, and the description character counter shows the correct `/5000` limit. The inline add/edit variant handlers now surface backend `VALIDATION_ERROR` field details (via `handleSubmitError`) instead of a generic message, so the admin sees exactly which field was wrong.
+- **Store address is now always editable in Admin → Settings → Store (was hidden unless GST invoicing was on).** `StoreSettingsPanel` was rendering the entire seller section — including the storefront-footer **Store Address** — only when `gstInvoicingEnabled`. The Store Details card (legal name, address, operating state) is now always shown/saved; only GSTIN/FSSAI remain gated behind GST invoicing. Save button/labels reworded to "Store Settings".
+
+**Propagation:**
+- Severity: NORMAL (admin UX bug fixes) · Layers: frontend (`components/admin/AdminProductEditor.tsx`, `components/admin/StoreSettingsPanel.tsx`)
+- Migration: NO · Flag: n/a · Design impact: none · Breaking: NO
+- Rollback: revert the two components
+- Note: requires backend-core 0.1.14 (`compareAtPrice` null handling). Address persistence already supported by `updateStoreProfile` (no backend change needed for the address itself).
+
 ## [0.1.8] — 2026-06-28
 
 ### Added

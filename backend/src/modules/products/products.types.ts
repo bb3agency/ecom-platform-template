@@ -36,7 +36,7 @@ export type CreateProductInput = {
     sku: string;
     name: string;
     price: number;
-    compareAtPrice?: number;
+    compareAtPrice?: number | null;
     weight?: number;
     packageLengthCm?: number;
     packageWidthCm?: number;
@@ -82,7 +82,7 @@ export type CreateProductVariantInput = {
   sku: string;
   name: string;
   price: number;
-  compareAtPrice?: number;
+  compareAtPrice?: number | null;
   weight?: number;
   packageLengthCm?: number;
   packageWidthCm?: number;

@@ -733,7 +733,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
       setSuccess("Variant updated.");
       notifyAdminDataChanged(["products", "inventory", "dashboard"]);
     } catch (err) {
-      setError(getApiErrorMessage(err));
+      setError(handleSubmitError(err));
     } finally {
       setSaving(false);
     }
@@ -783,7 +783,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
           name: newVariant.name.trim(),
           price,
           ...(compareAtPrice !== undefined ? { compareAtPrice } : {}),
-          ...(weightGrams !== undefined ? { weightGrams } : {}),
+          ...(weightGrams !== undefined ? { weight: weightGrams } : {}),
           ...(packageLengthCm !== undefined ? { packageLengthCm } : {}),
           ...(packageWidthCm !== undefined ? { packageWidthCm } : {}),
           ...(packageHeightCm !== undefined ? { packageHeightCm } : {}),
@@ -796,7 +796,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
       setSuccess("Variant added.");
       notifyAdminDataChanged(["products", "inventory", "dashboard"]);
     } catch (err) {
-      setError(getApiErrorMessage(err));
+      setError(handleSubmitError(err));
     } finally {
       setSaving(false);
     }
@@ -1457,7 +1457,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                       disabled={!canWrite}
                     />
                     <span className="absolute bottom-2.5 right-3 text-[10px] text-muted-foreground font-semibold">
-                      {description.length}/2000
+                      {description.length}/5000
                     </span>
                   </div>
                 </div>
@@ -1532,7 +1532,8 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                 <label className="grid gap-1.5 text-xs font-bold text-muted-foreground uppercase tracking-wider">
                   <span className="flex items-center gap-1">
                     Compare at Price
-                    <span title="Original price before discount.">
+                    <span className="normal-case font-medium text-muted-foreground/70">(optional)</span>
+                    <span title="Original price before discount. Leave blank if there is no discount; must be higher than the price.">
                       <HelpCircle className="h-3.5 w-3.5 text-muted-foreground/60 cursor-help" />
                     </span>
                   </span>
