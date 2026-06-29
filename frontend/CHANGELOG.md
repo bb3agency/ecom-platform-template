@@ -12,6 +12,16 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.11] — 2026-06-30
+
+### Fixed
+- **Compare-at price field no longer shows/sends a stale `0`.** `formatVariantCompareAtPriceInput` and the variant-table draft seeding now treat `compareAtPrice <= 0` as empty (legacy `0` data from the old backend bug), and `buildPrimaryVariantPricePatch` sends `null` for a blank/`0` field. Combined with backend-core 0.1.15 this stops the spurious "Compare-at price must be greater than the price" error on save and cleans the bad value.
+
+**Propagation:**
+- Severity: NORMAL · Layers: frontend (`lib/admin-product-pricing.ts`, `components/admin/AdminProductEditor.tsx`)
+- Migration: NO · Flag: n/a · Design impact: none · Breaking: NO
+- Rollback: revert the two files · Requires backend-core 0.1.15.
+
 ## [0.1.10] — 2026-06-30
 
 ### Fixed

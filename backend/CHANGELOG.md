@@ -12,6 +12,17 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.15] — 2026-06-30
+
+### Fixed
+- **"Compare-at price must be greater than the price" error when the field is empty (legacy `0` data).** The pre-0.1.14 bug wrote `compareAtPrice = 0` (`Math.floor(null)`) onto variants. After 0.1.14 those stored zeros made every edit-save fail: the form re-sent `0`, and `assertValidCompareAtPrice` rejected it (`0 <= price`). Now `compareAtPrice <= 0` is treated as **"none"** everywhere: `assertValidCompareAtPrice` ignores `<= 0`, and create/update **normalize `<= 0 → null`** so the stale `0` is cleaned on the next save. A genuine positive compare-at price below the selling price is still rejected.
+
+**Propagation:**
+- Severity: NORMAL (unblocks product editing on affected catalogs) · Layers: backend (`modules/products/products.service.ts`)
+- Migration: NO (self-heals — zeros are rewritten to null on save) · Flag: n/a · Design impact: none · Breaking: NO
+- Rollback: revert the service change
+- Pairs with frontend-core 0.1.11 (form shows `0` as empty and never re-sends it).
+
 ## [0.1.14] — 2026-06-29
 
 ### Fixed

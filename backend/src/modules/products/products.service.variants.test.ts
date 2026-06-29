@@ -312,4 +312,47 @@ describe('ProductsService variant management', () => {
     });
   });
 
+  it('treats compareAtPrice 0 (legacy corrupt data) as cleared, not an error', async () => {
+    const existingVariant = {
+      id: 'variant_1',
+      productId: 'prod_1',
+      sku: 'HNY-500',
+      name: 'Default',
+      price: 20000,
+      compareAtPrice: 0, // legacy bad value from the old Math.floor(null)=0 bug
+      updatedAt: new Date('2026-06-01T00:00:00.000Z'),
+      inventory: { quantity: 12, lowStockThreshold: 10 }
+    };
+    const updatedVariant = { ...existingVariant, compareAtPrice: null };
+    const updateManyFn = vi.fn().mockResolvedValue({ count: 1 });
+
+    const fastify = {
+      prisma: {
+        storeSettings: {
+          findUnique: vi.fn().mockResolvedValue({ defaultLowStockThreshold: 10 })
+        },
+        productVariant: {
+          findFirst: vi.fn().mockResolvedValue(existingVariant),
+          updateMany: updateManyFn,
+          findUniqueOrThrow: vi.fn().mockResolvedValue(updatedVariant)
+        }
+      },
+      redis: { scan: vi.fn().mockResolvedValue(['0', []]), del: vi.fn().mockResolvedValue(0) },
+      queues: { analytics: { add: vi.fn() } },
+      log: { error: vi.fn() }
+    } as unknown as FastifyInstance;
+
+    const service = new ProductsService(fastify);
+    // Sending 0 must NOT throw "must be greater than price" — it clears to null.
+    const result = await service.adminUpdateProductVariant('prod_1', 'variant_1', {
+      compareAtPrice: 0
+    });
+
+    expect(result).toEqual(updatedVariant);
+    expect(updateManyFn).toHaveBeenCalledWith({
+      where: { id: 'variant_1', updatedAt: existingVariant.updatedAt },
+      data: { compareAtPrice: null }
+    });
+  });
+
 });

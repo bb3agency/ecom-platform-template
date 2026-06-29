@@ -16,7 +16,11 @@ export function formatVariantPriceInput(paise: number): string {
 export function formatVariantCompareAtPriceInput(
   compareAtPrice: number | null,
 ): string {
-  return compareAtPrice !== null ? String(compareAtPrice / 100) : "";
+  // Treat null AND <=0 as "no compare-at price" (0 is legacy corrupt data) so the
+  // field shows empty instead of "0" and we don't re-send an invalid 0 on save.
+  return compareAtPrice != null && compareAtPrice > 0
+    ? String(compareAtPrice / 100)
+    : "";
 }
 
 export function primaryVariantPricingFromApi(variant: AdminProductVariant): {
@@ -53,7 +57,8 @@ export function buildPrimaryVariantPricePatch(
   return {
     ok: true,
     price,
-    compareAtPrice: compareAtPrice ?? null,
+    // <=0 (or blank) means no compare-at price → send null to clear it.
+    compareAtPrice: compareAtPrice && compareAtPrice > 0 ? compareAtPrice : null,
   };
 }
 

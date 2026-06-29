@@ -2292,7 +2292,7 @@ function VariantEditRow({
     name: variant.name,
     pricePaise: String(variant.price / 100),
     compareAtPricePaise:
-      variant.compareAtPrice !== null
+      variant.compareAtPrice != null && variant.compareAtPrice > 0
         ? String(variant.compareAtPrice / 100)
         : "",
     weightGrams:
@@ -2314,7 +2314,7 @@ function VariantEditRow({
       name: variant.name,
       pricePaise: String(variant.price / 100),
       compareAtPricePaise:
-        variant.compareAtPrice !== null
+        variant.compareAtPrice != null && variant.compareAtPrice > 0
           ? String(variant.compareAtPrice / 100)
           : "",
       weightGrams:
