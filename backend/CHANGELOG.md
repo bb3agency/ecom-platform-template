@@ -12,6 +12,16 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.18] — 2026-06-30
+
+### Fixed
+- **Register the new variant-reorder endpoint in the admin policy registry.** `admin-endpoint-policy-registry.ts` was missing the mapping for `PATCH /api/v1/admin/products/:id/variants/reorder` (added in 0.1.17), so `assertAdminPolicyRegistryIntegrity()` (and its unit test) failed with *"Missing endpoint policy mapping …"*. Added the entry (`products:write`, layer A). No behavior change — the route was already permission-guarded; this just satisfies the registry-completeness invariant.
+
+**Propagation:**
+- Severity: NORMAL (CI gate / follow-up to 0.1.17) · Layers: backend (`common/auth/admin-endpoint-policy-registry.ts`)
+- Migration: NO · Flag: n/a · Design impact: none · Breaking: NO
+- Rollback: revert the one line
+
 ## [0.1.17] — 2026-06-30
 
 ### Added
