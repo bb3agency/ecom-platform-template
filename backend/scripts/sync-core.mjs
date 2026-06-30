@@ -180,7 +180,16 @@ if (oldTag && tagExists(oldTag)) {
   // ----- normal path: apply ONLY the delta between versions (3-way) -----
   console.log(`  Applying delta ${oldTag} → ${tag} (3-way merge; client edits preserved)`);
   applyDelta(includeSpecs, 'core');
-  applyDelta([changelog], 'changelog');
+  // CHANGELOG is append-only, core-OWNED documentation. Clients routinely diverge
+  // from it (they don't carry every template entry), so a 3-way delta reliably
+  // CONFLICTS and leaves an unmerged index entry that breaks the downstream
+  // `git checkout -B`/commit in core-sync.yml. Take the tag's version wholesale —
+  // clients are not meant to edit the core changelog, so there's nothing to merge.
+  try {
+    git(['checkout', tag, '--', changelog]);
+  } catch {
+    /* changelog optional / absent in tag — ignore */
+  }
 
   // Detect conflict markers left by --3way in any touched file.
   const touched = [...new Set(git(['diff', '--name-only']).trim().split('\n').filter(Boolean))];

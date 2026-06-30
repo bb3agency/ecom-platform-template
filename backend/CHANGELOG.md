@@ -12,6 +12,17 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.16] — 2026-06-30
+
+### Fixed
+- **`sync-core.mjs` no longer breaks the core-sync PR on a CHANGELOG conflict.** The 3-way `applyDelta([changelog])` reliably conflicted (clients diverge from the core changelog) and left `backend/CHANGELOG.md` **unmerged in the index**, which failed the workflow's `git checkout -B` with *"you need to resolve your current index first / backend/CHANGELOG.md: needs merge"*. The CHANGELOG is append-only, core-owned documentation, so the sync now takes it **wholesale from the tag** (`git checkout <tag> -- <changelog>`) instead of 3-way-merging it — never conflicts.
+
+**Propagation:**
+- Severity: NORMAL (CI/automation reliability) · Layers: backend (`backend/scripts/sync-core.mjs`)
+- Migration: NO · Flag: n/a · Design impact: none · Breaking: NO
+- Rollback: revert the script change
+- Note: clients pick this up on their next sync; existing failed core-sync runs go green on re-run (downgrade guard no-ops once the client is already at the tag).
+
 ## [0.1.15] — 2026-06-30
 
 ### Fixed
