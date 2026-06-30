@@ -1100,9 +1100,15 @@ export class CartService {
       return cart;
     }
 
-    if (sessionToken) {
+    // Normalize once: a blank/whitespace-only token (e.g. an empty `cart_session=`
+    // cookie) must NOT be treated as a real token. `?? randomUUID()` only guards
+    // null/undefined, so without this an empty string would be stored as the cart key
+    // and every such guest would collide on a single shared `sessionToken: ''` row.
+    const normalizedSessionToken = sessionToken?.trim() ? sessionToken.trim() : undefined;
+
+    if (normalizedSessionToken) {
       const existing = await this.fastify.prisma.cart.findUnique({
-        where: { sessionToken },
+        where: { sessionToken: normalizedSessionToken },
         include: {
           coupon: true,
           reservations: true,
@@ -1125,7 +1131,7 @@ export class CartService {
     // to a random token when the caller supplied none (truly first-touch guest).
     // upsert (not create) makes the first-touch path race-safe against the unique
     // sessionToken when two concurrent requests share a freshly-issued token.
-    const tokenForNewCart = sessionToken ?? randomUUID();
+    const tokenForNewCart = normalizedSessionToken ?? randomUUID();
     const created = await this.fastify.prisma.cart.upsert({
       where: { sessionToken: tokenForNewCart },
       update: { expiresAt: this.buildExpiryDate() },

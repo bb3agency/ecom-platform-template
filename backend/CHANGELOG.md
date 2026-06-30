@@ -12,6 +12,17 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.21] — 2026-07-01
+
+### Fixed
+- **Guest cart: blank `cart_session` cookie could collide all guests onto one shared cart.** Follow-up to 0.1.20. `resolveOrCreateCart` guarded the new-cart token with `sessionToken ?? randomUUID()`, but `??` only catches null/undefined — an empty/whitespace token (e.g. an empty `cart_session=` cookie) passed through and was stored as `sessionToken: ''`, so every blank-cookie guest resolved to the same `''` cart row (cross-guest cart bleed). The earlier lookup used a truthy check, so the two branches disagreed on what counts as a token. Now the token is normalized once (`sessionToken?.trim() || undefined`) and that single value is reused for both the `findUnique` lookup and the `upsert` key; blank/whitespace tokens fall back to a fresh UUID instead of `''`.
+
+**Propagation:**
+- Severity: NORMAL (guest cart correctness / isolation) · Layers: backend (`modules/cart/cart.service.ts`)
+- Migration: NO · Flag: n/a · Design impact: none · Breaking: NO
+- Rollback: revert the listed file
+- Pairs with / hardens 0.1.20.
+
 ## [0.1.20] — 2026-07-01
 
 ### Fixed
