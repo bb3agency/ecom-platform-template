@@ -5,12 +5,14 @@ import {
   type SendWhatsappInput,
   type WhatsappProviderAdapter
 } from '@common/interfaces/notification-provider.interface';
+import { WhatsappTemplateRegistry } from '../whatsapp-template-registry';
 
 type MetaWhatsAppAdapterOptions = {
   accessToken: string;
   phoneNumberId: string;
   apiVersion?: string;
   baseUrl?: string;
+  templateRegistry?: WhatsappTemplateRegistry;
 };
 
 export class MetaWhatsAppAdapter implements WhatsappProviderAdapter {
@@ -18,12 +20,14 @@ export class MetaWhatsAppAdapter implements WhatsappProviderAdapter {
   private readonly phoneNumberId: string;
   private readonly apiVersion: string;
   private readonly baseUrl: string;
+  private readonly templateRegistry: WhatsappTemplateRegistry;
 
   constructor(options: MetaWhatsAppAdapterOptions) {
     this.accessToken = options.accessToken;
     this.phoneNumberId = options.phoneNumberId;
     this.apiVersion = options.apiVersion ?? 'v21.0';
     this.baseUrl = options.baseUrl ?? 'https://graph.facebook.com';
+    this.templateRegistry = options.templateRegistry ?? new WhatsappTemplateRegistry();
   }
 
   async sendWhatsapp(input: SendWhatsappInput): Promise<SendResult> {
@@ -55,6 +59,29 @@ export class MetaWhatsAppAdapter implements WhatsappProviderAdapter {
   }
 
   private buildPayload(recipient: string, input: SendWhatsappInput): Record<string, unknown> {
+    const resolved = this.templateRegistry.resolve(input.template, input.data);
+
+    // Mapped template: use the approved Meta template name, its language, and the
+    // body parameters in the exact positional order the template expects.
+    if (resolved) {
+      const parameters = resolved.parameters.map((text) => ({ type: 'text', text }));
+      return {
+        messaging_product: 'whatsapp',
+        to: recipient,
+        type: 'template',
+        template: {
+          name: resolved.metaName,
+          language: { code: resolved.language },
+          ...(parameters.length > 0
+            ? { components: [{ type: 'body', parameters }] }
+            : {})
+        }
+      };
+    }
+
+    // Legacy fallback for templates not mapped to a WhatsApp template: pass the
+    // raw template name with alphabetically-ordered params. These will only
+    // succeed if a same-named template happens to exist in WhatsApp Manager.
     const values = Object.keys(input.data)
       .sort((a, b) => a.localeCompare(b))
       .map((key) => {

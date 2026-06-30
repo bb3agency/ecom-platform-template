@@ -1,0 +1,143 @@
+/**
+ * Maps abstract notification template names (e.g. 'OrderConfirmed') to the
+ * approved Meta WhatsApp Cloud API template that must exist in WhatsApp Manager.
+ *
+ * Two things MUST line up for a WhatsApp template send to succeed:
+ *   1. `metaName` — Meta template names are lowercase + underscores. Our internal
+ *      template names are PascalCase, so they can never match directly; this map
+ *      is the translation layer (mismatch => Meta error 132001 "template does not exist").
+ *   2. `params`  — Meta templates use POSITIONAL body parameters ({{1}}, {{2}}, ...).
+ *      The order of values we send must match the placeholder order in the approved
+ *      template exactly, and the count must match (mismatch => Meta error 132000).
+ *
+ * Because we control both this registry and the template bodies created in WhatsApp
+ * Manager, they are kept in lockstep. The canonical body text + sample values for
+ * each template live in `docs/WHATSAPP_TEMPLATE_REGISTRY.md`.
+ *
+ * Template bodies are intentionally store-name-agnostic — the store name is passed
+ * as a positional parameter ({{1}}) so the SAME approved templates work for every
+ * client on the platform.
+ */
+
+const DEFAULT_STORE_NAME = 'Our Store';
+
+type TemplateData = Record<string, unknown>;
+
+export type WhatsappTemplateDescriptor = {
+  /** Approved Meta WhatsApp template name (lowercase + underscores). */
+  metaName: string;
+  /** BCP-47 language code the template was created with (must match exactly). */
+  language: string;
+  /**
+   * Ordered list of `data` keys that fill the template's positional body
+   * parameters {{1}}, {{2}}, ... — index 0 fills {{1}}, index 1 fills {{2}}, etc.
+   */
+  params: readonly string[];
+};
+
+export type ResolvedWhatsappTemplate = {
+  metaName: string;
+  language: string;
+  /** Positional body parameter values in {{1}}..{{n}} order. */
+  parameters: string[];
+};
+
+export class WhatsappTemplateRegistry {
+  private readonly templates: Readonly<Record<string, WhatsappTemplateDescriptor>>;
+
+  constructor(overrides?: Record<string, WhatsappTemplateDescriptor>) {
+    this.templates = Object.freeze({
+      ...WhatsappTemplateRegistry.defaultTemplates(),
+      ...overrides
+    });
+  }
+
+  /**
+   * Default internal-name -> Meta-template map. Every entry here MUST have a
+   * matching approved template in WhatsApp Manager with the same number of
+   * positional parameters in the same order. Keep in sync with
+   * docs/WHATSAPP_TEMPLATE_REGISTRY.md.
+   */
+  static defaultTemplates(): Record<string, WhatsappTemplateDescriptor> {
+    return {
+      OrderConfirmed: {
+        metaName: 'order_confirmed',
+        language: 'en',
+        params: ['storeName', 'orderId']
+      },
+      OrderShipped: {
+        metaName: 'order_shipped',
+        language: 'en',
+        params: ['storeName', 'orderId', 'trackingInfo']
+      },
+      OutForDelivery: {
+        metaName: 'out_for_delivery',
+        language: 'en',
+        params: ['storeName', 'orderId']
+      },
+      OrderDelivered: {
+        metaName: 'order_delivered',
+        language: 'en',
+        params: ['storeName', 'orderId']
+      },
+      OrderCancelled: {
+        metaName: 'order_cancelled',
+        language: 'en',
+        params: ['storeName', 'orderId']
+      },
+      PaymentFailed: {
+        metaName: 'payment_failed',
+        language: 'en',
+        params: ['storeName', 'orderId']
+      }
+    };
+  }
+
+  /**
+   * Builds safe WhatsApp template data: injects the store name and derives any
+   * synthetic params the templates reference (e.g. `trackingInfo`, which falls
+   * back to a non-empty string because Meta rejects empty positional parameters).
+   */
+  static composeTemplateData(input: TemplateData, storeName?: string | null): TemplateData {
+    const trackingUrl = typeof input.trackingUrl === 'string' ? input.trackingUrl.trim() : '';
+    return {
+      ...input,
+      storeName: WhatsappTemplateRegistry.normalizeStoreName(storeName),
+      trackingInfo: trackingUrl.length > 0 ? trackingUrl : 'your account orders page'
+    };
+  }
+
+  /**
+   * Resolves the effective store name with fallback (Meta rejects empty params).
+   */
+  static normalizeStoreName(storeName?: string | null): string {
+    const trimmed = (storeName ?? '').trim();
+    return trimmed.length > 0 ? trimmed : DEFAULT_STORE_NAME;
+  }
+
+  /**
+   * Returns the Meta template descriptor + ordered positional parameter values
+   * for an internal template name, or `null` if the template is not mapped to a
+   * WhatsApp template (caller decides how to handle unmapped templates).
+   */
+  resolve(name: string, data: Record<string, unknown>): ResolvedWhatsappTemplate | null {
+    const descriptor = this.templates[name];
+    if (!descriptor) {
+      return null;
+    }
+
+    const parameters = descriptor.params.map((key) => {
+      const value = data[key];
+      if (value === null || value === undefined) {
+        return '';
+      }
+      return typeof value === 'object' ? JSON.stringify(value) : String(value as string | number | boolean);
+    });
+
+    return {
+      metaName: descriptor.metaName,
+      language: descriptor.language,
+      parameters
+    };
+  }
+}

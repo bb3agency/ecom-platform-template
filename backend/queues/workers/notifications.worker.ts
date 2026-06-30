@@ -10,6 +10,7 @@ import { ResendAdapter } from '@modules/notifications/adapters/resend.adapter';
 import { sendNotificationFailureAlert, sendTechnicalFailureAlert, type TechnicalFailureChannel } from '@modules/notifications/notification-failure-alert';
 import type { createNotificationProviders } from '@modules/notifications/notification-provider';
 import { SmsTemplateRegistry } from '@modules/notifications/sms-template-registry';
+import { WhatsappTemplateRegistry } from '@modules/notifications/whatsapp-template-registry';
 import { supportedEmailTemplates } from '@modules/notifications/templates/email-templates';
 
 type SendEmailJobData = {
@@ -432,7 +433,10 @@ export function createNotificationsWorker(
             phoneNumberId: runtimeConfig.META_WHATSAPP_PHONE_NUMBER_ID ?? '',
             apiVersion: runtimeConfig.META_WHATSAPP_API_VERSION ?? 'v21.0'
           });
-          const sent = await whatsappAdapter.sendWhatsapp(data);
+          const sent = await whatsappAdapter.sendWhatsapp({
+            ...data,
+            data: WhatsappTemplateRegistry.composeTemplateData(data.data, flags.storeName)
+          });
           onProviderSuccess('WHATSAPP', 'meta-whatsapp');
           await prisma.notificationLog.create({
             data: {
@@ -754,7 +758,7 @@ export function createNotificationsWorker(
           const sent = await whatsappAdapter.sendWhatsapp({
             phone: recipient,
             template: data.template,
-            data: data.data
+            data: WhatsappTemplateRegistry.composeTemplateData(data.data, flags.storeName)
           });
           onProviderSuccess('WHATSAPP', 'meta-whatsapp');
           await prisma.notificationLog.create({

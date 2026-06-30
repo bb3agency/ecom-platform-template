@@ -12,6 +12,17 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.19] — 2026-06-30
+
+### Added
+- **WhatsApp template registry — outbound WhatsApp notifications now actually match approved Meta templates.** Previously the Meta adapter sent the internal PascalCase template name (e.g. `OrderShipped`) straight to the Cloud API and built body parameters by **alphabetically sorting** the data keys. Both are wrong for Meta: template names must be lowercase+underscores (mismatch → Meta error 132001 "template does not exist") and body params are **positional** (`{{1}}..{{n}}`) so order/count must match the approved template (mismatch → error 132000). New `modules/notifications/whatsapp-template-registry.ts` maps each internal template → `{ metaName, language, ordered params }` and the adapter now builds the payload from it; `storeName` is injected at both worker send sites exactly like the SMS path (`WhatsappTemplateRegistry.composeTemplateData`). Mapped templates: `OrderConfirmed→order_confirmed`, `OrderShipped→order_shipped`, `OutForDelivery→out_for_delivery`, `OrderDelivered→order_delivered`, `OrderCancelled→order_cancelled`, `PaymentFailed→payment_failed` (all language `en`, UTILITY category). Unmapped templates fall back to the legacy raw-name behavior (no regression). The merchant must create the matching templates in WhatsApp Manager — canonical bodies + sample values in `docs/WHATSAPP_TEMPLATE_REGISTRY.md`.
+
+**Propagation:**
+- Severity: NORMAL (WhatsApp notifications were non-functional before this) · Layers: backend (`modules/notifications/whatsapp-template-registry.ts` [new], `modules/notifications/adapters/meta-whatsapp.adapter.ts`, `queues/workers/notifications.worker.ts`, `docs/WHATSAPP_TEMPLATE_REGISTRY.md` [new])
+- Migration: NO · Flag: gated by existing `NOTIFY_WHATSAPP_ENABLED` (OFF by default) · Design impact: none · Breaking: NO
+- Rollback: revert the listed files
+- **Operator action required (per client that enables WhatsApp):** create the 6 UTILITY templates in WhatsApp Manager with the exact names/params/language above and wait for Meta approval before routing any template to the WHATSAPP primary channel. To send a template over WhatsApp, set its entry in the notifications `primaryChannels` config to `WHATSAPP`.
+
 ## [0.1.18] — 2026-06-30
 
 ### Fixed
