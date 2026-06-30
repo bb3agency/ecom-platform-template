@@ -1117,9 +1117,20 @@ export class CartService {
       }
     }
 
-    const created = await this.fastify.prisma.cart.create({
-      data: {
-        sessionToken: randomUUID(),
+    // A guest's cart MUST be keyed to the sessionToken the route hands us (the value
+    // it also writes back to the `cart_session` cookie). Minting a fresh random token
+    // here would orphan the cart: the cookie keeps the caller's token, the next request
+    // looks it up, misses, and creates yet another empty cart — so a guest cart could
+    // never accumulate items and the post-login merge would find nothing. Only fall back
+    // to a random token when the caller supplied none (truly first-touch guest).
+    // upsert (not create) makes the first-touch path race-safe against the unique
+    // sessionToken when two concurrent requests share a freshly-issued token.
+    const tokenForNewCart = sessionToken ?? randomUUID();
+    const created = await this.fastify.prisma.cart.upsert({
+      where: { sessionToken: tokenForNewCart },
+      update: { expiresAt: this.buildExpiryDate() },
+      create: {
+        sessionToken: tokenForNewCart,
         expiresAt: this.buildExpiryDate()
       },
       include: {

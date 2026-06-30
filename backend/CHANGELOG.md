@@ -12,6 +12,17 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.20] — 2026-07-01
+
+### Fixed
+- **Guest carts never persisted (and post-login merge always found nothing).** `CartService.resolveOrCreateCart` created a new guest cart with a **fresh random `sessionToken`** instead of the token the route supplies (the value it writes back to the `cart_session` cookie). So on every first-touch the cookie token never matched any cart row: each request minted a new empty cart, items added as a guest vanished on the next read, the guest cart always appeared empty, and `POST /cart/merge` found no guest cart to merge. Fixed by keying the created cart to the supplied `sessionToken` (`sessionToken ?? randomUUID()`), and switching the create to an `upsert` on `sessionToken` so the first-touch path is race-safe when two concurrent requests share a freshly-issued token. Verified live against prod (same cookie token now returns a stable cart that accumulates items). The merge path was already additive (`existing.quantity + guestItem.quantity`) and deletes the guest cart afterward — it simply never had a guest cart to find before this fix.
+
+**Propagation:**
+- Severity: HIGH (guest cart + guest→account merge were completely non-functional) · Layers: backend (`modules/cart/cart.service.ts`)
+- Migration: NO · Flag: n/a · Design impact: none · Breaking: NO
+- Rollback: revert the one method change
+- Regression test: `modules/cart/cart.service.guest-session.test.ts` (asserts the created guest cart uses the supplied token).
+
 ## [0.1.19] — 2026-06-30
 
 ### Added
