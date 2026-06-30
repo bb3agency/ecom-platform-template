@@ -183,7 +183,7 @@ export class ProductsService {
           where: {
             isActive: true
           },
-          orderBy: { price: 'asc' },
+          orderBy: [{ sortOrder: 'asc' }, { price: 'asc' }],
           include: { inventory: true }
         },
         reviews: {
@@ -288,7 +288,7 @@ export class ProductsService {
       include: {
         category: true,
         images: { orderBy: { sortOrder: 'asc' } },
-        variants: { where: { isActive: true }, orderBy: { price: 'asc' } }
+        variants: { where: { isActive: true }, orderBy: [{ sortOrder: 'asc' }, { price: 'asc' }] }
       }
     });
     if (existing) {
@@ -352,10 +352,11 @@ export class ProductsService {
         ...(variantsInput.length > 0
           ? {
               variants: {
-                create: variantsInput.map((variant) => ({
+                create: variantsInput.map((variant, variantIndex) => ({
                   sku: variant.sku.trim(),
                   name: variant.name,
                   price: Math.floor(variant.price),
+                  sortOrder: variantIndex,
                   ...(variant.compareAtPrice !== undefined ? { compareAtPrice: variant.compareAtPrice != null && variant.compareAtPrice > 0 ? Math.floor(variant.compareAtPrice) : null } : {}),
                   ...(variant.weight !== undefined ? { weight: Math.floor(variant.weight) } : {}),
                   ...(variant.packageLengthCm !== undefined ? { packageLengthCm: Math.floor(variant.packageLengthCm) } : {}),
@@ -380,7 +381,7 @@ export class ProductsService {
       include: {
         category: true,
         images: { orderBy: { sortOrder: 'asc' } },
-        variants: { where: { isActive: true }, orderBy: { price: 'asc' } }
+        variants: { where: { isActive: true }, orderBy: [{ sortOrder: 'asc' }, { price: 'asc' }] }
       }
     });
     } catch (err) {
@@ -411,7 +412,7 @@ export class ProductsService {
         include: {
           category: true,
           images: { orderBy: { sortOrder: 'asc' } },
-          variants: { where: { isActive: true }, orderBy: { price: 'asc' } }
+          variants: { where: { isActive: true }, orderBy: [{ sortOrder: 'asc' }, { price: 'asc' }] }
         }
       });
     }
@@ -633,6 +634,14 @@ export class ProductsService {
     const defaultLowStockThreshold = await this.settingsService.resolveDefaultLowStockThreshold();
     const variantTaxFields = resolveVariantTaxFieldsFromProductAttributes(product.attributes);
 
+    // New variants append to the end of the manual display order.
+    const lastVariant = await this.fastify.prisma.productVariant.findFirst({
+      where: { productId: product.id },
+      orderBy: { sortOrder: 'desc' },
+      select: { sortOrder: true }
+    });
+    const nextSortOrder = (lastVariant?.sortOrder ?? -1) + 1;
+
     let created: Awaited<ReturnType<typeof this.fastify.prisma.productVariant.create>>;
     try {
       created = await this.fastify.prisma.productVariant.create({
@@ -641,6 +650,7 @@ export class ProductsService {
           sku: input.sku.trim(),
           name: input.name,
           price: Math.floor(input.price),
+          sortOrder: nextSortOrder,
           ...(input.compareAtPrice !== undefined ? { compareAtPrice: input.compareAtPrice != null && input.compareAtPrice > 0 ? Math.floor(input.compareAtPrice) : null } : {}),
           ...(input.weight !== undefined ? { weight: Math.floor(input.weight) } : {}),
           ...(input.packageLengthCm !== undefined ? { packageLengthCm: Math.floor(input.packageLengthCm) } : {}),
@@ -671,6 +681,44 @@ export class ProductsService {
     }
     await this.invalidateProductListCacheSafe();
     return created;
+  }
+
+  /**
+   * Set the manual display order of a product's variants. `variantIds` is the full
+   * ordered list; each variant's `sortOrder` becomes its index. This order drives
+   * the admin editor AND the storefront (product detail + product cards).
+   */
+  async adminReorderProductVariants(productId: string, variantIds: string[]) {
+    const existing = await this.fastify.prisma.productVariant.findMany({
+      where: { productId },
+      select: { id: true }
+    });
+    const existingIds = new Set(existing.map((v) => v.id));
+    const requested = new Set(variantIds);
+    // The request must cover EXACTLY this product's variants (no missing, no extra).
+    if (
+      variantIds.length !== existing.length ||
+      requested.size !== variantIds.length ||
+      variantIds.some((id) => !existingIds.has(id))
+    ) {
+      throw new AppError(
+        ERROR_CODES.VALIDATION_ERROR,
+        'The variant order must list every variant of this product exactly once.',
+        400
+      );
+    }
+
+    await this.fastify.prisma.$transaction(
+      variantIds.map((id, index) =>
+        this.fastify.prisma.productVariant.update({
+          where: { id },
+          data: { sortOrder: index }
+        })
+      )
+    );
+
+    await this.invalidateProductListCacheSafe();
+    return this.adminGetProductById(productId);
   }
 
   async adminUpdateProductVariant(productId: string, variantId: string, input: UpdateProductVariantInput) {
@@ -840,7 +888,7 @@ export class ProductsService {
       include: {
         category: true,
         images: { orderBy: { sortOrder: 'asc' } },
-        variants: { where: { isActive: true }, orderBy: { price: 'asc' } }
+        variants: { where: { isActive: true }, orderBy: [{ sortOrder: 'asc' }, { price: 'asc' }] }
       }
     });
     if (input.attributes !== undefined) {
@@ -850,7 +898,7 @@ export class ProductsService {
         include: {
           category: true,
           images: { orderBy: { sortOrder: 'asc' } },
-          variants: { where: { isActive: true }, orderBy: { price: 'asc' } }
+          variants: { where: { isActive: true }, orderBy: [{ sortOrder: 'asc' }, { price: 'asc' }] }
         }
       });
       await this.invalidateProductListCacheSafe();
@@ -1052,7 +1100,7 @@ export class ProductsService {
         category: true,
         images: { orderBy: { sortOrder: 'asc' } },
         variants: {
-          orderBy: { price: 'asc' }
+          orderBy: [{ sortOrder: 'asc' }, { price: 'asc' }]
         }
       }
     });
@@ -1757,7 +1805,7 @@ export class ProductsService {
         images: { orderBy: { sortOrder: 'asc' } },
         variants: {
           where: input.inStockVariantWhere,
-          orderBy: { price: 'asc' },
+          orderBy: [{ sortOrder: 'asc' }, { price: 'asc' }],
           include: { inventory: true }
         }
       }

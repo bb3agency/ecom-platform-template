@@ -21,6 +21,7 @@ import {
   UploadCloud,
   Check,
   HelpCircle,
+  GripVertical,
 } from "lucide-react";
 import { AdminRowActionsMenu } from "@/components/admin/AdminRowActionsMenu";
 import { useCallback, useEffect, useState } from "react";
@@ -821,6 +822,45 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
       notifyAdminDataChanged(["products", "inventory", "dashboard"]);
     } catch (err) {
       setError(getApiErrorMessage(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // Drag-and-drop reorder of variants. Moves the dragged variant to the target's
+  // position, persists the new order, and reflects it everywhere (storefront too).
+  async function reorderVariants(draggedId: string, targetId: string) {
+    if (!canWrite || !productId || !product || draggedId === targetId) return;
+    const current = product.variants;
+    const from = current.findIndex((v) => v.id === draggedId);
+    const to = current.findIndex((v) => v.id === targetId);
+    if (from < 0 || to < 0) return;
+
+    const next = [...current];
+    const [moved] = next.splice(from, 1);
+    if (!moved) return;
+    next.splice(to, 0, moved);
+
+    // Optimistic: show the new order immediately.
+    setProduct({ ...product, variants: next });
+    setSaving(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const updated = await api<AdminProductDetail>(
+        `/admin/products/${productId}/variants/reorder`,
+        {
+          method: "PATCH",
+          idempotencyKey: createIdempotencyKey(),
+          body: JSON.stringify({ variantIds: next.map((v) => v.id) }),
+        },
+      );
+      setProduct(normalizeProductDetail(updated));
+      setSuccess("Variant order saved.");
+      notifyAdminDataChanged(["products"]);
+    } catch (err) {
+      setError(handleSubmitError(err));
+      await loadProduct(); // revert to server order on failure
     } finally {
       setSaving(false);
     }
@@ -1910,10 +1950,19 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                 <h3 className="font-heading text-base font-bold text-foreground">
                   Manage All Product Variants
                 </h3>
+                {canWrite ? (
+                  <p className="-mt-1 text-xs text-muted-foreground">
+                    Drag the{" "}
+                    <GripVertical className="inline h-3.5 w-3.5 align-text-bottom" />{" "}
+                    handle to reorder variants. This order is saved and used everywhere
+                    they appear — the product page and product cards.
+                  </p>
+                ) : null}
                 <AdminTableScroll className="rounded-lg border border-border/50">
-                  <table className="w-full min-w-[1180px] text-left text-sm">
+                  <table className="w-full min-w-[1220px] text-left text-sm">
                     <thead className="border-b border-border/40 bg-muted/20 text-xs font-bold text-muted-foreground uppercase tracking-wider">
                       <tr>
+                        <th className="w-8 px-2 py-3" aria-label="Reorder" />
                         <th className="px-3 py-3">SKU</th>
                         <th className="px-3 py-3">Name</th>
                         <th className="px-3 py-3">Price (₹)</th>
@@ -1937,6 +1986,9 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                           onSave={(draft) => void saveVariant(variant, draft)}
                           onDelete={() => void removeVariant(variant.id)}
                           canDelete={product.variants.length > 1}
+                          onReorder={(draggedId) =>
+                            void reorderVariants(draggedId, variant.id)
+                          }
                         />
                       ))}
                     </tbody>
@@ -2279,6 +2331,7 @@ function VariantEditRow({
   onSave,
   onDelete,
   canDelete,
+  onReorder,
 }: {
   variant: AdminProductVariant;
   canWrite: boolean;
@@ -2286,7 +2339,9 @@ function VariantEditRow({
   onSave: (draft: VariantDraft) => void;
   onDelete: () => void;
   canDelete: boolean;
+  onReorder: (draggedId: string) => void;
 }) {
+  const [dragOver, setDragOver] = useState(false);
   const [draft, setDraft] = useState<VariantDraft>({
     sku: variant.sku,
     name: variant.name,
@@ -2332,7 +2387,42 @@ function VariantEditRow({
   }, [variant]);
 
   return (
-    <tr className="border-b border-border last:border-0">
+    <tr
+      className={cn(
+        "border-b border-border last:border-0",
+        dragOver && "bg-primary/5",
+      )}
+      onDragOver={(event) => {
+        if (!canWrite) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+        setDragOver(true);
+      }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={(event) => {
+        setDragOver(false);
+        if (!canWrite) return;
+        event.preventDefault();
+        const draggedId = event.dataTransfer.getData("text/plain");
+        if (draggedId) onReorder(draggedId);
+      }}
+    >
+      <td className="px-2 py-2 text-center align-middle">
+        <button
+          type="button"
+          draggable={canWrite}
+          onDragStart={(event) => {
+            event.dataTransfer.setData("text/plain", variant.id);
+            event.dataTransfer.effectAllowed = "move";
+          }}
+          disabled={!canWrite || saving}
+          aria-label="Drag to reorder variant"
+          title="Drag to reorder"
+          className="cursor-grab text-muted-foreground hover:text-foreground active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <GripVertical className="h-4 w-4" />
+        </button>
+      </td>
       <td className="px-3 py-2">
         <input
           className={`${inputClass} min-w-[110px]`}

@@ -511,6 +511,7 @@ model ProductVariant {
   hsnCode        String?
   gstRatePercent Int         @default(0)
   isActive       Boolean     @default(true)
+  sortOrder      Int         @default(0)
   inventory      Inventory?
   cartItems      CartItem[]
   cartReservations CartReservation[]

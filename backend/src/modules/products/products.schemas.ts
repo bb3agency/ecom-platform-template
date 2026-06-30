@@ -173,7 +173,8 @@ const adminVariantItemSchema = {
     packageHeightCm: {
       anyOf: [{ type: 'integer', minimum: 1, maximum: 10000 }, { type: 'null' }]
     },
-    keepUpright: { type: 'boolean' }
+    keepUpright: { type: 'boolean' },
+    sortOrder: { type: 'integer', minimum: 0, maximum: 100000 }
   }
 } as const;
 
@@ -559,6 +560,36 @@ export const adminUpdateProductVariantSchema = {
   },
   response: {
     200: adminVariantItemSchema,
+    ...standardAdminErrorResponses
+  }
+} as const;
+
+export const adminReorderProductVariantsSchema = {
+  params: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['id'],
+    properties: {
+      id: { type: 'string', maxLength: 64 }
+    }
+  },
+  querystring: emptyQuerystringSchema,
+  body: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['variantIds'],
+    properties: {
+      // The full ordered list of this product's variant ids; index = new sortOrder.
+      variantIds: {
+        type: 'array',
+        minItems: 1,
+        maxItems: 100,
+        items: { type: 'string', maxLength: 64 }
+      }
+    }
+  },
+  response: {
+    200: adminProductListItemSchema,
     ...standardAdminErrorResponses
   }
 } as const;

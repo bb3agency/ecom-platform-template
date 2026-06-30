@@ -15,6 +15,7 @@ describe('ProductsService variant management', () => {
           findUnique: vi.fn().mockResolvedValue({ id: 'prod_1' })
         },
         productVariant: {
+          findFirst: vi.fn().mockResolvedValue(null), // no existing variants → sortOrder 0
           create: vi.fn().mockResolvedValue({ id: 'variant_1', sku: 'SKU-1' })
         }
       },
@@ -353,6 +354,54 @@ describe('ProductsService variant management', () => {
       where: { id: 'variant_1', updatedAt: existingVariant.updatedAt },
       data: { compareAtPrice: null }
     });
+  });
+
+  it('reorders variants: sets sortOrder by position and returns the product', async () => {
+    const updateFn = vi.fn().mockImplementation((args) => Promise.resolve(args));
+    const txFn = vi.fn().mockResolvedValue([]);
+    const productOut = { id: 'prod_1', variants: [{ id: 'v3' }, { id: 'v1' }, { id: 'v2' }] };
+
+    const fastify = {
+      prisma: {
+        productVariant: {
+          findMany: vi.fn().mockResolvedValue([{ id: 'v1' }, { id: 'v2' }, { id: 'v3' }]),
+          update: updateFn
+        },
+        product: { findUnique: vi.fn().mockResolvedValue(productOut) },
+        $transaction: txFn
+      },
+      redis: { scan: vi.fn().mockResolvedValue(['0', []]), del: vi.fn().mockResolvedValue(0) },
+      queues: { analytics: { add: vi.fn() } },
+      log: { error: vi.fn() }
+    } as unknown as FastifyInstance;
+
+    const service = new ProductsService(fastify);
+    const result = await service.adminReorderProductVariants('prod_1', ['v3', 'v1', 'v2']);
+
+    expect(txFn).toHaveBeenCalledTimes(1);
+    expect(updateFn).toHaveBeenCalledWith({ where: { id: 'v3' }, data: { sortOrder: 0 } });
+    expect(updateFn).toHaveBeenCalledWith({ where: { id: 'v1' }, data: { sortOrder: 1 } });
+    expect(updateFn).toHaveBeenCalledWith({ where: { id: 'v2' }, data: { sortOrder: 2 } });
+    expect(result).toEqual(productOut);
+  });
+
+  it('rejects a reorder that does not list every variant exactly once', async () => {
+    const fastify = {
+      prisma: {
+        productVariant: {
+          findMany: vi.fn().mockResolvedValue([{ id: 'v1' }, { id: 'v2' }, { id: 'v3' }])
+        }
+      },
+      redis: { scan: vi.fn().mockResolvedValue(['0', []]), del: vi.fn().mockResolvedValue(0) },
+      queues: { analytics: { add: vi.fn() } },
+      log: { error: vi.fn() }
+    } as unknown as FastifyInstance;
+
+    const service = new ProductsService(fastify);
+    // 'v9' is not a variant of this product (and 'v3' is missing).
+    await expect(
+      service.adminReorderProductVariants('prod_1', ['v1', 'v2', 'v9'])
+    ).rejects.toMatchObject({ statusCode: 400 });
   });
 
 });

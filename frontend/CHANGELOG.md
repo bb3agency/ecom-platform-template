@@ -12,6 +12,17 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.12] — 2026-06-30
+
+### Added
+- **Drag-and-drop variant ordering in the admin product editor.** The "Manage All Product Variants" table has a grip handle per row; dragging reorders variants (native HTML5 DnD, no new dependency), persists via `PATCH /admin/products/:id/variants/reorder` (optimistic, reverts on failure), and that order is what the storefront shows on the product page and product cards. `AdminProductVariant` carries `sortOrder`.
+
+**Propagation:**
+- Severity: NORMAL · Layers: frontend (`lib/admin-api.ts`, `components/admin/AdminProductEditor.tsx`)
+- Migration: NO · Flag: n/a · Design impact: none (uses existing tokens + Lucide `GripVertical`) · Breaking: NO
+- Rollback: revert the two files · Requires backend-core 0.1.17.
+- Note: storefront needed no change — adapters/selector already render variants in API order, which is now `sortOrder`.
+
 ## [0.1.11] — 2026-06-30
 
 ### Fixed

@@ -22,6 +22,7 @@ import {
   adminUpdateCategorySchema,
   adminUpdateProductSchema,
   adminUpdateProductVariantSchema,
+  adminReorderProductVariantsSchema,
   adminReorderProductImagesSchema,
   adminDeleteProductImageSchema,
   getProductBySlugSchema,
@@ -338,6 +339,22 @@ export async function registerProductsRoutes(fastify: FastifyInstance): Promise<
     async (request) => {
       const params = request.params as { id: string; imageId: string };
       return productsService.adminDeleteProductImage(params.id, params.imageId);
+    }
+  );
+
+  fastify.patch(
+    '/api/v1/admin/products/:id/variants/reorder',
+    {
+      schema: adminReorderProductVariantsSchema,
+      preHandler: [...adminGuard, adminPermissionGuard('products:write'), loadShedGuard, idempotencyPreHandler],
+      config: {
+        rateLimit: routeRateLimitProfiles.adminWrite
+      }
+    },
+    async (request) => {
+      const params = request.params as { id: string };
+      const body = request.body as { variantIds: string[] };
+      return productsService.adminReorderProductVariants(params.id, body.variantIds);
     }
   );
 

@@ -396,6 +396,7 @@ export interface AdminProductVariant {
   hsnCode?: string | null;
   gstRatePercent?: number;
   isActive: boolean;
+  sortOrder?: number;
 }
 
 export interface AdminProductImage {

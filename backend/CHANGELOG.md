@@ -12,6 +12,18 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.17] — 2026-06-30
+
+### Added
+- **Manual variant ordering (drag-and-drop).** New `ProductVariant.sortOrder` column + `PATCH /admin/products/:id/variants/reorder` (`{ variantIds: [...] }`, `products:write`) which sets each variant's `sortOrder` to its position. All variant reads (admin editor, product detail, product cards / listings) now order by `[{ sortOrder: 'asc' }, { price: 'asc' }]` instead of price only, so the admin-chosen order is what customers see. New variants append to the end; `adminReorderProductVariants` validates the payload lists every variant of the product exactly once.
+
+**Propagation:**
+- Severity: NORMAL (new feature) · Layers: backend (`prisma/schema.prisma`, `modules/products/products.{service,schemas,routes}.ts`)
+- Migration: **YES** — `20260630120000_add_variant_sort_order` adds `sortOrder INT NOT NULL DEFAULT 0` and **backfills each product's variants by current price order** (so existing catalogs look unchanged until reordered) + adds a `(productId, sortOrder)` index. Run `prisma migrate deploy` + `prisma generate`.
+- Flag: n/a (additive; default order = old price order until an admin drags) · Design impact: none · Breaking: NO
+- Rollback: revert the listed files + drop the column/migration
+- Pairs with frontend-core 0.1.12 (drag-and-drop UI).
+
 ## [0.1.16] — 2026-06-30
 
 ### Fixed
