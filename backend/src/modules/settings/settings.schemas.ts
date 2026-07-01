@@ -237,10 +237,11 @@ export const updateInventorySettingsSchema = {
 const codSettingsShape = {
   type: 'object',
   additionalProperties: false,
-  required: ['isCodEnabled', 'cancellationWindowHours', 'mobileOtpSignupEnabled'],
+  required: ['isCodEnabled', 'cancellationWindowHours', 'mobileOtpSignupEnabled', 'reviewsEnabled'],
   properties: {
     isCodEnabled: { type: 'boolean' },
     mobileOtpSignupEnabled: { type: 'boolean' },
+    reviewsEnabled: { type: 'boolean' },
     cancellationWindowHours: { type: 'integer', minimum: 1 },
     sellerState: { anyOf: [{ type: 'string', maxLength: 100 }, { type: 'null' }] }
   }
@@ -268,6 +269,7 @@ export const updateCodSettingsSchema = {
     properties: {
       isCodEnabled: { type: 'boolean' },
       mobileOtpSignupEnabled: { type: 'boolean' },
+      reviewsEnabled: { type: 'boolean' },
       cancellationWindowHours: { type: 'integer', minimum: 1, maximum: 720 },
       sellerState: { anyOf: [{ type: 'string', maxLength: 100 }, { type: 'null' }] }
     }

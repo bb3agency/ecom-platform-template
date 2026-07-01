@@ -7,13 +7,14 @@ import { useAdminAuth } from "@/contexts/admin-auth-context";
 import { ADMIN_PERMISSIONS, hasAdminPermission } from "@/lib/permissions";
 import { createIdempotencyKey } from "@/lib/idempotency";
 import { getApiErrorMessage } from "@/lib/error-messages";
-import { Banknote, Clock, MapPin, Smartphone, CheckCircle2, AlertTriangle, Loader2 } from "lucide-react";
+import { Banknote, Clock, MapPin, Smartphone, Star, CheckCircle2, AlertTriangle, Loader2 } from "lucide-react";
 
 interface CodSettings {
   isCodEnabled: boolean;
   cancellationWindowHours: number;
   sellerState: string | null;
   mobileOtpSignupEnabled?: boolean;
+  reviewsEnabled?: boolean;
 }
 
 export function CodSettingsPanel() {
@@ -26,6 +27,7 @@ export function CodSettingsPanel() {
   const [isCodEnabled, setIsCodEnabled] = useState(true);
   const [cancellationWindowHours, setCancellationWindowHours] = useState(24);
   const [mobileOtpSignupEnabled, setMobileOtpSignupEnabled] = useState(false);
+  const [reviewsEnabled, setReviewsEnabled] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -42,6 +44,7 @@ export function CodSettingsPanel() {
         setIsCodEnabled(result.isCodEnabled);
         setCancellationWindowHours(result.cancellationWindowHours);
         setMobileOtpSignupEnabled(result.mobileOtpSignupEnabled ?? false);
+        setReviewsEnabled(result.reviewsEnabled ?? false);
       } catch (err) {
         if (!cancelled) {
           setError(getApiErrorMessage(err));
@@ -64,6 +67,7 @@ export function CodSettingsPanel() {
         isCodEnabled,
         cancellationWindowHours,
         mobileOtpSignupEnabled,
+        reviewsEnabled,
       };
       const updated = await api<CodSettings>("/admin/settings/cod", {
         method: "PATCH",
@@ -72,6 +76,7 @@ export function CodSettingsPanel() {
       });
       setSettings(updated);
       setMobileOtpSignupEnabled(updated.mobileOtpSignupEnabled ?? false);
+      setReviewsEnabled(updated.reviewsEnabled ?? false);
       setSuccess("Settings updated successfully.");
       setTimeout(() => setSuccess(null), 4000);
     } catch (err) {
@@ -202,6 +207,33 @@ export function CodSettingsPanel() {
                   When enabled, customers see a &quot;Sign up with Mobile&quot; tab on the
                   registration page. OTP is sent via WhatsApp. Disabled by default — enable
                   only if WhatsApp messaging is configured.
+                </p>
+              </div>
+            </label>
+          </div>
+
+          {/* Customer Reviews Toggle */}
+          <div className="rounded-xl border border-border bg-muted/10 p-4 sm:p-5 space-y-4">
+            <h4 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              <Star className="h-4 w-4 text-primary" aria-hidden />
+              Storefront Features
+            </h4>
+
+            <label className="flex items-start gap-3 rounded-lg border border-border bg-background/60 p-4 transition-all hover:bg-background cursor-pointer">
+              <input
+                type="checkbox"
+                checked={reviewsEnabled}
+                onChange={(event) => setReviewsEnabled(event.target.checked)}
+                className="mt-1 h-4 w-4 rounded-sm border-border text-primary focus:ring-primary/20"
+              />
+              <div className="space-y-0.5 min-w-0">
+                <span className="text-sm font-medium text-foreground">
+                  Enable Customer Reviews
+                </span>
+                <p className="text-xs text-muted-foreground">
+                  When enabled, star ratings show on product cards and product pages, and
+                  customers can review products they&apos;ve had delivered (reviews appear
+                  after you approve them in Reviews). Disabled by default.
                 </p>
               </div>
             </label>

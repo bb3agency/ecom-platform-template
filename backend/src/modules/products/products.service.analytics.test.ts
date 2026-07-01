@@ -132,6 +132,9 @@ describe('ProductsService analytics producers', () => {
           findMany,
           count
         },
+        storeSettings: {
+          findUnique: vi.fn().mockResolvedValue({ reviewsEnabled: false })
+        },
         cartReservation: {
           groupBy: vi.fn().mockResolvedValue([])
         }
@@ -178,6 +181,9 @@ describe('ProductsService analytics producers', () => {
             category: { id: 'cat_1', name: 'Dairy', slug: 'dairy' },
             variants: []
           })
+        },
+        storeSettings: {
+          findUnique: vi.fn().mockResolvedValue({ reviewsEnabled: false })
         }
       },
       queues: {
@@ -223,6 +229,9 @@ describe('ProductsService analytics producers', () => {
       prisma: {
         product: {
           findFirst
+        },
+        storeSettings: {
+          findUnique: vi.fn().mockResolvedValue({ reviewsEnabled: false })
         },
         cartReservation: {
           groupBy: vi.fn().mockResolvedValue([])

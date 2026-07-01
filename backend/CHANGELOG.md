@@ -12,6 +12,17 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.23] — 2026-07-01
+
+### Changed
+- **Storefront reviews are now a merchant toggle in the admin UI, not the `FEATURE_REVIEWS_ENABLED` env flag.** New `StoreSettings.reviewsEnabled` column (migration `20260701140000_add_store_settings_reviews_enabled`, additive, default `false`) + `isStorefrontReviewsEnabled(prisma)` helper (`common/reviews/reviews-feature.ts`, mirrors `isStorefrontCouponsEnabled`). All storefront review gating — product rating aggregates, PDP reviews include, `POST /reviews`, `/reviews/product`, `/reviews/recent`, `/reviews/eligible` — now reads the DB toggle instead of `featureFlags.reviews`. Exposed + writable via the existing `GET`/`PATCH /admin/settings/cod` (added `reviewsEnabled`), surfaced in the store config `reviewsEnabled`. Admin moderation endpoints are intentionally NOT gated (moderators work even when the storefront toggle is off). Merchants flip reviews on/off from Admin → Settings with no redeploy.
+
+**Propagation:**
+- Severity: NORMAL · Layers: backend (`prisma/schema.prisma` + migration, `common/reviews/reviews-feature.ts` [new], `modules/products/products.service.ts`, `modules/reviews/reviews.service.ts`, `modules/settings/settings.{service,schemas}.ts`)
+- Migration: **YES** — `prisma migrate deploy` adds `StoreSettings.reviewsEnabled BOOLEAN NOT NULL DEFAULT false`. Run `prisma generate` after. · Flag: replaced by DB toggle (env `FEATURE_REVIEWS_ENABLED` no longer gates storefront reviews) · Design impact: none · Breaking: NO (default off preserves current behavior)
+- Rollback: revert the listed files + drop the column
+- Pairs with frontend-core 0.1.14 (admin toggle). **Operator: enable reviews in Admin → Settings (COD & Sign-up) → "Enable Customer Reviews" — no env change / redeploy needed.**
+
 ## [0.1.22] — 2026-07-01
 
 ### Added

@@ -3,7 +3,7 @@ import { FastifyInstance } from 'fastify';
 import { AppError } from '@common/errors/app-error';
 import { ERROR_CODES } from '@common/errors/error-codes';
 import { buildProductsListCacheKey, invalidateProductsListCache } from '@common/cache/products-list-cache';
-import { featureFlags } from '@config/feature-flags';
+import { isStorefrontReviewsEnabled } from '@common/reviews/reviews-feature';
 import { SettingsService } from '@modules/settings/settings.service';
 import { sendTechnicalFailureAlert } from '@modules/notifications/notification-failure-alert';
 import { randomUUID } from 'node:crypto';
@@ -174,6 +174,7 @@ export class ProductsService {
   }
 
   async getProductBySlug(slug: string) {
+    const reviewsEnabled = await isStorefrontReviewsEnabled(this.fastify.prisma);
     const product = await this.fastify.prisma.product.findFirst({
       where: {
         slug,
@@ -195,7 +196,7 @@ export class ProductsService {
           include: { inventory: true }
         },
         reviews: {
-          where: featureFlags.reviews ? { approved: true } : { id: '__reviews_disabled__' },
+          where: reviewsEnabled ? { approved: true } : { id: '__reviews_disabled__' },
           orderBy: { createdAt: 'desc' },
           include: {
             user: {
@@ -264,11 +265,15 @@ export class ProductsService {
     productIds: string[]
   ): Promise<Map<string, { rating: number; reviewCount: number }>> {
     const aggregates = new Map<string, { rating: number; reviewCount: number }>();
-    if (!featureFlags.reviews || productIds.length === 0) {
+    if (productIds.length === 0) {
       return aggregates;
     }
-    // A review-aggregate hiccup must never break the catalogue — degrade to no stars.
+    // A review-aggregate hiccup (or reviews being off) must never break the
+    // catalogue — degrade to no stars.
     try {
+      if (!(await isStorefrontReviewsEnabled(this.fastify.prisma))) {
+        return aggregates;
+      }
       const grouped = await this.fastify.prisma.review.groupBy({
         by: ['productId'],
         where: { productId: { in: productIds }, approved: true },

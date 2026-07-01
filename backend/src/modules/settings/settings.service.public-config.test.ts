@@ -23,6 +23,8 @@ describe('SettingsService getPublicStoreConfig', () => {
   });
 
   it('returns store settings and runtime feature flags for the storefront', async () => {
+    // reviewsEnabled is now DB-driven (StoreSettings.reviewsEnabled); the env flag
+    // is intentionally OFF here to prove the DB merchant toggle is what drives it.
     featureFlags.reviews = false;
     featureFlags.wishlist = true;
     featureFlags.gstInvoicing = false;
@@ -35,6 +37,7 @@ describe('SettingsService getPublicStoreConfig', () => {
         isCodEnabled: true,
         minOrderValuePaise: 25000,
         mobileOtpSignupEnabled: true,
+        reviewsEnabled: true,
         storeName: 'Acme Store',
         sellerAddress: '12 Market Rd, Hyderabad',
         sellerState: 'Telangana',
@@ -56,7 +59,7 @@ describe('SettingsService getPublicStoreConfig', () => {
       minOrderValuePaise: 25000,
       mobileOtpSignupEnabled: true,
       couponsEnabled: true,
-      reviewsEnabled: false,
+      reviewsEnabled: true,
       wishlistEnabled: true,
       gstInvoicingEnabled: false,
       // store identity/contact exposed for the storefront footer (sellerAddress → storeAddress)

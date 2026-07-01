@@ -12,6 +12,17 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.14] — 2026-07-01
+
+### Added
+- **"Enable Customer Reviews" toggle in the admin settings panel.** `CodSettingsPanel` (Admin → Settings → COD & Sign-up) gains a Storefront Features card with a reviews on/off switch, wired to `GET`/`PATCH /admin/settings/cod` (`reviewsEnabled`). Replaces the build-time `FEATURE_REVIEWS_ENABLED` env flag — merchants turn reviews on/off themselves; the storefront (`reviewsEnabled` from `/store/config`) reflects it without a redeploy.
+
+**Propagation:**
+- Severity: NORMAL · Layers: frontend (`components/admin/CodSettingsPanel.tsx`)
+- Migration: NO · Flag: n/a (this IS the toggle UI) · Design impact: none (existing tokens) · Breaking: NO
+- Rollback: revert the file
+- Requires backend-core 0.1.23 (`StoreSettings.reviewsEnabled` + `/admin/settings/cod` field).
+
 ## [0.1.13] — 2026-07-01
 
 ### Added

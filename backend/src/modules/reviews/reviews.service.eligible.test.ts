@@ -1,25 +1,18 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import { featureFlags } from '@config/feature-flags';
 import { ReviewsService } from './reviews.service';
 
 describe('ReviewsService.listReviewableProductsForOrder', () => {
-  const originalReviewsFlag = featureFlags.reviews;
-
-  beforeEach(() => {
-    featureFlags.reviews = true;
-  });
-
-  afterEach(() => {
-    featureFlags.reviews = originalReviewsFlag;
-  });
-
   function buildFastify(overrides: {
+    reviewsEnabled?: boolean;
     order: unknown;
     reviews?: Array<{ productId: string }>;
   }) {
     return {
       prisma: {
+        storeSettings: {
+          findUnique: vi.fn().mockResolvedValue({ reviewsEnabled: overrides.reviewsEnabled ?? true })
+        },
         order: { findFirst: vi.fn().mockResolvedValue(overrides.order) },
         review: { findMany: vi.fn().mockResolvedValue(overrides.reviews ?? []) }
       }
@@ -50,9 +43,8 @@ describe('ReviewsService.listReviewableProductsForOrder', () => {
     ]);
   });
 
-  it('returns empty when reviews are disabled (no DB call)', async () => {
-    featureFlags.reviews = false;
-    const fastify = buildFastify({ order: null });
+  it('returns empty when reviews are disabled (no order lookup)', async () => {
+    const fastify = buildFastify({ reviewsEnabled: false, order: null });
     const service = new ReviewsService(fastify);
 
     const result = await service.listReviewableProductsForOrder('user_1', 'order_1');

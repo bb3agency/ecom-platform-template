@@ -1,21 +1,16 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import { featureFlags } from '@config/feature-flags';
 import { ReviewsService } from './reviews.service';
 
-describe('ReviewsService admin when storefront reviews flag is off', () => {
-  const originalReviewsFlag = featureFlags.reviews;
-
-  afterEach(() => {
-    featureFlags.reviews = originalReviewsFlag;
-  });
-
+// Storefront reviews are gated on StoreSettings.reviewsEnabled (Admin toggle).
+// Admin moderation must keep working even when the storefront toggle is OFF.
+describe('ReviewsService admin when storefront reviews toggle is off', () => {
   it('still allows admin to list reviews for moderation', async () => {
-    featureFlags.reviews = false;
     const findMany = vi.fn().mockResolvedValue([]);
     const count = vi.fn().mockResolvedValue(0);
     const service = new ReviewsService({
       prisma: {
+        storeSettings: { findUnique: async () => ({ reviewsEnabled: false }) },
         review: { findMany, count },
         $transaction: vi.fn((promises: Array<Promise<unknown>>) => Promise.all(promises))
       }
@@ -32,10 +27,10 @@ describe('ReviewsService admin when storefront reviews flag is off', () => {
     });
   });
 
-  it('still blocks customer review creation when flag is off', async () => {
-    featureFlags.reviews = false;
+  it('still blocks customer review creation when the toggle is off', async () => {
     const service = new ReviewsService({
       prisma: {
+        storeSettings: { findUnique: async () => ({ reviewsEnabled: false }) },
         product: { findFirst: vi.fn() },
         order: { findFirst: vi.fn() },
         review: { findUnique: vi.fn(), create: vi.fn() }

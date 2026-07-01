@@ -1,22 +1,17 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import { featureFlags } from '@config/feature-flags';
 import { ReviewsService } from './reviews.service';
 
+// Storefront reviews are gated on StoreSettings.reviewsEnabled (Admin toggle), read
+// via prisma.storeSettings.findUnique — mocks for gated methods include it.
+const reviewsOn = () => ({ findUnique: async () => ({ reviewsEnabled: true }) });
+const reviewsOff = () => ({ findUnique: async () => ({ reviewsEnabled: false }) });
+
 describe('ReviewsService', () => {
-  const originalReviewsFlag = featureFlags.reviews;
-
-  beforeEach(() => {
-    featureFlags.reviews = true;
-  });
-
-  afterEach(() => {
-    featureFlags.reviews = originalReviewsFlag;
-  });
-
   it('creates review for delivered order purchaser', async () => {
     const service = new ReviewsService({
       prisma: {
+        storeSettings: reviewsOn(),
         product: {
           findFirst: async () => ({ id: 'product_1' })
         },
@@ -230,6 +225,7 @@ describe('ReviewsService', () => {
     const count = vi.fn().mockResolvedValue(1);
     const service = new ReviewsService({
       prisma: {
+        storeSettings: reviewsOn(),
         review: { findMany, count },
         $transaction: vi.fn((promises: Array<Promise<unknown>>) => Promise.all(promises))
       }
@@ -297,6 +293,7 @@ describe('ReviewsService', () => {
     const count = vi.fn().mockResolvedValue(2);
     const service = new ReviewsService({
       prisma: {
+        storeSettings: reviewsOn(),
         review: { findMany, count },
         $transaction: vi.fn((promises: Array<Promise<unknown>>) => Promise.all(promises))
       }
@@ -348,6 +345,7 @@ describe('ReviewsService', () => {
     const count = vi.fn().mockResolvedValue(21);
     const service = new ReviewsService({
       prisma: {
+        storeSettings: reviewsOn(),
         review: { findMany, count }
       }
     } as unknown as FastifyInstance);
@@ -371,9 +369,9 @@ describe('ReviewsService', () => {
   });
 
   it('listRecentApprovedReviews returns empty list when reviews feature is disabled', async () => {
-    featureFlags.reviews = false;
     const service = new ReviewsService({
       prisma: {
+        storeSettings: reviewsOff(),
         review: {
           findMany: vi.fn(),
           count: vi.fn()
@@ -390,6 +388,7 @@ describe('ReviewsService', () => {
   it('rejects review when user is not eligible purchaser', async () => {
     const service = new ReviewsService({
       prisma: {
+        storeSettings: reviewsOn(),
         product: {
           findFirst: async () => ({ id: 'product_1' })
         },

@@ -2,7 +2,7 @@ import { OrderStatus, Prisma } from '@prisma/client';
 import { FastifyInstance } from 'fastify';
 import { AppError } from '@common/errors/app-error';
 import { ERROR_CODES } from '@common/errors/error-codes';
-import { featureFlags } from '@config/feature-flags';
+import { isStorefrontReviewsEnabled } from '@common/reviews/reviews-feature';
 import {
   AdminReviewListQuery,
   CreateReviewInput,
@@ -27,7 +27,7 @@ export class ReviewsService {
   constructor(private readonly fastify: FastifyInstance) {}
 
   async createReview(userId: string, input: CreateReviewInput) {
-    this.assertStorefrontReviewsEnabled();
+    await this.assertStorefrontReviewsEnabled();
 
     const product = await this.fastify.prisma.product.findFirst({
       where: { id: input.productId, isActive: true },
@@ -97,7 +97,7 @@ export class ReviewsService {
   }
 
   async listMyReviews(userId: string, query: ReviewListQuery) {
-    this.assertStorefrontReviewsEnabled();
+    await this.assertStorefrontReviewsEnabled();
     return this.listReviews({ userId }, query);
   }
 
@@ -108,7 +108,7 @@ export class ReviewsService {
    * disabled, the order isn't theirs, or it isn't DELIVERED — the UI simply shows nothing.
    */
   async listReviewableProductsForOrder(userId: string, orderId: string) {
-    if (!featureFlags.reviews) {
+    if (!(await isStorefrontReviewsEnabled(this.fastify.prisma))) {
       return { items: [] };
     }
 
@@ -170,7 +170,7 @@ export class ReviewsService {
       throw new AppError(ERROR_CODES.NOT_FOUND, 'Product not found', 404);
     }
 
-    if (!featureFlags.reviews) {
+    if (!(await isStorefrontReviewsEnabled(this.fastify.prisma))) {
       const page = query.page ?? 1;
       const limit = Math.min(query.limit ?? 20, 100);
       return {
@@ -194,7 +194,7 @@ export class ReviewsService {
   async listRecentApprovedReviews(query: RecentApprovedReviewsQuery) {
     const limit = Math.min(Math.max(query.limit ?? 3, 1), 10);
 
-    if (!featureFlags.reviews) {
+    if (!(await isStorefrontReviewsEnabled(this.fastify.prisma))) {
       return {
         items: [],
         meta: {
@@ -503,8 +503,8 @@ export class ReviewsService {
     return { id, deleted: true };
   }
 
-  private assertStorefrontReviewsEnabled() {
-    if (!featureFlags.reviews) {
+  private async assertStorefrontReviewsEnabled() {
+    if (!(await isStorefrontReviewsEnabled(this.fastify.prisma))) {
       throw new AppError(ERROR_CODES.VALIDATION_ERROR, 'Reviews are disabled', 400);
     }
   }
