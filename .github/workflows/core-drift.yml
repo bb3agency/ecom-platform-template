@@ -53,7 +53,11 @@ jobs:
           [ -n "${TEMPLATE_REPO:-}" ] || { echo "::error::repo variable TEMPLATE_REPO is not set"; exit 1; }
           git remote remove template 2>/dev/null || true
           git remote add template "https://x-access-token:${TEMPLATE_READ_PAT}@github.com/${TEMPLATE_REPO}.git"
-          git fetch template --tags --quiet
+          # --force: client repos may carry their own same-named core tags
+          # (backend-core-v*/frontend-core-v*) for release traceability; force lets the
+          # template's tag win in this ephemeral checkout so the drift diff compares
+          # against the TEMPLATE tree, not the client's own tag.
+          git fetch template --tags --force --quiet
 
       - name: Strict core-drift check
         env:
