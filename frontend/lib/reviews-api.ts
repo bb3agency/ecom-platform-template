@@ -157,3 +157,40 @@ export async function getMyReviews(
   });
   return normalizeReviewListResponse(payload);
 }
+
+export interface ReviewableProduct {
+  productId: string;
+  productName: string;
+  productSlug: string;
+  alreadyReviewed: boolean;
+}
+
+function normalizeReviewableProduct(raw: unknown): ReviewableProduct | null {
+  if (!raw || typeof raw !== "object") return null;
+  const row = raw as Record<string, unknown>;
+  if (typeof row.productId !== "string" || !row.productId) return null;
+  return {
+    productId: row.productId,
+    productName: typeof row.productName === "string" ? row.productName : "",
+    productSlug: typeof row.productSlug === "string" ? row.productSlug : "",
+    alreadyReviewed: row.alreadyReviewed === true,
+  };
+}
+
+/** Products in a delivered order the customer may review (empty when reviews are off). */
+export async function getReviewableProducts(
+  orderId: string,
+  accessToken: string,
+): Promise<ReviewableProduct[]> {
+  const payload = await apiClient<unknown>(
+    `/reviews/eligible?orderId=${encodeURIComponent(orderId)}`,
+    { method: "GET", accessToken },
+  );
+  const items =
+    payload && typeof payload === "object" && Array.isArray((payload as { items?: unknown[] }).items)
+      ? (payload as { items: unknown[] }).items
+      : [];
+  return items
+    .map(normalizeReviewableProduct)
+    .filter((item): item is ReviewableProduct => item !== null);
+}

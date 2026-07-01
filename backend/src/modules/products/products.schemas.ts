@@ -42,6 +42,11 @@ const productListItemSchema = {
     isFeatured: { type: 'boolean' },
     isActive: { type: 'boolean' },
     inStock: { type: 'boolean' },
+    // Approved-review aggregates. Present on storefront list + detail so product
+    // cards and the PDP header can show stars without fetching every review.
+    // 0 / 0 when reviews are disabled or the product has no approved reviews.
+    rating: { type: 'number', minimum: 0, maximum: 5 },
+    reviewCount: { type: 'integer', minimum: 0, maximum: 100000000 },
     metaDescription: { anyOf: [{ type: 'string', maxLength: 500 }, { type: 'null' }] },
     category: {
       type: 'object',

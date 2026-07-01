@@ -12,6 +12,17 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.13] — 2026-07-01
+
+### Added
+- **Reviews visible on product cards + customer write-review UI.** `ProductCard` now renders the star `Rating` (avg + count) under the product name when `reviewsEnabled` and the product has approved reviews (the PDP header + `ProductReviewsSection` already showed reviews). New `OrderReviewPrompt` on the account order-detail page: for a **DELIVERED** order it fetches the reviewable products (`GET /reviews/eligible`) and renders a per-product star input + optional comment that submits via `POST /reviews`, with already-reviewed and pending-approval states. `reviews-api.ts` gains `getReviewableProducts` + `ReviewableProduct`. Consumes the new `rating`/`reviewCount` fields on the product list/detail responses.
+
+**Propagation:**
+- Severity: NORMAL (new feature) · Layers: frontend (`components/product/ProductCard.tsx`, `components/product/OrderReviewPrompt.tsx` [new], `lib/reviews-api.ts`, `app/(account)/orders/[id]/page.tsx`)
+- Migration: NO · Flag: gated on `reviewsEnabled` from `GET /store/config` (driven by backend `FEATURE_REVIEWS_ENABLED`) · Design impact: none (uses existing `Rating` + tokens) · Breaking: NO
+- Rollback: revert the listed files
+- Requires backend-core 0.1.22 (rating aggregates + `/reviews/eligible`).
+
 ## [0.1.12] — 2026-06-30
 
 ### Added

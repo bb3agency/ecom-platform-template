@@ -15,6 +15,7 @@ import {
   listMyReviewsSchema,
   listProductReviewsSchema,
   listRecentApprovedReviewsSchema,
+  listReviewableForOrderSchema,
   moderateReviewSchema
 } from './reviews.schemas';
 import { ReviewsService } from './reviews.service';
@@ -65,6 +66,22 @@ export async function registerReviewsRoutes(fastify: FastifyInstance): Promise<v
     async (request) => {
       const user = getCurrentUser(request);
       return reviewsService.listMyReviews(user.sub, request.query as never);
+    }
+  );
+
+  fastify.get(
+    '/api/v1/reviews/eligible',
+    {
+      schema: listReviewableForOrderSchema,
+      preHandler: customerGuard,
+      config: {
+        rateLimit: routeRateLimitProfiles.cartOps
+      }
+    },
+    async (request) => {
+      const user = getCurrentUser(request);
+      const query = request.query as { orderId: string };
+      return reviewsService.listReviewableProductsForOrder(user.sub, query.orderId);
     }
   );
 

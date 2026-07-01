@@ -12,6 +12,17 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.22] — 2026-07-01
+
+### Added
+- **Product review aggregates + write-review eligibility (full reviews feature).** Storefront product **list and detail** now return `rating` (avg, 1 dp) + `reviewCount` from approved reviews, so product cards and the PDP header can show stars without fetching every review — computed via a single batched `review.groupBy` for the list page (resilient: a review-aggregate error degrades to no-stars, never breaks the catalogue) and from the approved-reviews set on detail. New customer endpoint `GET /api/v1/reviews/eligible?orderId=` returns the distinct, active, not-already-reviewed products from one of the caller's **DELIVERED** orders — drives the storefront "write a review" UI (the existing `POST /reviews` verified-purchase create was already present but had no UI). All gated by the existing `FEATURE_REVIEWS_ENABLED` flag; aggregates are 0/0 and the endpoint returns `[]` when off.
+
+**Propagation:**
+- Severity: NORMAL (new feature) · Layers: backend (`modules/products/products.{service,schemas}.ts`, `modules/reviews/reviews.{service,schemas,routes}.ts`)
+- Migration: NO (uses existing `Review` model) · Flag: `FEATURE_REVIEWS_ENABLED` (OFF by default; set `true` + restart API/workers to activate) · Design impact: none · Breaking: NO
+- Rollback: revert the listed files
+- Pairs with frontend-core 0.1.13 (ProductCard stars + order-page write-review UI). Operator: enable `FEATURE_REVIEWS_ENABLED` per client that wants reviews.
+
 ## [0.1.21] — 2026-07-01
 
 ### Fixed

@@ -351,6 +351,43 @@ export const moderateReviewSchema = {
   }
 } as const;
 
+/** Products in a delivered order the signed-in customer may review (drives the write-review UI). */
+export const listReviewableForOrderSchema = {
+  params: emptyParamsSchema,
+  querystring: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['orderId'],
+    properties: {
+      orderId: { type: 'string', maxLength: 64 }
+    }
+  },
+  response: {
+    200: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['items'],
+      properties: {
+        items: {
+          type: 'array',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['productId', 'productName', 'productSlug', 'alreadyReviewed'],
+            properties: {
+              productId: { type: 'string', maxLength: 64 },
+              productName: { type: 'string', maxLength: 255 },
+              productSlug: { type: 'string', maxLength: 255 },
+              alreadyReviewed: { type: 'boolean' }
+            }
+          }
+        }
+      }
+    },
+    ...standardErrorResponses
+  }
+} as const;
+
 export const adminDeleteReviewSchema = {
   tags: ['admin', 'reviews'],
   summary: 'Hard-delete a review (spam/illegal content removal)',

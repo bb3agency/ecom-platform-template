@@ -146,9 +146,17 @@ export class ProductsService {
           });
 
     const reservationAwareItems = await this.applyReservationAwareAvailability(items, inStockOnly);
-    const serializedItems = reservationAwareItems.map((product) =>
-      this.serializePublicProductListItem(product)
+    const ratingAggregates = await this.getReviewAggregates(
+      reservationAwareItems.map((product) => (product as { id: string }).id)
     );
+    const serializedItems = reservationAwareItems.map((product) => {
+      const aggregate = ratingAggregates.get((product as { id: string }).id);
+      return {
+        ...this.serializePublicProductListItem(product),
+        rating: aggregate?.rating ?? 0,
+        reviewCount: aggregate?.reviewCount ?? 0
+      };
+    });
     const response = {
       items: serializedItems,
       meta: {
@@ -220,11 +228,20 @@ export class ProductsService {
       slug: resolvedProduct.slug
     });
 
+    const approvedReviews = Array.isArray(resolvedProduct.reviews) ? resolvedProduct.reviews : [];
+    const reviewCount = approvedReviews.length;
+    const rating =
+      reviewCount > 0
+        ? Math.round((approvedReviews.reduce((sum, review) => sum + review.rating, 0) / reviewCount) * 10) / 10
+        : 0;
+
     return {
       ...resolvedProduct,
       inStock,
+      rating,
+      reviewCount,
       variants: resolvedProduct.variants.map(({ inventory: _inventory, ...variant }) => variant),
-      reviews: (Array.isArray(resolvedProduct.reviews) ? resolvedProduct.reviews : []).map((review) => ({
+      reviews: approvedReviews.map((review) => ({
         id: review.id,
         rating: review.rating,
         body: review.body,
@@ -236,6 +253,41 @@ export class ProductsService {
         }
       }))
     };
+  }
+
+  /**
+   * Approved-review aggregates (average rating rounded to 1 dp + count) for a set
+   * of products, as a single grouped query. Returns an empty map when storefront
+   * reviews are disabled so product cards show no stars.
+   */
+  private async getReviewAggregates(
+    productIds: string[]
+  ): Promise<Map<string, { rating: number; reviewCount: number }>> {
+    const aggregates = new Map<string, { rating: number; reviewCount: number }>();
+    if (!featureFlags.reviews || productIds.length === 0) {
+      return aggregates;
+    }
+    // A review-aggregate hiccup must never break the catalogue — degrade to no stars.
+    try {
+      const grouped = await this.fastify.prisma.review.groupBy({
+        by: ['productId'],
+        where: { productId: { in: productIds }, approved: true },
+        _avg: { rating: true },
+        _count: { _all: true }
+      });
+      for (const row of grouped) {
+        aggregates.set(row.productId, {
+          rating: row._avg.rating != null ? Math.round(row._avg.rating * 10) / 10 : 0,
+          reviewCount: row._count._all
+        });
+      }
+    } catch (error) {
+      this.fastify.log?.error(
+        { error: error instanceof Error ? error.message : 'unknown review-aggregate error' },
+        'Failed to load product review aggregates'
+      );
+    }
+    return aggregates;
   }
 
   async listCategories(query?: { search?: string }) {

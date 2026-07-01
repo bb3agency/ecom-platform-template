@@ -9,6 +9,7 @@ import { formatPrice } from "@/lib/format-price";
 import { formatPaymentModeLabel } from "@/lib/format-payment-mode";
 import { shippingProviderLabel } from "@/lib/shipping-provider-labels";
 import { Button } from "@/components/ui/button";
+import { OrderReviewPrompt } from "@/components/product/OrderReviewPrompt";
 
 export default function AccountOrderDetailPage() {
   const params = useParams<{ id: string }>();
@@ -275,6 +276,8 @@ export default function AccountOrderDetailPage() {
           ))}
         </div>
       </div>
+
+      <OrderReviewPrompt orderId={order.id} orderStatus={order.status} />
 
       {order.status === "DELIVERED" && !showReturnForm && (
         <div className="rounded-lg border border-border p-4 text-center">

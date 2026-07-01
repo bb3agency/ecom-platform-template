@@ -12,6 +12,7 @@ import { addToWishlist, removeFromWishlist } from "@/lib/wishlist-api";
 import { cn } from "@/lib/utils";
 import { useStoreConfig } from "@/components/providers/StoreConfigProvider";
 import { formatPrice } from "@/lib/format-price";
+import { Rating } from "@/components/shared/Rating";
 
 const PLACEHOLDER_IMAGE = "/images/product-placeholder.svg";
 
@@ -28,7 +29,7 @@ export function ProductCard({
 }: ProductCardProps) {
   const image = product.images[0];
   const accessToken = useAuthStore((s) => s.accessToken);
-  const { wishlistEnabled } = useStoreConfig();
+  const { wishlistEnabled, reviewsEnabled } = useStoreConfig();
   const items = useWishlistStore((s) => s.items);
   const toggleItem = useWishlistStore((s) => s.toggleItem);
   const [loading, setLoading] = useState(false);
@@ -164,6 +165,12 @@ export function ProductCard({
             {product.name}
           </h3>
         </Link>
+
+        {reviewsEnabled && product.reviewCount > 0 ? (
+          <div className="mb-1.5">
+            <Rating rating={product.rating} reviewCount={product.reviewCount} />
+          </div>
+        ) : null}
 
         {shortDescription ? (
           <p className="mb-2.5 line-clamp-2 text-[11px] leading-relaxed text-[#888]">

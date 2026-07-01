@@ -101,6 +101,66 @@ export class ReviewsService {
     return this.listReviews({ userId }, query);
   }
 
+  /**
+   * Distinct products from one of the customer's DELIVERED orders that are eligible
+   * for a review, each flagged with whether they've already reviewed it. Drives the
+   * storefront write-review UI. Returns an empty list (never throws) when reviews are
+   * disabled, the order isn't theirs, or it isn't DELIVERED — the UI simply shows nothing.
+   */
+  async listReviewableProductsForOrder(userId: string, orderId: string) {
+    if (!featureFlags.reviews) {
+      return { items: [] };
+    }
+
+    const order = await this.fastify.prisma.order.findFirst({
+      where: { id: orderId, userId, status: OrderStatus.DELIVERED },
+      select: {
+        items: {
+          select: {
+            variant: {
+              select: {
+                product: { select: { id: true, name: true, slug: true, isActive: true } }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    if (!order) {
+      return { items: [] };
+    }
+
+    const existingReviews = await this.fastify.prisma.review.findMany({
+      where: { userId, orderId },
+      select: { productId: true }
+    });
+    const reviewedProductIds = new Set(existingReviews.map((review) => review.productId));
+
+    const seen = new Set<string>();
+    const items: Array<{
+      productId: string;
+      productName: string;
+      productSlug: string;
+      alreadyReviewed: boolean;
+    }> = [];
+    for (const item of order.items) {
+      const product = item.variant?.product;
+      if (!product || !product.isActive || seen.has(product.id)) {
+        continue;
+      }
+      seen.add(product.id);
+      items.push({
+        productId: product.id,
+        productName: product.name,
+        productSlug: product.slug,
+        alreadyReviewed: reviewedProductIds.has(product.id)
+      });
+    }
+
+    return { items };
+  }
+
   async listProductReviews(slug: string, query: ReviewListQuery) {
     const product = await this.fastify.prisma.product.findFirst({
       where: { slug, isActive: true },
