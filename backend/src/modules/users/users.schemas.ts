@@ -98,7 +98,14 @@ export const patchMeSchema = {
     properties: {
       firstName: { type: 'string', maxLength: 100 },
       lastName: { type: 'string', maxLength: 100 },
-      email: { type: 'string', format: 'email', maxLength: 255 }
+      email: { type: 'string', format: 'email', maxLength: 255 },
+      /** Set/update the login mobile number, or `null` to remove it (guarded server-side). */
+      phone: {
+        anyOf: [
+          { type: 'string', pattern: '^\\+?[0-9]{10,15}$' },
+          { type: 'null' }
+        ]
+      }
     }
   },
   response: {

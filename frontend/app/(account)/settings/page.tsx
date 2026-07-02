@@ -1,19 +1,15 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
+import { UserCircle, Smartphone, MapPin, ChevronRight, Loader2, ShieldCheck } from "lucide-react";
 import { useAuthStore } from "@/stores/auth";
-import {
-  getMyAddresses,
-  createMyAddress,
-  updateMyAddress,
-  deleteMyAddress,
-  updateMyProfile,
-  type UserAddress,
-} from "@/lib/users-api";
+import { updateMyProfile } from "@/lib/users-api";
 import { getApiErrorMessage } from "@/lib/error-messages";
+import { toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 
 const profileSchema = z.object({
@@ -22,32 +18,51 @@ const profileSchema = z.object({
   email: z.string().email("Enter a valid email").or(z.literal("")).optional(),
 });
 
-const addressSchema = z.object({
-  fullName: z.string().min(2, "Full name must be at least 2 characters"),
-  phone: z.string().min(10, "Enter a valid phone number"),
-  line1: z.string().min(5, "Address must be at least 5 characters"),
-  line2: z.string().optional(),
-  city: z.string().min(2, "City is required"),
-  state: z.string().min(2, "State is required"),
-  pincode: z.string().min(6, "Pincode must be 6 digits").max(6, "Pincode must be 6 digits"),
+const phoneSchema = z.object({
+  phone: z.string().regex(/^\+?[0-9]{10,15}$/, "Enter a valid mobile number (10–15 digits)"),
 });
 
 type ProfileFormData = z.infer<typeof profileSchema>;
-type AddressFormData = z.infer<typeof addressSchema>;
+type PhoneFormData = z.infer<typeof phoneSchema>;
+
+const inputClass =
+  "flex h-10 w-full rounded-lg border border-[#efe8e4] bg-white px-3 py-1 text-sm text-[#23403d] transition-colors placeholder:text-[#767676]/60 focus-visible:border-[#23403d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#23403d]/15";
+
+function SectionCard({
+  icon,
+  title,
+  description,
+  children,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-2xl border border-[#efe8e4] bg-white p-4 sm:p-6">
+      <div className="mb-4 flex items-start gap-3">
+        <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#eff5ee] text-[#23403d]">
+          {icon}
+        </div>
+        <div>
+          <h2 className="font-heading text-base font-bold text-[#23403d] sm:text-lg">{title}</h2>
+          <p className="text-xs text-[#767676] sm:text-sm">{description}</p>
+        </div>
+      </div>
+      {children}
+    </div>
+  );
+}
 
 export default function AccountSettingsPage() {
   const accessToken = useAuthStore((s) => s.accessToken);
   const user = useAuthStore((s) => s.user);
   const setSession = useAuthStore((s) => s.setSession);
 
-  const [addresses, setAddresses] = useState<UserAddress[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [profileSuccess, setProfileSuccess] = useState(false);
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [editingAddressId, setEditingAddressId] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
   const [profileBusy, setProfileBusy] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [phoneBusy, setPhoneBusy] = useState(false);
+  const [editingPhone, setEditingPhone] = useState(false);
 
   const profileForm = useForm<ProfileFormData>({
     resolver: zodResolver(profileSchema),
@@ -58,8 +73,9 @@ export default function AccountSettingsPage() {
     },
   });
 
-  const addressForm = useForm<AddressFormData>({
-    resolver: zodResolver(addressSchema),
+  const phoneForm = useForm<PhoneFormData>({
+    resolver: zodResolver(phoneSchema),
+    defaultValues: { phone: "" },
   });
 
   useEffect(() => {
@@ -68,362 +84,221 @@ export default function AccountSettingsPage() {
       lastName: user?.lastName ?? "",
       email: user?.email ?? "",
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      if (!accessToken) {
-        setLoading(false);
-        return;
-      }
-      setLoading(true);
-      try {
-        const data = await getMyAddresses(accessToken);
-        if (!cancelled) setAddresses(data);
-      } catch (err) {
-        if (!cancelled) setError(getApiErrorMessage(err));
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    void load();
-    return () => { cancelled = true; };
-  }, [accessToken]);
 
   const onProfileSubmit = async (values: ProfileFormData) => {
     if (!accessToken) return;
     setProfileBusy(true);
-    setError(null);
-    setProfileSuccess(false);
     try {
       const updated = await updateMyProfile(accessToken, {
         firstName: values.firstName,
         ...(values.lastName ? { lastName: values.lastName } : {}),
         ...(values.email ? { email: values.email } : {}),
       });
-      if (accessToken) {
-        setSession(accessToken, updated);
-      }
-      setProfileSuccess(true);
-      setTimeout(() => setProfileSuccess(false), 3000);
+      setSession(accessToken, updated);
+      toast.success("Profile updated");
     } catch (err) {
-      setError(getApiErrorMessage(err));
+      toast.error(getApiErrorMessage(err));
     } finally {
       setProfileBusy(false);
     }
   };
 
-  const onAddressSubmit = async (values: AddressFormData) => {
+  const onPhoneSubmit = async (values: PhoneFormData) => {
     if (!accessToken) return;
-    setBusy(true);
-    setError(null);
+    setPhoneBusy(true);
     try {
-      if (editingAddressId) {
-        const updated = await updateMyAddress(accessToken, editingAddressId, {
-          fullName: values.fullName,
-          phone: values.phone,
-          line1: values.line1,
-          ...(values.line2?.trim() ? { line2: values.line2.trim() } : { line2: null }),
-          city: values.city,
-          state: values.state,
-          pincode: values.pincode,
-        });
-        setAddresses(addresses.map((a) => (a.id === editingAddressId ? updated : a)));
-        setEditingAddressId(null);
-      } else {
-        const newAddress = await createMyAddress(accessToken, {
-          fullName: values.fullName,
-          phone: values.phone,
-          line1: values.line1,
-          ...(values.line2?.trim() ? { line2: values.line2.trim() } : {}),
-          city: values.city,
-          state: values.state,
-          pincode: values.pincode,
-          isDefault: addresses.length === 0,
-        });
-        setAddresses([...addresses, newAddress]);
-        setShowAddForm(false);
-      }
-      addressForm.reset();
+      const updated = await updateMyProfile(accessToken, { phone: values.phone.trim() });
+      setSession(accessToken, updated);
+      toast.success(user?.phone ? "Mobile number updated" : "Mobile number added");
+      setEditingPhone(false);
+      phoneForm.reset({ phone: "" });
     } catch (err) {
-      setError(getApiErrorMessage(err));
+      toast.error(getApiErrorMessage(err));
     } finally {
-      setBusy(false);
+      setPhoneBusy(false);
     }
   };
 
-  const handleSetDefault = async (id: string) => {
+  const onPhoneRemove = async () => {
     if (!accessToken) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const updated = await updateMyAddress(accessToken, id, { isDefault: true });
-      setAddresses(addresses.map((a) => ({
-        ...a,
-        isDefault: a.id === id ? true : false,
-      })));
-      setAddresses((prev) => prev.map((a) => (a.id === id ? updated : { ...a, isDefault: false })));
-    } catch (err) {
-      setError(getApiErrorMessage(err));
-    } finally {
-      setBusy(false);
+    if (
+      !confirm(
+        "Remove your mobile number? You will no longer be able to sign in with a mobile OTP — only with your email.",
+      )
+    ) {
+      return;
     }
-  };
-
-  const handleEditAddress = (address: UserAddress) => {
-    setEditingAddressId(address.id);
-    setShowAddForm(false);
-    addressForm.reset({
-      fullName: address.fullName,
-      phone: address.phone,
-      line1: address.line1,
-      line2: address.line2 ?? "",
-      city: address.city,
-      state: address.state,
-      pincode: address.pincode,
-    });
-  };
-
-  const handleDelete = async (id: string) => {
-    if (!accessToken) return;
-    if (!confirm("Are you sure you want to delete this address?")) return;
-    setBusy(true);
-    setError(null);
+    setPhoneBusy(true);
     try {
-      await deleteMyAddress(accessToken, id);
-      setAddresses(addresses.filter((a) => a.id !== id));
+      const updated = await updateMyProfile(accessToken, { phone: null });
+      setSession(accessToken, updated);
+      toast.success("Mobile number removed");
     } catch (err) {
-      setError(getApiErrorMessage(err));
+      toast.error(getApiErrorMessage(err));
     } finally {
-      setBusy(false);
+      setPhoneBusy(false);
     }
-  };
-
-  const cancelAddressForm = () => {
-    setShowAddForm(false);
-    setEditingAddressId(null);
-    addressForm.reset();
   };
 
   const profileErrors = profileForm.formState.errors;
-  const addrErrors = addressForm.formState.errors;
+  const phoneErrors = phoneForm.formState.errors;
+  const currentPhone = user?.phone?.trim() || "";
 
   return (
-    <section className="grid gap-8">
-      {/* Profile Section */}
-      <div className="rounded-lg border border-border p-4 sm:p-6">
-        <h1 className="mb-4 font-heading text-xl font-semibold sm:text-2xl">Profile</h1>
-        {error && <p className="mb-4 text-sm text-destructive">{error}</p>}
-        {profileSuccess && (
-          <p className="mb-4 rounded-md bg-[#eff5ee] px-3 py-2 text-sm font-medium text-[#23403d]">
-            Profile updated successfully.
-          </p>
-        )}
+    <section className="flex flex-col gap-5 sm:gap-6">
+      <div>
+        <h1 className="font-heading text-xl font-bold text-[#23403d] sm:text-2xl">Settings</h1>
+        <p className="mt-1 text-sm text-[#767676]">Manage your personal details and sign-in options.</p>
+      </div>
+
+      {/* ── Profile ─────────────────────────────────────────────────────── */}
+      <SectionCard
+        icon={<UserCircle className="size-5" aria-hidden />}
+        title="Profile"
+        description="Your name and email address."
+      >
         <form onSubmit={profileForm.handleSubmit(onProfileSubmit)} className="grid gap-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="grid gap-1.5">
-              <label className="text-xs font-medium">First Name</label>
-              <input
-                {...profileForm.register("firstName")}
-                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              />
+              <label className="text-xs font-bold text-[#23403d]" htmlFor="profile-first-name">
+                First Name
+              </label>
+              <input id="profile-first-name" {...profileForm.register("firstName")} className={inputClass} />
               {profileErrors.firstName && (
                 <p className="text-xs text-destructive">{profileErrors.firstName.message}</p>
               )}
             </div>
             <div className="grid gap-1.5">
-              <label className="text-xs font-medium">Last Name</label>
-              <input
-                {...profileForm.register("lastName")}
-                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              />
+              <label className="text-xs font-bold text-[#23403d]" htmlFor="profile-last-name">
+                Last Name
+              </label>
+              <input id="profile-last-name" {...profileForm.register("lastName")} className={inputClass} />
             </div>
             <div className="grid gap-1.5 sm:col-span-2">
-              <label className="text-xs font-medium">Email</label>
-              <input
-                type="email"
-                {...profileForm.register("email")}
-                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              />
+              <label className="text-xs font-bold text-[#23403d]" htmlFor="profile-email">
+                Email
+              </label>
+              <input id="profile-email" type="email" {...profileForm.register("email")} className={inputClass} />
               {profileErrors.email && (
                 <p className="text-xs text-destructive">{profileErrors.email.message}</p>
               )}
             </div>
           </div>
           <div className="flex justify-end">
-            <Button type="submit" size="sm" disabled={profileBusy}>
-              {profileBusy ? "Saving..." : "Save Profile"}
+            <Button type="submit" size="sm" className="bg-[#23403d] hover:bg-[#1a302e]" disabled={profileBusy}>
+              {profileBusy ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" aria-hidden /> Saving…
+                </>
+              ) : (
+                "Save Profile"
+              )}
             </Button>
           </div>
         </form>
-      </div>
+      </SectionCard>
 
-      {/* Addresses Section */}
-      <div className="rounded-lg border border-border p-4 sm:p-6">
-        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="font-heading text-xl font-semibold sm:text-2xl">Saved Addresses</h2>
-          {!showAddForm && !editingAddressId && (
-            <Button onClick={() => setShowAddForm(true)} disabled={busy} size="sm">
-              Add New Address
-            </Button>
-          )}
-        </div>
-
-        {(showAddForm || editingAddressId) && (
-          <form
-            onSubmit={addressForm.handleSubmit(onAddressSubmit)}
-            className="mb-6 grid gap-4 rounded-md bg-muted/30 p-4"
-          >
-            <h3 className="text-sm font-medium">
-              {editingAddressId ? "Edit Address" : "Add New Address"}
-            </h3>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="grid gap-1.5">
-                <label className="text-xs font-medium">Full Name</label>
-                <input
-                  {...addressForm.register("fullName")}
-                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                />
-                {addrErrors.fullName && (
-                  <p className="text-xs text-destructive">{addrErrors.fullName.message}</p>
-                )}
-              </div>
-              <div className="grid gap-1.5">
-                <label className="text-xs font-medium">Phone</label>
-                <input
-                  {...addressForm.register("phone")}
-                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                />
-                {addrErrors.phone && (
-                  <p className="text-xs text-destructive">{addrErrors.phone.message}</p>
-                )}
-              </div>
-              <div className="grid gap-1.5 sm:col-span-2">
-                <label className="text-xs font-medium">Line 1</label>
-                <input
-                  {...addressForm.register("line1")}
-                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                />
-                {addrErrors.line1 && (
-                  <p className="text-xs text-destructive">{addrErrors.line1.message}</p>
-                )}
-              </div>
-              <div className="grid gap-1.5 sm:col-span-2">
-                <label className="text-xs font-medium">Line 2 (Optional)</label>
-                <input
-                  {...addressForm.register("line2")}
-                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                />
-              </div>
-              <div className="grid gap-1.5">
-                <label className="text-xs font-medium">City</label>
-                <input
-                  {...addressForm.register("city")}
-                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                />
-                {addrErrors.city && (
-                  <p className="text-xs text-destructive">{addrErrors.city.message}</p>
-                )}
-              </div>
-              <div className="grid gap-1.5">
-                <label className="text-xs font-medium">State</label>
-                <input
-                  {...addressForm.register("state")}
-                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                />
-                {addrErrors.state && (
-                  <p className="text-xs text-destructive">{addrErrors.state.message}</p>
-                )}
-              </div>
-              <div className="grid gap-1.5">
-                <label className="text-xs font-medium">Pincode</label>
-                <input
-                  {...addressForm.register("pincode")}
-                  maxLength={6}
-                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                />
-                {addrErrors.pincode && (
-                  <p className="text-xs text-destructive">{addrErrors.pincode.message}</p>
-                )}
+      {/* ── Mobile number ───────────────────────────────────────────────── */}
+      <SectionCard
+        icon={<Smartphone className="size-5" aria-hidden />}
+        title="Mobile Number"
+        description="Used for OTP sign-in and delivery updates."
+      >
+        {currentPhone && !editingPhone ? (
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2.5">
+              <ShieldCheck className="size-4 shrink-0 text-[#23403d]" aria-hidden />
+              <div>
+                <p className="text-sm font-bold text-[#23403d]">{currentPhone}</p>
+                <p className="text-xs text-[#767676]">You can sign in with an OTP sent to this number.</p>
               </div>
             </div>
-            <div className="mt-2 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-              <Button type="button" variant="outline" size="sm" onClick={cancelAddressForm} disabled={busy}>
-                Cancel
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={phoneBusy}
+                onClick={() => {
+                  phoneForm.reset({ phone: currentPhone });
+                  setEditingPhone(true);
+                }}
+              >
+                Change
               </Button>
-              <Button type="submit" size="sm" disabled={busy}>
-                {busy ? "Saving..." : editingAddressId ? "Update Address" : "Save Address"}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                disabled={phoneBusy}
+                onClick={() => void onPhoneRemove()}
+              >
+                {phoneBusy ? "Working…" : "Remove"}
               </Button>
+            </div>
+          </div>
+        ) : (
+          <form onSubmit={phoneForm.handleSubmit(onPhoneSubmit)} className="grid gap-3">
+            {!currentPhone && (
+              <p className="text-sm text-[#767676]">
+                No mobile number on your account yet. Add one to enable OTP sign-in and receive
+                delivery updates.
+              </p>
+            )}
+            <div className="grid gap-1.5 sm:max-w-sm">
+              <label className="text-xs font-bold text-[#23403d]" htmlFor="settings-phone">
+                Mobile Number
+              </label>
+              <input
+                id="settings-phone"
+                type="tel"
+                inputMode="tel"
+                placeholder="10-digit mobile number"
+                maxLength={16}
+                {...phoneForm.register("phone")}
+                className={inputClass}
+              />
+              {phoneErrors.phone && <p className="text-xs text-destructive">{phoneErrors.phone.message}</p>}
+            </div>
+            <div className="flex gap-2">
+              <Button type="submit" size="sm" className="bg-[#23403d] hover:bg-[#1a302e]" disabled={phoneBusy}>
+                {phoneBusy ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin" aria-hidden /> Saving…
+                  </>
+                ) : currentPhone ? (
+                  "Update Number"
+                ) : (
+                  "Add Number"
+                )}
+              </Button>
+              {editingPhone && (
+                <Button type="button" variant="outline" size="sm" disabled={phoneBusy} onClick={() => setEditingPhone(false)}>
+                  Cancel
+                </Button>
+              )}
             </div>
           </form>
         )}
+      </SectionCard>
 
-        <div className="grid gap-3">
-          {loading ? (
-            <div className="grid gap-2">
-              {[1, 2].map((i) => (
-                <div key={i} className="h-20 animate-pulse rounded border border-border bg-muted" />
-              ))}
-            </div>
-          ) : !showAddForm && !editingAddressId && addresses.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No saved addresses.</p>
-          ) : (
-            addresses.map((address) => (
-              <article
-                key={address.id}
-                className="flex flex-col gap-3 rounded border border-border p-3 text-sm sm:flex-row sm:items-start sm:justify-between"
-              >
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <p className="font-medium">{address.fullName}</p>
-                    {address.isDefault && (
-                      <span className="rounded-full bg-[#eff5ee] px-2 py-0.5 text-[10px] font-bold text-[#23403d]">
-                        Default
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-muted-foreground">{address.phone}</p>
-                  <p className="mt-1">{address.line1}</p>
-                  {address.line2 && <p>{address.line2}</p>}
-                  <p>
-                    {address.city}, {address.state} - {address.pincode}
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {!address.isDefault && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={busy}
-                      onClick={() => handleSetDefault(address.id)}
-                    >
-                      Set Default
-                    </Button>
-                  )}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={busy}
-                    onClick={() => handleEditAddress(address)}
-                  >
-                    Edit
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                    disabled={busy}
-                    onClick={() => handleDelete(address.id)}
-                  >
-                    Delete
-                  </Button>
-                </div>
-              </article>
-            ))
-          )}
+      {/* ── Addresses shortcut ──────────────────────────────────────────── */}
+      <Link
+        href="/addresses"
+        className="group flex items-center justify-between rounded-2xl border border-[#efe8e4] bg-white p-4 transition-colors hover:border-[#23403d]/30 hover:bg-[#eff5ee]/40 sm:p-5"
+      >
+        <div className="flex items-center gap-3">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#eff5ee] text-[#23403d]">
+            <MapPin className="size-5" aria-hidden />
+          </div>
+          <div>
+            <p className="font-heading text-base font-bold text-[#23403d]">Saved Addresses</p>
+            <p className="text-xs text-[#767676] sm:text-sm">Manage delivery addresses used at checkout.</p>
+          </div>
         </div>
-      </div>
+        <ChevronRight className="size-5 text-[#767676] transition-transform group-hover:translate-x-0.5" aria-hidden />
+      </Link>
     </section>
   );
 }

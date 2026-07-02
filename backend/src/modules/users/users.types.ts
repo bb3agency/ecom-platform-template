@@ -2,6 +2,8 @@ export type UpdateProfileInput = {
   firstName?: string;
   lastName?: string;
   email?: string;
+  /** New login mobile number, or `null` to remove it (guarded — see UsersService.patchMe). */
+  phone?: string | null;
 };
 
 export type CreateAddressInput = {

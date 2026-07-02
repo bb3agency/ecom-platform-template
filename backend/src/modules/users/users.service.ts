@@ -48,7 +48,7 @@ export class UsersService {
   async patchMe(userId: string, input: UpdateProfileInput) {
     const existing = await this.fastify.prisma.user.findUnique({
       where: { id: userId },
-      select: { isBanned: true }
+      select: { isBanned: true, email: true, phone: true }
     });
     if (!existing) {
       throw new AppError(ERROR_CODES.NOT_FOUND, 'User not found', 404);
@@ -73,10 +73,40 @@ export class UsersService {
       }
     }
 
-    const updateData: Record<string, string> = {};
+    // Phone add/update/remove. The phone doubles as an OTP login identifier, so:
+    //  - a number already on another account is a 409 (same rule as email);
+    //  - removing it is only allowed when the account still has an email — otherwise the
+    //    customer would strip their ONLY way to sign back in.
+    const normalizedPhone =
+      input.phone === undefined ? undefined : input.phone === null ? null : input.phone.trim();
+    if (typeof normalizedPhone === 'string' && normalizedPhone.length > 0) {
+      const existingPhone = await this.fastify.prisma.user.findFirst({
+        where: {
+          phone: normalizedPhone,
+          id: { not: userId }
+        }
+      });
+      if (existingPhone) {
+        throw new AppError(ERROR_CODES.CONFLICT, 'This mobile number is already linked to another account.', 409);
+      }
+    }
+    const removingPhone = normalizedPhone === null || normalizedPhone === '';
+    if (removingPhone) {
+      const willHaveEmail = input.email !== undefined ? Boolean(input.email) : Boolean(existing.email);
+      if (!willHaveEmail) {
+        throw new AppError(
+          ERROR_CODES.VALIDATION_ERROR,
+          'Add an email address before removing your mobile number — it is your only way to sign in.',
+          400
+        );
+      }
+    }
+
+    const updateData: Record<string, string | null> = {};
     if (input.firstName !== undefined) updateData.firstName = input.firstName;
     if (input.lastName !== undefined) updateData.lastName = input.lastName;
     if (input.email !== undefined) updateData.email = input.email;
+    if (normalizedPhone !== undefined) updateData.phone = removingPhone ? null : normalizedPhone;
 
     const user = await this.fastify.prisma.user.update({
       where: { id: userId },

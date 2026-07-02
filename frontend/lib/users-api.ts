@@ -108,7 +108,7 @@ export async function deleteMyAddress(
 
 export async function updateMyProfile(
   accessToken: string,
-  input: { firstName?: string; lastName?: string; email?: string; phone?: string },
+  input: { firstName?: string; lastName?: string; email?: string; phone?: string | null },
 ): Promise<User> {
   return apiClient<User>("/users/me", {
     method: "PATCH",

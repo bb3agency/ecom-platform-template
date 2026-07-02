@@ -53,7 +53,7 @@ export default function AccountDashboardPage() {
       description: "Track and manage your purchases",
     },
     {
-      href: "/settings",
+      href: "/addresses",
       icon: MapPin,
       label: "Addresses",
       description: "Manage your delivery addresses",

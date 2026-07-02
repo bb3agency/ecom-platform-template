@@ -12,6 +12,17 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.39] — 2026-07-03
+
+### Added
+- **Customers can add / update / remove their mobile number** via `PATCH /api/v1/users/me` (`phone: string | null`; format `^\+?[0-9]{10,15}$`). Guards: a number already linked to another account → **409** ("This mobile number is already linked to another account."); removal is refused with a clear **400** when the account has no email — the phone would be the customer's ONLY OTP sign-in identifier. Pairs with the redesigned account Settings page (frontend-core 0.1.24). Unit tests for set/conflict/remove/last-identifier.
+
+**Propagation:**
+- Severity: NORMAL (additive profile capability) · Layers: backend (`modules/users/{users.schemas.ts,users.types.ts,users.service.ts}` + `users.service.profile.test.ts`)
+- Migration: NO · Flag: none · Design impact: none · Breaking: NO
+- Rollback: revert the listed files
+- Note: the new number is accepted without OTP-verifying it first (the session itself is already authenticated). OTP-verify-the-new-number is a possible hardening follow-up.
+
 ## [0.1.38] — 2026-07-03
 
 ### Fixed

@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { AccountGuard } from "@/components/auth/AccountGuard";
+import { AccountNav } from "@/components/layout/AccountNav";
 import { NOINDEX_METADATA } from "@/lib/seo";
 
 export const metadata = NOINDEX_METADATA;
@@ -33,12 +34,8 @@ export default function AccountLayout({ children }: AccountLayoutProps) {
 
         {/* ── Main Content ──────────────────────────────────────────────── */}
         <section className="mx-auto w-full max-w-[1440px] px-4 pt-6 sm:pt-12 lg:px-8">
-          <div className="grid gap-4 sm:gap-8 lg:grid-cols-[250px_1fr] lg:items-start">
-            <nav className="flex flex-row lg:flex-col overflow-x-auto lg:overflow-x-visible gap-1.5 sm:gap-2 rounded-[20px] bg-white p-3 sm:p-4 lg:p-6 shadow-sm scrollbar-none" aria-label="Account">
-              <Link href="/dashboard" className="rounded-lg px-3 py-2.5 text-xs font-bold text-[#23403d] transition-colors hover:bg-[#faf3ef] hover:text-[#ec6e55] whitespace-nowrap flex-1 text-center lg:text-left sm:px-4 sm:py-3 sm:text-sm">Dashboard</Link>
-              <Link href="/orders" className="rounded-lg px-3 py-2.5 text-xs font-bold text-[#23403d] transition-colors hover:bg-[#faf3ef] hover:text-[#ec6e55] whitespace-nowrap flex-1 text-center lg:text-left sm:px-4 sm:py-3 sm:text-sm">Orders</Link>
-              <Link href="/settings" className="rounded-lg px-3 py-2.5 text-xs font-bold text-[#23403d] transition-colors hover:bg-[#faf3ef] hover:text-[#ec6e55] whitespace-nowrap flex-1 text-center lg:text-left sm:px-4 sm:py-3 sm:text-sm">Settings</Link>
-            </nav>
+          <div className="grid gap-4 sm:gap-8 lg:grid-cols-[260px_1fr] lg:items-start">
+            <AccountNav />
             <div className="rounded-[20px] bg-white p-4 shadow-sm sm:p-6 lg:p-8">
               {children}
             </div>
