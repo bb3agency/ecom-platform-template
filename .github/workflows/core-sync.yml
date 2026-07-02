@@ -55,7 +55,11 @@ jobs:
           set -euo pipefail
           git remote remove template 2>/dev/null || true
           git remote add template "https://x-access-token:${TEMPLATE_READ_PAT}@github.com/${TEMPLATE_REPO}.git"
-          git fetch template --tags --quiet
+          # --force: client repos carry their own same-named core tags
+          # (backend-core-v*/frontend-core-v*) for release traceability; without
+          # --force this fetch fails "would clobber existing tag". Force lets the
+          # template tag win in the ephemeral CI checkout (the client origin keeps its own).
+          git fetch template --tags --force --quiet
           # verify the requested tag actually exists upstream before proceeding
           git rev-parse --verify "refs/tags/${{ inputs.tag }}" >/dev/null 2>&1 \
             || { echo "::error::tag ${{ inputs.tag }} not found in ${TEMPLATE_REPO}"; exit 1; }
