@@ -3,7 +3,7 @@ import { interFont } from "@/lib/fonts";
 import { APP_NAME, BRAND_LOGO_SRC } from "@/lib/constants";
 import { getSiteUrl } from "@/lib/seo";
 import { MaintenanceBanner } from "@/components/maintenance/MaintenanceBanner";
-import { Toaster } from "@/components/shared/Toaster";
+import { Toaster } from "@/components/ui/Toaster";
 import "./globals.css";
 
 export const metadata: Metadata = {

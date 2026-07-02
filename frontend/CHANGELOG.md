@@ -12,6 +12,16 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.21] — 2026-07-03
+
+### Fixed
+- **VPS frontend build broke: `Module not found: Can't resolve '@/components/shared/Toaster'`.** 0.1.20 put the new `Toaster` in `components/shared/`, but that directory is **not** in the core sync manifest (only `components/{ui,layout,admin,product,cart,checkout}/**` are) — so `Toaster.tsx` never synced to client repos, while the core `app/layout.tsx` that imports it did. `next build` (run on deploy) failed on the dangling import. (Client `reliability-gates` doesn't run a full `next build`, so it slipped through.) Moved `Toaster.tsx` → `components/ui/Toaster.tsx` (a core-synced directory; a Toaster is a UI primitive) and updated the import. No behaviour change.
+
+**Propagation:**
+- Severity: HIGH (breaks the frontend production build on deploy) · Layers: frontend (`components/ui/Toaster.tsx` moved from `components/shared/`, `app/layout.tsx`)
+- Migration: NO · Flag: none · Design impact: none · Breaking: NO
+- Rollback: n/a (roll up with 0.1.20). Note: `components/shared/**` remains outside the core manifest — new files there won't sync; keep shared core components under a manifested directory (`components/ui`, `components/layout`, …).
+
 ## [0.1.20] — 2026-07-03
 
 ### Added
