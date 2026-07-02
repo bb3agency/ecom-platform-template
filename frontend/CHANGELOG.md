@@ -12,6 +12,20 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.19] — 2026-07-03
+
+### Fixed
+- **Storefront header support phone is now merchant-managed, not hardcoded.** `components/layout/Header.tsx` hard-coded one client's "Call Us 24/7" number (and would ship it to every client via core sync). It now reads `contactPhone` from the public store config (`useStoreConfig()`) — the same source the Footer already uses — and hides the whole phone block (and its divider) when no number is set. Merchants edit it in **Admin → Settings → Store Profile**, alongside the store address.
+
+### Changed
+- **Re-added Contact Phone + Contact Email to the admin Store Profile panel.** `StoreSettingsPanel` previously showed a note saying these were "removed to simplify configuration"; they're now editable fields (loaded from `GET /admin/settings/store`, saved via the existing PATCH — backend already accepted `contactPhone`/`contactEmail`). This makes the header/footer contact details self-service for merchants, no backend seeding needed.
+
+**Propagation:**
+- Severity: NORMAL (removes a cross-client branding leak; adds merchant self-service) · Layers: frontend (`components/layout/Header.tsx`, `components/admin/StoreSettingsPanel.tsx`)
+- Migration: NO · Flag: none · Design impact: none (header phone now data-driven; hidden when unset) · Breaking: NO
+- Rollback: revert the two files
+- No backend change: `StoreSettings.contactPhone`/`contactEmail` were already read/written by `/admin/settings/store` and exposed in `/store/config`. After sync, each merchant should set their number in Admin → Settings → Store Profile (until then the header phone block is simply hidden).
+
 ## [0.1.18] — 2026-07-02
 
 ### Fixed

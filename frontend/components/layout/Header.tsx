@@ -9,6 +9,7 @@ import { MainNav } from "@/components/layout/MainNav";
 import { SearchInput } from "@/components/shared/SearchInput";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { useSessionBootstrap } from "@/hooks/use-session-bootstrap";
+import { useStoreConfig } from "@/components/providers/StoreConfigProvider";
 import { useUiStore } from "@/stores/ui";
 import { formatPrice } from "@/lib/format-price";
 import type { CategoryWithMeta } from "@/lib/categories";
@@ -22,6 +23,10 @@ interface HeaderProps {
 export function Header({ categories, minOrderValuePaise = 0 }: HeaderProps) {
   useSessionBootstrap();
   const setMobileMenuOpen = useUiStore((s) => s.setMobileMenuOpen);
+  // Merchant-managed support phone from the public store config (Admin → Settings → Store Profile),
+  // same source the Footer uses. Falls back to hidden when the merchant hasn't set one.
+  const contactPhone = useStoreConfig().contactPhone?.trim() || "";
+  const telHref = `tel:${contactPhone.replace(/[^\d+]/g, "")}`;
 
   return (
     <>
@@ -66,17 +71,21 @@ export function Header({ categories, minOrderValuePaise = 0 }: HeaderProps) {
 
         {/* Support & Actions */}
         <div className="flex items-center gap-2 sm:gap-4 lg:gap-6">
-          <div className="hidden items-center gap-3 lg:flex">
-            <div className="flex size-11 items-center justify-center rounded-full bg-[#eff5ee] text-[#ec6e55]">
-              <Phone className="size-5" />
-            </div>
-            <div className="flex flex-col">
-              <span className="text-xs font-bold text-[#767676]">Call Us 24/7</span>
-              <a href="tel:+919440445006" className="text-sm font-bold text-[#23403d] hover:text-[#ec6e55]">+91 94404 45006</a>
-            </div>
-          </div>
-          
-          <div className="h-8 w-px bg-[#efe8e4] hidden lg:block" aria-hidden="true" />
+          {contactPhone ? (
+            <>
+              <div className="hidden items-center gap-3 lg:flex">
+                <div className="flex size-11 items-center justify-center rounded-full bg-[#eff5ee] text-[#ec6e55]">
+                  <Phone className="size-5" />
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-xs font-bold text-[#767676]">Call Us 24/7</span>
+                  <a href={telHref} className="text-sm font-bold text-[#23403d] hover:text-[#ec6e55]">{contactPhone}</a>
+                </div>
+              </div>
+
+              <div className="h-8 w-px bg-[#efe8e4] hidden lg:block" aria-hidden="true" />
+            </>
+          ) : null}
           
           <MainNav />
 

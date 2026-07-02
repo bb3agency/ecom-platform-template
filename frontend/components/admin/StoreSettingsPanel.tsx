@@ -38,6 +38,8 @@ export function StoreSettingsPanel() {
   const [sellerLegalName, setSellerLegalName] = useState("");
   const [sellerAddress, setSellerAddress] = useState("");
   const [sellerState, setSellerState] = useState("");
+  const [contactPhone, setContactPhone] = useState("");
+  const [contactEmail, setContactEmail] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -66,6 +68,8 @@ export function StoreSettingsPanel() {
           setSellerLegalName(result.sellerLegalName ?? "");
           setSellerAddress(result.sellerAddress ?? "");
           setSellerState(result.sellerState ?? "");
+          setContactPhone(result.contactPhone ?? "");
+          setContactEmail(result.contactEmail ?? "");
           setLoaded(true);
         }
       })
@@ -92,6 +96,8 @@ export function StoreSettingsPanel() {
           sellerLegalName: sellerLegalName.trim() || undefined,
           sellerAddress: sellerAddress.trim() || undefined,
           sellerState: sellerState.trim() ? sellerState.trim() : null,
+          contactPhone: contactPhone.trim() || undefined,
+          contactEmail: contactEmail.trim() || undefined,
         }),
       });
       setSuccess("Store settings saved successfully.");
@@ -168,20 +174,6 @@ export function StoreSettingsPanel() {
       </div>
 
       {/* ------------------------------------------------------------------ */}
-      {/* Merchant contact note                                               */}
-      {/* ------------------------------------------------------------------ */}
-      <div className="flex min-w-0 items-start gap-2.5 rounded-lg border border-muted bg-muted/30 p-3.5 text-xs text-muted-foreground overflow-hidden">
-        <Info className="h-3.5 w-3.5 shrink-0 mt-0.5" aria-hidden />
-        <span>
-          <strong className="text-foreground">Merchant shipment notifications</strong> (email/SMS
-          to your store team when an order ships) use the merchant contact email and phone from your
-          store settings. These fields have been removed from this panel to simplify configuration
-          — ask your platform admin to seed them via the backend if merchant shipment alerts are
-          needed.
-        </span>
-      </div>
-
-      {/* ------------------------------------------------------------------ */}
       {/* Editable: Compliance IDs (GSTIN + FSSAI)                           */}
       {/* ------------------------------------------------------------------ */}
       <form
@@ -237,6 +229,42 @@ export function StoreSettingsPanel() {
                 <span className="text-xs font-normal text-muted-foreground">
                   Shown to customers in the storefront footer (and printed on tax invoices when GST
                   invoicing is on). Updates appear within ~a minute of saving.
+                </span>
+              </label>
+
+              <label className="grid gap-1.5 text-sm font-medium text-foreground">
+                Contact Phone
+                <input
+                  type="tel"
+                  inputMode="tel"
+                  placeholder="+91 98765 43210"
+                  maxLength={30}
+                  className={inputClass}
+                  value={contactPhone}
+                  onChange={(e) => setContactPhone(e.target.value)}
+                  disabled={!canWrite}
+                />
+                <span className="text-xs font-normal text-muted-foreground">
+                  Shown as the &ldquo;Call Us&rdquo; number in the storefront header &amp; footer.
+                  Leave blank to hide it.
+                </span>
+              </label>
+
+              <label className="grid gap-1.5 text-sm font-medium text-foreground">
+                Contact Email
+                <input
+                  type="email"
+                  inputMode="email"
+                  placeholder="support@yourstore.com"
+                  maxLength={200}
+                  className={inputClass}
+                  value={contactEmail}
+                  onChange={(e) => setContactEmail(e.target.value)}
+                  disabled={!canWrite}
+                />
+                <span className="text-xs font-normal text-muted-foreground">
+                  Shown to customers in the storefront footer and used for merchant shipment
+                  notifications. Leave blank to hide it.
                 </span>
               </label>
 
