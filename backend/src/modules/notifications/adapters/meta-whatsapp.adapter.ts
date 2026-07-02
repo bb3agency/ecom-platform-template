@@ -61,6 +61,31 @@ export class MetaWhatsAppAdapter implements WhatsappProviderAdapter {
   private buildPayload(recipient: string, input: SendWhatsappInput): Record<string, unknown> {
     const resolved = this.templateRegistry.resolve(input.template, input.data);
 
+    // Mapped AUTHENTICATION template (OTP): Meta requires the code in BOTH the body
+    // parameter AND a copy-code button component (sub_type 'url', index 0) that echoes
+    // the same code. There is exactly one parameter — the verification code.
+    if (resolved && resolved.authentication) {
+      const code = resolved.parameters[0] ?? '';
+      return {
+        messaging_product: 'whatsapp',
+        to: recipient,
+        type: 'template',
+        template: {
+          name: resolved.metaName,
+          language: { code: resolved.language },
+          components: [
+            { type: 'body', parameters: [{ type: 'text', text: code }] },
+            {
+              type: 'button',
+              sub_type: 'url',
+              index: 0,
+              parameters: [{ type: 'text', text: code }]
+            }
+          ]
+        }
+      };
+    }
+
     // Mapped template: use the approved Meta template name, its language, and the
     // body parameters in the exact positional order the template expects.
     if (resolved) {

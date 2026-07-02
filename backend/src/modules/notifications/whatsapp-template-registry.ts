@@ -33,6 +33,13 @@ export type WhatsappTemplateDescriptor = {
    * parameters {{1}}, {{2}}, ... — index 0 fills {{1}}, index 1 fills {{2}}, etc.
    */
   params: readonly string[];
+  /**
+   * True for Meta AUTHENTICATION-category templates (OTP). These have a fixed body
+   * ("{{1}} is your verification code.") with a SINGLE parameter (the code) AND require
+   * a matching copy-code button component that echoes the same code. The adapter builds
+   * both the body and button components from the single param when this is set.
+   */
+  authentication?: boolean;
 };
 
 export type ResolvedWhatsappTemplate = {
@@ -40,6 +47,8 @@ export type ResolvedWhatsappTemplate = {
   language: string;
   /** Positional body parameter values in {{1}}..{{n}} order. */
   parameters: string[];
+  /** True for Meta AUTHENTICATION templates — adapter must add the copy-code button component. */
+  authentication: boolean;
 };
 
 export class WhatsappTemplateRegistry {
@@ -60,14 +69,16 @@ export class WhatsappTemplateRegistry {
    */
   static defaultTemplates(): Record<string, WhatsappTemplateDescriptor> {
     return {
-      // Customer signup/login OTP. Utility template (custom body carrying the store
-      // name); body = "Your verification code is {{1}}. Use this code to log in or
-      // sign up with *{{2}}*. For your security, do not share this code."
-      // {{1}} = OTP code, {{2}} = store name (bolded in the template via *{{2}}*).
+      // Customer signup/login OTP. Meta AUTHENTICATION-category template (verification
+      // codes are NOT allowed in Utility — Meta rejects them). The body is fixed by Meta
+      // ("{{1}} is your verification code.") with a SINGLE param = the code; a copy-code
+      // button echoes the same code. The store name is NOT in the body (Authentication
+      // templates forbid custom copy) — it shows as the message sender.
       CustomerOtpVerification: {
         metaName: 'otp_verification',
         language: 'en',
-        params: ['otp', 'storeName']
+        params: ['otp'],
+        authentication: true
       },
       OrderConfirmed: {
         metaName: 'order_confirmed',
@@ -146,7 +157,8 @@ export class WhatsappTemplateRegistry {
     return {
       metaName: descriptor.metaName,
       language: descriptor.language,
-      parameters
+      parameters,
+      authentication: descriptor.authentication === true
     };
   }
 }

@@ -62,6 +62,41 @@ describe('MetaWhatsAppAdapter', () => {
     ]);
   });
 
+  it('builds an authentication OTP payload with the code in the body and copy-code button', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ messages: [{ id: 'wamid.otp' }] })
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const adapter = new MetaWhatsAppAdapter({
+      accessToken: 'meta_token',
+      phoneNumberId: '123456789'
+    });
+
+    await adapter.sendWhatsapp({
+      phone: '+91 9876543210',
+      template: 'CustomerOtpVerification',
+      data: { otp: '482913', storeName: 'Raghava Organics' }
+    });
+
+    const [, requestInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(requestInit.body as string) as {
+      template: { name: string; components: Array<Record<string, unknown>> };
+    };
+    expect(body.template.name).toBe('otp_verification');
+    expect(body.template.components).toEqual([
+      { type: 'body', parameters: [{ type: 'text', text: '482913' }] },
+      {
+        type: 'button',
+        sub_type: 'url',
+        index: 0,
+        parameters: [{ type: 'text', text: '482913' }]
+      }
+    ]);
+  });
+
   it('throws validation error for invalid phone number', async () => {
     const adapter = new MetaWhatsAppAdapter({
       accessToken: 'meta_token',

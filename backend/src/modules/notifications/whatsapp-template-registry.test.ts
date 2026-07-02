@@ -36,12 +36,17 @@ describe('WhatsappTemplateRegistry', () => {
     expect(resolved?.parameters).toEqual(['Our Store', 'ORD-7', 'your account orders page']);
   });
 
-  it('maps the customer OTP template with code then store name in order', () => {
+  it('maps the customer OTP template as an authentication template with the code only', () => {
     const resolved = registry.resolve('CustomerOtpVerification', { otp: '123456', storeName: 'Raghava Organics' });
     expect(resolved?.metaName).toBe('otp_verification');
     expect(resolved?.language).toBe('en');
-    // {{1}} = OTP code, {{2}} = store name (bolded in the approved template body).
-    expect(resolved?.parameters).toEqual(['123456', 'Raghava Organics']);
+    expect(resolved?.authentication).toBe(true);
+    // Authentication templates carry a SINGLE param — the code (store name is the sender, not in body).
+    expect(resolved?.parameters).toEqual(['123456']);
+  });
+
+  it('marks non-authentication templates with authentication=false', () => {
+    expect(registry.resolve('OrderConfirmed', {})?.authentication).toBe(false);
   });
 
   it('returns null for templates not mapped to a WhatsApp template', () => {

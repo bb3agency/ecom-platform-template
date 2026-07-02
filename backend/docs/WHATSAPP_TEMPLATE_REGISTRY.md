@@ -39,7 +39,7 @@ set its entry in the notifications `primaryChannels` config to `WHATSAPP`.
 
 | Internal name (code) | Meta template name | Params (in order) |
 |----------------------|--------------------|-------------------|
-| `CustomerOtpVerification` | `otp_verification` | `{{1}}` otp code, `{{2}}` storeName (bold) |
+| `CustomerOtpVerification` | `otp_verification` | `{{1}}` otp code (AUTHENTICATION template — single param) |
 | `OrderConfirmed`     | `order_confirmed`  | `{{1}}` storeName, `{{2}}` orderId |
 | `OrderShipped`       | `order_shipped`    | `{{1}}` storeName, `{{2}}` orderId, `{{3}}` trackingInfo |
 | `OutForDelivery`     | `out_for_delivery` | `{{1}}` storeName, `{{2}}` orderId |
@@ -48,17 +48,24 @@ set its entry in the notifications `primaryChannels` config to `WHATSAPP`.
 | `PaymentFailed`      | `payment_failed`   | `{{1}}` storeName, `{{2}}` orderId |
 
 ### `otp_verification`
-**Category:** Utility (NOT Authentication — the custom body carries the store name, which
-authentication templates do not allow). `{{1}}` = the OTP code, `{{2}}` = the store name,
-bolded via `*{{2}}*`.
-**Body:**
-```
-Your verification code is {{1}}. Use this code to log in or sign up with *{{2}}*. For your security, do not share this code.
-```
-**Sample values:** `{{1}}` = `123456`, `{{2}}` = `Raghava Organics`
+**Category:** **Authentication** (Meta REJECTS verification-code content in Utility — the
+"Category does not match / will be rejected" dialog forces Authentication). Authentication
+templates have a Meta-fixed body and a **single** parameter — the code. The store name is
+NOT in the body (Authentication forbids custom copy); it appears as the message **sender**.
+Create it in WhatsApp Manager with category Authentication, button **Copy code**, optionally
+"Add security recommendation" + "Add expiry time", name `otp_verification`, language English.
 
-> The bold on the store name comes from the `*{{2}}*` asterisks in the template body — the
-> backend sends the plain store name as the parameter value; Meta renders it bold.
+**Body (Meta-generated, do not hand-type):**
+```
+{{1}} is your verification code.
+```
+(plus, if enabled, "For your security, do not share this code." and an expiry line.)
+**Sample value:** `{{1}}` = `123456`
+
+> **Send payload is special:** the adapter sends the code in BOTH a `body` component param
+> AND a `button` component (`sub_type: 'url'`, `index: 0`) that echoes the same code —
+> required for Authentication templates. Driven by `authentication: true` on the registry
+> descriptor; ordinary templates keep the plain body-params path.
 
 ### `order_confirmed`
 **Body:**

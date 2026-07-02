@@ -12,6 +12,17 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.28] — 2026-07-02
+
+### Changed
+- **Customer OTP WhatsApp template switched from Utility to AUTHENTICATION** (Meta rejects verification-code content in Utility — the "Category does not match" dialog forces Authentication). `CustomerOtpVerification` now resolves with `authentication: true` and a **single** param (the code); the store name is no longer a body param (Authentication templates forbid custom copy — the store name shows as the message sender). The adapter (`meta-whatsapp.adapter.ts`) now builds the Authentication send payload: the code in BOTH a `body` component param AND a `button` component (`sub_type: 'url'`, `index: 0`) that echoes it (required by Meta for auth templates). `WhatsappTemplateDescriptor`/`ResolvedWhatsappTemplate` gained an `authentication` flag; ordinary templates keep the plain body-params path. Supersedes 0.1.27's utility-template mapping. Files: `whatsapp-template-registry.ts` (+ test), `adapters/meta-whatsapp.adapter.ts` (+ test), `docs/WHATSAPP_TEMPLATE_REGISTRY.md`.
+
+**Propagation:**
+- Severity: NORMAL (feature correction, still gated by `OTP_WHATSAPP_ENABLED` OFF) · Layers: backend (`modules/notifications/whatsapp-template-registry.ts`, `modules/notifications/adapters/meta-whatsapp.adapter.ts`)
+- Migration: NO · Flag: `OTP_WHATSAPP_ENABLED` (unchanged) · Design impact: none · Breaking: NO
+- Rollback: revert to 0.1.27 (utility mapping) — but that template will not get approved by Meta
+- **Operator: create the `otp_verification` template with category AUTHENTICATION (Copy-code button, English, sample code 123456) and wait for Approved before enabling `OTP_WHATSAPP_ENABLED`.** Deliver the changed `whatsapp-template-registry.test.ts` + `meta-whatsapp.adapter.test.ts` to clients (excluded from core sync).
+
 ## [0.1.27] — 2026-07-02
 
 ### Added
