@@ -1,5 +1,9 @@
 # WhatsApp Template Registry
 
+> Full per-client Meta setup (Business Suite, app, phone, webhook, App Review, where the keys go):
+> [`META_WHATSAPP_SETUP_GUIDE.md`](./META_WHATSAPP_SETUP_GUIDE.md).
+
+
 Canonical definitions for the Meta WhatsApp Cloud API message templates the backend
 sends. The code mapping lives in
 `src/modules/notifications/whatsapp-template-registry.ts`; this doc is the human +
