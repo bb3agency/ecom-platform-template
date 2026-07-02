@@ -444,7 +444,7 @@ export function createNotificationsWorker(
           const whatsappAdapter = new MetaWhatsAppAdapter({
             accessToken: runtimeConfig.META_WHATSAPP_ACCESS_TOKEN ?? '',
             phoneNumberId: runtimeConfig.META_WHATSAPP_PHONE_NUMBER_ID ?? '',
-            apiVersion: runtimeConfig.META_WHATSAPP_API_VERSION ?? 'v21.0'
+            apiVersion: runtimeConfig.META_WHATSAPP_API_VERSION ?? 'v25.0'
           });
           const sent = await whatsappAdapter.sendWhatsapp({
             ...data,
@@ -770,7 +770,7 @@ export function createNotificationsWorker(
           const whatsappAdapter = new MetaWhatsAppAdapter({
             accessToken: runtimeConfig.META_WHATSAPP_ACCESS_TOKEN ?? '',
             phoneNumberId: runtimeConfig.META_WHATSAPP_PHONE_NUMBER_ID ?? '',
-            apiVersion: runtimeConfig.META_WHATSAPP_API_VERSION ?? 'v21.0'
+            apiVersion: runtimeConfig.META_WHATSAPP_API_VERSION ?? 'v25.0'
           });
           const sent = await whatsappAdapter.sendWhatsapp({
             phone: recipient,

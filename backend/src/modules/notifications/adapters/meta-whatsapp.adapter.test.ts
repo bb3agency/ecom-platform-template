@@ -7,6 +7,31 @@ describe('MetaWhatsAppAdapter', () => {
     vi.unstubAllGlobals();
   });
 
+  it('defaults to Graph API v25.0 when no apiVersion is supplied', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ messages: [{ id: 'wamid.default' }] })
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    // No apiVersion — the adapter's own default must be the current version. (Regression: a stale
+    // caller fallback once pinned this to v21.0 by passing it explicitly and overriding the default.)
+    const adapter = new MetaWhatsAppAdapter({
+      accessToken: 'meta_token',
+      phoneNumberId: '123456789'
+    });
+
+    await adapter.sendWhatsapp({
+      phone: '+91 9876543210',
+      template: 'OrderShipped',
+      data: { storeName: 'Store', orderId: 'order_1', trackingInfo: 'https://track.example/abc' }
+    });
+
+    const [requestUrl] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(requestUrl).toBe('https://graph.facebook.com/v25.0/123456789/messages');
+  });
+
   it('sends mapped template payload with positional params and returns message id', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,

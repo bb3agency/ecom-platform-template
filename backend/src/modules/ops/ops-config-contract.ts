@@ -163,7 +163,7 @@ export const OPS_CONFIG_OVERVIEW_GROUPS: Array<{
       // and forgot-password OTPs are ALSO sent over WhatsApp in addition to the primary channel.
       // Read live per request, so no restart is required. Costs per message (see WHATSAPP_OTP_COST_PAISE).
       { key: 'OTP_WHATSAPP_ENABLED', mutableViaOps: true, requiresRestart: false, runtimeSource: 'db-overlay', note: 'true | false — also send auth OTP over WhatsApp (billed per message). Requires an approved AUTHENTICATION template.' },
-      { key: 'WHATSAPP_OTP_COST_PAISE', mutableViaOps: true, requiresRestart: false, runtimeSource: 'db-overlay', note: 'Integer paise per WhatsApp OTP message, used only for the Ops cost estimate. Default 12 (~₹0.115 + GST).' },
+      { key: 'WHATSAPP_OTP_COST_PAISE', mutableViaOps: true, requiresRestart: false, runtimeSource: 'db-overlay', note: 'Integer paise per WhatsApp OTP message, used only for the Ops cost estimate. Default 14 (~₹0.115 + 18% GST).' },
       // Note: Per-template primary notification channels are DB-backed via StoreSettings.primaryNotificationChannels
       // and configurable via PATCH /api/v1/admin/settings/notifications — not via environment variables.
       { key: 'EMAIL_PROVIDER', mutableViaOps: true, requiresRestart: true, note: 'resend (currently the only supported provider; reserved for future provider selection)' },

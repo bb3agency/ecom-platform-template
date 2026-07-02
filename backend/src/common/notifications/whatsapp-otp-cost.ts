@@ -6,7 +6,7 @@ import type { PrismaClient } from '@prisma/client';
  * WhatsApp Cloud API bills authentication/utility messages per message. We can't read Meta's
  * actual invoice from the API, so we approximate: count the WhatsApp OTP notifications we
  * successfully sent and multiply by a configurable per-message rate (WHATSAPP_OTP_COST_PAISE,
- * default ~12 paise ≈ ₹0.115 + GST for India). This is a display-only estimate for Ops — it is
+ * default ~14 paise ≈ ₹0.115 + 18% GST for India). This is a display-only estimate for Ops — it is
  * intentionally independent of whether OTP-over-WhatsApp is currently enabled, because it reports
  * on historical sends.
  */

@@ -12,6 +12,18 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.35] — 2026-07-02
+
+### Fixed
+- **WhatsApp sends silently used Graph API v21.0 instead of v25.0.** Both `MetaWhatsAppAdapter` instantiations in `notifications.worker.ts` (OTP path + order-notification path) passed `META_WHATSAPP_API_VERSION ?? 'v21.0'` — a stale fallback missed in the v25.0 upgrade. Because the version was passed **explicitly**, it overrode the adapter's own `v25.0` default, so every WhatsApp message hit `/v21.0/` whenever ops hadn't set `META_WHATSAPP_API_VERSION`. Changed both fallbacks to `'v25.0'`. Added an adapter regression test asserting the constructor default is v25.0 when no version is supplied.
+- **Docs: WhatsApp OTP cost default was documented as 12 paise but the code default is 14.** Corrected the `WHATSAPP_OTP_COST_PAISE` note in `ops-config-contract.ts` and the header comment in `whatsapp-otp-cost.ts` to `14 (~₹0.115 + 18% GST)`, matching `DEFAULT_WHATSAPP_OTP_COST_PAISE` and `.env.example`.
+
+**Propagation:**
+- Severity: NORMAL (WhatsApp delivery used an older API version; no outage, but drifting from the pinned v25.0 and any v25-only template behaviour) · Layers: backend (`queues/workers/notifications.worker.ts`, `modules/notifications/adapters/meta-whatsapp.adapter.test.ts`, `common/notifications/whatsapp-otp-cost.ts`, `modules/ops/ops-config-contract.ts`)
+- Migration: NO · Flag: none · Design impact: none · Breaking: NO
+- Rollback: revert the listed files
+- Follow-up to the v25.0 upgrade (0.1.x) and multi-channel work (0.1.30–0.1.34). Operator: optionally set `META_WHATSAPP_API_VERSION` in Ops → Config to pin explicitly; otherwise the default is now v25.0.
+
 ## [0.1.34] — 2026-07-02
 
 ### Fixed
