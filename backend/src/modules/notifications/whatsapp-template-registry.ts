@@ -60,6 +60,15 @@ export class WhatsappTemplateRegistry {
    */
   static defaultTemplates(): Record<string, WhatsappTemplateDescriptor> {
     return {
+      // Customer signup/login OTP. Utility template (custom body carrying the store
+      // name); body = "Your verification code is {{1}}. Use this code to log in or
+      // sign up with *{{2}}*. For your security, do not share this code."
+      // {{1}} = OTP code, {{2}} = store name (bolded in the template via *{{2}}*).
+      CustomerOtpVerification: {
+        metaName: 'otp_verification',
+        language: 'en',
+        params: ['otp', 'storeName']
+      },
       OrderConfirmed: {
         metaName: 'order_confirmed',
         language: 'en',

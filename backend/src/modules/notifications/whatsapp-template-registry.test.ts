@@ -36,6 +36,14 @@ describe('WhatsappTemplateRegistry', () => {
     expect(resolved?.parameters).toEqual(['Our Store', 'ORD-7', 'your account orders page']);
   });
 
+  it('maps the customer OTP template with code then store name in order', () => {
+    const resolved = registry.resolve('CustomerOtpVerification', { otp: '123456', storeName: 'Raghava Organics' });
+    expect(resolved?.metaName).toBe('otp_verification');
+    expect(resolved?.language).toBe('en');
+    // {{1}} = OTP code, {{2}} = store name (bolded in the approved template body).
+    expect(resolved?.parameters).toEqual(['123456', 'Raghava Organics']);
+  });
+
   it('returns null for templates not mapped to a WhatsApp template', () => {
     expect(registry.resolve('OpsActionOtp', { otp: '123456' })).toBeNull();
   });

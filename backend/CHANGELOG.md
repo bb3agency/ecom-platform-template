@@ -12,6 +12,17 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.27] — 2026-07-02
+
+### Added
+- **WhatsApp OTP template wired into the registry** — `CustomerOtpVerification` now maps to the Meta **Utility** template `otp_verification` with positional params `[otp, storeName]` (`{{1}}` = code, `{{2}}` = store name, bolded via `*{{2}}*` in the body). This is the piece that makes `OTP_WHATSAPP_ENABLED=true` actually deliver: before this the customer OTP template was unmapped and fell through to the legacy raw-name path (Meta 132001). No special authentication-template payload needed — it's an ordinary body-params utility template, so the existing adapter path handles it. Approved body: *"Your verification code is {{1}}. Use this code to log in or sign up with \*{{2}}\*. For your security, do not share this code."* (reworded from a variable-leading form because Meta forbids a body starting/ending with a variable). Files: `whatsapp-template-registry.ts` (+ test), `docs/WHATSAPP_TEMPLATE_REGISTRY.md`.
+
+**Propagation:**
+- Severity: NORMAL (feature completion, still gated by `OTP_WHATSAPP_ENABLED` OFF) · Layers: backend (`modules/notifications/whatsapp-template-registry.ts`)
+- Migration: NO · Flag: `OTP_WHATSAPP_ENABLED` (unchanged) · Design impact: none · Breaking: NO
+- Rollback: revert the registry entry (customer OTP falls back to unmapped)
+- **Operator: create the `otp_verification` Utility template in WhatsApp Manager (exact name + body + `{{1}}`/`{{2}}` samples) and wait for Approved BEFORE enabling `OTP_WHATSAPP_ENABLED`.** Deliver the changed `whatsapp-template-registry.test.ts` to clients alongside the source (excluded from core sync).
+
 ## [0.1.26] — 2026-07-02
 
 ### Added

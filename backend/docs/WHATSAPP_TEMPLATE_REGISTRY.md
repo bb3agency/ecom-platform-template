@@ -39,12 +39,26 @@ set its entry in the notifications `primaryChannels` config to `WHATSAPP`.
 
 | Internal name (code) | Meta template name | Params (in order) |
 |----------------------|--------------------|-------------------|
+| `CustomerOtpVerification` | `otp_verification` | `{{1}}` otp code, `{{2}}` storeName (bold) |
 | `OrderConfirmed`     | `order_confirmed`  | `{{1}}` storeName, `{{2}}` orderId |
 | `OrderShipped`       | `order_shipped`    | `{{1}}` storeName, `{{2}}` orderId, `{{3}}` trackingInfo |
 | `OutForDelivery`     | `out_for_delivery` | `{{1}}` storeName, `{{2}}` orderId |
 | `OrderDelivered`     | `order_delivered`  | `{{1}}` storeName, `{{2}}` orderId |
 | `OrderCancelled`     | `order_cancelled`  | `{{1}}` storeName, `{{2}}` orderId |
 | `PaymentFailed`      | `payment_failed`   | `{{1}}` storeName, `{{2}}` orderId |
+
+### `otp_verification`
+**Category:** Utility (NOT Authentication — the custom body carries the store name, which
+authentication templates do not allow). `{{1}}` = the OTP code, `{{2}}` = the store name,
+bolded via `*{{2}}*`.
+**Body:**
+```
+Your verification code is {{1}}. Use this code to log in or sign up with *{{2}}*. For your security, do not share this code.
+```
+**Sample values:** `{{1}}` = `123456`, `{{2}}` = `Raghava Organics`
+
+> The bold on the store name comes from the `*{{2}}*` asterisks in the template body — the
+> backend sends the plain store name as the parameter value; Meta renders it bold.
 
 ### `order_confirmed`
 **Body:**
