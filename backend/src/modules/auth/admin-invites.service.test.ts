@@ -676,9 +676,16 @@ describe('AdminInvitesService', () => {
     });
 
     expect(result.message).toBe('OTP sent successfully');
-    const jobNames = mocks.notificationsAdd.mock.calls.map((c) => c[0]);
-    expect(jobNames).toContain('send-email');
-    expect(jobNames).toContain('send-whatsapp');
+    expect(mocks.notificationsAdd).toHaveBeenCalledWith(
+      'send-email',
+      expect.objectContaining({ to: 'merchant@example.com', template: 'OtpVerification' }),
+      expect.anything()
+    );
+    expect(mocks.notificationsAdd).toHaveBeenCalledWith(
+      'send-whatsapp',
+      expect.objectContaining({ phone: '+911234567890', template: 'OtpVerification' }),
+      expect.anything()
+    );
 
     vi.unstubAllEnvs();
   });

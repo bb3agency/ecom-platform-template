@@ -12,6 +12,16 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.34] — 2026-07-02
+
+### Fixed
+- **Type error in the 0.1.33 admin-setup OTP fan-out test.** The new test indexed `mock.calls.map((c) => c[0])` on a `vi.fn()` whose args aren't typed, so `tsc` (which includes `*.test.ts`) failed with `TS2493: Tuple type '[]' … has no element at index '0'` — caught by client `reliability-gates` Typecheck. Replaced with `toHaveBeenCalledWith('send-email' | 'send-whatsapp', …)` assertions like the sibling tests. No runtime/behaviour change; supersedes 0.1.33's sync PRs.
+
+**Propagation:**
+- Severity: LOW (test-only typecheck fix) · Layers: backend (`modules/auth/admin-invites.service.test.ts`)
+- Migration: NO · Flag: none · Design impact: none · Breaking: NO
+- Rollback: n/a (roll up with 0.1.33). Merge this sync PR instead of the 0.1.33 one.
+
 ## [0.1.33] — 2026-07-02
 
 ### Fixed
