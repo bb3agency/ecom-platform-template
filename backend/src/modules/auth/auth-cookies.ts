@@ -10,14 +10,23 @@ function isProductionLikeCookieProfile(): boolean {
 
 /**
  * Builds Set-Cookie for the customer/admin refresh token.
- * Production-like: Secure + SameSite=Strict (TRD C-20).
+ * Production-like: Secure + SameSite=Lax.
  * Development/test: omits Secure so http:// localhost dev works when proxied same-origin.
+ *
+ * SameSite=Lax (not Strict): the refresh cookie must survive a top-level navigation that ARRIVES
+ * from another site — the dominant way mobile users open the store (a link tapped in Google, an
+ * in-app WhatsApp/Instagram browser, an email). With `Strict` the browser withholds the cookie on
+ * that first cross-site entry, so the session-restore call fails and the user looks logged out on
+ * every fresh arrival — "works on desktop (typed/bookmarked, same-site), broken on mobile". `Lax`
+ * still blocks the cookie on cross-site sub-requests (fetch/XHR/POST), so it retains CSRF protection
+ * for the POST-only /auth/refresh endpoint (already HttpOnly + rotated). The browser calls the API
+ * same-origin via the Next.js proxy, so Lax sends it on all in-app requests too.
  */
 export function buildRefreshTokenSetCookieHeader(token: string): string {
   const parts = [
     `refresh_token=${encodeURIComponent(token)}`,
     'HttpOnly',
-    'SameSite=Strict',
+    'SameSite=Lax',
     `Path=${REFRESH_COOKIE_PATH}`,
     `Max-Age=${REFRESH_COOKIE_MAX_AGE_SECONDS}`
   ];
@@ -33,7 +42,8 @@ export function buildRefreshTokenClearCookieHeader(): string {
   const parts = [
     'refresh_token=',
     'HttpOnly',
-    'SameSite=Strict',
+    // Must mirror the set-cookie attributes (SameSite=Lax) or the browser won't match & clear it.
+    'SameSite=Lax',
     `Path=${REFRESH_COOKIE_PATH}`,
     'Max-Age=0'
   ];

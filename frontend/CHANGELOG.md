@@ -12,6 +12,17 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.18] — 2026-07-02
+
+### Fixed
+- **Session-restore no longer spuriously logs out valid sessions on slow mobile networks.** `useAuthSessionRestore` raced the cookie-restore round-trip (refresh + profile fetch) against an **8s** deadline; on 3G/weak links the request eventually succeeds but the race already resolved `unauthorised`, so the hook cleared the session and **permanently blocked** any retry for that load — the "works on desktop, drops on mobile" report. Fixes: (1) deadline 8s → **15s** (a genuinely dead request still fails fast on its own, so this only helps slow-but-working connections); (2) the timeout now resolves a distinct `"timeout"` reason that the handler treats as a **soft, retryable** failure — it does not set `blocked` and does not clear a possibly-valid session, so a remount/navigation/nonce bump can try again. Only a definitive `unauthorised`/`invalid_token` still hard-clears + blocks.
+
+**Propagation:**
+- Severity: HIGH (valid sessions dropped on mobile) · Layers: frontend (`hooks/use-auth-session-restore.ts`, `lib/restore-auth-session.ts`)
+- Migration: NO · Flag: none · Design impact: none · Breaking: NO
+- Rollback: revert the two files
+- Pairs with backend-core 0.1.36 (refresh cookie `SameSite=Lax`). Together they address the "logged out on refresh / after idle / only on mobile" reports.
+
 ## [0.1.17] — 2026-07-02
 
 ### Changed

@@ -5,7 +5,7 @@ import type { User } from "@/types/user";
 
 export type AuthSessionRestoreResult =
   | { ok: true; accessToken: string; user: User }
-  | { ok: false; reason: "unauthorised" | "invalid_token" };
+  | { ok: false; reason: "unauthorised" | "invalid_token" | "timeout" };
 
 /**
  * Builds a minimal user from the JWT claims when the API is not yet reachable.

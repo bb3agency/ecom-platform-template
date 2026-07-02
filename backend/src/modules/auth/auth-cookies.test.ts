@@ -20,7 +20,10 @@ describe('auth refresh cookies', () => {
     process.env.NODE_ENV = 'development';
     const header = buildRefreshTokenSetCookieHeader('token-value');
     expect(header).toContain('HttpOnly');
-    expect(header).toContain('SameSite=Strict');
+    // SameSite=Lax (not Strict) so the refresh cookie survives a top-level navigation that arrives
+    // from another site (mobile users opening the store from Google / an in-app browser / email).
+    expect(header).toContain('SameSite=Lax');
+    expect(header).not.toContain('SameSite=Strict');
     expect(header).toContain(`Path=${REFRESH_COOKIE_PATH}`);
     expect(header).not.toContain('Secure');
   });
@@ -36,5 +39,7 @@ describe('auth refresh cookies', () => {
     const header = buildRefreshTokenClearCookieHeader();
     expect(header).toContain('refresh_token=');
     expect(header).toContain('Max-Age=0');
+    // Clear header must mirror the set attributes so the browser matches and removes the cookie.
+    expect(header).toContain('SameSite=Lax');
   });
 });

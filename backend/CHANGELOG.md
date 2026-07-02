@@ -12,6 +12,17 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.36] — 2026-07-02
+
+### Fixed
+- **Refresh-token cookie `SameSite=Strict` → `Lax` (session dropped on mobile / after arriving from an external link).** With `Strict`, the browser withholds the refresh cookie on a top-level navigation that arrives from **another site** — which is how most mobile users open the store (a link in Google results, a WhatsApp/Instagram in-app browser, an email). On that first cross-site arrival the session-restore call had no cookie, so the user looked logged out; desktop users who type the URL or use a bookmark (same-site) kept their session — exactly the "fine on desktop, drops on mobile" report. `Lax` sends the cookie on top-level navigations while still withholding it on cross-site sub-requests (fetch/XHR/POST), so the POST-only, HttpOnly, rotated `/auth/refresh` keeps its CSRF protection. This also makes the refresh cookie consistent with the guest-cart cookie, which was already `Lax` for the same "survive navigations" reason. Updated both the set- and clear-cookie headers (clear must mirror attributes to match) + tests. Ops session cookie stays `Strict` (single-origin admin tool, never entered cross-site).
+
+**Propagation:**
+- Severity: HIGH (customers/admins silently logged out on mobile & external-referral entry) · Layers: backend (`modules/auth/auth-cookies.ts` + test)
+- Migration: NO · Flag: none · Design impact: none · Breaking: NO (existing `Strict` cookies keep working until they next rotate to `Lax`)
+- Rollback: revert `auth-cookies.ts`
+- Pairs with frontend-core 0.1.18 (restore-deadline + retryable-timeout so slow mobile networks don't spuriously clear a valid session).
+
 ## [0.1.35] — 2026-07-02
 
 ### Fixed

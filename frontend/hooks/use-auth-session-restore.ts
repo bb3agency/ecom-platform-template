@@ -59,7 +59,12 @@ type RestoreRuntime = {
   restorePromise: Promise<AuthSessionRestoreResult> | null;
 };
 
-const RESTORE_DEADLINE_MS = 8_000;
+// Deadline for the whole cookie-restore round-trip (refresh + optional profile fetch). Generous
+// enough to cover slow mobile networks: an 8s cap spuriously logged out valid sessions on 3G/weak
+// links (the request eventually succeeds, but the race already resolved "unauthorised") — the exact
+// "works on desktop, drops on mobile" report. A genuinely offline/dead request fails fast on its
+// own, so this only bites slow-but-working connections, where waiting is far better than logging out.
+const RESTORE_DEADLINE_MS = 15_000;
 
 /** Bumped on reset so in-flight restore promises cannot clear a fresh login session. */
 let restoreGeneration = 0;
@@ -90,7 +95,10 @@ function runRestoreWithDeadline(
     new Promise<AuthSessionRestoreResult>((resolve) => {
       setTimeout(() => {
         resetAuthSessionRestoreCache();
-        resolve({ ok: false, reason: "unauthorised" });
+        // "timeout" (not "unauthorised"): the request may still be valid, just slow. The handler
+        // treats this as a soft, RETRYABLE failure — it does not permanently block restore, so a
+        // remount / navigation / nonce bump can try again instead of stranding a valid session.
+        resolve({ ok: false, reason: "timeout" });
       }, RESTORE_DEADLINE_MS);
     }),
   ]);
@@ -198,6 +206,20 @@ export function useAuthSessionRestore(
         setRestorePhase("idle");
         return;
       }
+
+      // A slow-network TIMEOUT is a soft failure: leave `blocked` false so a later trigger retries,
+      // and do not clear a (possibly still valid) session. Only a definitive auth failure
+      // (unauthorised / invalid_token) permanently blocks + clears.
+      const isTimeout = !result.ok && result.reason === "timeout";
+      if (isTimeout) {
+        runtime.blocked = false;
+        setRestorePhase("failed");
+        if (audience === "admin" && redirectOnFailure) {
+          redirectToAdminLoginIfNeeded();
+        }
+        return;
+      }
+
       runtime.blocked = true;
       clearSession();
       setRestorePhase("failed");
