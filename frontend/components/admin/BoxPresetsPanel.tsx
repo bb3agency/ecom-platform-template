@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Plus, Trash2, AlertCircle } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { useAuthenticatedApi } from "@/hooks/use-authenticated-api";
 import {
   type AdminBoxPresetsSettings,
   type BoxPreset,
 } from "@/lib/admin-api";
 import { getApiErrorMessage } from "@/lib/error-messages";
+import { toast } from "@/lib/toast";
 import { createIdempotencyKey } from "@/lib/idempotency";
 import { cn } from "@/lib/utils";
 
@@ -25,6 +26,14 @@ export function BoxPresetsPanel({ canWrite }: BoxPresetsPanelProps) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  // Surface transient error/success as global toast popups instead of large in-panel banners.
+  useEffect(() => {
+    if (error) toast.error(error);
+  }, [error]);
+  useEffect(() => {
+    if (success) toast.success(success);
+  }, [success]);
   const [newPreset, setNewPreset] = useState<Partial<BoxPreset>>({
     name: "",
     lengthCm: undefined,
@@ -133,19 +142,6 @@ export function BoxPresetsPanel({ canWrite }: BoxPresetsPanelProps) {
         Accuracy depends on each product variant having correct box dimensions set in the product
         editor.
       </p>
-
-      {error && (
-        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 flex gap-2">
-          <AlertCircle className="h-4 w-4 text-destructive flex-shrink-0 mt-0.5" />
-          <p className="text-sm text-destructive">{error}</p>
-        </div>
-      )}
-
-      {success && (
-        <div className="rounded-lg border border-green-500/50 bg-green-500/10 p-3 text-sm text-green-700">
-          {success}
-        </div>
-      )}
 
       {/* Existing Presets Table */}
       {presets.length > 0 && (

@@ -128,6 +128,20 @@ export function getApiErrorMessage(error: unknown): string {
     if (challengeMessage) {
       return challengeMessage;
     }
+    // CONFLICT / VALIDATION_ERROR AppError messages are crafted, user-safe copy that says exactly
+    // what to do (e.g. "Cannot delete a variant that appears in existing orders. Deactivate it
+    // instead."). Surface them instead of the generic mapped copy — the fallback previously
+    // swallowed every specific 409/400 explanation, and fieldless VALIDATION_ERRORs showed
+    // "check the highlighted fields" with nothing highlighted. Schema-level errors keep their
+    // generic "Request validation failed" message and still fall through to the mapped copy.
+    const serverMessage = (error.message ?? "").trim();
+    if (
+      serverMessage &&
+      !GENERIC_BACKEND_MESSAGES.has(serverMessage) &&
+      (error.code === "CONFLICT" || error.code === "VALIDATION_ERROR")
+    ) {
+      return serverMessage;
+    }
     return getErrorMessage(error.code);
   }
   if (error instanceof Error) {

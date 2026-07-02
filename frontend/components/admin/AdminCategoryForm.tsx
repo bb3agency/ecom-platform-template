@@ -18,6 +18,7 @@ import {
   type PaginatedResponse,
 } from "@/lib/admin-api";
 import { getApiErrorMessage } from "@/lib/error-messages";
+import { toast } from "@/lib/toast";
 import { createIdempotencyKey } from "@/lib/idempotency";
 import { notifyAdminDataChanged } from "@/lib/admin-data-refresh";
 import { useAuthenticatedApi } from "@/hooks/use-authenticated-api";
@@ -116,6 +117,15 @@ export function AdminCategoryForm({ open, category, onSaved, onClose }: AdminCat
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  // Surface transient error/success as global toast popups instead of in-modal banners.
+  useEffect(() => {
+    if (submitError) toast.error(submitError);
+  }, [submitError]);
+  useEffect(() => {
+    if (success) toast.success(`Category ${isEdit ? "updated" : "created"} successfully!`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [success]);
 
   const nameRef = useRef<HTMLInputElement>(null);
 
@@ -358,21 +368,7 @@ export function AdminCategoryForm({ open, category, onSaved, onClose }: AdminCat
               <Toggle checked={isActive} onChange={setIsActive} />
             </div>
 
-            {/* Error / success banners */}
-            {submitError && (
-              <div className="flex items-start gap-2 rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2.5">
-                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
-                <p className="text-sm text-destructive">{submitError}</p>
-              </div>
-            )}
-            {success && (
-              <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5">
-                <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
-                <p className="text-sm font-medium text-emerald-700">
-                  Category {isEdit ? "updated" : "created"} successfully!
-                </p>
-              </div>
-            )}
+            {/* Error/success feedback surfaces via global toast popups (mirror effects above). */}
           </div>
         </div>
 

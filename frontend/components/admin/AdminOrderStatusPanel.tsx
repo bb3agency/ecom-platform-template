@@ -6,6 +6,7 @@ import { useAdminAuth } from "@/contexts/admin-auth-context";
 import { useAuthenticatedApi } from "@/hooks/use-authenticated-api";
 import { ORDER_FILTER_STATUSES, type AdminOrderDetailFull } from "@/lib/admin-api";
 import { getApiErrorMessage } from "@/lib/error-messages";
+import { toast } from "@/lib/toast";
 import { createIdempotencyKey } from "@/lib/idempotency";
 import { notifyAdminDataChanged } from "@/lib/admin-data-refresh";
 import { ADMIN_PERMISSIONS, hasAdminPermission } from "@/lib/permissions";
@@ -29,6 +30,14 @@ export function AdminOrderStatusPanel({ orderId, onUpdated }: AdminOrderStatusPa
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  // Surface transient error/success as global toast popups instead of large in-panel banners.
+  useEffect(() => {
+    if (error) toast.error(error);
+  }, [error]);
+  useEffect(() => {
+    if (success) toast.success(success);
+  }, [success]);
   const [status, setStatus] = useState("");
   const [note, setNote] = useState("");
 
@@ -116,7 +125,6 @@ export function AdminOrderStatusPanel({ orderId, onUpdated }: AdminOrderStatusPa
           >
             {saving ? "Saving…" : "Update status"}
           </button>
-          {success ? <p className="text-sm text-emerald-600">{success}</p> : null}
         </div>
       ) : null}
     </AdminSection>

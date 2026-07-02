@@ -8,7 +8,8 @@ import { ADMIN_PERMISSIONS, hasAdminPermission } from "@/lib/permissions";
 import { createIdempotencyKey } from "@/lib/idempotency";
 import type { AdminShippingSettings } from "@/lib/admin-api";
 import { getApiErrorMessage } from "@/lib/error-messages";
-import { Truck, MapPin, IndianRupee, CheckCircle2, AlertTriangle, Loader2, Package, Settings } from "lucide-react";
+import { toast } from "@/lib/toast";
+import { Truck, MapPin, IndianRupee, AlertTriangle, Loader2, Package, Settings } from "lucide-react";
 import { BoxPresetsPanel } from "@/components/admin/BoxPresetsPanel";
 
 export function ShippingSettingsPanel() {
@@ -23,6 +24,14 @@ export function ShippingSettingsPanel() {
   const [minOrderValueRupees, setMinOrderValueRupees] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  // Surface transient error/success as global toast popups instead of large in-panel banners.
+  useEffect(() => {
+    if (error) toast.error(error);
+  }, [error]);
+  useEffect(() => {
+    if (success) toast.success(success);
+  }, [success]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
@@ -221,20 +230,6 @@ export function ShippingSettingsPanel() {
                   {" "}Configure credentials in the <a href="/ops/config" className="underline">Ops Config panel</a>.
                 </p>
               )}
-            </div>
-          )}
-
-          {error && (
-            <div className="flex min-w-0 items-start gap-2.5 rounded-lg border border-destructive/20 bg-destructive/10 p-3.5 text-xs text-destructive overflow-hidden">
-              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-              <span>{error}</span>
-            </div>
-          )}
-
-          {success && (
-            <div className="flex min-w-0 items-start gap-2.5 rounded-lg border border-zinc-900/20 bg-zinc-900/10 p-3.5 text-xs text-zinc-800 overflow-hidden">
-              <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" />
-              <span>{success}</span>
             </div>
           )}
 

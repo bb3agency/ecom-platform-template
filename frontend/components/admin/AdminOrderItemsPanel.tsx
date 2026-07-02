@@ -10,6 +10,7 @@ import {
 } from "@/lib/admin-api";
 import { formatPaise } from "@/lib/admin-format";
 import { getApiErrorMessage } from "@/lib/error-messages";
+import { toast } from "@/lib/toast";
 import { createIdempotencyKey } from "@/lib/idempotency";
 import { notifyAdminDataChanged } from "@/lib/admin-data-refresh";
 import { ADMIN_PERMISSIONS, hasAdminPermission } from "@/lib/permissions";
@@ -32,6 +33,14 @@ export function AdminOrderItemsPanel({ orderId, onUpdated }: AdminOrderItemsPane
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  // Surface transient error/success as global toast popups instead of large in-panel banners.
+  useEffect(() => {
+    if (error) toast.error(error);
+  }, [error]);
+  useEffect(() => {
+    if (success) toast.success(success);
+  }, [success]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -117,12 +126,6 @@ export function AdminOrderItemsPanel({ orderId, onUpdated }: AdminOrderItemsPane
         ) : null}
       </header>
 
-      {error ? (
-        <p className="mx-6 mb-3 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">
-          {error}
-        </p>
-      ) : null}
-
       {order ? (
         <>
           <div className="overflow-x-auto border-t border-border">
@@ -191,12 +194,7 @@ export function AdminOrderItemsPanel({ orderId, onUpdated }: AdminOrderItemsPane
               >
                 {saving ? "Saving…" : "Save changes"}
               </button>
-              {success ? (
-                <p className="text-sm text-emerald-600">{success}</p>
-              ) : null}
             </div>
-          ) : success ? (
-            <p className="px-6 pb-4 text-sm text-emerald-600">{success}</p>
           ) : null}
         </>
       ) : !loading ? (

@@ -15,6 +15,7 @@ import {
   type PaginatedResponse,
 } from "@/lib/admin-api";
 import { getApiErrorMessage } from "@/lib/error-messages";
+import { toast } from "@/lib/toast";
 import { createIdempotencyKey } from "@/lib/idempotency";
 import { notifyAdminDataChanged } from "@/lib/admin-data-refresh";
 import { ADMIN_PERMISSIONS, hasAdminPermission } from "@/lib/permissions";
@@ -52,6 +53,14 @@ export function AdminCategoryEditor({ categoryId }: AdminCategoryEditorProps) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  // Surface transient error/success as global toast popups instead of large in-panel banners.
+  useEffect(() => {
+    if (error) toast.error(error);
+  }, [error]);
+  useEffect(() => {
+    if (success) toast.success(success);
+  }, [success]);
   const {
     clearFieldErrors,
     clearFieldError,
@@ -418,17 +427,6 @@ export function AdminCategoryEditor({ categoryId }: AdminCategoryEditorProps) {
             </label>
           </div>
         </div>
-
-        {error && (
-          <div className="mx-5 mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            {error}
-          </div>
-        )}
-        {success && (
-          <div className="mx-5 mb-4 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-            {success}
-          </div>
-        )}
 
         <div className="border-t border-border/40 px-5 py-4 flex flex-wrap gap-2 justify-between">
           <div className="flex flex-wrap gap-2">

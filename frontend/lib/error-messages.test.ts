@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   getErrorMessage,
   getAdminLoginErrorMessage,
+  getApiErrorMessage,
   getApiErrorMessageWithHint,
   getOpsLoginErrorMessage,
   isAuthFailureCode,
@@ -100,5 +101,32 @@ describe("error-messages", () => {
       409,
     );
     expect(getApiErrorMessageWithHint(err)).toContain("merchant admin invite");
+  });
+
+  // Regression: getApiErrorMessage previously swallowed every specific 409/400 explanation
+  // behind the generic mapped copy — e.g. variant delete's clear "deactivate it instead"
+  // 409 showed as "This action conflicts with the current state…" and fieldless
+  // VALIDATION_ERRORs showed "check the highlighted fields" with nothing highlighted.
+  it("getApiErrorMessage surfaces specific CONFLICT server messages", () => {
+    const err = new ApiError(
+      "CONFLICT",
+      "Cannot delete a variant that appears in existing orders. Deactivate it instead.",
+      409,
+    );
+    expect(getApiErrorMessage(err)).toContain("Deactivate it instead");
+  });
+
+  it("getApiErrorMessage surfaces specific VALIDATION_ERROR server messages", () => {
+    const err = new ApiError(
+      "VALIDATION_ERROR",
+      "Cannot delete the last variant of a product",
+      400,
+    );
+    expect(getApiErrorMessage(err)).toBe("Cannot delete the last variant of a product");
+  });
+
+  it("getApiErrorMessage keeps generic copy for schema-level validation failures", () => {
+    const err = new ApiError("VALIDATION_ERROR", "Request validation failed", 400);
+    expect(getApiErrorMessage(err)).toContain("highlighted fields");
   });
 });

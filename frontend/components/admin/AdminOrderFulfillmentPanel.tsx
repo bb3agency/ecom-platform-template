@@ -21,6 +21,7 @@ import { ApiError } from "@/lib/api";
 import { createIdempotencyKey } from "@/lib/idempotency";
 import { notifyAdminDataChanged } from "@/lib/admin-data-refresh";
 import { getApiErrorMessageWithHint, getOpsErrorDetail } from "@/lib/error-messages";
+import { toast } from "@/lib/toast";
 import { shippingProviderLabel } from "@/lib/shipping-provider-labels";
 import { ADMIN_PERMISSIONS, hasAdminPermission } from "@/lib/permissions";
 import { useAuthStore } from "@/stores/auth";
@@ -75,6 +76,14 @@ export function AdminOrderFulfillmentPanel({
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  // Surface transient error/success as global toast popups instead of large in-panel banners.
+  useEffect(() => {
+    if (error) toast.error(error);
+  }, [error]);
+  useEffect(() => {
+    if (success) toast.success(success);
+  }, [success]);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [pickupWasScheduled, setPickupWasScheduled] = useState(false);
   const pollCancelRef = useRef<(() => void) | null>(null);
@@ -710,19 +719,7 @@ export function AdminOrderFulfillmentPanel({
           </div>
         </div>
 
-        {/* Feedback */}
-        {error ? (
-          <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            {error}{" "}
-            <span className="text-muted-foreground">You can safely retry after a short pause.</span>
-          </p>
-        ) : null}
-        {success ? (
-          <p className="flex items-center gap-1.5 text-sm text-emerald-600">
-            <CheckCircle2 className="h-4 w-4 shrink-0" />
-            {success}
-          </p>
-        ) : null}
+        {/* Error/success feedback surfaces via global toast popups (mirror effects above). */}
       </div>
     </section>
   );

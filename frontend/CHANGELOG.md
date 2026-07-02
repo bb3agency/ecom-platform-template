@@ -12,6 +12,21 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.22] — 2026-07-03
+
+### Fixed
+- **Specific 409/400 backend explanations are no longer swallowed by generic copy.** `getApiErrorMessage` mapped every `CONFLICT` to "This action conflicts with the current state…" and every `VALIDATION_ERROR` to "Please check the highlighted fields…" — so the variant-delete 409's clear "Cannot delete a variant that appears in existing orders. **Deactivate it instead.**" never reached the user, and fieldless `VALIDATION_ERROR`s (e.g. "Cannot delete the last variant of a product") showed "check the highlighted fields" with **nothing highlighted**. The mapper now surfaces specific crafted `CONFLICT`/`VALIDATION_ERROR` server messages (same rule `getApiErrorMessageWithHint` already used); schema-level "Request validation failed" keeps the generic copy, and when the backend DOES send field details the existing `useAdminFormValidation` highlighting/scroll behaviour is unchanged. One central fix — every call site (admin + storefront) benefits. Regression tests added.
+
+### Changed
+- **Toaster moved to the TOP-RIGHT and enlarged on desktop.** Mobile: spans the top with safe-area insets, compact sizing. Desktop: fixed ~440px column anchored top-right with larger text/padding so it's clearly visible on big screens. Slide-in now comes from the right.
+- **Toast rollout across the remaining admin mutation panels.** Converted `AdminCategoryEditor`, `AdminCategoryForm`, `AdminOrderFulfillmentPanel`, `AdminOrderItemsPanel`, `AdminOrderStatusPanel`, `BoxPresetsPanel`, `CodSettingsPanel`, `InventorySettingsPanel`, `ShippingSettingsPanel` — error/success state now mirrors into global toasts and the in-panel/inline banners are removed. Combined with 0.1.20's conversions, every admin mutation surface (settings saves, product/category editing, order ship/cancel/status/items, box presets) now reports via the top-right toast. List/dashboard **load-failure** states intentionally remain inline (a 3s toast vanishing would leave a blank table with no explanation).
+
+**Propagation:**
+- Severity: HIGH (users couldn't see why deletes/saves were being refused) · Layers: frontend (`lib/error-messages.ts` + test, `components/ui/Toaster.tsx`, 9 × `components/admin/*.tsx`)
+- Migration: NO · Flag: none · Design impact: none · Breaking: NO
+- Rollback: revert the listed files
+- Pairs with backend-core 0.1.37 (variant-delete 409) — the 409's "Deactivate it instead" now actually shows in the toast.
+
 ## [0.1.21] — 2026-07-03
 
 ### Fixed
