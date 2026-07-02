@@ -12,6 +12,17 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.16] — 2026-07-02
+
+### Fixed
+- **`OTP_WHATSAPP_ENABLED` now renders as a true/false dropdown in the Ops → Config editor** (added to `BOOLEAN_KEYS` in `lib/ops-config-fields.ts`). Previously it appeared as a plain text box. All notification toggles (`NOTIFY_*`, `OTP_WHATSAPP_ENABLED`) are now consistent boolean selects, saved to the DB overlay via the OTP-protected config-save. `WHATSAPP_OTP_COST_PAISE` stays a text input (numeric value).
+
+**Propagation:**
+- Severity: LOW (UX polish) · Layers: frontend (`lib/ops-config-fields.ts`)
+- Migration: NO · Flag: n/a · Design impact: none · Breaking: NO
+- Rollback: revert the one line
+- Pairs with backend-core 0.1.26 (which defines the key).
+
 ## [0.1.15] — 2026-07-02
 
 ### Added
