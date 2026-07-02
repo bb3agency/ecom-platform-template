@@ -195,6 +195,40 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# 1.5 Pre-build disk reclaim — CRITICAL on small/shared multi-client hosts.
+#
+# The post-build prune (step 7) only runs AFTER a successful build. If the disk
+# is already near-full the build itself dies ("no space left on device" while
+# extracting a layer) and the cleanup that follows never runs — a deadlock that
+# wedges every subsequent deploy. So reclaim space BEFORE building: always drop
+# stopped containers + dangling images + cap the BuildKit cache; and if free
+# space on the Docker root is under PREBUILD_MIN_FREE_GB, hard-purge all unused
+# images + the entire build cache. Also trim the GitHub Actions runner _diag
+# logs, which grow unbounded on the same volume (the failure trace showed
+# _diag/Worker_*.log filling the disk). None of this touches running containers,
+# their in-use images, or named volumes (Redis/Postgres data stay intact).
+# ---------------------------------------------------------------------------
+PREBUILD_MIN_FREE_GB="${PREBUILD_MIN_FREE_GB:-8}"
+log "Pre-build cleanup: stopped containers + dangling images + BuildKit cache..."
+docker container prune -f >/dev/null 2>&1 || true
+docker image prune -f >/dev/null 2>&1 || true
+docker buildx prune --force --keep-storage 3GB >/dev/null 2>&1 || true
+
+if [ -d "$HOME/actions-runner/_diag" ]; then
+  find "$HOME/actions-runner/_diag" -type f -name '*.log' -mtime +2 -delete 2>/dev/null || true
+fi
+
+docker_root="$(docker info -f '{{.DockerRootDir}}' 2>/dev/null || echo /var/lib/docker)"
+free_gb="$(df -Pk "$docker_root" 2>/dev/null | awk 'NR==2{printf "%d", $4/1024/1024}')"
+if [ "${free_gb:-0}" -lt "$PREBUILD_MIN_FREE_GB" ]; then
+  log "WARNING: only ${free_gb:-0}GB free on ${docker_root} (< ${PREBUILD_MIN_FREE_GB}GB). Hard-purging unused images + full BuildKit cache."
+  docker image prune --all --force >/dev/null 2>&1 || true
+  docker buildx prune --all --force >/dev/null 2>&1 || true
+  free_gb="$(df -Pk "$docker_root" 2>/dev/null | awk 'NR==2{printf "%d", $4/1024/1024}')"
+  log "Post-purge free space on ${docker_root}: ${free_gb:-0}GB"
+fi
+
+# ---------------------------------------------------------------------------
 # 2. Build new Docker image (old containers remain live during build)
 # ---------------------------------------------------------------------------
 log "Building Docker image..."

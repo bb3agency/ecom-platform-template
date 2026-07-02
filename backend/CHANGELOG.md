@@ -12,6 +12,17 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.31] — 2026-07-02
+
+### Fixed
+- **VPS deploy no longer wedges on "no space left on device".** On small/shared multi-client hosts the Docker layer extract could fail with a full disk mid-build; because the existing image/BuildKit prune only ran AFTER a successful build, a near-full disk deadlocked every subsequent deploy (build dies → cleanup never runs). Added a **pre-build reclaim** step to `scripts/vps-deploy.sh`: always prune stopped containers + dangling images + cap the BuildKit cache (keep 3 GB), trim GitHub Actions runner `_diag/*.log` (which grow unbounded on the same volume), and — when free space on the Docker root is under `PREBUILD_MIN_FREE_GB` (default 8) — hard-purge all unused images + the entire build cache. Never touches running containers, in-use images, or named volumes (Redis/Postgres data safe).
+
+**Propagation:**
+- Severity: NORMAL (deploy reliability) · Layers: backend (`scripts/vps-deploy.sh`)
+- Migration: NO · Flag: `PREBUILD_MIN_FREE_GB` env (optional, default 8) · Design impact: none · Breaking: NO
+- Rollback: revert the pre-build block
+- **Operator (one-time, if a host is already wedged):** manually reclaim first — `docker container prune -f && docker image prune -af && docker buildx prune -af`, delete old `~/actions-runner/_diag/*.log`, then re-run the deploy; the new pre-build step keeps it clean afterward. Consider adding host swap on very small boxes.
+
 ## [0.1.30] — 2026-07-02
 
 ### Changed
