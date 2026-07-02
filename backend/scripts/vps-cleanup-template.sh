@@ -39,8 +39,11 @@ if command -v docker &> /dev/null; then
     # Remove only dangling images, stopped containers, unused networks (safer than -a)
     docker system prune -f >> "$LOG_FILE" 2>&1 || log "Docker prune completed with warnings"
     
-    # Clean build cache specifically (high churn, safe to clear)
-    docker buildx prune --force --keep-storage 5GB >> "$LOG_FILE" 2>&1 || log "Buildx prune completed"
+    # Clean build cache specifically (high churn, safe to clear). Use `docker builder prune`
+    # (the dockerd BuildKit cache that `docker compose build` fills) — NOT `docker buildx prune`,
+    # which can target a different builder and leave the real cache uncapped (that's how ~18 GB
+    # of build cache accumulated on the shared host despite a daily cleanup).
+    docker builder prune --force --keep-storage 5GB >> "$LOG_FILE" 2>&1 || log "Builder prune completed"
 else
     log "Docker not found, skipping..."
 fi

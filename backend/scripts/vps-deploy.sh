@@ -209,23 +209,35 @@ fi
 # their in-use images, or named volumes (Redis/Postgres data stay intact).
 # ---------------------------------------------------------------------------
 PREBUILD_MIN_FREE_GB="${PREBUILD_MIN_FREE_GB:-8}"
+PREBUILD_HARD_FLOOR_GB="${PREBUILD_HARD_FLOOR_GB:-3}"
+# NOTE: use `docker builder prune`, NOT `docker buildx prune`. `docker compose build` fills the
+# dockerd-integrated BuildKit cache, which `docker builder prune` / `docker system prune` manage;
+# `docker buildx prune` can target a different builder's cache and silently leave the real one
+# uncapped (observed: 18 GB of build cache accumulated despite a buildx-prune step).
 log "Pre-build cleanup: stopped containers + dangling images + BuildKit cache..."
 docker container prune -f >/dev/null 2>&1 || true
 docker image prune -f >/dev/null 2>&1 || true
-docker buildx prune --force --keep-storage 3GB >/dev/null 2>&1 || true
+docker builder prune --force --keep-storage 3GB >/dev/null 2>&1 || true
 
 if [ -d "$HOME/actions-runner/_diag" ]; then
   find "$HOME/actions-runner/_diag" -type f -name '*.log' -mtime +2 -delete 2>/dev/null || true
 fi
 
 docker_root="$(docker info -f '{{.DockerRootDir}}' 2>/dev/null || echo /var/lib/docker)"
-free_gb="$(df -Pk "$docker_root" 2>/dev/null | awk 'NR==2{printf "%d", $4/1024/1024}')"
+free_of_root() { df -Pk "$docker_root" 2>/dev/null | awk 'NR==2{printf "%d", $4/1024/1024}'; }
+free_gb="$(free_of_root)"
 if [ "${free_gb:-0}" -lt "$PREBUILD_MIN_FREE_GB" ]; then
   log "WARNING: only ${free_gb:-0}GB free on ${docker_root} (< ${PREBUILD_MIN_FREE_GB}GB). Hard-purging unused images + full BuildKit cache."
   docker image prune --all --force >/dev/null 2>&1 || true
-  docker buildx prune --all --force >/dev/null 2>&1 || true
-  free_gb="$(df -Pk "$docker_root" 2>/dev/null | awk 'NR==2{printf "%d", $4/1024/1024}')"
+  docker builder prune --all --force >/dev/null 2>&1 || true
+  free_gb="$(free_of_root)"
   log "Post-purge free space on ${docker_root}: ${free_gb:-0}GB"
+fi
+
+# Fail LOUDLY (not with a cryptic mid-build "no space left on device") if we still can't free enough.
+if [ "${free_gb:-0}" -lt "$PREBUILD_HARD_FLOOR_GB" ]; then
+  log "ERROR: only ${free_gb:-0}GB free on ${docker_root} after cleanup (hard floor ${PREBUILD_HARD_FLOOR_GB}GB). Aborting before build to avoid a half-written image. Free disk on the host (docker system prune -af; clear ~/actions-runner*/_diag/*.log; check 'du -xhd1 / | sort -rh') and re-run."
+  exit 1
 fi
 
 # ---------------------------------------------------------------------------
@@ -590,7 +602,9 @@ log "Pruning dangling images..."
 docker image prune -f >/dev/null 2>&1 || true
 
 log "Trimming BuildKit cache (keep last 3GB of reusable layers)..."
-docker buildx prune --force --keep-storage 3GB >/dev/null 2>&1 || true
+# `docker builder prune` (dockerd BuildKit cache used by `docker compose build`), NOT
+# `docker buildx prune` — the latter can miss the real cache and let it grow unbounded.
+docker builder prune --force --keep-storage 3GB >/dev/null 2>&1 || true
 
 # ---------------------------------------------------------------------------
 # Deploy summary — re-emit any non-fatal warnings here so they cannot get

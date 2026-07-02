@@ -12,6 +12,18 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.32] — 2026-07-02
+
+### Fixed
+- **Build-cache cap was silently ineffective — `docker buildx prune` → `docker builder prune`.** `docker compose build` fills the dockerd-integrated BuildKit cache; the deploy + daily-cron cleanups were trimming it with `docker buildx prune`, which can target a different builder and leave the real cache uncapped. Result: ~18 GB of build cache accumulated on the shared host despite a "keep 3–5 GB" step, eventually filling the disk (100%). Switched both `scripts/vps-deploy.sh` (pre- and post-build) and `scripts/vps-cleanup-template.sh` (daily cron) to `docker builder prune --keep-storage`, so the cache is actually capped every deploy and every night.
+- **Deploy now fails LOUDLY on low disk instead of a cryptic mid-build error.** After the pre-build reclaim, if free space on the Docker root is still under `PREBUILD_HARD_FLOOR_GB` (default 3), `vps-deploy.sh` aborts with a clear "insufficient disk / free it and re-run" message before building — no more half-written images or opaque "no space left on device" layer-extract failures.
+
+**Propagation:**
+- Severity: NORMAL (deploy reliability) · Layers: backend (`scripts/vps-deploy.sh`, `scripts/vps-cleanup-template.sh`)
+- Migration: NO · Flag: `PREBUILD_MIN_FREE_GB` (default 8) + `PREBUILD_HARD_FLOOR_GB` (default 3) env · Design impact: none · Breaking: NO
+- Rollback: revert the two scripts
+- **Operator: (1) ensure the daily cron cleanup is installed per client — `sudo bash backend/scripts/install-vps-cleanup.sh` (writes `/etc/cron.daily/vps-cleanup-<client>`); (2) after this syncs, the next deploy's pre-build prune keeps the cache capped automatically.** Follow-up to 0.1.31 (pre-build reclaim).
+
 ## [0.1.31] — 2026-07-02
 
 ### Fixed
