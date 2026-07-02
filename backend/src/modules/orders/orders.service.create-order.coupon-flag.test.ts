@@ -76,7 +76,8 @@ describe('OrdersService createOrder coupon merchant toggle', () => {
                 sku: 'SKU-1',
                 weight: 500,
                 inventory: { quantity: 10 },
-                product: { categoryId: 'category_1', name: 'Product 1' }
+                isActive: true,
+                product: { categoryId: 'category_1', name: 'Product 1', isActive: true }
               }
             }
           ]

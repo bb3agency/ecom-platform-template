@@ -836,6 +836,19 @@ export class ProductsService {
       where: { id: variant.id }
     });
 
+    // Deactivating a variant removes it from live carts immediately (lines + stock reservations):
+    // shoppers must not carry — or check out — a variant the merchant has pulled. Existing ORDERS
+    // are untouched (they snapshot the variant) and keep flowing through packing/delivery.
+    if (input.isActive === false && variant.isActive) {
+      await this.fastify.prisma.cartItem.deleteMany({ where: { variantId: variant.id } });
+      const reservationDelegate = (
+        this.fastify.prisma as unknown as { cartReservation?: { deleteMany: (args: { where: Record<string, unknown> }) => Promise<{ count: number }> } }
+      ).cartReservation;
+      if (reservationDelegate) {
+        await reservationDelegate.deleteMany({ where: { variantId: variant.id } });
+      }
+    }
+
     if (input.quantity !== undefined || input.lowStockThreshold !== undefined) {
       const defaultLowStockThreshold = await this.settingsService.resolveDefaultLowStockThreshold();
       const nextThreshold = input.lowStockThreshold ?? variant.inventory?.lowStockThreshold ?? defaultLowStockThreshold;
@@ -996,6 +1009,24 @@ export class ProductsService {
         data: { isActive: false }
       });
     }
+
+    // Deactivating a product removes ALL its variants from live carts (lines + reservations) so
+    // shoppers can neither see nor check out a pulled product. Existing orders are unaffected.
+    const variantIdRows = await this.fastify.prisma.productVariant.findMany({
+      where: { productId: id },
+      select: { id: true }
+    });
+    const variantIds = variantIdRows.map((row) => row.id);
+    if (variantIds.length > 0) {
+      await this.fastify.prisma.cartItem.deleteMany({ where: { variantId: { in: variantIds } } });
+      const reservationDelegate = (
+        this.fastify.prisma as unknown as { cartReservation?: { deleteMany: (args: { where: Record<string, unknown> }) => Promise<{ count: number }> } }
+      ).cartReservation;
+      if (reservationDelegate) {
+        await reservationDelegate.deleteMany({ where: { variantId: { in: variantIds } } });
+      }
+    }
+
     await this.invalidateProductListCacheSafe();
     return { message: 'Product deactivated' };
   }

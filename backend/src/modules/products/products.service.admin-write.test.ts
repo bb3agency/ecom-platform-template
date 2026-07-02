@@ -12,7 +12,14 @@ function makeBaseFastify(overrides: Record<string, unknown> = {}): FastifyInstan
         update: vi.fn().mockResolvedValue(null)
       },
       productVariant: {
-        updateMany: vi.fn()
+        updateMany: vi.fn(),
+        findMany: vi.fn().mockResolvedValue([])
+      },
+      cartItem: {
+        deleteMany: vi.fn().mockResolvedValue({ count: 0 })
+      },
+      cartReservation: {
+        deleteMany: vi.fn().mockResolvedValue({ count: 0 })
       },
       category: {
         findUnique: vi.fn().mockResolvedValue({ id: 'cat_1' })
@@ -401,6 +408,58 @@ describe('ProductsService adminDeleteProduct', () => {
     const result = await service.adminDeleteProduct('prod_1');
 
     expect(result).toMatchObject({ message: 'Product deactivated' });
+  });
+
+  it('purges cart lines and reservations for all variants on deactivation', async () => {
+    const existing = { id: 'prod_1', isActive: true };
+    const fastify = makeBaseFastify();
+    (fastify.prisma.product as unknown as { findUnique: ReturnType<typeof vi.fn> }).findUnique = vi.fn().mockResolvedValue(existing);
+    (fastify.prisma.product as unknown as { update: ReturnType<typeof vi.fn> }).update = vi.fn().mockResolvedValue({ id: 'prod_1', isActive: false });
+    (fastify.prisma.productVariant as unknown as { findMany: ReturnType<typeof vi.fn> }).findMany =
+      vi.fn().mockResolvedValue([{ id: 'v1' }, { id: 'v2' }]);
+
+    const service = new ProductsService(fastify);
+    await service.adminDeleteProduct('prod_1');
+
+    // Deactivated product must disappear from live carts (lines + stock reservations).
+    expect((fastify.prisma as unknown as { cartItem: { deleteMany: ReturnType<typeof vi.fn> } }).cartItem.deleteMany)
+      .toHaveBeenCalledWith({ where: { variantId: { in: ['v1', 'v2'] } } });
+    expect((fastify.prisma as unknown as { cartReservation: { deleteMany: ReturnType<typeof vi.fn> } }).cartReservation.deleteMany)
+      .toHaveBeenCalledWith({ where: { variantId: { in: ['v1', 'v2'] } } });
+  });
+});
+
+// ── adminUpdateProductVariant deactivation ───────────────────────────────────
+
+describe('ProductsService adminUpdateProductVariant deactivation', () => {
+  it('purges cart lines and reservations when a variant is deactivated', async () => {
+    const fastify = makeBaseFastify();
+    const variant = { id: 'v1', productId: 'prod_1', isActive: true, price: 1000, compareAtPrice: null, updatedAt: new Date(), inventory: null };
+    (fastify.prisma.productVariant as unknown as { findFirst: ReturnType<typeof vi.fn> }).findFirst = vi.fn().mockResolvedValue(variant);
+    (fastify.prisma.productVariant as unknown as { update: ReturnType<typeof vi.fn> }).update = vi.fn().mockResolvedValue({ ...variant, isActive: false });
+    (fastify.prisma.productVariant as unknown as { findUniqueOrThrow: ReturnType<typeof vi.fn> }).findUniqueOrThrow = vi.fn().mockResolvedValue({ ...variant, isActive: false });
+
+    const service = new ProductsService(fastify);
+    await service.adminUpdateProductVariant('prod_1', 'v1', { isActive: false });
+
+    expect((fastify.prisma as unknown as { cartItem: { deleteMany: ReturnType<typeof vi.fn> } }).cartItem.deleteMany)
+      .toHaveBeenCalledWith({ where: { variantId: 'v1' } });
+    expect((fastify.prisma as unknown as { cartReservation: { deleteMany: ReturnType<typeof vi.fn> } }).cartReservation.deleteMany)
+      .toHaveBeenCalledWith({ where: { variantId: 'v1' } });
+  });
+
+  it('does NOT purge cart lines on a regular (non-deactivating) update', async () => {
+    const fastify = makeBaseFastify();
+    const variant = { id: 'v1', productId: 'prod_1', isActive: true, price: 1000, compareAtPrice: null, updatedAt: new Date(), inventory: null };
+    (fastify.prisma.productVariant as unknown as { findFirst: ReturnType<typeof vi.fn> }).findFirst = vi.fn().mockResolvedValue(variant);
+    (fastify.prisma.productVariant as unknown as { update: ReturnType<typeof vi.fn> }).update = vi.fn().mockResolvedValue(variant);
+    (fastify.prisma.productVariant as unknown as { findUniqueOrThrow: ReturnType<typeof vi.fn> }).findUniqueOrThrow = vi.fn().mockResolvedValue(variant);
+
+    const service = new ProductsService(fastify);
+    await service.adminUpdateProductVariant('prod_1', 'v1', { price: 1500 });
+
+    expect((fastify.prisma as unknown as { cartItem: { deleteMany: ReturnType<typeof vi.fn> } }).cartItem.deleteMany)
+      .not.toHaveBeenCalled();
   });
 });
 

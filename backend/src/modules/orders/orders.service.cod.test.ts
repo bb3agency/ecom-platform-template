@@ -66,7 +66,7 @@ describe('OrdersService createOrder — COD', () => {
           coupon: null,
           items: [{
             variantId: 'v1', quantity: 1, priceSnapshot: 10000,
-            variant: { id: 'v1', name: 'V1', sku: 'SKU-1', productId: 'p1', product: { categoryId: 'c1' }, inventory: { quantity: 5 } }
+            variant: { id: 'v1', name: 'V1', sku: 'SKU-1', productId: 'p1', isActive: true, product: { categoryId: 'c1', isActive: true }, inventory: { quantity: 5 } }
           }]
         }),
         update: vi.fn().mockResolvedValue(undefined)
@@ -167,7 +167,8 @@ describe('OrdersService createOrder — COD', () => {
             name: 'V1',
             sku: 'SKU-1',
             productId: 'p1',
-            product: { categoryId: 'c1', name: 'Product' },
+            isActive: true,
+            product: { categoryId: 'c1', name: 'Product', isActive: true },
             inventory: { quantity: 5 }
           }
         }]

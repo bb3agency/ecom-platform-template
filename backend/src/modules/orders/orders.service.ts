@@ -429,7 +429,7 @@ export class OrdersService {
                 include: {
                   inventory: true,
                   product: {
-                    select: { categoryId: true, name: true }
+                    select: { categoryId: true, name: true, isActive: true }
                   }
                 }
               }
@@ -440,6 +440,20 @@ export class OrdersService {
 
       if (!cart || cart.items.length === 0) {
         throw new AppError(ERROR_CODES.VALIDATION_ERROR, 'Cart is empty', 400);
+      }
+
+      // Deactivated variants/products are purged from carts at deactivation time, but a cart line
+      // can still race the deactivation (or predate the purge). Never let an inactive item be
+      // ordered — tell the customer exactly which line to remove.
+      const inactiveItem = cart.items.find(
+        (item) => !item.variant.isActive || !item.variant.product.isActive
+      );
+      if (inactiveItem) {
+        throw new AppError(
+          ERROR_CODES.VALIDATION_ERROR,
+          `"${inactiveItem.variant.product.name}" is no longer available. Remove it from your cart to continue.`,
+          400
+        );
       }
 
       const storeSettings = await tx.storeSettings.findUnique({
@@ -1190,7 +1204,7 @@ export class OrdersService {
             variant: {
               include: {
                 inventory: true,
-                product: { select: { categoryId: true, name: true } }
+                product: { select: { categoryId: true, name: true, isActive: true } }
               }
             }
           }
@@ -1200,6 +1214,19 @@ export class OrdersService {
 
     if (!cart || cart.items.length === 0) {
       throw new AppError(ERROR_CODES.VALIDATION_ERROR, 'Cart is empty', 400);
+    }
+
+    // Same guard as createOrder: a deactivated variant/product must never be checked out, even
+    // when the cart line raced the deactivation-time purge.
+    const inactiveCheckoutItem = cart.items.find(
+      (item) => !item.variant.isActive || !item.variant.product.isActive
+    );
+    if (inactiveCheckoutItem) {
+      throw new AppError(
+        ERROR_CODES.VALIDATION_ERROR,
+        `"${inactiveCheckoutItem.variant.product.name}" is no longer available. Remove it from your cart to continue.`,
+        400
+      );
     }
 
     const storeSettings = await this.fastify.prisma.storeSettings.findUnique({

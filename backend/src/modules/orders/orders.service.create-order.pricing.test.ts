@@ -51,8 +51,10 @@ function buildFastifyForCreateOrder(couponType: 'PERCENTAGE_OFF' | 'FREE_SHIPPIN
               name: 'Variant 1',
               sku: 'SKU-1',
               productId: 'product_1',
+              isActive: true,
               product: {
-                categoryId: 'category_1'
+                categoryId: 'category_1',
+                isActive: true
               },
               inventory: {
                 quantity: 10

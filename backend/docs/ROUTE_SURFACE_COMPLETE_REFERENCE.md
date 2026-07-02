@@ -364,10 +364,11 @@ Top-selling products by revenue or quantity. Query: `from`, `to`, `limit`.
 | `GET /api/v1/admin/products/:id` | Full product detail including all variants, images, inventory state, `isActive`, `metaDescription`, `isFeatured`. |
 | `POST /api/v1/admin/products` | Create product. Body: `name`, `slug`, `description`, `categoryId`, `tags`, `isFeatured`, `isActive`, optional `metaDescription` (max 500), `variants[]` (incl. optional `lowStockThreshold`), optional `images[]`. |
 | `PATCH /api/v1/admin/products/:id` | Partial update: `name`, `slug`, `description`, `categoryId`, `tags`, `isFeatured`, `isActive`, `metaDescription` (nullable). |
-| `DELETE /api/v1/admin/products/:id` | Deactivate product (soft delete — sets `isActive: false`). Reversible. Admin UI label: **Deactivate**. |
+| `DELETE /api/v1/admin/products/:id` | Deactivate product (soft delete — sets `isActive: false`). Reversible. **Also purges all its variants' live cart lines + stock reservations** so shoppers can't check out a pulled product; existing orders unaffected. Admin UI label: **Deactivate**. |
 | `DELETE /api/v1/admin/products/:id/permanent` | Permanently delete product (hard delete). **409** if order history or reviews exist. Clears cart items + hosted media. UI: **Delete Permanently** (`AdminRowActionsMenu`). |
 | `POST /api/v1/admin/products/:id/variants` | Add a new variant to an existing product. Body: size, color, SKU, price, stock. |
-| `PATCH /api/v1/admin/products/:id/variants/:variantId` | Update a variant's fields (price, SKU, attributes). |
+| `PATCH /api/v1/admin/products/:id/variants/:variantId` | Update a variant's fields (price, SKU, attributes, `isActive`). **Deactivating (`isActive: false`) purges the variant's live cart lines + reservations**; existing orders unaffected. |
+| `DELETE /api/v1/admin/products/:id/variants/:variantId` | Hard-delete a variant. **400** if it's the last variant; **409** if it appears in any order (deactivate instead — the admin UI offers this on 409); live cart lines are cleared before delete. |
 | `POST /api/v1/admin/products/:id/images` | Add image by URL. Body: `{ url, altText, sortOrder }` — `url` is `https://…` or hosted `/api/v1/media/products/…` path. |
 | `POST /api/v1/admin/products/:id/images/upload` | Upload one or more images (multipart `file` repeated, optional `altText`). **Max 5 MiB each.** Sort order auto-assigned per batch. **Automatically** pushes to Cloudflare R2 when `MEDIA_STORAGE_PROVIDER=r2`; local dev writes to `MEDIA_STORAGE_ROOT`. Returns single image or `{ items: [...] }`. |
 | `PATCH /api/v1/admin/products/:id/images/reorder` | Reorder product images. Body: `{ images: [{ id, sortOrder }] }`. |

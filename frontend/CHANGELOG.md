@@ -12,6 +12,17 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.23] — 2026-07-03
+
+### Added
+- **"Deactivate instead?" flow on variant delete.** When deleting a variant returns the 409 (it appears in existing orders and must be preserved for invoices/history), the product editor now offers a confirm dialog explaining the trade-off and — on confirm — PATCHes `isActive: false`. The variant disappears from the storefront and (per backend-core 0.1.38) from live customer carts; already-placed orders keep flowing untouched. Success toast: "Variant deactivated — removed from storefront and customer carts."
+
+**Propagation:**
+- Severity: NORMAL (UX for the 409 path) · Layers: frontend (`components/admin/AdminProductEditor.tsx`)
+- Migration: NO · Flag: none · Design impact: none · Breaking: NO
+- Rollback: revert the file
+- Pairs with backend-core 0.1.38 (deactivation cart purge + checkout inactive-item guard).
+
 ## [0.1.22] — 2026-07-03
 
 ### Fixed

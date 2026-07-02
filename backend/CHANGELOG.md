@@ -12,6 +12,21 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.38] — 2026-07-03
+
+### Fixed
+- **A deactivated product/variant could still be PURCHASED through a stale cart.** Checkout (`createOrder` AND `prepareCheckout`) validated only stock — never `isActive`. A merchant-pulled product sitting in a customer's cart from before deactivation sailed straight through to a paid order. Both paths now reject inactive lines with a clear, actionable message (`"<product>" is no longer available. Remove it from your cart to continue.`). Found during the cross-surface security/logic audit.
+- **Deactivation now removes the item from live carts immediately.** `PATCH …/variants/:variantId` with `isActive: false` and `DELETE /admin/products/:id` (product deactivate) purge the affected variants' `CartItem` rows AND `CartReservation` stock holds, so shoppers neither see nor carry a pulled item. Existing ORDERS are untouched — they snapshot the variant and keep flowing through packing/delivery. (Checkout guard above remains as defense-in-depth for race windows.)
+
+### Security audit (cross-surface, this release)
+Verified clean, no changes needed: customer order/invoice/cancel routes are scoped `{ id, userId }` (no IDOR); local media serving sanitizes segments, rejects `..`, and enforces root containment + extension allowlist; Razorpay + Meta webhook signatures use HMAC-SHA256 with `timingSafeEqual`; cart quantities are schema-bounded (1–1000); cart session tokens are `crypto.randomUUID`; no `dangerouslySetInnerHTML` anywhere in the frontend. The two findings above were the real gaps.
+
+**Propagation:**
+- Severity: HIGH (deactivated items purchasable; merchant pull not reflected in carts) · Layers: backend (`modules/products/products.service.ts`, `modules/orders/orders.service.ts`, + tests incl. new `orders.service.create-order.inactive-item.test.ts`), docs (`ROUTE_SURFACE_COMPLETE_REFERENCE.md`)
+- Migration: NO · Flag: none · Design impact: none · Breaking: NO (new 400 replaces silently-wrong success)
+- Rollback: revert the listed files
+- Pairs with frontend-core 0.1.23 ("Deactivate instead?" flow on the variant-delete 409).
+
 ## [0.1.37] — 2026-07-03
 
 ### Fixed

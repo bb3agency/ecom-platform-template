@@ -1,6 +1,6 @@
 {
   "name": "ecom-backend-template",
-  "version": "0.1.37",
+  "version": "0.1.38",
   "private": true,
   "description": "Production-grade modular monolith e-commerce backend template",
   "engines": {

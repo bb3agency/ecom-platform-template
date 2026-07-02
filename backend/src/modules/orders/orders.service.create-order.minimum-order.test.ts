@@ -48,6 +48,8 @@ describe('OrdersService createOrder minimum order value', () => {
                 id: 'variant_1',
                 name: 'Variant 1',
                 sku: 'SKU-1',
+                isActive: true,
+                product: { categoryId: 'category_1', name: 'Product 1', isActive: true },
                 inventory: {
                   quantity: 10
                 }

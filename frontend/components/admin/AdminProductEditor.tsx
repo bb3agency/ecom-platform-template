@@ -42,7 +42,7 @@ import {
   type PaginatedResponse,
 } from "@/lib/admin-api";
 import { formatPaise } from "@/lib/admin-format";
-import { getApiErrorMessage } from "@/lib/error-messages";
+import { getApiErrorMessage, isApiErrorWithCode } from "@/lib/error-messages";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import { createIdempotencyKey } from "@/lib/idempotency";
@@ -831,6 +831,33 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
       setSuccess("Variant deleted.");
       notifyAdminDataChanged(["products", "inventory", "dashboard"]);
     } catch (err) {
+      // 409 = the variant appears in existing orders and must be preserved for invoices/history.
+      // Offer the correct action instead of a dead end: deactivate — it disappears from the
+      // storefront AND from live customer carts; already-placed orders keep flowing untouched.
+      if (isApiErrorWithCode(err, "CONFLICT")) {
+        const deactivate = window.confirm(
+          "This variant appears in existing orders, so it can't be permanently deleted.\n\n" +
+            "Deactivate it instead? It will disappear from the storefront and from customer carts. " +
+            "Orders already placed are unaffected and will still be packed and delivered.",
+        );
+        if (deactivate) {
+          try {
+            await api(`/admin/products/${productId}/variants/${variantId}`, {
+              method: "PATCH",
+              idempotencyKey: createIdempotencyKey(),
+              body: JSON.stringify({ isActive: false }),
+            });
+            await loadProduct();
+            setSuccess("Variant deactivated — removed from storefront and customer carts.");
+            notifyAdminDataChanged(["products", "inventory", "dashboard"]);
+          } catch (deactivateErr) {
+            setError(getApiErrorMessage(deactivateErr));
+          } finally {
+            setSaving(false);
+          }
+          return;
+        }
+      }
       setError(getApiErrorMessage(err));
     } finally {
       setSaving(false);

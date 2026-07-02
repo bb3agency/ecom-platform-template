@@ -144,11 +144,12 @@ describe('OrdersService createOrder serviceability enforcement', () => {
               variant: {
                 id: 'variant_1',
                 weight: 500,
+                isActive: true,
                 packageLengthCm: null,
                 packageWidthCm: null,
                 packageHeightCm: null,
                 inventory: { quantity: 10 },
-                product: { categoryId: 'cat_1', name: 'Test Product' }
+                product: { categoryId: 'cat_1', name: 'Test Product', isActive: true }
               }
             }
           ]
