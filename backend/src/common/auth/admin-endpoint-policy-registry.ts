@@ -120,6 +120,7 @@ export const ADMIN_ENDPOINT_POLICY_REGISTRY: readonly EndpointPolicy[] = [
   { method: 'GET', path: '/api/v1/ops/config/overview', permission: 'ops:read', layer: 'C' },
   { method: 'POST', path: '/api/v1/ops/config/validate', permission: 'ops:read', layer: 'C' },
   { method: 'GET', path: '/api/v1/ops/config/stored', permission: 'ops:read', layer: 'C' },
+  { method: 'GET', path: '/api/v1/ops/notifications/whatsapp-otp-cost', permission: 'ops:read', layer: 'C' },
   { method: 'POST', path: '/api/v1/ops/config/save', permission: 'ops:write', layer: 'C' },
   { method: 'POST', path: '/api/v1/ops/otp/request', permission: 'ops:write', layer: 'C' },
   { method: 'POST', path: '/api/v1/ops/otp/verify', permission: 'ops:write', layer: 'C' },

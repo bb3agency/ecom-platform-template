@@ -18,7 +18,7 @@ describe('MetaWhatsAppAdapter', () => {
     const adapter = new MetaWhatsAppAdapter({
       accessToken: 'meta_token',
       phoneNumberId: '123456789',
-      apiVersion: 'v21.0',
+      apiVersion: 'v25.0',
       baseUrl: 'https://graph.facebook.com'
     });
 
@@ -36,7 +36,7 @@ describe('MetaWhatsAppAdapter', () => {
 
     expect(result.messageId).toBe('wamid.123');
     const [requestUrl, requestInit] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(requestUrl).toBe('https://graph.facebook.com/v21.0/123456789/messages');
+    expect(requestUrl).toBe('https://graph.facebook.com/v25.0/123456789/messages');
     expect(requestInit.headers).toMatchObject({
       Authorization: 'Bearer meta_token'
     });

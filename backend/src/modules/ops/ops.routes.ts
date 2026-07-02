@@ -7,6 +7,8 @@ import { opsAuthGuard } from '@common/guards/ops-auth.guard';
 import { opsPermissionGuard } from '@common/guards/ops-permissions.guard';
 import { OPS_OTP_INPUT_JSON_SCHEMA, parseOpsOtpCodeInput } from './ops-otp-code.js';
 import { OpsService, OPS_BROWSER_SESSION_COOKIE_NAME } from './ops.service';
+import { resolveNotificationRuntimeConfig } from '@common/notifications/notification-runtime-config';
+import { computeWhatsappOtpCost } from '@common/notifications/whatsapp-otp-cost';
 
 export async function registerOpsRoutes(fastify: FastifyInstance): Promise<void> {
   const opsService = new OpsService(fastify);
@@ -90,6 +92,55 @@ export async function registerOpsRoutes(fastify: FastifyInstance): Promise<void>
         requestPath: request.url,
         method: request.method
       });
+    }
+  );
+
+  fastify.get(
+    '/api/v1/ops/notifications/whatsapp-otp-cost',
+    {
+      preHandler: [opsAuthGuard, opsPermissionGuard('ops:read')],
+      config: { rateLimit: routeRateLimitProfiles.opsRead },
+      schema: {
+        params: emptyObjectSchema,
+        querystring: emptyObjectSchema,
+        response: {
+          200: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['costPerMessagePaise', 'billingCycleStart', 'allTime', 'currentCycle'],
+            properties: {
+              costPerMessagePaise: { type: 'integer', minimum: 0 },
+              billingCycleStart: { type: 'string', maxLength: 40 },
+              allTime: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['count', 'costPaise'],
+                properties: {
+                  count: { type: 'integer', minimum: 0 },
+                  costPaise: { type: 'integer', minimum: 0 }
+                }
+              },
+              currentCycle: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['count', 'costPaise'],
+                properties: {
+                  count: { type: 'integer', minimum: 0 },
+                  costPaise: { type: 'integer', minimum: 0 }
+                }
+              }
+            }
+          },
+          ...standardAdminErrorResponses
+        }
+      }
+    },
+    async (request) => {
+      if (!request.opsUser) {
+        throw new AppError(ERROR_CODES.UNAUTHORISED, 'Ops authentication required', 401);
+      }
+      const runtime = await resolveNotificationRuntimeConfig(fastify.prisma);
+      return computeWhatsappOtpCost(fastify.prisma, runtime);
     }
   );
 

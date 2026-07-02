@@ -25,7 +25,7 @@ export class MetaWhatsAppAdapter implements WhatsappProviderAdapter {
   constructor(options: MetaWhatsAppAdapterOptions) {
     this.accessToken = options.accessToken;
     this.phoneNumberId = options.phoneNumberId;
-    this.apiVersion = options.apiVersion ?? 'v21.0';
+    this.apiVersion = options.apiVersion ?? 'v25.0';
     this.baseUrl = options.baseUrl ?? 'https://graph.facebook.com';
     this.templateRegistry = options.templateRegistry ?? new WhatsappTemplateRegistry();
   }

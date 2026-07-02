@@ -19,6 +19,7 @@ import { resolveNotificationRuntimeConfig } from '@common/notifications/notifica
 import {
   assertOtpChannelDeliverable,
   resolveOtpChannelForTemplate,
+  resolveOtpDeliveryChannels,
   resolveOtpNotifyToggles
 } from '@common/notifications/otp-deliverability';
 import { sendNotificationFailureAlert, sendTechnicalFailureAlert } from '@modules/notifications/notification-failure-alert';
@@ -654,13 +655,13 @@ export class AuthService {
           whatsappEnabled: storeSettings.notifyWhatsappEnabled
         }
       : undefined;
-    const { channel, toggles } = resolveOtpChannelForTemplate({
+    const { channels, primaryChannel, toggles } = resolveOtpDeliveryChannels({
       templateKey: 'CustomerOtpVerification',
       storeFlags,
       primaryChannels: storeSettings?.primaryNotificationChannels,
       runtime
     });
-    assertOtpChannelDeliverable(channel, toggles, runtime);
+    assertOtpChannelDeliverable(primaryChannel, toggles, runtime);
 
     let recipientEmail: string | undefined;
     if (customerEmail) {
@@ -673,60 +674,68 @@ export class AuthService {
       recipientEmail = existingUser?.email ?? undefined;
     }
 
+    // Email is a hard requirement only when it is the primary channel; when email is merely an
+    // additional fan-out channel (e.g. WhatsApp is primary), a missing address just drops email.
+    if (primaryChannel === 'email' && !recipientEmail) {
+      throw new AppError(ERROR_CODES.VALIDATION_ERROR, 'Email is required for email OTP delivery', 400);
+    }
+    const deliveryChannels = channels.filter((ch) => ch !== 'email' || Boolean(recipientEmail));
+
     await this.fastify.redis.set(otpKey, otpHash, 'EX', OTP_TTL_SECONDS);
     await this.fastify.redis.set(cooldownKey, '1', 'EX', OTP_RESEND_SECONDS);
     await this.fastify.redis.set(globalCooldownKey, '1', 'EX', OTP_RESEND_SECONDS);
 
     const storeName = (storeSettings?.storeName ?? '').trim() || 'Our Store';
 
+    let currentChannel: OtpChannel = primaryChannel;
     try {
-      if (channel === 'email') {
-        if (!recipientEmail) {
-          throw new AppError(ERROR_CODES.VALIDATION_ERROR, 'Email is required for email OTP delivery', 400);
+      for (const ch of deliveryChannels) {
+        currentChannel = ch;
+        if (ch === 'email') {
+          await this.enqueueOutboxMessage(
+            'notifications',
+            'send-email',
+            {
+              to: recipientEmail!,
+              template: 'CustomerOtpVerification',
+              data: { otp, storeName }
+            },
+            `otp:email:${input.phone}:${Date.now()}`
+          );
+        } else if (ch === 'sms') {
+          await this.enqueueOutboxMessage(
+            'notifications',
+            'send-sms',
+            {
+              phone: input.phone,
+              template: 'CustomerOtpVerification',
+              data: { otp, storeName }
+            },
+            `otp:sms:${input.phone}:${Date.now()}`
+          );
+        } else {
+          await this.enqueueOutboxMessage(
+            'notifications',
+            'send-whatsapp',
+            {
+              phone: input.phone,
+              template: 'CustomerOtpVerification',
+              data: { otp, storeName }
+            },
+            `otp:whatsapp:${input.phone}:${Date.now()}`
+          );
         }
-        await this.enqueueOutboxMessage(
-          'notifications',
-          'send-email',
-          {
-            to: recipientEmail,
-            template: 'CustomerOtpVerification',
-            data: { otp, storeName }
-          },
-          `otp:email:${input.phone}:${Date.now()}`
-        );
-      } else if (channel === 'sms') {
-        await this.enqueueOutboxMessage(
-          'notifications',
-          'send-sms',
-          {
-            phone: input.phone,
-            template: 'CustomerOtpVerification',
-            data: { otp, storeName }
-          },
-          `otp:sms:${input.phone}:${Date.now()}`
-        );
-      } else {
-        await this.enqueueOutboxMessage(
-          'notifications',
-          'send-whatsapp',
-          {
-            phone: input.phone,
-            template: 'CustomerOtpVerification',
-            data: { otp, storeName }
-          },
-          `otp:whatsapp:${input.phone}:${Date.now()}`
-        );
       }
     } catch (error) {
       await sendNotificationFailureAlert({
         prisma: this.fastify.prisma,
         template: 'CustomerOtpVerification',
-        channel: channel.toUpperCase() as 'SMS' | 'WHATSAPP' | 'EMAIL',
-        recipient: channel === 'email' ? (recipientEmail ?? input.phone) : input.phone,
+        channel: currentChannel.toUpperCase() as 'SMS' | 'WHATSAPP' | 'EMAIL',
+        recipient: currentChannel === 'email' ? (recipientEmail ?? input.phone) : input.phone,
         errorMessage: error instanceof Error ? error.message : 'Unable to enqueue OTP delivery',
         failureStage: 'QUEUE_ENQUEUE',
         queueName: 'notifications',
-        jobName: channel === 'email' ? 'send-email' : channel === 'sms' ? 'send-sms' : 'send-whatsapp'
+        jobName: currentChannel === 'email' ? 'send-email' : currentChannel === 'sms' ? 'send-sms' : 'send-whatsapp'
       });
       await this.fastify.redis.del(otpKey, cooldownKey, globalCooldownKey);
       if (error instanceof AppError) {

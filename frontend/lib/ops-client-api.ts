@@ -208,6 +208,13 @@ export interface OpsDlqSummary {
   bySourceQueue: Record<string, number>;
 }
 
+export interface WhatsappOtpCostEstimate {
+  costPerMessagePaise: number;
+  billingCycleStart: string;
+  allTime: { count: number; costPaise: number };
+  currentCycle: { count: number; costPaise: number };
+}
+
 function buildPath(
   endpoint: string,
   query?: Record<string, string | number | undefined>,
@@ -370,6 +377,10 @@ export async function getOpsPendingOtps(): Promise<{ items: OpsPendingOtpItem[] 
 
 export async function getOpsConfigOverviewClient(): Promise<OpsConfigOverview> {
   return opsFetch<OpsConfigOverview>("/ops/config/overview");
+}
+
+export async function getWhatsappOtpCostClient(): Promise<WhatsappOtpCostEstimate> {
+  return opsFetch<WhatsappOtpCostEstimate>("/ops/notifications/whatsapp-otp-cost");
 }
 
 export async function getOpsStoredConfigClient(query?: {

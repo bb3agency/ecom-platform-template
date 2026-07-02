@@ -12,6 +12,21 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.26] — 2026-07-02
+
+### Added
+- **OTP-over-WhatsApp (opt-in) + Ops cost meter.** Two new DB-overlay Ops config keys in the `notifications` domain: `OTP_WHATSAPP_ENABLED` (default `false`) and `WHATSAPP_OTP_COST_PAISE` (default `14`). When `OTP_WHATSAPP_ENABLED=true` **and** WhatsApp is deliverable, customer signup/login OTP (`CustomerOtpVerification`) is now sent to WhatsApp **in addition to** the primary channel (usually email) — same OTP, one hash, verified unchanged. New `resolveOtpDeliveryChannels()` (`common/notifications/otp-deliverability.ts`) returns the de-duplicated channel set; `auth.service.sendOtp()` loops over it. Admin login OTP is intentionally unchanged (email-based). New read-only Ops endpoint `GET /api/v1/ops/notifications/whatsapp-otp-cost` (`ops:read`) returns a cost estimate (all-time + current calendar-month cycle) computed from `NotificationLog` WhatsApp OTP sends × the configured per-message rate — surfaced as a small card on the Ops → Config page (frontend-core).
+- Meta Graph API default bumped `v21.0` → **`v25.0`** (`meta-whatsapp.adapter.ts` default + `META_WHATSAPP_API_VERSION` fallback in `notification-provider.ts`).
+
+### Notes
+- **Not yet wired:** actual WhatsApp OTP delivery needs an approved Meta **AUTHENTICATION** template mapped as `CustomerOtpVerification` in `whatsapp-template-registry.ts` (a utility template cannot carry an OTP). Until that lands, turning the toggle on will enqueue a WhatsApp job that Meta rejects (email still sends). Auth-template support + forgot-password-over-WhatsApp are a follow-up.
+
+**Propagation:**
+- Severity: NORMAL (feature, OFF by default) · Layers: backend (`common/notifications/otp-deliverability.ts`, `common/notifications/notification-runtime-config.ts`, `common/notifications/whatsapp-otp-cost.ts` [new], `modules/auth/auth.service.ts`, `modules/ops/{ops-config-contract.ts,ops.routes.ts}`, `common/auth/admin-endpoint-policy-registry.ts`, `scripts/env-runtime-contract.js`, `.env.example`, adapters) + frontend (`lib/ops-client-api.ts`, `components/ops/OpsConfigPagePanel.tsx`)
+- Migration: NO · Flag: `OTP_WHATSAPP_ENABLED` (DB-overlay, default off) · Design impact: none · Breaking: NO
+- Rollback: revert the listed files; the two Ops keys become inert
+- Pairs with frontend-core (Ops cost card). **Operator: create a WhatsApp AUTHENTICATION template before enabling the toggle; set `WHATSAPP_OTP_COST_PAISE` to your BSP's per-message rate for an accurate estimate.**
+
 ## [0.1.25] — 2026-07-02
 
 ### Fixed

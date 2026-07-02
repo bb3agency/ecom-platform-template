@@ -107,6 +107,38 @@ export function resolveOtpChannelForTemplate(input: {
   return { channel, availableChannels, toggles };
 }
 
+/**
+ * Resolves the full set of channels an OTP should be delivered to.
+ *
+ * Base behaviour is unchanged: the primary channel (from primaryChannels config, or the
+ * first deliverable channel) is always included. When `OTP_WHATSAPP_ENABLED=true` and
+ * WhatsApp is deliverable, WhatsApp is ALSO added, so the same OTP goes to e.g. email +
+ * WhatsApp together. Channels are de-duplicated and returned in a stable order
+ * (primary first, then any extra channels).
+ */
+export function resolveOtpDeliveryChannels(input: {
+  templateKey: OtpTemplateKey;
+  storeFlags?: OtpChannelFlags | undefined;
+  primaryChannels: unknown;
+  runtime: NodeJS.ProcessEnv;
+  preferEmail?: boolean;
+}): { channels: OtpChannel[]; primaryChannel: OtpChannel; toggles: OtpNotifyToggles } {
+  const { channel: primaryChannel, toggles } = resolveOtpChannelForTemplate(input);
+
+  const channels: OtpChannel[] = [primaryChannel];
+
+  const otpWhatsappEnabled = parseEnabledFlag(input.runtime.OTP_WHATSAPP_ENABLED, false);
+  if (
+    otpWhatsappEnabled &&
+    !channels.includes('whatsapp') &&
+    isOtpChannelDeliverable('whatsapp', toggles, input.runtime)
+  ) {
+    channels.push('whatsapp');
+  }
+
+  return { channels, primaryChannel, toggles };
+}
+
 export function assertOtpChannelDeliverable(
   channel: OtpChannel,
   toggles: OtpNotifyToggles,

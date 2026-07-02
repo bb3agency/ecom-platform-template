@@ -12,6 +12,17 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.15] — 2026-07-02
+
+### Added
+- **WhatsApp OTP cost card on Ops → Config.** `OpsConfigPagePanel` now fetches `GET /ops/notifications/whatsapp-otp-cost` (new `getWhatsappOtpCostClient` + `WhatsappOtpCostEstimate` type in `lib/ops-client-api.ts`) and renders a small read-only card showing estimated WhatsApp-OTP spend for the current billing cycle and all-time, plus the per-message rate. Best-effort — if the endpoint fails the card is hidden and the config page is unaffected. Shown regardless of whether OTP-over-WhatsApp is enabled (it reports historical sends).
+
+**Propagation:**
+- Severity: NORMAL (feature) · Layers: frontend (`lib/ops-client-api.ts`, `components/ops/OpsConfigPagePanel.tsx`)
+- Migration: NO · Flag: n/a (read-only display) · Design impact: none (token-styled `OpsCard`/`OpsBadge`) · Breaking: NO
+- Rollback: revert the two files
+- Pairs with backend-core 0.1.26 (the endpoint + `OTP_WHATSAPP_ENABLED`/`WHATSAPP_OTP_COST_PAISE` keys).
+
 ## [0.1.14] — 2026-07-01
 
 ### Added

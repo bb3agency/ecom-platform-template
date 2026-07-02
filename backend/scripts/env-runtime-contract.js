@@ -58,6 +58,8 @@ const ENV_RUNTIME_CONTRACT = {
     requiredEnv('NOTIFY_EMAIL_ENABLED', { dbOverlay: true }),
     requiredEnv('NOTIFY_SMS_ENABLED', { dbOverlay: true }),
     requiredEnv('NOTIFY_WHATSAPP_ENABLED', { dbOverlay: true }),
+    requiredEnv('OTP_WHATSAPP_ENABLED', { dbOverlay: true }),
+    requiredEnv('WHATSAPP_OTP_COST_PAISE', { dbOverlay: true }),
     requiredEnv('EMAIL_PROVIDER', { dbOverlay: true }),
     requiredEnv('SMS_PROVIDER', { dbOverlay: true }),
     requiredEnv('RESEND_API_KEY', { dbOverlay: true }),

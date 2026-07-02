@@ -8,13 +8,20 @@ import { getApiErrorMessageWithHint } from "@/lib/error-messages";
 import {
   getOpsConfigOverviewClient,
   getOpsStoredConfigClient,
+  getWhatsappOtpCostClient,
   type OpsConfigOverview,
   type OpsStoredConfig,
+  type WhatsappOtpCostEstimate,
 } from "@/lib/ops-client-api";
+
+function formatInr(paise: number): string {
+  return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(paise / 100);
+}
 
 export function OpsConfigPagePanel() {
   const [overview, setOverview] = useState<OpsConfigOverview | null>(null);
   const [stored, setStored] = useState<OpsStoredConfig | null>(null);
+  const [whatsappOtpCost, setWhatsappOtpCost] = useState<WhatsappOtpCostEstimate | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshSignal, setRefreshSignal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -28,6 +35,10 @@ export function OpsConfigPagePanel() {
       })
       .catch((err) => setError(getApiErrorMessageWithHint(err)))
       .finally(() => setLoading(false));
+    // Cost estimate is best-effort — never blocks the config page if it fails.
+    void getWhatsappOtpCostClient()
+      .then(setWhatsappOtpCost)
+      .catch(() => setWhatsappOtpCost(null));
   }, [refreshSignal]);
 
   if (loading) {
@@ -67,6 +78,25 @@ export function OpsConfigPagePanel() {
           ) : null}
         </div>
       </OpsCard>
+      {whatsappOtpCost ? (
+        <OpsCard padding="md">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                WhatsApp OTP cost (estimate)
+              </p>
+              <p className="text-sm">
+                This cycle:{" "}
+                <span className="font-semibold">{formatInr(whatsappOtpCost.currentCycle.costPaise)}</span>{" "}
+                ({whatsappOtpCost.currentCycle.count} sent) · All time:{" "}
+                <span className="font-semibold">{formatInr(whatsappOtpCost.allTime.costPaise)}</span>{" "}
+                ({whatsappOtpCost.allTime.count} sent)
+              </p>
+            </div>
+            <OpsBadge tone="info">{formatInr(whatsappOtpCost.costPerMessagePaise)}/msg</OpsBadge>
+          </div>
+        </OpsCard>
+      ) : null}
       <OpsConfigEditor
         overview={overview}
         stored={stored}

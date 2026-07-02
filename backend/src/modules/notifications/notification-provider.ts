@@ -110,7 +110,7 @@ export function createNotificationProviders(runtimeConfig: NodeJS.ProcessEnv = p
       ? new MetaWhatsAppAdapter({
           accessToken: metaAccessToken,
           phoneNumberId: metaPhoneNumberId,
-          apiVersion: runtimeConfig.META_WHATSAPP_API_VERSION ?? 'v21.0'
+          apiVersion: runtimeConfig.META_WHATSAPP_API_VERSION ?? 'v25.0'
         })
       : createUnavailableWhatsappAdapter()
   };
