@@ -12,6 +12,17 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.24] — 2026-07-02
+
+### Fixed
+- **VPS deploy OOM-killed the Docker build on small/shared hosts (`npm run build` exit 255 ~2-3 min in).** `vps-deploy.sh` ran `docker compose build` with no service arg, which builds every service **in parallel** — so the backend and workers images each ran a memory-heavy `tsc`/esbuild compile at the same time and exhausted RAM (fatal on the shared Hetzner box where two clients also co-build). Now builds services **one at a time** (loop over `docker compose config --services`), roughly halving peak build memory; shared base layers stay cached so the second build is still fast. Image-only services (postgres/redis) are skipped automatically. Same commit built fine in CI and on the uncontended client — this is purely a build-time memory fix.
+
+**Propagation:**
+- Severity: NORMAL (deploy reliability) · Layers: backend (`scripts/vps-deploy.sh`)
+- Migration: NO · Flag: n/a · Design impact: none · Breaking: NO
+- Rollback: revert the one hunk
+- Also recommended (VPS-side, not code): add swap on the host to absorb cross-client build spikes.
+
 ## [0.1.23] — 2026-07-01
 
 ### Changed

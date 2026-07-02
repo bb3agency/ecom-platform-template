@@ -198,7 +198,16 @@ fi
 # 2. Build new Docker image (old containers remain live during build)
 # ---------------------------------------------------------------------------
 log "Building Docker image..."
-docker compose -p "$COMPOSE_PROJECT" "${COMPOSE_FILES[@]}" build
+# Build services one at a time instead of the default parallel build. The backend
+# and workers images each run a memory-heavy `tsc`/esbuild compile in their builder
+# stage; building both at once reliably OOM-kills the compile on a small/shared VPS
+# (observed: build runs ~2-3 min then dies with exit 255). Serial builds roughly
+# halve peak memory; shared base layers stay cached so the second build is fast.
+# Services with only an `image:` (postgres/redis) are skipped by `build` automatically.
+for build_svc in $(docker compose -p "$COMPOSE_PROJECT" "${COMPOSE_FILES[@]}" config --services); do
+  log "Building image: $build_svc"
+  docker compose -p "$COMPOSE_PROJECT" "${COMPOSE_FILES[@]}" build "$build_svc"
+done
 
 # ---------------------------------------------------------------------------
 # 3. Run database migrations (before container swap)
