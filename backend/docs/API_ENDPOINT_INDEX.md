@@ -283,6 +283,7 @@ Ops endpoints are platform/developer controls. Do not expose write controls in n
 | POST | `/api/v1/ops/config/validate` | Validate config draft (ops:read) |
 | GET | `/api/v1/ops/config/stored` | DB-backed config rows. Per item: `{ domain, key, maskedValue, plaintextValue, keyVersion, requiresRestart, updatedAt }`. `plaintextValue` is **required** and returned for every active row, INCLUDING real cryptographic secrets — deliberate operator-UX policy for the Ops console (see `HARDENING_HISTORY.md` and `DECISIONS.md`). `isOpsConfigSecretKey()` predicate still drives `<input type="password">` rendering on the frontend but no longer gates plaintext disclosure. (ops:read) |
 | POST | `/api/v1/ops/config/save` | Save encrypted DB config (OTP `config-save`; `domain?` optional; `null` deactivates key) |
+| GET | `/api/v1/ops/notifications/whatsapp-otp-cost` | WhatsApp-OTP spend estimate (ops:read): `{ costPerMessagePaise, billingCycleStart, allTime:{count,costPaise}, currentCycle:{count,costPaise} }` — counted from `NotificationLog` WhatsApp OTP sends × `WHATSAPP_OTP_COST_PAISE`. Surfaced as a card on Ops → Config (added `backend-core 0.1.26`) |
 | POST | `/api/v1/ops/otp/request` | Request privileged-write OTP — body `{ action }` ∈ `config-save`, `load-shed-change`, `user-deactivate`, `admin-user-deactivate`, `system-restart`, `invite-revoke` |
 | POST | `/api/v1/ops/otp/verify` | Verify privileged-write OTP |
 | GET | `/api/v1/ops/otp/pending` | List caller's pending OTP challenges |

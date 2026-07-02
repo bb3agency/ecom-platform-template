@@ -378,7 +378,18 @@ These are stored AES-256-GCM encrypted in the `OpsConfigSecret` table and applie
 - **Generation:** Any random string — you set it in both Meta dashboard and here. `node -e "console.log(require('crypto').randomBytes(16).toString('hex'))"`
 
 **`META_WHATSAPP_API_VERSION`**
-- **What:** Meta Graph API version string, e.g. `v19.0`. Update when Meta deprecates older versions.
+- **What:** Meta Graph API version string. **Default `v25.0`** (adapter fallback since `backend-core 0.1.26`). Update when Meta deprecates older versions.
+
+**`OTP_WHATSAPP_ENABLED`** *(added `backend-core 0.1.26`)*
+- **What:** When `true` **and** WhatsApp is deliverable, the customer signup/login OTP is also sent over WhatsApp **in addition to** the primary channel (usually email) — same OTP, one hash, verified identically. Admin login OTP is unaffected (email-based).
+- **Default:** `false`. Read live per request (no restart). Requires an approved Meta **Authentication** template mapped as `CustomerOtpVerification` → `otp_verify` (see `WHATSAPP_TEMPLATE_REGISTRY.md`); until that exists, leave off (email OTP still works).
+- **DB-layer:** DB-overlay key, editable as a true/false dropdown in **Ops → Config → Notifications**.
+
+**`WHATSAPP_OTP_COST_PAISE`** *(added `backend-core 0.1.26`)*
+- **What:** Integer paise per WhatsApp OTP message, used **only** for the Ops cost estimate shown on Ops → Config (`GET /ops/notifications/whatsapp-otp-cost`, all-time + current calendar-month cycle, counted from `NotificationLog`). Does not affect sending.
+- **Default:** `14` (≈ ₹0.115 + 18% GST). Set to your BSP's actual per-message rate for an accurate figure.
+
+> Full per-client Meta onboarding (Business Suite, app, phone, webhook, App Review, and where each of these keys is entered): [`META_WHATSAPP_SETUP_GUIDE.md`](./META_WHATSAPP_SETUP_GUIDE.md). Template body/param contract: [`WHATSAPP_TEMPLATE_REGISTRY.md`](./WHATSAPP_TEMPLATE_REGISTRY.md).
 
 ---
 
