@@ -12,6 +12,16 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.25] — 2026-07-02
+
+### Fixed
+- **Serial VPS build: list the buildable services explicitly (`backend workers`) instead of `docker compose config --services`.** Refines 0.1.24. `config --services` also returns image-only services (`redis`; `postgres` is profiled out), and `docker compose build redis` on an image-only service could abort the deploy under `set -e`. The two `build:` services are backend + workers, so name them directly — matches exactly what the original parallel `docker compose build` produced, with zero chance of an image-only service failing the loop.
+
+**Propagation:**
+- Severity: NORMAL (deploy reliability) · Layers: backend (`scripts/vps-deploy.sh`)
+- Migration: NO · Flag: n/a · Design impact: none · Breaking: NO
+- Rollback: revert the hunk (returns to 0.1.24 behavior)
+
 ## [0.1.24] — 2026-07-02
 
 ### Fixed
