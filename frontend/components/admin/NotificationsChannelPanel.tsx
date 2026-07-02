@@ -15,6 +15,7 @@ import { useAdminAuth } from "@/contexts/admin-auth-context";
 import { ADMIN_PERMISSIONS, hasAdminPermission } from "@/lib/permissions";
 import { createIdempotencyKey } from "@/lib/idempotency";
 import { getApiErrorMessage } from "@/lib/error-messages";
+import { toast } from "@/lib/toast";
 import type {
   AdminNotificationSettings,
   NotificationProviderAvailability,
@@ -236,6 +237,14 @@ export function NotificationsChannelPanel() {
   const [success, setSuccess] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Surface transient error/success as global toast popups instead of large in-panel banners.
+  useEffect(() => {
+    if (error) toast.error(error);
+  }, [error]);
+  useEffect(() => {
+    if (success) toast.success(success);
+  }, [success]);
+
   // Local form state
   const [emailEnabled, setEmailEnabled] = useState(true);
   const [smsEnabled, setSmsEnabled] = useState(false);
@@ -364,13 +373,7 @@ export function NotificationsChannelPanel() {
         </p>
       </div>
 
-      {/* Global error */}
-      {error && (
-        <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
-          <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
-          <span>{error}</span>
-        </div>
-      )}
+      {/* Errors now surface as global toast popups (see the mirror effect above). */}
 
       {/* Channel availability cards */}
       <section>
@@ -576,13 +579,8 @@ export function NotificationsChannelPanel() {
       {/* Save */}
       {canWrite && (
         <div className="flex flex-col gap-3 border-t border-border pt-5 sm:flex-row sm:items-center sm:justify-between">
-          {success && (
-            <span className="flex items-center gap-1.5 text-sm font-medium text-green-700">
-              <CheckCircle2 className="size-4" aria-hidden />
-              {success}
-            </span>
-          )}
-          {!success && <span />}
+          {/* Success now surfaces as a global toast popup (see the mirror effect above). */}
+          <span />
           <button
             type="button"
             onClick={handleSave}

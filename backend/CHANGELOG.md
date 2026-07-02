@@ -12,6 +12,16 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.37] — 2026-07-03
+
+### Fixed
+- **Deleting a product variant 500'd instead of succeeding (or returning a clean error).** `adminDeleteProductVariant` did a bare `prisma.productVariant.delete()`. `CartItem.variant` and `OrderItem.variant` are both `onDelete: Restrict`, so any variant that was sitting in a cart or an order made the delete throw an unhandled Prisma P2003 foreign-key error → `500 INTERNAL_ERROR` (seen in the admin product editor). Now: (1) if the variant appears in any **order**, return a clean **409 CONFLICT** ("Cannot delete a variant that appears in existing orders. Deactivate it instead.") — its order history/invoices must be preserved; (2) otherwise clear the transient **cart lines** in the same transaction before deleting (Inventory, InventoryAdjustment and CartReservation already cascade). Added regression tests for the 409 path and the cart-cleanup path.
+
+**Propagation:**
+- Severity: HIGH (variant delete unusable whenever the variant was ever carted/ordered) · Layers: backend (`modules/products/products.service.ts` + `products.service.variant-delete.test.ts`)
+- Migration: NO · Flag: none · Design impact: none · Breaking: NO (adds a 409 for the order-history case that previously 500'd)
+- Rollback: revert the two files
+
 ## [0.1.36] — 2026-07-02
 
 ### Fixed

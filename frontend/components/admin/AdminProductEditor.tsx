@@ -43,6 +43,7 @@ import {
 } from "@/lib/admin-api";
 import { formatPaise } from "@/lib/admin-format";
 import { getApiErrorMessage } from "@/lib/error-messages";
+import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import { createIdempotencyKey } from "@/lib/idempotency";
 import { notifyAdminDataChanged } from "@/lib/admin-data-refresh";
@@ -147,6 +148,15 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [uploadTick, setUploadTick] = useState(false);
+
+  // Surface error/success as small left-anchored toast popups instead of large top-of-page banners.
+  // The state is kept because it also drives inline field highlighting via useAdminFormValidation.
+  useEffect(() => {
+    if (error) toast.error(error);
+  }, [error]);
+  useEffect(() => {
+    if (success) toast.success(success);
+  }, [success]);
   const [saving, setSaving] = useState(false);
   const [gstInvoicingEnabled, setGstInvoicingEnabled] = useState(false);
 
@@ -1140,17 +1150,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
         </div>
       </header>
 
-      {error ? (
-        <div className="rounded-xl border border-destructive/20 bg-destructive/10 p-4 text-sm text-destructive font-medium">
-          {error}
-        </div>
-      ) : null}
-
-      {success ? (
-        <div className="rounded-xl border border-zinc-300 bg-zinc-100 px-4 py-3 text-sm text-zinc-800 font-semibold flex items-center gap-2">
-          <Check className="h-4 w-4" /> {success}
-        </div>
-      ) : null}
+      {/* Error/success now surface as global toast popups (see the mirror effects above). */}
 
       {/* Ephemeral upload-success toast — green tick, auto-dismisses after 2s. */}
       {uploadTick ? (

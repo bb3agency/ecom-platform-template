@@ -8,11 +8,11 @@ import { ADMIN_PERMISSIONS, hasAdminPermission } from "@/lib/permissions";
 import { createIdempotencyKey } from "@/lib/idempotency";
 import type { AdminStoreProfile } from "@/lib/admin-api";
 import { getApiErrorMessage } from "@/lib/error-messages";
+import { toast } from "@/lib/toast";
 import { fetchPublicStoreConfigClient } from "@/lib/storefront-settings";
 import {
   Store,
   FileText,
-  CheckCircle2,
   AlertTriangle,
   Info,
   Lock,
@@ -45,6 +45,14 @@ export function StoreSettingsPanel() {
   const [success, setSuccess] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [gstInvoicingEnabled, setGstInvoicingEnabled] = useState(false);
+
+  // Surface transient error/success as global toast popups instead of large in-panel banners.
+  useEffect(() => {
+    if (error) toast.error(error);
+  }, [error]);
+  useEffect(() => {
+    if (success) toast.success(success);
+  }, [success]);
 
   useEffect(() => {
     let cancelled = false;
@@ -367,19 +375,7 @@ export function StoreSettingsPanel() {
           </p>
         )}
 
-        {error && (
-          <div className="flex min-w-0 items-start gap-2.5 rounded-lg border border-destructive/20 bg-destructive/10 p-3.5 text-xs text-destructive overflow-hidden">
-            <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" aria-hidden />
-            <span>{error}</span>
-          </div>
-        )}
-
-        {success && (
-          <div className="flex min-w-0 items-start gap-2.5 rounded-lg border border-green-200 bg-green-50 p-3.5 text-xs text-green-800 overflow-hidden">
-            <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5 text-green-600" aria-hidden />
-            <span>{success}</span>
-          </div>
-        )}
+        {/* Error/success now surface as global toast popups (see the mirror effects above). */}
 
         {canWrite && (
           <div className="flex justify-end pt-2 border-t border-border">

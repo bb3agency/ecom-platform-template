@@ -12,6 +12,20 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.20] — 2026-07-03
+
+### Added
+- **Global toast/popup notification system** to replace the large top-of-page inline banners with a small, viewport-aware popup on the LEFT that auto-dismisses in ~3s. New: `stores/toast.ts` (store — auto-dismiss, duplicate-collapse, max-4 cap), `lib/toast.ts` (`toast.success/error/info/warning(...)` helper usable from any event handler), and `components/shared/Toaster.tsx` (framer-motion renderer, mounted once in the root layout). Responsive by viewport: on mobile it spans the bottom with insets and compact sizing; on desktop it's a fixed ~380px column anchored bottom-left. Brand-independent status colours, `aria-live` announcements, honours `prefers-reduced-motion`, click-to-dismiss.
+
+### Changed
+- **Converted the highest-traffic surfaces to toasts** (pattern for the rest): admin `AdminProductEditor` (the save/variant error+success banners → toasts, incl. the variant-delete failure), admin `StoreSettingsPanel` and `NotificationsChannelPanel` (in-panel error/success banners → toasts), and storefront `AddToCartButton` (success "Added to cart" + error toast, inline error removed). Inline **field-validation highlighting** is unchanged (still driven by `useAdminFormValidation`); only the big status banners moved to toasts.
+
+**Propagation:**
+- Severity: NORMAL (additive UX system; converted surfaces are backward-compatible) · Layers: frontend (`stores/toast.ts`, `lib/toast.ts` + test, `components/shared/Toaster.tsx`, `app/layout.tsx`, `components/admin/{AdminProductEditor,StoreSettingsPanel,NotificationsChannelPanel}.tsx`, `components/cart/AddToCartButton.tsx`)
+- Migration: NO · Flag: none · Design impact: none (status colours are brand-independent; layout-neutral overlay) · Breaking: NO
+- Rollback: revert the listed files (unmounting `<Toaster/>` disables it; other panels still use their inline banners)
+- Pairs with backend-core 0.1.37 (variant-delete 409 fix — its clean error now shows as a toast in the product editor). Remaining admin panels still use inline banners and can be migrated incrementally by mirroring `error`/`success` state into `toast.*` and removing the banner JSX.
+
 ## [0.1.19] — 2026-07-03
 
 ### Fixed

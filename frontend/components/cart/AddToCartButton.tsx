@@ -7,6 +7,7 @@ import { addCartItem } from "@/lib/cart-api";
 import { useAuthStore } from "@/stores/auth";
 import { useCartStore } from "@/stores/cart";
 import { getApiErrorMessage } from "@/lib/error-messages";
+import { toast } from "@/lib/toast";
 import { trackEvent } from "@/lib/analytics";
 
 interface AddToCartButtonProps {
@@ -28,7 +29,6 @@ export function AddToCartButton({
 }: AddToCartButtonProps) {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const accessToken = useAuthStore((s) => s.accessToken);
   const setCart = useCartStore((s) => s.setCart);
   const markPendingMerge = useCartStore((s) => s.markPendingMerge);
@@ -36,7 +36,6 @@ export function AddToCartButton({
   const handleClick = async () => {
     try {
       setIsSubmitting(true);
-      setError(null);
       const cart = await addCartItem({ variantId, quantity }, accessToken);
       setCart(cart);
       trackEvent("ADD_TO_CART", { variantId, quantity });
@@ -49,9 +48,12 @@ export function AddToCartButton({
         } else {
           router.push(redirectTo);
         }
+      } else {
+        // Only confirm via toast when we're staying on the page; a redirect is its own feedback.
+        toast.success("Added to cart");
       }
     } catch (err) {
-      setError(getApiErrorMessage(err));
+      toast.error(getApiErrorMessage(err));
     } finally {
       setIsSubmitting(false);
     }
@@ -71,11 +73,6 @@ export function AddToCartButton({
         {icon ?? <ShoppingCart className="size-4" aria-hidden />}
         {isSubmitting ? "Adding..." : label}
       </button>
-      {error ? (
-        <p className="text-xs text-destructive" role="alert">
-          {error}
-        </p>
-      ) : null}
     </div>
   );
 }

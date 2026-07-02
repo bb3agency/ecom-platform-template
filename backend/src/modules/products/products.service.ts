@@ -1356,7 +1356,25 @@ export class ProductsService {
     if (variantCount <= 1) {
       throw new AppError(ERROR_CODES.VALIDATION_ERROR, 'Cannot delete the last variant of a product', 400);
     }
-    await this.fastify.prisma.productVariant.delete({ where: { id: variantId } });
+    // OrderItem.variant is onDelete: Restrict — a variant that appears in any order cannot be
+    // hard-deleted (it anchors invoices, analytics and order history). Return a clean 409 instead
+    // of letting Prisma throw an unhandled P2003 foreign-key error (which surfaced as a 500).
+    // Deactivating the variant is the correct action for sold items.
+    const orderItemCount = await this.fastify.prisma.orderItem.count({ where: { variantId } });
+    if (orderItemCount > 0) {
+      throw new AppError(
+        ERROR_CODES.CONFLICT,
+        'Cannot delete a variant that appears in existing orders. Deactivate it instead.',
+        409
+      );
+    }
+    // CartItem.variant is also onDelete: Restrict, but live cart lines are transient — clear them
+    // in the same transaction so the delete succeeds. Inventory, InventoryAdjustment and
+    // CartReservation all cascade automatically.
+    await this.fastify.prisma.$transaction([
+      this.fastify.prisma.cartItem.deleteMany({ where: { variantId } }),
+      this.fastify.prisma.productVariant.delete({ where: { id: variantId } })
+    ]);
     await this.invalidateProductListCacheSafe();
     return { message: 'Product variant deleted' };
   }

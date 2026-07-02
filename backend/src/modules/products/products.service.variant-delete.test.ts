@@ -15,6 +15,14 @@ function makeFastify(overrides: Record<string, unknown> = {}): FastifyInstance {
         findFirst: vi.fn().mockResolvedValue({ id: 'v1', productId: 'prod_1' }),
         ...((overrides.productVariant as object) ?? {})
       },
+      orderItem: {
+        count: vi.fn().mockResolvedValue(0),
+        ...((overrides.orderItem as object) ?? {})
+      },
+      cartItem: {
+        deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+        ...((overrides.cartItem as object) ?? {})
+      },
       $transaction: vi.fn().mockResolvedValue([])
     },
     redis: {
@@ -31,15 +39,31 @@ function makeFastify(overrides: Record<string, unknown> = {}): FastifyInstance {
 }
 
 describe('ProductsService adminDeleteProductVariant', () => {
-  it('deletes variant when product has more than one variant', async () => {
+  it('deletes variant when product has more than one variant, clearing live cart lines first', async () => {
     const fastify = makeFastify();
     const service = new ProductsService(fastify);
 
     const result = await service.adminDeleteProductVariant('prod_1', 'v1');
     expect(result).toEqual({ message: 'Product variant deleted' });
+    // Transient cart lines (CartItem.variant is onDelete: Restrict) are removed in the same tx
+    // so the delete does not throw a Prisma P2003 foreign-key error (previously a 500).
+    expect(fastify.prisma.cartItem.deleteMany).toHaveBeenCalledWith({ where: { variantId: 'v1' } });
     expect(fastify.prisma.productVariant.delete).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: 'v1' } })
     );
+    expect(fastify.prisma.$transaction).toHaveBeenCalled();
+  });
+
+  it('throws 409 (not 500) when the variant appears in existing orders', async () => {
+    const fastify = makeFastify({ orderItem: { count: vi.fn().mockResolvedValue(3) } });
+    const service = new ProductsService(fastify);
+
+    await expect(service.adminDeleteProductVariant('prod_1', 'v1')).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'CONFLICT'
+    });
+    // Must not attempt the delete when orders reference the variant.
+    expect(fastify.prisma.productVariant.delete).not.toHaveBeenCalled();
   });
 
   it('throws 400 when trying to delete the last variant', async () => {
