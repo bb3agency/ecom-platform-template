@@ -12,6 +12,22 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.30] — 2026-07-02
+
+### Changed
+- **Per-template notification routing is now MULTI-channel.** `StoreSettings.primaryNotificationChannels[template]` changed from a single channel (`'EMAIL'`) to a **set** (`['EMAIL','WHATSAPP']`) — a notification fans out to EVERY selected channel. No migration: it's a `Json` column; the service/worker normalize legacy single-string values to `[value]`, and the API accepts string OR array (`anyOf`).
+  - **Order notifications:** the `send-primary` worker handler wraps its existing per-channel delivery in a `deliverOne(channel)` loop over the configured array. Single channel keeps the original retry/unrecoverable semantics; multi-channel is best-effort per channel (each already logs + alerts) so one failing channel neither blocks the others nor triggers a whole-job retry that would duplicate the ones that already sent.
+  - **OTP (customer + admin):** `resolveOtpDeliveryChannels` now reads the configured channel set (∩ deliverable). **WhatsApp for OTP keeps the ops `OTP_WHATSAPP_ENABLED` kill-switch** — a merchant can select WhatsApp for OTP, but it only actually sends when ops has that flag on (paid-feature gate). Admin login OTP (`preferEmail`) always includes email when deliverable (security floor) plus any configured extras — so the same OTP goes to email **and** WhatsApp when configured + gated on. Registry now also maps **`OtpVerification` → `otp_verify`** (admin OTP over WhatsApp).
+  - **Email fallback ("if WhatsApp isn't set up / is off, send to email anyway"):** the order worker filters the configured set to currently-deliverable channels and falls back to `['EMAIL']` when none can deliver, so a WhatsApp-only mapping still notifies via email when WhatsApp is off. OTP falls back to the first deliverable channel (email-first would strand phone-only signups that have no email address).
+  - **WhatsApp/SMS require a phone on file:** deliverOne skips WhatsApp/SMS for any recipient without a phone number (order recipients, and admin/merchant users — admin login OTP only fans to WhatsApp when the admin has `user.phone`).
+- `providerAvailability.otpWhatsappEnabled` added to `GET /admin/settings/notifications` so the panel can flag "WhatsApp OTP won't send until ops enables it".
+
+**Propagation:**
+- Severity: NORMAL (feature; multi-channel is opt-in per template, defaults unchanged = email) · Layers: backend (`queues/workers/notifications.worker.ts`, `common/notifications/otp-deliverability.ts`, `modules/auth/{otp-channel.ts,auth.service.ts}`, `modules/notifications/whatsapp-template-registry.ts`, `modules/settings/**`)
+- Migration: NO (`Json` column; values normalized on read/write) · Flag: `OTP_WHATSAPP_ENABLED` still gates OTP-over-WhatsApp · Design impact: none · Breaking: NO (single-string configs still work)
+- Rollback: revert the listed files (stored arrays still read fine as sets)
+- Pairs with frontend-core 0.1.17 (per-template on/off channel toggles). Merchant enables channels in Admin → Settings → Notifications; each notification sends to all enabled+provisioned channels.
+
 ## [0.1.29] — 2026-07-02
 
 ### Changed

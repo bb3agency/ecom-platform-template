@@ -12,6 +12,17 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.17] — 2026-07-02
+
+### Changed
+- **Notifications panel is now MULTI-select (on/off per channel), not single-primary.** `NotificationsChannelPanel` renders independent Email / SMS / WhatsApp toggles per notification — a notification is sent to EVERY enabled channel. `primaryChannels` is now `Record<string, Channel[]>` (was a single value); the panel seeds from arrays (accepting legacy single-string values) and PATCHes arrays. Only provisioned channels are enableable; OTP rows show an amber hint when WhatsApp is selected but the ops `OTP_WHATSAPP_ENABLED` gate is off. `providerAvailability.otpWhatsappEnabled` added to the settings type.
+
+**Propagation:**
+- Severity: NORMAL (feature) · Layers: frontend (`lib/admin-api.ts`, `components/admin/NotificationsChannelPanel.tsx`)
+- Migration: NO · Flag: n/a · Design impact: none (token-styled) · Breaking: NO (reads legacy single-string values)
+- Rollback: revert the two files
+- Pairs with backend-core 0.1.30 (multi-channel routing + fan-out).
+
 ## [0.1.16] — 2026-07-02
 
 ### Fixed

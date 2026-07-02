@@ -45,6 +45,13 @@ describe('WhatsappTemplateRegistry', () => {
     expect(resolved?.parameters).toEqual(['123456']);
   });
 
+  it('maps the admin OTP template (OtpVerification) to the same otp_verify authentication template', () => {
+    const resolved = registry.resolve('OtpVerification', { otp: '654321' });
+    expect(resolved?.metaName).toBe('otp_verify');
+    expect(resolved?.authentication).toBe(true);
+    expect(resolved?.parameters).toEqual(['654321']);
+  });
+
   it('marks non-authentication templates with authentication=false', () => {
     expect(registry.resolve('OrderConfirmed', {})?.authentication).toBe(false);
   });

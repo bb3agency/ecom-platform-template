@@ -71,10 +71,13 @@ export class SettingsService {
         !!(runtimeConfig.META_WHATSAPP_ACCESS_TOKEN ?? '').trim() &&
         !!(runtimeConfig.META_WHATSAPP_PHONE_NUMBER_ID ?? '').trim();
 
+      const otpWhatsappEnabled = whatsappProvisioned && flagEnabled('OTP_WHATSAPP_ENABLED', false);
+
       return {
         emailProvisioned,
         smsProvisioned,
         whatsappProvisioned,
+        otpWhatsappEnabled,
         smsProvider: smsProvisioned ? smsProvider : null
       };
     } catch {
@@ -83,28 +86,42 @@ export class SettingsService {
         emailProvisioned: false,
         smsProvisioned: false,
         whatsappProvisioned: false,
+        otpWhatsappEnabled: false,
         smsProvider: null
       };
     }
   }
 
-  private normalizePrimaryChannels(value: unknown): Record<string, PrimaryNotificationChannel> {
+  /** Coerce a stored/input value (single `'EMAIL'` OR array `['EMAIL','WHATSAPP']`) to a deduped channel array. */
+  private static normalizeChannelArray(raw: unknown): PrimaryNotificationChannel[] {
+    const arr = Array.isArray(raw) ? raw : [raw];
+    const out: PrimaryNotificationChannel[] = [];
+    for (const v of arr) {
+      if ((v === 'EMAIL' || v === 'SMS' || v === 'WHATSAPP') && !out.includes(v)) {
+        out.push(v);
+      }
+    }
+    return out;
+  }
+
+  private normalizePrimaryChannels(value: unknown): Record<string, PrimaryNotificationChannel[]> {
     const defaults = Object.fromEntries(
-      supportedEmailTemplates.map((template) => [template, SettingsService.defaultPrimaryChannel])
-    ) as Record<string, PrimaryNotificationChannel>;
+      supportedEmailTemplates.map((template) => [template, [SettingsService.defaultPrimaryChannel]])
+    ) as Record<string, PrimaryNotificationChannel[]>;
 
     if (!value || typeof value !== 'object' || Array.isArray(value)) {
       return defaults;
     }
 
-    const normalized: Record<string, PrimaryNotificationChannel> = { ...defaults };
-    for (const [template, channel] of Object.entries(value as Record<string, unknown>)) {
+    const normalized: Record<string, PrimaryNotificationChannel[]> = { ...defaults };
+    for (const [template, channelRaw] of Object.entries(value as Record<string, unknown>)) {
       if (!supportedEmailTemplates.includes(template as (typeof supportedEmailTemplates)[number])) {
         continue;
       }
-      if (channel === 'EMAIL' || channel === 'SMS' || channel === 'WHATSAPP') {
-        normalized[template] = channel;
-      }
+      const list = SettingsService.normalizeChannelArray(channelRaw);
+      // Never store an empty set — fall back to the default channel so a notification always has a
+      // route (merchants fully disable a channel type via the master NOTIFY_*_ENABLED toggles).
+      normalized[template] = list.length > 0 ? list : [SettingsService.defaultPrimaryChannel];
     }
 
     return normalized;

@@ -175,6 +175,80 @@ describe('AuthService.requestAdminLoginOtp', () => {
     );
   });
 
+  it('fans admin login OTP to BOTH email and WhatsApp when OTP_WHATSAPP_ENABLED and admin has a phone', async () => {
+    const { service, mocks } = createHarness({
+      userRecord: {
+        id: 'admin_1',
+        email: 'admin@example.com',
+        phone: '+911234567890',
+        role: 'ADMIN',
+        passwordHash: bcrypt.hashSync('correctpass', 1),
+        firstName: 'Admin',
+        lastName: 'User',
+        isVerified: true
+      }
+    });
+    mocks.storeSettingsFindUnique.mockResolvedValue({
+      notifyEmailEnabled: true,
+      notifySmsEnabled: false,
+      notifyWhatsappEnabled: true,
+      primaryNotificationChannels: { OtpVerification: ['EMAIL', 'WHATSAPP'] }
+    });
+    vi.stubEnv('NOTIFY_WHATSAPP_ENABLED', 'true');
+    vi.stubEnv('OTP_WHATSAPP_ENABLED', 'true');
+    vi.stubEnv('META_WHATSAPP_ACCESS_TOKEN', 'meta-token');
+    vi.stubEnv('META_WHATSAPP_PHONE_NUMBER_ID', 'pnid');
+
+    await service.requestAdminLoginOtp({
+      email: 'admin@example.com',
+      password: 'correctpass',
+      clientIp: '127.0.0.1'
+    });
+
+    expect(mocks.notificationsAdd).toHaveBeenCalledWith(
+      'send-email',
+      expect.objectContaining({ template: 'OtpVerification', to: 'admin@example.com' }),
+      expect.any(Object)
+    );
+    expect(mocks.notificationsAdd).toHaveBeenCalledWith(
+      'send-whatsapp',
+      expect.objectContaining({ template: 'OtpVerification', phone: '+911234567890' }),
+      expect.any(Object)
+    );
+  });
+
+  it('does NOT send WhatsApp OTP to an admin without a phone number (email only)', async () => {
+    // Default admin userRecord has no `phone`.
+    const { service, mocks } = createHarness();
+    mocks.storeSettingsFindUnique.mockResolvedValue({
+      notifyEmailEnabled: true,
+      notifySmsEnabled: false,
+      notifyWhatsappEnabled: true,
+      primaryNotificationChannels: { OtpVerification: ['EMAIL', 'WHATSAPP'] }
+    });
+    vi.stubEnv('NOTIFY_WHATSAPP_ENABLED', 'true');
+    vi.stubEnv('OTP_WHATSAPP_ENABLED', 'true');
+    vi.stubEnv('META_WHATSAPP_ACCESS_TOKEN', 'meta-token');
+    vi.stubEnv('META_WHATSAPP_PHONE_NUMBER_ID', 'pnid');
+
+    await service.requestAdminLoginOtp({
+      email: 'admin@example.com',
+      password: 'correctpass',
+      clientIp: '127.0.0.1'
+    });
+
+    expect(mocks.notificationsAdd).toHaveBeenCalledWith(
+      'send-email',
+      expect.objectContaining({ template: 'OtpVerification', to: 'admin@example.com' }),
+      expect.any(Object)
+    );
+    expect(mocks.notificationsAdd).not.toHaveBeenCalledWith(
+      'send-whatsapp',
+      expect.anything(),
+      expect.anything()
+    );
+  });
+
   it('returns generic message without sending OTP when user is not found (anti-enumeration)', async () => {
     const { service, mocks } = createHarness({ userRecord: null });
 

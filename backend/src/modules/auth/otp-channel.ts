@@ -76,6 +76,29 @@ export function resolvePrimaryOtpChannel(config: unknown, templateKey: OtpTempla
   return null;
 }
 
+/** Coerce a stored routing value (single `'EMAIL'` OR an array `['EMAIL','WHATSAPP']`) to a deduped OtpChannel[]. */
+export function normalizeChannelList(value: unknown): OtpChannel[] {
+  const toChannel = (v: unknown): OtpChannel | null =>
+    v === 'SMS' ? 'sms' : v === 'WHATSAPP' ? 'whatsapp' : v === 'EMAIL' ? 'email' : null;
+  const raw = Array.isArray(value) ? value : value === undefined || value === null ? [] : [value];
+  const out: OtpChannel[] = [];
+  for (const item of raw) {
+    const ch = toChannel(item);
+    if (ch && !out.includes(ch)) {
+      out.push(ch);
+    }
+  }
+  return out;
+}
+
+/** The configured channel SET for one template from `primaryNotificationChannels` (multi-channel). */
+export function resolveChannelListForTemplate(config: unknown, templateKey: string): OtpChannel[] {
+  if (!config || typeof config !== 'object' || Array.isArray(config)) {
+    return [];
+  }
+  return normalizeChannelList((config as Record<string, unknown>)[templateKey]);
+}
+
 export function resolveEffectiveOtpChannel(available: OtpChannel[], primary: OtpChannel | null): OtpChannel {
   if (available.length === 0) {
     throw new AppError(

@@ -19,8 +19,7 @@ import { resolveNotificationRuntimeConfig } from '@common/notifications/notifica
 import {
   assertOtpChannelDeliverable,
   resolveOtpChannelForTemplate,
-  resolveOtpDeliveryChannels,
-  resolveOtpNotifyToggles
+  resolveOtpDeliveryChannels
 } from '@common/notifications/otp-deliverability';
 import { sendNotificationFailureAlert, sendTechnicalFailureAlert } from '@modules/notifications/notification-failure-alert';
 import { OtpChannel } from './otp-channel';
@@ -1176,27 +1175,34 @@ export class AuthService {
       );
     }
 
-    const otpConfig = await this.getAdminOtpChannelConfig();
     const runtime = await resolveNotificationRuntimeConfig(this.fastify.prisma);
     const storeSettingsForFlags = await this.fastify.prisma.storeSettings.findUnique({
       where: { singletonKey: 'default' },
       select: {
         notifyEmailEnabled: true,
         notifySmsEnabled: true,
-        notifyWhatsappEnabled: true
+        notifyWhatsappEnabled: true,
+        primaryNotificationChannels: true
       }
     });
-    const toggles = resolveOtpNotifyToggles(
-      storeSettingsForFlags
-        ? {
-            emailEnabled: storeSettingsForFlags.notifyEmailEnabled,
-            smsEnabled: storeSettingsForFlags.notifySmsEnabled,
-            whatsappEnabled: storeSettingsForFlags.notifyWhatsappEnabled
-          }
-        : undefined,
-      runtime
-    );
-    assertOtpChannelDeliverable(otpConfig.channel, toggles, runtime);
+    const adminStoreFlags = storeSettingsForFlags
+      ? {
+          emailEnabled: storeSettingsForFlags.notifyEmailEnabled,
+          smsEnabled: storeSettingsForFlags.notifySmsEnabled,
+          whatsappEnabled: storeSettingsForFlags.notifyWhatsappEnabled
+        }
+      : undefined;
+    // Admin login OTP prefers email, and (when OTP_WHATSAPP_ENABLED is on AND the admin has a
+    // phone number) ALSO fans the same OTP out to WhatsApp — identical mechanism to the customer
+    // flow (same OTP, one hash, verified identically).
+    const { channels, primaryChannel, toggles } = resolveOtpDeliveryChannels({
+      templateKey: 'OtpVerification',
+      storeFlags: adminStoreFlags,
+      primaryChannels: storeSettingsForFlags?.primaryNotificationChannels,
+      runtime,
+      preferEmail: true
+    });
+    assertOtpChannelDeliverable(primaryChannel, toggles, runtime);
 
     const otp = generateOtp();
     const otpHash = hashOtp(otp);
@@ -1209,56 +1215,53 @@ export class AuthService {
       await this.fastify.redis.set(ciKey, otp, 'EX', AuthService.ADMIN_LOGIN_OTP_TTL_SECONDS);
     }
 
-    const jobId = `admin-login-otp-${user.id}-${Date.now()}`;
+    // SMS/WhatsApp need the admin's phone. A hard error only if the PRIMARY channel needs a phone
+    // the admin lacks; a phone-less admin just doesn't get the extra WhatsApp/SMS copy (email still sends).
+    if (primaryChannel !== 'email' && !user.phone) {
+      throw new AppError(
+        ERROR_CODES.VALIDATION_ERROR,
+        `Admin phone number is required for ${primaryChannel.toUpperCase()} OTP delivery`,
+        400
+      );
+    }
+    const deliveryChannels = channels.filter((ch) => ch === 'email' || Boolean(user.phone));
+
+    let currentChannel: OtpChannel = primaryChannel;
     try {
-      if (otpConfig.channel === 'email') {
-        await this.fastify.queues.notifications.add(
-          'send-email',
-          {
-            to: user.email,
-            template: 'OtpVerification',
-            data: { otp }
-          },
-          { jobId }
-        );
-      } else if (otpConfig.channel === 'sms') {
-        if (!user.phone) {
-          throw new AppError(ERROR_CODES.VALIDATION_ERROR, 'Admin phone number is required for SMS OTP delivery', 400);
+      for (const ch of deliveryChannels) {
+        currentChannel = ch;
+        const jobId = `admin-login-otp-${ch}-${user.id}-${Date.now()}`;
+        if (ch === 'email') {
+          await this.fastify.queues.notifications.add(
+            'send-email',
+            { to: user.email, template: 'OtpVerification', data: { otp } },
+            { jobId }
+          );
+        } else if (ch === 'sms') {
+          await this.fastify.queues.notifications.add(
+            'send-sms',
+            { phone: user.phone!, template: 'OtpVerification', data: { otp } },
+            { jobId }
+          );
+        } else {
+          await this.fastify.queues.notifications.add(
+            'send-whatsapp',
+            { phone: user.phone!, template: 'OtpVerification', data: { otp } },
+            { jobId }
+          );
         }
-        await this.fastify.queues.notifications.add(
-          'send-sms',
-          {
-            phone: user.phone,
-            template: 'OtpVerification',
-            data: { otp }
-          },
-          { jobId }
-        );
-      } else {
-        if (!user.phone) {
-          throw new AppError(ERROR_CODES.VALIDATION_ERROR, 'Admin phone number is required for WhatsApp OTP delivery', 400);
-        }
-        await this.fastify.queues.notifications.add(
-          'send-whatsapp',
-          {
-            phone: user.phone,
-            template: 'OtpVerification',
-            data: { otp }
-          },
-          { jobId }
-        );
       }
     } catch (error) {
       await sendNotificationFailureAlert({
         prisma: this.fastify.prisma,
         template: 'OtpVerification',
-        channel: otpConfig.channel.toUpperCase() as 'SMS' | 'WHATSAPP' | 'EMAIL',
-        recipient: otpConfig.channel === 'email' ? (user.email ?? input.email) : (user.phone ?? input.email),
-        errorMessage: error instanceof Error ? error.message : 'Unable to enqueue admin login OTP email',
+        channel: currentChannel.toUpperCase() as 'SMS' | 'WHATSAPP' | 'EMAIL',
+        recipient: currentChannel === 'email' ? (user.email ?? input.email) : (user.phone ?? input.email),
+        errorMessage: error instanceof Error ? error.message : 'Unable to enqueue admin login OTP',
         failureStage: 'QUEUE_ENQUEUE',
         queueName: 'notifications',
-        jobName: otpConfig.channel === 'email' ? 'send-email' : otpConfig.channel === 'sms' ? 'send-sms' : 'send-whatsapp',
-        jobId
+        jobName: currentChannel === 'email' ? 'send-email' : currentChannel === 'sms' ? 'send-sms' : 'send-whatsapp',
+        jobId: `admin-login-otp-${currentChannel}-${user.id}`
       });
       throw error;
     }

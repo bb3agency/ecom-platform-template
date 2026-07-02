@@ -770,6 +770,8 @@ export interface NotificationProviderAvailability {
   smsProvisioned: boolean;
   /** true = NOTIFY_WHATSAPP_ENABLED is true AND META_WHATSAPP_* keys are provisioned in ops */
   whatsappProvisioned: boolean;
+  /** true = OTP_WHATSAPP_ENABLED is on: signup/login OTP is ALSO sent over WhatsApp (in addition to the primary channel) */
+  otpWhatsappEnabled: boolean;
   /** Active SMS provider name when smsProvisioned=true; null otherwise */
   smsProvider: "msg91" | "fast2sms" | "noop" | null;
 }
@@ -778,7 +780,8 @@ export interface AdminNotificationSettings {
   emailEnabled: boolean;
   smsEnabled: boolean;
   whatsappEnabled: boolean;
-  primaryChannels: Record<string, "EMAIL" | "SMS" | "WHATSAPP">;
+  /** Per-template SET of channels (multi-channel) — a notification fans out to all of them. */
+  primaryChannels: Record<string, ("EMAIL" | "SMS" | "WHATSAPP")[]>;
   smsTemplates: Record<string, string>;
   /** Ops-layer provider availability. Read-only for admin layer. */
   providerAvailability: NotificationProviderAvailability;

@@ -5,6 +5,7 @@ import {
   type OtpChannel,
   type OtpChannelFlags,
   type OtpTemplateKey,
+  resolveChannelListForTemplate,
   resolveEffectiveOtpChannel,
   resolvePrimaryOtpChannel
 } from '@modules/auth/otp-channel';
@@ -108,13 +109,15 @@ export function resolveOtpChannelForTemplate(input: {
 }
 
 /**
- * Resolves the full set of channels an OTP should be delivered to.
+ * Resolves the full set of channels an OTP should be delivered to (MULTI-channel).
  *
- * Base behaviour is unchanged: the primary channel (from primaryChannels config, or the
- * first deliverable channel) is always included. When `OTP_WHATSAPP_ENABLED=true` and
- * WhatsApp is deliverable, WhatsApp is ALSO added, so the same OTP goes to e.g. email +
- * WhatsApp together. Channels are de-duplicated and returned in a stable order
- * (primary first, then any extra channels).
+ * The merchant selects a SET of channels per OTP template in Admin → Settings → Notifications
+ * (`primaryNotificationChannels[templateKey]` = e.g. `['EMAIL','WHATSAPP']`). We keep the ones that
+ * are actually deliverable (enabled + provider credentials present). WhatsApp for OTP carries an
+ * ADDITIONAL platform kill-switch: it is only included when the ops `OTP_WHATSAPP_ENABLED` flag is
+ * on (a paid-feature gate) — so a merchant toggling WhatsApp for OTP has no effect until ops enables
+ * it. If nothing is configured/deliverable, we fall back to the first deliverable channel (email-first).
+ * The same OTP (one hash) is sent to every returned channel; verifying it once consumes it.
  */
 export function resolveOtpDeliveryChannels(input: {
   templateKey: OtpTemplateKey;
@@ -123,20 +126,43 @@ export function resolveOtpDeliveryChannels(input: {
   runtime: NodeJS.ProcessEnv;
   preferEmail?: boolean;
 }): { channels: OtpChannel[]; primaryChannel: OtpChannel; toggles: OtpNotifyToggles } {
-  const { channel: primaryChannel, toggles } = resolveOtpChannelForTemplate(input);
-
-  const channels: OtpChannel[] = [primaryChannel];
-
+  const toggles = resolveOtpNotifyToggles(input.storeFlags, input.runtime);
+  const deliverable = getDeliverableOtpChannels(input.storeFlags, input.runtime);
   const otpWhatsappEnabled = parseEnabledFlag(input.runtime.OTP_WHATSAPP_ENABLED, false);
-  if (
-    otpWhatsappEnabled &&
-    !channels.includes('whatsapp') &&
-    isOtpChannelDeliverable('whatsapp', toggles, input.runtime)
-  ) {
-    channels.push('whatsapp');
+
+  const configured = resolveChannelListForTemplate(input.primaryChannels, input.templateKey);
+  let channels = configured.filter(
+    (ch) => deliverable.includes(ch) && (ch !== 'whatsapp' || otpWhatsappEnabled)
+  );
+
+  // Admin login OTP (`preferEmail`) always includes email when deliverable — a security floor so a
+  // misconfigured routing can never lock an admin out of their email OTP; configured extras stay.
+  if (input.preferEmail && deliverable.includes('email') && !channels.includes('email')) {
+    channels = ['email', ...channels];
   }
 
-  return { channels, primaryChannel, toggles };
+  // Nothing configured is deliverable (e.g. only WhatsApp selected but it's off) → fall back to the
+  // first deliverable channel. (We can't blindly prefer email here: phone-only signups have no email
+  // address, so email-first would strand them; when the customer HAS an email it's normally kept in
+  // the configured set and survives above. The `preferEmail` admin path already forces email in.)
+  if (channels.length === 0) {
+    const fallback = deliverable[0];
+    if (!fallback) {
+      throw new AppError(
+        ERROR_CODES.VALIDATION_ERROR,
+        'OTP delivery is not configured. Enable Email in Admin → Settings → Notifications, set RESEND_API_KEY and a verified RESEND_FROM domain, ensure NOTIFY_EMAIL_ENABLED=true on API and workers, and run the notifications worker process.',
+        400
+      );
+    }
+    channels = [fallback];
+  }
+
+  // preferEmail (admin login) — surface email as the primary/first channel when present.
+  const primaryChannel: OtpChannel =
+    input.preferEmail && channels.includes('email') ? 'email' : (channels[0] as OtpChannel);
+  const ordered = [primaryChannel, ...channels.filter((ch) => ch !== primaryChannel)];
+
+  return { channels: ordered, primaryChannel, toggles };
 }
 
 export function assertOtpChannelDeliverable(

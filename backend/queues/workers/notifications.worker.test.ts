@@ -146,6 +146,67 @@ describe('notifications worker', () => {
     expect(sendEmailSpy).not.toHaveBeenCalled();
   });
 
+  it('fans send-primary out to EVERY configured channel (email + WhatsApp) when the mapping is an array', async () => {
+    findStoreSettings.mockResolvedValue({
+      notifyEmailEnabled: true,
+      notifySmsEnabled: true,
+      notifyWhatsappEnabled: true,
+      primaryNotificationChannels: { OrderConfirmed: ['EMAIL', 'WHATSAPP'] },
+      storeName: 'Test Store',
+      smsTemplates: null
+    });
+    createNotificationsWorker({}, {
+      Worker: MockWorker as unknown as NotificationsWorkerType,
+      PrismaClient: MockPrismaClient as unknown as NotificationsPrismaType
+    });
+    (sendEmailSpy as import('vitest').Mock).mockResolvedValue({ messageId: 'email_multi', providerPayload: {} });
+    (sendWhatsappSpy as import('vitest').Mock).mockResolvedValue({ messageId: 'wa_multi', providerPayload: {} });
+
+    await processor?.({
+      name: 'send-primary',
+      data: {
+        email: 'primary@example.com',
+        phone: '9876543210',
+        template: 'OrderConfirmed',
+        data: { orderId: '1' }
+      }
+    });
+
+    expect(sendEmailSpy).toHaveBeenCalledTimes(1);
+    expect(sendWhatsappSpy).toHaveBeenCalledTimes(1);
+    expect(sendSmsSpy).not.toHaveBeenCalled();
+  });
+
+  it('falls back to EMAIL for send-primary when the only configured channel (WhatsApp) is turned off', async () => {
+    findStoreSettings.mockResolvedValue({
+      notifyEmailEnabled: true,
+      notifySmsEnabled: false,
+      notifyWhatsappEnabled: false, // WhatsApp off
+      primaryNotificationChannels: { OrderConfirmed: ['WHATSAPP'] },
+      storeName: 'Test Store',
+      smsTemplates: null
+    });
+    createNotificationsWorker({}, {
+      Worker: MockWorker as unknown as NotificationsWorkerType,
+      PrismaClient: MockPrismaClient as unknown as NotificationsPrismaType
+    });
+    (sendEmailSpy as import('vitest').Mock).mockResolvedValue({ messageId: 'email_fallback', providerPayload: {} });
+
+    await processor?.({
+      name: 'send-primary',
+      data: {
+        email: 'customer@example.com',
+        phone: '9876543210',
+        template: 'OrderConfirmed',
+        data: { orderId: '1' }
+      }
+    });
+
+    expect(sendEmailSpy).toHaveBeenCalledTimes(1);
+    expect(sendWhatsappSpy).not.toHaveBeenCalled();
+    expect(sendSmsSpy).not.toHaveBeenCalled();
+  });
+
   it('throws on send-email when RESEND_FROM is missing so BullMQ can retry', async () => {
     delete process.env.RESEND_FROM;
     createNotificationsWorker({}, {

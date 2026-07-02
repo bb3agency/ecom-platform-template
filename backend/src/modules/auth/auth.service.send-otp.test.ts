@@ -188,6 +188,8 @@ describe('AuthService sendOtp', () => {
     vi.stubEnv('NOTIFY_WHATSAPP_ENABLED', 'true');
     vi.stubEnv('META_WHATSAPP_ACCESS_TOKEN', 'wa-token');
     vi.stubEnv('META_WHATSAPP_PHONE_NUMBER_ID', 'wa-phone-id');
+    // WhatsApp for OTP carries the platform kill-switch — required to route OTP over WhatsApp.
+    vi.stubEnv('OTP_WHATSAPP_ENABLED', 'true');
 
     const notificationsAdd = vi.fn().mockResolvedValue(undefined);
     const fastify = {

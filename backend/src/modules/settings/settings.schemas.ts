@@ -62,8 +62,14 @@ const notificationSettingsSchema = {
     primaryChannels: {
       type: 'object',
       additionalProperties: {
-        type: 'string',
-        enum: ['EMAIL', 'SMS', 'WHATSAPP']
+        anyOf: [
+          { type: 'string', enum: ['EMAIL', 'SMS', 'WHATSAPP'] },
+          {
+            type: 'array',
+            items: { type: 'string', enum: ['EMAIL', 'SMS', 'WHATSAPP'] },
+            maxItems: 3
+          }
+        ]
       },
       maxProperties: 100
     },
@@ -80,11 +86,12 @@ const notificationSettingsSchema = {
     providerAvailability: {
       type: 'object',
       additionalProperties: false,
-      required: ['emailProvisioned', 'smsProvisioned', 'whatsappProvisioned', 'smsProvider'],
+      required: ['emailProvisioned', 'smsProvisioned', 'whatsappProvisioned', 'otpWhatsappEnabled', 'smsProvider'],
       properties: {
         emailProvisioned: { type: 'boolean' },
         smsProvisioned: { type: 'boolean' },
         whatsappProvisioned: { type: 'boolean' },
+        otpWhatsappEnabled: { type: 'boolean' },
         smsProvider: {
           anyOf: [
             { type: 'string', enum: ['msg91', 'fast2sms', 'noop'] },

@@ -80,6 +80,14 @@ export class WhatsappTemplateRegistry {
         params: ['otp'],
         authentication: true
       },
+      // Admin login OTP — same Authentication template as the customer OTP (generic
+      // "your verification code"); single param = the code, copy-code button.
+      OtpVerification: {
+        metaName: 'otp_verify',
+        language: 'en',
+        params: ['otp'],
+        authentication: true
+      },
       OrderConfirmed: {
         metaName: 'order_confirmed',
         language: 'en',

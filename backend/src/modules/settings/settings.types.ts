@@ -55,6 +55,8 @@ export type ProviderAvailability = {
   smsProvisioned: boolean;
   /** true = NOTIFY_WHATSAPP_ENABLED is true AND META_WHATSAPP_* keys are set */
   whatsappProvisioned: boolean;
+  /** true = OTP_WHATSAPP_ENABLED is on: signup/login OTP is ALSO sent over WhatsApp (in addition to the primary channel) */
+  otpWhatsappEnabled: boolean;
   /** Which SMS provider is active when smsProvisioned=true; null if not provisioned */
   smsProvider: 'msg91' | 'fast2sms' | 'noop' | null;
 };
@@ -63,7 +65,8 @@ export type NotificationSettingsResponse = {
   emailEnabled: boolean;
   smsEnabled: boolean;
   whatsappEnabled: boolean;
-  primaryChannels: Record<string, PrimaryNotificationChannel>;
+  /** Per-template SET of delivery channels (multi-channel). A notification fans out to all of them. */
+  primaryChannels: Record<string, PrimaryNotificationChannel[]>;
   smsTemplates: Record<string, string>;
   /** Ops-layer provider availability. Read-only for admin; mutated only via /ops/config. */
   providerAvailability: ProviderAvailability;
@@ -75,7 +78,8 @@ export type UpdateNotificationSettingsInput = {
   emailEnabled?: boolean;
   smsEnabled?: boolean;
   whatsappEnabled?: boolean;
-  primaryChannels?: Record<string, PrimaryNotificationChannel>;
+  /** Accepts a single channel (legacy) or an array (multi-channel) per template. */
+  primaryChannels?: Record<string, PrimaryNotificationChannel | PrimaryNotificationChannel[]>;
   smsTemplates?: Record<string, string>;
 };
 

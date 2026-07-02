@@ -66,10 +66,23 @@ function normalizePrimaryChannel(value: string | undefined): PrimaryChannel | nu
   return null;
 }
 
-function normalizePrimaryChannels(value: unknown): Record<string, PrimaryChannel> {
+/** Coerce a stored routing value (single `'EMAIL'` OR array `['EMAIL','WHATSAPP']`) to a deduped PrimaryChannel[]. */
+function normalizeChannelArray(raw: unknown): PrimaryChannel[] {
+  const arr = Array.isArray(raw) ? raw : [raw];
+  const out: PrimaryChannel[] = [];
+  for (const v of arr) {
+    const channel = normalizePrimaryChannel(typeof v === 'string' ? v : undefined);
+    if (channel && !out.includes(channel)) {
+      out.push(channel);
+    }
+  }
+  return out;
+}
+
+function normalizePrimaryChannels(value: unknown): Record<string, PrimaryChannel[]> {
   const defaults = Object.fromEntries(
-    supportedEmailTemplates.map((template) => [template, 'EMAIL'])
-  ) as Record<string, PrimaryChannel>;
+    supportedEmailTemplates.map((template) => [template, ['EMAIL'] as PrimaryChannel[]])
+  ) as Record<string, PrimaryChannel[]>;
 
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return defaults;
@@ -80,17 +93,17 @@ function normalizePrimaryChannels(value: unknown): Record<string, PrimaryChannel
     if (!supportedEmailTemplates.includes(template as (typeof supportedEmailTemplates)[number])) {
       continue;
     }
-    const channel = normalizePrimaryChannel(typeof channelRaw === 'string' ? channelRaw : undefined);
-    if (channel) {
-      normalized[template] = channel;
+    const list = normalizeChannelArray(channelRaw);
+    if (list.length > 0) {
+      normalized[template] = list;
     }
   }
 
   return normalized;
 }
 
-function resolvePrimaryChannel(template: string, primaryChannels: Record<string, PrimaryChannel>): PrimaryChannel | null {
-  return primaryChannels[template] ?? null;
+function resolvePrimaryChannels(template: string, primaryChannels: Record<string, PrimaryChannel[]>): PrimaryChannel[] {
+  return primaryChannels[template] ?? [];
 }
 
 /**
@@ -481,9 +494,9 @@ export function createNotificationsWorker(
         const data = job.data as SendPrimaryNotificationJobData;
         const runtimeConfig = await resolveRuntimeConfig();
         const flags = await resolveEffectiveNotificationFlags(runtimeConfig);
-        const primaryChannel = resolvePrimaryChannel(data.template, flags.primaryChannels);
+        const channels = resolvePrimaryChannels(data.template, flags.primaryChannels);
 
-        if (!primaryChannel) {
+        if (channels.length === 0) {
           const errorMessage = 'Primary notification channel mapping missing or invalid for template';
           await prisma.notificationLog.create({
             data: {
@@ -509,6 +522,10 @@ export function createNotificationsWorker(
           throw new UnrecoverableError(errorMessage);
         }
 
+        // Deliver ONE channel. An internal `return` skips this channel (e.g. missing recipient);
+        // a `throw` propagates to the caller. Called once per selected channel so a single
+        // notification can fan out to several channels (email + WhatsApp + SMS).
+        const deliverOne = async (primaryChannel: PrimaryChannel): Promise<void> => {
         if (primaryChannel === 'EMAIL') {
           const recipient = data.email?.trim() ?? '';
 
@@ -796,6 +813,40 @@ export function createNotificationsWorker(
             jobId: String(job.id ?? 'unknown')
           });
           throw error;
+        }
+        };
+
+        // If NONE of the configured channels can currently deliver (e.g. the merchant selected
+        // WhatsApp but it's turned off / not provisioned), fall back to EMAIL so the notification
+        // still goes out — "if WhatsApp isn't set up or is off, send to email anyway".
+        const isChannelDeliverable = (ch: PrimaryChannel): boolean => {
+          if (ch === 'EMAIL') {
+            return flags.emailEnabled && Boolean(runtimeConfig.RESEND_API_KEY?.trim()) && Boolean(runtimeConfig.RESEND_FROM?.trim());
+          }
+          if (ch === 'SMS') {
+            return flags.smsEnabled && hasSmsProviderCredentials(runtimeConfig);
+          }
+          return (
+            flags.whatsappEnabled &&
+            Boolean(runtimeConfig.META_WHATSAPP_ACCESS_TOKEN) &&
+            Boolean(runtimeConfig.META_WHATSAPP_PHONE_NUMBER_ID)
+          );
+        };
+        const deliverableConfigured = channels.filter(isChannelDeliverable);
+        const effectiveChannels: PrimaryChannel[] = deliverableConfigured.length > 0 ? deliverableConfigured : ['EMAIL'];
+
+        // Fan out to every effective channel. Single channel keeps the original retry/unrecoverable
+        // semantics; multi-channel is best-effort per channel (each already logged + alerted inside
+        // deliverOne) so one failing channel neither blocks the others nor triggers a whole-job retry
+        // that would duplicate the channels that already succeeded. (WhatsApp/SMS still skip per
+        // recipient inside deliverOne when there is no phone number on file.)
+        const isMulti = effectiveChannels.length > 1;
+        for (const channel of effectiveChannels) {
+          try {
+            await deliverOne(channel);
+          } catch (deliveryError) {
+            if (!isMulti) throw deliveryError;
+          }
         }
       }
     },

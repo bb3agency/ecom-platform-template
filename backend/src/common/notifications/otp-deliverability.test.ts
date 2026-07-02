@@ -48,7 +48,7 @@ describe('otp-deliverability', () => {
     expect(resolved.channel).toBe('email');
   });
 
-  it('sends OTP to email only when OTP_WHATSAPP_ENABLED is off', () => {
+  it('sends OTP only to the configured channels; WhatsApp is gated OUT when OTP_WHATSAPP_ENABLED is off', () => {
     const runtime = {
       NOTIFY_EMAIL_ENABLED: 'true',
       RESEND_API_KEY: 're_test',
@@ -60,14 +60,14 @@ describe('otp-deliverability', () => {
     const { channels, primaryChannel } = resolveOtpDeliveryChannels({
       templateKey: 'CustomerOtpVerification',
       storeFlags: { emailEnabled: true, smsEnabled: false, whatsappEnabled: true },
-      primaryChannels: { CustomerOtpVerification: 'EMAIL' },
+      primaryChannels: { CustomerOtpVerification: ['EMAIL', 'WHATSAPP'] },
       runtime
     });
     expect(primaryChannel).toBe('email');
     expect(channels).toEqual(['email']);
   });
 
-  it('adds WhatsApp alongside the primary channel when OTP_WHATSAPP_ENABLED is on and deliverable', () => {
+  it('fans OTP to email + WhatsApp when both are configured and OTP_WHATSAPP_ENABLED is on', () => {
     const runtime = {
       NOTIFY_EMAIL_ENABLED: 'true',
       RESEND_API_KEY: 're_test',
@@ -76,17 +76,16 @@ describe('otp-deliverability', () => {
       META_WHATSAPP_PHONE_NUMBER_ID: 'pid',
       OTP_WHATSAPP_ENABLED: 'true'
     };
-    const { channels, primaryChannel } = resolveOtpDeliveryChannels({
+    const { channels } = resolveOtpDeliveryChannels({
       templateKey: 'CustomerOtpVerification',
       storeFlags: { emailEnabled: true, smsEnabled: false, whatsappEnabled: true },
-      primaryChannels: { CustomerOtpVerification: 'EMAIL' },
+      primaryChannels: { CustomerOtpVerification: ['EMAIL', 'WHATSAPP'] },
       runtime
     });
-    expect(primaryChannel).toBe('email');
     expect(channels).toEqual(['email', 'whatsapp']);
   });
 
-  it('does not duplicate WhatsApp when it is already the primary channel', () => {
+  it('sends only the single configured channel (WhatsApp) when that is all that is selected', () => {
     const runtime = {
       NOTIFY_WHATSAPP_ENABLED: 'true',
       META_WHATSAPP_ACCESS_TOKEN: 'tok',
@@ -96,13 +95,13 @@ describe('otp-deliverability', () => {
     const { channels } = resolveOtpDeliveryChannels({
       templateKey: 'CustomerOtpVerification',
       storeFlags: { emailEnabled: false, smsEnabled: false, whatsappEnabled: true },
-      primaryChannels: { CustomerOtpVerification: 'WHATSAPP' },
+      primaryChannels: { CustomerOtpVerification: ['WHATSAPP'] },
       runtime
     });
     expect(channels).toEqual(['whatsapp']);
   });
 
-  it('does not add WhatsApp when the toggle is on but WhatsApp is not deliverable', () => {
+  it('drops WhatsApp when configured+gated-on but WhatsApp is not deliverable (no creds)', () => {
     const runtime = {
       NOTIFY_EMAIL_ENABLED: 'true',
       RESEND_API_KEY: 're_test',
@@ -113,7 +112,7 @@ describe('otp-deliverability', () => {
     const { channels } = resolveOtpDeliveryChannels({
       templateKey: 'CustomerOtpVerification',
       storeFlags: { emailEnabled: true, smsEnabled: false, whatsappEnabled: true },
-      primaryChannels: { CustomerOtpVerification: 'EMAIL' },
+      primaryChannels: { CustomerOtpVerification: ['EMAIL', 'WHATSAPP'] },
       runtime
     });
     expect(channels).toEqual(['email']);

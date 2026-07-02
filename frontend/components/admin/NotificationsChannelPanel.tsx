@@ -240,7 +240,7 @@ export function NotificationsChannelPanel() {
   const [emailEnabled, setEmailEnabled] = useState(true);
   const [smsEnabled, setSmsEnabled] = useState(false);
   const [whatsappEnabled, setWhatsappEnabled] = useState(false);
-  const [primaryChannels, setPrimaryChannels] = useState<Record<string, Channel>>({});
+  const [channelSelections, setChannelSelections] = useState<Record<string, Channel[]>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -252,12 +252,14 @@ export function NotificationsChannelPanel() {
         setEmailEnabled(result.emailEnabled);
         setSmsEnabled(result.smsEnabled);
         setWhatsappEnabled(result.whatsappEnabled);
-        // Seed per-template routing with defaults
-        const seeded: Record<string, Channel> = {};
+        // Seed per-template multi-channel selection (accept legacy single-string values too).
+        const seeded: Record<string, Channel[]> = {};
         for (const tmpl of CUSTOMER_TEMPLATES) {
-          seeded[tmpl.id] = (result.primaryChannels[tmpl.id] as Channel) ?? "EMAIL";
+          const raw = result.primaryChannels[tmpl.id];
+          const list = Array.isArray(raw) ? raw : raw ? [raw] : [];
+          seeded[tmpl.id] = list.length > 0 ? (list as Channel[]) : ["EMAIL"];
         }
-        setPrimaryChannels(seeded);
+        setChannelSelections(seeded);
         setLoading(false);
       })
       .catch((err: unknown) => {
@@ -276,8 +278,13 @@ export function NotificationsChannelPanel() {
     emailProvisioned: false,
     smsProvisioned: false,
     whatsappProvisioned: false,
+    otpWhatsappEnabled: false,
     smsProvider: null,
   };
+
+  // OTP rows: WhatsApp carries an extra platform gate (ops OTP_WHATSAPP_ENABLED). A merchant can
+  // toggle WhatsApp for OTP, but it only actually sends once ops enables the kill-switch.
+  const OTP_TEMPLATE_IDS = new Set(["OtpVerification", "CustomerOtpVerification"]);
 
   function isChannelAvailable(ch: Channel): boolean {
     if (ch === "EMAIL") return availability.emailProvisioned;
@@ -286,9 +293,18 @@ export function NotificationsChannelPanel() {
     return false;
   }
 
-  // Count how many templates are routed to an unprovisioned channel
-  const misconfiguredTemplates = CUSTOMER_TEMPLATES.filter(
-    (t) => !isChannelAvailable(primaryChannels[t.id] ?? "EMAIL")
+  function toggleChannel(templateId: string, ch: Channel) {
+    if (!canWrite) return;
+    setChannelSelections((prev) => {
+      const cur = prev[templateId] ?? ["EMAIL"];
+      const next = cur.includes(ch) ? cur.filter((c) => c !== ch) : [...cur, ch];
+      return { ...prev, [templateId]: next };
+    });
+  }
+
+  // Count templates that have a selected channel which is not provisioned
+  const misconfiguredTemplates = CUSTOMER_TEMPLATES.filter((t) =>
+    (channelSelections[t.id] ?? ["EMAIL"]).some((ch) => !isChannelAvailable(ch))
   ).length;
 
   async function handleSave() {
@@ -305,7 +321,7 @@ export function NotificationsChannelPanel() {
           emailEnabled,
           smsEnabled,
           whatsappEnabled,
-          primaryChannels,
+          primaryChannels: channelSelections,
         }),
       });
       setSettings(updated);
@@ -414,21 +430,25 @@ export function NotificationsChannelPanel() {
           )}
         </div>
         <p className="mb-4 text-xs text-muted-foreground">
-          Choose the primary delivery channel for each customer notification. Only configured
-          channels can be selected.
+          Turn channels on/off for each notification — a notification is sent to <strong>every</strong>{" "}
+          channel you enable (e.g. email <em>and</em> WhatsApp). Only configured channels can be enabled.
         </p>
 
         <div className="flex flex-col gap-2">
           {CUSTOMER_TEMPLATES.map((tmpl) => {
-            const current: Channel = (primaryChannels[tmpl.id] as Channel) ?? "EMAIL";
-            const channelAvailable = isChannelAvailable(current);
+            const selected: Channel[] = channelSelections[tmpl.id] ?? ["EMAIL"];
+            const isOtpRow = OTP_TEMPLATE_IDS.has(tmpl.id);
+            const firstUnavailable = selected.find((ch) => !isChannelAvailable(ch));
+            // OTP over WhatsApp is selected here but only actually sends when ops enables the gate.
+            const otpWhatsappSelectedButGated =
+              isOtpRow && selected.includes("WHATSAPP") && !availability.otpWhatsappEnabled;
 
             return (
               <div
                 key={tmpl.id}
                 className={cn(
                   "rounded-xl border p-3 sm:p-4",
-                  channelAvailable ? "border-border bg-card" : "border-amber-200 bg-amber-50/30"
+                  !firstUnavailable ? "border-border bg-card" : "border-amber-200 bg-amber-50/30"
                 )}
               >
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -440,27 +460,27 @@ export function NotificationsChannelPanel() {
                   <div className="flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-muted/40 p-1">
                     {(["EMAIL", "SMS", "WHATSAPP"] as Channel[]).map((ch) => {
                       const avail = isChannelAvailable(ch);
-                      const isSelected = current === ch;
+                      const isOn = selected.includes(ch);
                       return (
                         <button
                           key={ch}
                           type="button"
-                          disabled={!canWrite || (!avail && !isSelected)}
+                          aria-pressed={isOn}
+                          disabled={!canWrite || (!avail && !isOn)}
                           onClick={() => {
-                            if (!canWrite) return;
-                            if (!avail) return; // can't select unavailable channel
-                            setPrimaryChannels((prev) => ({ ...prev, [tmpl.id]: ch }));
+                            if (!avail && !isOn) return; // can't turn ON an unprovisioned channel
+                            toggleChannel(tmpl.id, ch);
                           }}
                           title={
                             avail
-                              ? `Route to ${ch}`
+                              ? `${isOn ? "Stop sending via" : "Also send via"} ${ch}`
                               : `${ch} is not configured — set up the provider in ops first`
                           }
                           className={cn(
                             "rounded-md px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider transition-colors",
-                            isSelected && avail
+                            isOn && avail
                               ? "bg-primary text-primary-foreground shadow-sm"
-                              : isSelected && !avail
+                              : isOn && !avail
                               ? "bg-amber-500 text-white shadow-sm"
                               : "text-muted-foreground hover:bg-background disabled:cursor-not-allowed disabled:opacity-40"
                           )}
@@ -471,11 +491,17 @@ export function NotificationsChannelPanel() {
                     })}
                   </div>
                 </div>
+                {otpWhatsappSelectedButGated ? (
+                  <p className="mt-2 text-[11px] text-amber-700">
+                    WhatsApp OTP won&apos;t send until a platform operator enables{" "}
+                    <code>OTP_WHATSAPP_ENABLED</code> in Ops → Config (paid-feature gate).
+                  </p>
+                ) : null}
 
-                {/* Inline callout when selected channel is not provisioned */}
-                {!channelAvailable && (
+                {/* Inline callout when a selected channel is not provisioned */}
+                {firstUnavailable && (
                   <UnconfiguredCallout
-                    channel={current}
+                    channel={firstUnavailable}
                     smsProvider={availability.smsProvider}
                   />
                 )}
