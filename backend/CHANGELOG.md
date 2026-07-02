@@ -12,6 +12,18 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.29] — 2026-07-02
+
+### Changed
+- **Core TEST files and the committed `.env.example` now sync automatically (manifest change) — no more manual hand-delivery to each client.** Root cause of the recurring "deliver the changed test file / add the env key to every client by hand" toil: `core-manifest.json` excluded `**/*.test.ts`/`*.spec.ts` and `backend/.env.*` from sync, so a core change that altered test expectations or added an env key shipped source-only and each client's CI went red until patched by hand — unworkable at 10+ clients. Now: core test files live inside the already-core paths and are no longer excluded (so `sync-core.mjs` delivers them with their source AND `check-core-drift.sh` keeps them in lockstep); `backend/.env.example` is an explicit core include. Real secret env files (`.env`, `.env.local`, `.env.*.local`) are gitignored/untracked and are never synced regardless. Client-specific tests are excluded via the client-extension paths (`src/modules/client/**/*.test.ts`, `frontend/{components/client,app/(client)}/**/*.test.*`). `check-core-purity` already skips `*.test.*`/`*.spec.*`, so template test sample data doesn't trip the brand guard. **First sync per client wholesale-aligns all test files** to bring drift green in one shot; deltas after that.
+- **OTP WhatsApp template renamed `otp_verification` → `otp_verify`.** Meta enforces a 30-day cooldown on reusing a deleted template name and blocks re-registering `otp_verification` under a different category during that window, so the original name is unusable now. `otp_verify` is a fresh name that registers as Authentication immediately. Files: `whatsapp-template-registry.ts` (+ test), `adapters/meta-whatsapp.adapter.test.ts`, `docs/WHATSAPP_TEMPLATE_REGISTRY.md`.
+
+**Propagation:**
+- Severity: NORMAL (infra: sync-completeness) · Layers: backend (`core-manifest.json`, `modules/notifications/whatsapp-template-registry.ts`)
+- Migration: NO · Flag: n/a (manifest) / `OTP_WHATSAPP_ENABLED` (rename, unchanged) · Design impact: none · Breaking: NO
+- Rollback: restore the manifest excludes + revert the rename
+- **From this release on, core test + `.env.example` changes propagate through core-sync with zero manual delivery.** Operator: create the `otp_verify` Authentication template (Copy-code button, English, sample 123456) and approve before enabling `OTP_WHATSAPP_ENABLED`.
+
 ## [0.1.28] — 2026-07-02
 
 ### Changed

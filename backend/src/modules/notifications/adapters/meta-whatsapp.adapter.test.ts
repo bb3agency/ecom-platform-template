@@ -85,7 +85,7 @@ describe('MetaWhatsAppAdapter', () => {
     const body = JSON.parse(requestInit.body as string) as {
       template: { name: string; components: Array<Record<string, unknown>> };
     };
-    expect(body.template.name).toBe('otp_verification');
+    expect(body.template.name).toBe('otp_verify');
     expect(body.template.components).toEqual([
       { type: 'body', parameters: [{ type: 'text', text: '482913' }] },
       {

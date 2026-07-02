@@ -75,7 +75,7 @@ export class WhatsappTemplateRegistry {
       // button echoes the same code. The store name is NOT in the body (Authentication
       // templates forbid custom copy) — it shows as the message sender.
       CustomerOtpVerification: {
-        metaName: 'otp_verification',
+        metaName: 'otp_verify',
         language: 'en',
         params: ['otp'],
         authentication: true

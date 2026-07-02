@@ -38,7 +38,7 @@ describe('WhatsappTemplateRegistry', () => {
 
   it('maps the customer OTP template as an authentication template with the code only', () => {
     const resolved = registry.resolve('CustomerOtpVerification', { otp: '123456', storeName: 'Raghava Organics' });
-    expect(resolved?.metaName).toBe('otp_verification');
+    expect(resolved?.metaName).toBe('otp_verify');
     expect(resolved?.language).toBe('en');
     expect(resolved?.authentication).toBe(true);
     // Authentication templates carry a SINGLE param — the code (store name is the sender, not in body).

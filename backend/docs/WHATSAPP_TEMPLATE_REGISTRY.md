@@ -39,7 +39,7 @@ set its entry in the notifications `primaryChannels` config to `WHATSAPP`.
 
 | Internal name (code) | Meta template name | Params (in order) |
 |----------------------|--------------------|-------------------|
-| `CustomerOtpVerification` | `otp_verification` | `{{1}}` otp code (AUTHENTICATION template — single param) |
+| `CustomerOtpVerification` | `otp_verify` | `{{1}}` otp code (AUTHENTICATION template — single param) |
 | `OrderConfirmed`     | `order_confirmed`  | `{{1}}` storeName, `{{2}}` orderId |
 | `OrderShipped`       | `order_shipped`    | `{{1}}` storeName, `{{2}}` orderId, `{{3}}` trackingInfo |
 | `OutForDelivery`     | `out_for_delivery` | `{{1}}` storeName, `{{2}}` orderId |
@@ -47,13 +47,13 @@ set its entry in the notifications `primaryChannels` config to `WHATSAPP`.
 | `OrderCancelled`     | `order_cancelled`  | `{{1}}` storeName, `{{2}}` orderId |
 | `PaymentFailed`      | `payment_failed`   | `{{1}}` storeName, `{{2}}` orderId |
 
-### `otp_verification`
+### `otp_verify`
 **Category:** **Authentication** (Meta REJECTS verification-code content in Utility — the
 "Category does not match / will be rejected" dialog forces Authentication). Authentication
 templates have a Meta-fixed body and a **single** parameter — the code. The store name is
 NOT in the body (Authentication forbids custom copy); it appears as the message **sender**.
 Create it in WhatsApp Manager with category Authentication, button **Copy code**, optionally
-"Add security recommendation" + "Add expiry time", name `otp_verification`, language English.
+"Add security recommendation" + "Add expiry time", name `otp_verify`, language English.
 
 **Body (Meta-generated, do not hand-type):**
 ```
