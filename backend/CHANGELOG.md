@@ -12,6 +12,18 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.33] — 2026-07-02
+
+### Fixed
+- **Multi-channel notification save was silently rejected with 400 (`VALIDATION_ERROR`).** The 0.1.30 multi-channel change updated the `GET /admin/settings/notifications` *response* schema to accept array-valued `primaryChannels` (`{ OrderConfirmed: ['EMAIL','WHATSAPP'] }`), but the `PATCH` *body* schema was missed — it still only allowed a single string per template. So the Admin → Settings → Notifications panel (which always PATCHes arrays) failed every save with "Please check the highlighted fields and try again", including when merely enabling WhatsApp. Fixed the update body schema to accept string OR array (`anyOf`), matching the response schema. Added route-level regression tests (array save persists as array; legacy single-string still accepted).
+- **Admin setup/signup OTP was never migrated to multi-channel (overseen in 0.1.30).** `AdminInvitesService.sendSetupOtp` still resolved a single channel via the old `resolvePrimaryOtpChannel` path, so an admin completing signup only ever got their OTP on ONE channel — inconsistent with admin *login* OTP, which fans the same OTP to email **and** WhatsApp. Rewrote it to mirror `requestAdminLoginOtp`: `resolveOtpDeliveryChannels({ preferEmail: true })` (email is always a delivery floor), WhatsApp/SMS only when `OTP_WHATSAPP_ENABLED` is on AND the invitee supplied a phone, hard error only if the primary channel needs a phone the invitee lacks. Same OTP, one hash, verified identically. Added a fan-out test.
+
+**Propagation:**
+- Severity: HIGH (multi-channel notification settings were unsaveable end-to-end) · Layers: backend (`modules/settings/settings.schemas.ts`, `modules/auth/admin-invites.service.ts`, `+` tests)
+- Migration: NO · Flag: `OTP_WHATSAPP_ENABLED` still gates OTP-over-WhatsApp · Design impact: none · Breaking: NO (single-string bodies still accepted)
+- Rollback: revert the two source files
+- Follow-up to 0.1.30 (multi-channel routing). No operator action — merchants can now save channel toggles; admin signup OTP now fans out like admin login.
+
 ## [0.1.32] — 2026-07-02
 
 ### Fixed

@@ -180,6 +180,53 @@ describe('settings routes', () => {
     await app.close();
   });
 
+  // Regression: the multi-channel routing UI PATCHes `primaryChannels` as ARRAYS
+  // (e.g. { OrderConfirmed: ['EMAIL','WHATSAPP'] }). The update body schema must accept
+  // arrays, not just single strings — otherwise every save 400s with VALIDATION_ERROR.
+  it('accepts and persists array-valued primaryChannels (multi-channel routing)', async () => {
+    const app = createApp();
+    await registerSettingsRoutes(app);
+
+    const patchRes = await app.inject({
+      method: 'PATCH',
+      url: '/api/v1/admin/settings/notifications',
+      headers: { authorization: 'Bearer token' },
+      payload: {
+        whatsappEnabled: true,
+        primaryChannels: {
+          OrderConfirmed: ['EMAIL', 'WHATSAPP'],
+          OtpVerification: ['EMAIL', 'WHATSAPP'],
+          PaymentFailed: 'EMAIL'
+        }
+      }
+    });
+    expect(patchRes.statusCode).toBe(200);
+    const body = patchRes.json() as { primaryChannels: Record<string, string[]> };
+    expect(body.primaryChannels.OrderConfirmed).toEqual(['EMAIL', 'WHATSAPP']);
+    expect(body.primaryChannels.OtpVerification).toEqual(['EMAIL', 'WHATSAPP']);
+    // A legacy single-string value is coerced to a one-element array on the way out.
+    expect(body.primaryChannels.PaymentFailed).toEqual(['EMAIL']);
+
+    await app.close();
+  });
+
+  // Regression: a single-string value must NOT be rejected (backwards compatibility with
+  // any client still sending the pre-multi-channel shape).
+  it('accepts legacy single-string primaryChannels values', async () => {
+    const app = createApp();
+    await registerSettingsRoutes(app);
+
+    const patchRes = await app.inject({
+      method: 'PATCH',
+      url: '/api/v1/admin/settings/notifications',
+      headers: { authorization: 'Bearer token' },
+      payload: { primaryChannels: { OrderConfirmed: 'WHATSAPP' } }
+    });
+    expect(patchRes.statusCode).toBe(200);
+
+    await app.close();
+  });
+
   it('serves COD settings routes', async () => {
     const app = createApp();
     await registerSettingsRoutes(app);

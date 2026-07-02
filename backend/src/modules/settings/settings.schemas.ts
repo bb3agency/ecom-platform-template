@@ -197,8 +197,14 @@ export const updateNotificationSettingsSchema = {
       primaryChannels: {
         type: 'object',
         additionalProperties: {
-          type: 'string',
-          enum: ['EMAIL', 'SMS', 'WHATSAPP']
+          anyOf: [
+            { type: 'string', enum: ['EMAIL', 'SMS', 'WHATSAPP'] },
+            {
+              type: 'array',
+              items: { type: 'string', enum: ['EMAIL', 'SMS', 'WHATSAPP'] },
+              maxItems: 3
+            }
+          ]
         },
         maxProperties: 100
       },

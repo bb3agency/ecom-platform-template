@@ -68,6 +68,7 @@ function createHarness() {
         updateMany: adminUserInviteUpdateMany
       },
       storeSettings: { findUnique: storeSettingsFindUnique },
+      opsConfigSecret: { findMany: vi.fn().mockResolvedValue([]) },
       $transaction: transaction
     },
     queues: {
@@ -638,6 +639,48 @@ describe('AdminInvitesService', () => {
 
     expect(result.message).toBe('OTP sent successfully');
     expect(mocks.redisSet).toHaveBeenCalled();
+  });
+
+  it('sendSetupOtp fans the setup OTP to BOTH email and WhatsApp when OTP_WHATSAPP_ENABLED and invitee has a phone', async () => {
+    const { service, mocks } = createHarness();
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('OTP_WHATSAPP_ENABLED', 'true');
+    vi.stubEnv('NOTIFY_EMAIL_ENABLED', 'true');
+    vi.stubEnv('NOTIFY_WHATSAPP_ENABLED', 'true');
+    vi.stubEnv('RESEND_API_KEY', 'test-resend-key');
+    vi.stubEnv('META_WHATSAPP_ACCESS_TOKEN', 'test-wa-token');
+    vi.stubEnv('META_WHATSAPP_PHONE_NUMBER_ID', 'test-wa-phone-id');
+    mocks.storeSettingsFindUnique.mockResolvedValue({
+      notifyEmailEnabled: true,
+      notifySmsEnabled: false,
+      notifyWhatsappEnabled: true,
+      primaryNotificationChannels: { OtpVerification: ['EMAIL', 'WHATSAPP'] }
+    });
+    mocks.adminUserInviteFindUnique.mockResolvedValue({
+      id: 'invite_1',
+      inviteEmail: 'merchant@example.com',
+      inviteName: 'Merchant Owner',
+      status: 'EMAIL_SENT',
+      permissions: ['products:read'],
+      expiresAt: new Date(Date.now() + 60_000)
+    });
+    mocks.userFindUnique.mockResolvedValue(null);
+    mocks.userFindFirst.mockResolvedValue(null);
+    mocks.opsUserFindUnique.mockResolvedValue(null);
+
+    const result = await service.sendSetupOtp({
+      inviteToken: 'token_1234567890',
+      name: 'Merchant Owner',
+      password: 'securepassword',
+      phone: '+911234567890'
+    });
+
+    expect(result.message).toBe('OTP sent successfully');
+    const jobNames = mocks.notificationsAdd.mock.calls.map((c) => c[0]);
+    expect(jobNames).toContain('send-email');
+    expect(jobNames).toContain('send-whatsapp');
+
+    vi.unstubAllEnvs();
   });
 
   it('rejects createAdminInvite when an active merchant admin uses the email', async () => {
