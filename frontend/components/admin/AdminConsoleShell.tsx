@@ -92,19 +92,31 @@ function AdminConsoleFrame({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     refreshPendingCount();
+    // 20s poll: new orders arrive from customer checkouts/webhooks that no in-app
+    // mutation event can announce, so polling is the only "live" signal. The count
+    // query is limit=1 (meta.total only) — cheap enough for a short interval.
     const interval = window.setInterval(() => {
       if (!document.hidden) refreshPendingCount();
-    }, 60_000);
-    // Refresh immediately when the tab regains focus (e.g. admin returns after a break).
+    }, 20_000);
     const onVisible = () => {
       if (!document.hidden) refreshPendingCount();
     };
+    // Both listeners are needed: `visibilitychange` covers tab switches/minimise,
+    // but NOT switching between desktop windows (tab stays visible) — `focus` does.
     document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
     return () => {
       window.clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
     };
   }, [refreshPendingCount]);
+
+  // Refresh on every route change inside the console — navigating around is the
+  // most common "did anything new come in?" gesture.
+  useEffect(() => {
+    refreshPendingCount();
+  }, [pathname, refreshPendingCount]);
 
   // Instant update after in-app mutations (ship/cancel/refund/status changes).
   useAdminDataRefreshEffect(refreshPendingCount, ["orders", "dashboard"]);

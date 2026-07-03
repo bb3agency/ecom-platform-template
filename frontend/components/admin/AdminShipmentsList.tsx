@@ -941,7 +941,7 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="grid grid-cols-3 border-b border-border/50 py-1 last:border-0">
       <dt className="text-muted-foreground">{label}</dt>
-      <dd className="col-span-2 font-medium">{value}</dd>
+      <dd className="col-span-2 min-w-0 break-words font-medium">{value}</dd>
     </div>
   );
 }

@@ -25,7 +25,10 @@ export function AdminSection({
   children,
 }: AdminSectionProps) {
   return (
-    <section className="grid gap-3 rounded-lg border border-border bg-card p-4">
+    // grid-cols-1 (minmax(0,1fr)) + min-w-0 are load-bearing: an implicit auto
+    // track lets any wide child (table, long AWB/email, unwrapped filter row)
+    // inflate the section past the mobile viewport — reads as broken padding.
+    <section className="grid min-w-0 grid-cols-1 gap-3 rounded-lg border border-border bg-card p-4">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="font-heading text-lg font-semibold">{title}</h2>

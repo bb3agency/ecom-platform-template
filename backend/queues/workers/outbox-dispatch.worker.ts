@@ -145,7 +145,14 @@ export function createOutboxDispatchWorker(
               continue;
             }
 
-            await queue.add(item.jobName, item.payload as object, item.jobId ? { jobId: item.jobId } : undefined);
+            // BullMQ 5.x rejects custom jobIds containing ':' (unless exactly 3 colon
+            // segments — legacy repeatable-job compat). Outbox rows written with ids
+            // like `cancel-shipment:<orderId>` or `shipping:primary:<id>:shipped`
+            // failed EVERY dispatch attempt and dead-lettered silently — cancels never
+            // reached the provider and OrderShipped mails never sent. Sanitize here so
+            // existing rows and dead-letter replays relay cleanly too.
+            const safeJobId = item.jobId ? item.jobId.replace(/:/g, '-') : undefined;
+            await queue.add(item.jobName, item.payload as object, safeJobId ? { jobId: safeJobId } : undefined);
             await prisma.outboxMessage.update({
               where: { id: item.id },
               data: {

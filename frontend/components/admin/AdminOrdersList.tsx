@@ -231,7 +231,7 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
       empty={!loading && !error && items.length === 0}
       emptyMessage="No orders found."
     >
-      <div className="mb-4 grid gap-3 rounded-xl border border-border/40 bg-card p-4 shadow-sm">
+      <div className="mb-4 grid min-w-0 grid-cols-1 gap-3 rounded-xl border border-border/40 bg-card p-4 shadow-sm">
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-4">
           <div className="flex w-full min-w-0 flex-col gap-3 sm:flex-1 sm:flex-row sm:flex-wrap">
             <div className="relative w-full min-w-0 sm:max-w-sm sm:flex-1">

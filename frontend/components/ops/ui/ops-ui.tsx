@@ -249,7 +249,7 @@ export function OpsDataTable<T>({
         {rows.map((row) => (
           <article
             key={rowKey(row)}
-            className="grid gap-3 rounded-lg border border-border/70 bg-card/60 p-3 shadow-sm"
+            className="grid min-w-0 grid-cols-1 gap-3 rounded-lg border border-border/70 bg-card/60 p-3 shadow-sm"
           >
             {mobileCardTitle ? (
               <div className="grid gap-1">

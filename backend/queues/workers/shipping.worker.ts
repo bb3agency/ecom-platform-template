@@ -116,6 +116,9 @@ async function enqueueNotificationOutboxOrQueue(
   payload: Record<string, unknown>,
   jobId?: string
 ): Promise<void> {
+  // BullMQ rejects custom jobIds containing ':' — sanitize before the id reaches
+  // either the outbox row (relayed to BullMQ later) or the direct queue add.
+  const safeJobId = jobId ? jobId.replace(/:/g, '-') : undefined;
   const outboxDelegate = (tx as unknown as { outboxMessage?: Prisma.TransactionClient['outboxMessage'] }).outboxMessage;
   if (outboxDelegate) {
     await outboxDelegate.create({
@@ -123,12 +126,12 @@ async function enqueueNotificationOutboxOrQueue(
         queueName: 'notifications',
         jobName,
         payload: payload as Prisma.InputJsonValue,
-        ...(jobId ? { jobId } : {})
+        ...(safeJobId ? { jobId: safeJobId } : {})
       }
     });
     return;
   }
-  await notificationsQueue.add(jobName, payload, jobId ? { jobId } : undefined);
+  await notificationsQueue.add(jobName, payload, safeJobId ? { jobId: safeJobId } : undefined);
 }
 
 async function upsertShipmentCompat(

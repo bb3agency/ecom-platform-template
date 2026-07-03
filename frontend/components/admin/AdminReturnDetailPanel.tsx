@@ -88,7 +88,7 @@ function StatusTimeline({ current }: { current: string }) {
   const currentIdx = steps.indexOf(current);
 
   return (
-    <div className="flex items-center gap-0">
+    <div className="flex min-w-0 max-w-full items-center gap-0 overflow-x-auto">
       {steps.map((step, i) => {
         const meta = STATUS_META[step];
         if (!meta) return null;

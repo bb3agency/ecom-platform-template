@@ -320,8 +320,19 @@ export default class DelhiveryAdapter implements ShippingProviderAdapter {
   private async verifyCancellationViaTracking(
     awbNumber: string
   ): Promise<'cancelled' | 'not-cancelled' | 'inconclusive'> {
-    const isCancelledStatus = (status: string): boolean =>
-      /cancel/i.test(status) || status.trim().toUpperCase() === 'CN';
+    // Per Delhivery's Cancel Order API docs, a successful cancellation moves a
+    // pickup package to "Cancelled" but a forward Prepaid/COD package to
+    // "Returned" (RT/RTO) — both are terminal cancel outcomes and must count.
+    const isCancelledStatus = (status: string): boolean => {
+      const upper = status.trim().toUpperCase();
+      return (
+        /cancel/i.test(status) ||
+        /return/i.test(status) ||
+        upper === 'CN' ||
+        upper === 'RT' ||
+        upper.startsWith('RTO')
+      );
+    };
 
     for (let attempt = 0; attempt < 2; attempt++) {
       if (attempt > 0) {

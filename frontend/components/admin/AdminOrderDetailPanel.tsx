@@ -99,7 +99,7 @@ export function AdminOrderDetailPanel({ orderId }: AdminOrderDetailPanelProps) {
   };
 
   return (
-    <div className="grid gap-4">
+    <div className="grid min-w-0 grid-cols-1 gap-4">
       {/* Page header */}
       <div className="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-border bg-card px-6 py-5">
         <div className="grid gap-1">

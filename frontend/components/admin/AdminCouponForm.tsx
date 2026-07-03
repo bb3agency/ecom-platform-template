@@ -107,7 +107,7 @@ function TypeCard({ active, icon: Icon, label, desc, onClick }: TypeCardProps) {
       type="button"
       onClick={onClick}
       className={cn(
-        "flex flex-col items-start gap-1.5 rounded-xl border-2 p-3 text-left transition-all",
+        "flex min-w-0 flex-col items-start gap-1.5 rounded-xl border-2 p-2.5 text-left transition-all sm:p-3",
         active
           ? "border-zinc-900 bg-zinc-900 text-white shadow-md"
           : "border-border bg-card text-foreground hover:border-zinc-400",

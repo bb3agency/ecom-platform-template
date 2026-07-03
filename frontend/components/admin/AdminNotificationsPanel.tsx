@@ -13,6 +13,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { useAuthenticatedApi } from "@/hooks/use-authenticated-api";
+import { useAdminDataRefreshEffect } from "@/hooks/use-admin-data-refresh-effect";
 import {
   coercePaginatedResponse,
   type AdminOrderListItem,
@@ -59,6 +60,17 @@ export function AdminNotificationsPanel({ onClose }: AdminNotificationsPanelProp
   const [errorPending, setErrorPending] = useState(false);
   const [errorIssues, setErrorIssues] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+
+  // Keep the open panel live: refetch when any admin surface mutates order data
+  // and on a light 20s poll (new orders arrive from customer checkouts that no
+  // in-app event can announce).
+  useAdminDataRefreshEffect(() => setRefreshKey((k) => k + 1), ["orders", "dashboard"]);
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      if (!document.hidden) setRefreshKey((k) => k + 1);
+    }, 20_000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;

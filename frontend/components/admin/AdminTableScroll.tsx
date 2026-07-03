@@ -14,7 +14,7 @@ export function AdminTableScroll({
   return (
     <div
       className={cn(
-        "overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch]",
+        "min-w-0 max-w-full overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch]",
         className,
       )}
     >

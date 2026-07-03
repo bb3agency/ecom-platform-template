@@ -628,7 +628,7 @@ describe('shipping worker error and retry behavior', () => {
         template: 'OutForDelivery'
       }),
       expect.objectContaining({
-        jobId: expect.stringContaining('shipping:primary:order_1:out-for-delivery')
+        jobId: expect.stringContaining('shipping-primary-order_1-out-for-delivery')
       })
     );
   });
@@ -747,7 +747,7 @@ describe('shipping worker error and retry behavior', () => {
         template: 'OrderDelivered'
       }),
       expect.objectContaining({
-        jobId: expect.stringContaining('shipping:primary:order_1:delivered')
+        jobId: expect.stringContaining('shipping-primary-order_1-delivered')
       })
     );
   });
@@ -790,7 +790,7 @@ describe('shipping worker error and retry behavior', () => {
         template: 'FailedDelivery'
       }),
       expect.objectContaining({
-        jobId: expect.stringContaining('shipping:primary:order_1:failed-delivery')
+        jobId: expect.stringContaining('shipping-primary-order_1-failed-delivery')
       })
     );
   });
@@ -948,7 +948,7 @@ describe('shipping worker error and retry behavior', () => {
         template: 'OrderCancelled'
       }),
       expect.objectContaining({
-        jobId: expect.stringContaining('shipping:primary:order_1:rto-initiated')
+        jobId: expect.stringContaining('shipping-primary-order_1-rto-initiated')
       })
     );
   });

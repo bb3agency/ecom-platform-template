@@ -12,6 +12,11 @@ import { addToWishlist, removeFromWishlist } from "@/lib/wishlist-api";
 import { cn } from "@/lib/utils";
 import { useStoreConfig } from "@/components/providers/StoreConfigProvider";
 import { formatPrice } from "@/lib/format-price";
+import {
+  PRODUCT_CARD_MAX_VARIANT_CHIPS,
+  resolveCardVariant,
+  selectableCardVariants,
+} from "@/lib/product-card-variants";
 import { Rating } from "@/components/shared/Rating";
 
 const PLACEHOLDER_IMAGE = "/images/product-placeholder.svg";
@@ -62,8 +67,11 @@ export function ProductCard({
     }
   };
 
-  const activeVariant =
-    product.variants.find((v) => v.isActive) ?? product.variants[0];
+  // Variants arrive in the merchant's admin sort order (backend orders by
+  // sortOrder, then price) — preserve that order everywhere in the card.
+  const selectableVariants = selectableCardVariants(product.variants);
+  const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null);
+  const activeVariant = resolveCardVariant(product.variants, selectedVariantId);
   const hasDiscount =
     typeof activeVariant?.compareAtPrice === "number" &&
     activeVariant.compareAtPrice > activeVariant.price;
@@ -75,12 +83,11 @@ export function ProductCard({
   const imageSrc = image?.url && image.url !== "/next.svg" ? image.url : PLACEHOLDER_IMAGE;
   const shortDescription = product.description.trim().slice(0, 80);
 
-  // Show up to 4 variant name chips (e.g. "500g", "1kg")
-  const variantLabels = product.variants
-    .filter((v) => v.isActive && v.name)
-    .slice(0, 4)
-    .map((v) => v.name);
-  const showVariants = variantLabels.length > 1;
+  // Show up to 4 selectable variant chips (e.g. "500g", "1kg") — picking one
+  // updates the price and the Add button right on the card, so the customer
+  // never has to open the detail page just to buy a specific size.
+  const variantChips = selectableVariants.slice(0, PRODUCT_CARD_MAX_VARIANT_CHIPS);
+  const showVariants = variantChips.length > 1;
 
   return (
     <article
@@ -150,7 +157,7 @@ export function ProductCard({
       </div>
 
       {/* Content */}
-      <div className="flex flex-1 flex-col p-3.5">
+      <div className="flex min-w-0 flex-1 flex-col p-3 sm:p-3.5">
         {product.category.name ? (
           <Link
             href={`/categories/${product.category.slug}`}
@@ -181,29 +188,56 @@ export function ProductCard({
           <div className="mb-2.5 min-h-[1.25rem]" />
         )}
 
-        {/* Variant chips */}
+        {/* Variant selector chips — tap to price + add that exact variant */}
         {showVariants ? (
-          <div className="mb-2.5 flex flex-wrap gap-1">
-            {variantLabels.map((label) => (
-              <span
-                key={label}
-                className="rounded-full border border-[#e8ede7] bg-[#faf8f5] px-2 py-0.5 text-[10px] font-semibold text-[#666]"
+          <div className="mb-2.5 flex flex-wrap gap-1.5" role="group" aria-label={`${product.name} size options`}>
+            {variantChips.map((variant) => {
+              const selected = variant.id === activeVariant?.id;
+              return (
+                <button
+                  key={variant.id}
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setSelectedVariantId(variant.id);
+                  }}
+                  aria-pressed={selected}
+                  aria-label={`Select ${variant.name} — ${formatPrice(variant.price)}`}
+                  className={cn(
+                    "min-h-7 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors focus-visible:ring-2 focus-visible:ring-[#23403d]/40",
+                    selected
+                      ? "border-[#23403d] bg-[#23403d] text-white shadow-sm"
+                      : "border-[#e8ede7] bg-[#faf8f5] text-[#666] hover:border-[#23403d]/40 hover:text-[#23403d]",
+                  )}
+                >
+                  {variant.name}
+                </button>
+              );
+            })}
+            {selectableVariants.length > variantChips.length ? (
+              <Link
+                href={`/products/${product.slug}`}
+                className="min-h-7 rounded-full border border-[#e8ede7] bg-[#faf8f5] px-2.5 py-1 text-[11px] font-semibold text-[#666] transition-colors hover:border-[#23403d]/40 hover:text-[#23403d]"
+                aria-label={`View all ${selectableVariants.length} options for ${product.name}`}
               >
-                {label}
-              </span>
-            ))}
+                +{selectableVariants.length - variantChips.length}
+              </Link>
+            ) : null}
           </div>
         ) : null}
 
         {/* Bottom row: price + cart */}
-        <div className="mt-auto flex items-center justify-between gap-2 pt-1">
-          <div className="flex items-baseline gap-1.5">
+        {/* flex-wrap: on ~170px-wide mobile cards (50vw grid) price + button can
+            exceed one line — wrapping beats clipping or shrinking tap targets. */}
+        <div className="mt-auto flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 pt-1">
+          <div className="flex min-w-0 flex-wrap items-baseline gap-x-1.5">
             {hasDiscount && activeVariant?.compareAtPrice ? (
               <span className="text-[11px] text-[#bbb] line-through">
                 {formatPrice(activeVariant.compareAtPrice)}
               </span>
             ) : null}
-            <span className="text-base font-extrabold text-[#23403d]">
+            <span className="text-[15px] font-extrabold text-[#23403d] sm:text-base">
               {formatPrice(activeVariant?.price ?? 0)}
             </span>
           </div>

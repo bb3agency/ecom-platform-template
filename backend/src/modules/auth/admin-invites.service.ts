@@ -173,7 +173,7 @@ export class AdminInvitesService {
 
     const setupUrl = `${input.setupBaseUrl.replace(/\/$/, '')}/admin/setup?token=${encodeURIComponent(token)}`;
 
-    const inviteJobId = `admin-invite:${invite.id}:${Date.now()}`;
+    const inviteJobId = `admin-invite-${invite.id}-${Date.now()}`;
     try {
       await this.fastify.queues.notifications.add('send-email', {
         to: inviteEmail,
@@ -545,11 +545,11 @@ export class AdminInvitesService {
     const deliveryChannels = channels.filter((ch) => ch === 'email' || Boolean(setupPhone));
 
     let currentChannel: OtpChannel = primaryChannel;
-    const otpJobIdBase = `admin-setup-otp:${invite.id}:${Date.now()}`;
+    const otpJobIdBase = `admin-setup-otp-${invite.id}-${Date.now()}`;
     try {
       for (const ch of deliveryChannels) {
         currentChannel = ch;
-        const jobId = `${otpJobIdBase}:${ch}`;
+        const jobId = `${otpJobIdBase}-${ch}`;
         if (ch === 'email') {
           await this.fastify.queues.notifications.add(
             'send-email',
@@ -580,7 +580,7 @@ export class AdminInvitesService {
         failureStage: 'QUEUE_ENQUEUE',
         queueName: 'notifications',
         jobName: currentChannel === 'email' ? 'send-email' : currentChannel === 'sms' ? 'send-sms' : 'send-whatsapp',
-        jobId: `${otpJobIdBase}:${currentChannel}`
+        jobId: `${otpJobIdBase}-${currentChannel}`
       });
       throw error;
     }

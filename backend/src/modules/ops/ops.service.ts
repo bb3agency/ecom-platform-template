@@ -688,7 +688,7 @@ export class OpsService {
 
     const setupUrl = `${input.setupBaseUrl.replace(/\/$/, '')}/ops/setup?token=${encodeURIComponent(token)}`;
 
-    const inviteJobId = `ops-invite:${invite.id}:${Date.now()}`;
+    const inviteJobId = `ops-invite-${invite.id}-${Date.now()}`;
     try {
       await this.fastify.queues.notifications.add('send-email', {
         to: inviteEmail,
@@ -788,7 +788,7 @@ export class OpsService {
     await this.fastify.redis.set(otpKey, otpHash, 'EX', Math.min(OPS_INVITE_SETUP_OTP_TTL_SECONDS, ttlSeconds));
     await this.fastify.redis.del(attemptKey);
 
-    const setupOtpJobId = `ops-invite-setup-otp:${invite.id}:${Date.now()}`;
+    const setupOtpJobId = `ops-invite-setup-otp-${invite.id}-${Date.now()}`;
     try {
       await this.fastify.queues.notifications.add('send-email', {
         to: invite.inviteEmail,
@@ -976,7 +976,7 @@ export class OpsService {
       }
     });
 
-    const opsOtpJobId = `ops-otp:${challenge.id}:${Date.now()}`;
+    const opsOtpJobId = `ops-otp-${challenge.id}-${Date.now()}`;
     try {
       await this.fastify.queues.notifications.add('send-email', {
         to: opsUser.email,
@@ -2144,7 +2144,7 @@ export class OpsService {
           setByOpsUserId: input.requesterId,
           setAt: nowIso
         };
-        activationJobId = `maintenance-activation:${nowMs}`;
+        activationJobId = `maintenance-activation-${nowMs}`;
       }
     } else {
       // Exiting maintenance (or staying in normal/reduced/emergency). Clear

@@ -12,6 +12,21 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.32] — 2026-07-04
+
+### Added
+- **Variant selection directly on product cards.** The variant chips ("250gms / 500gms / 1kg") are now buttons: tapping one switches the displayed price/strikethrough/discount badge and the Add button adds that exact variant to the cart — no detail-page detour to buy a specific size. Chips render in the merchant's admin sort order (the backend already orders variants by `sortOrder`, then price); up to 4 chips show, extra variants collapse into a "+N" link to the detail page. Selection logic extracted to `lib/product-card-variants.ts` with unit tests. Mobile-optimized: ≥28px chip tap targets, wrapping price/Add row (50vw cards can't fit both on one line), tighter padding, `min-w-0` guards.
+
+### Fixed
+- **Mobile overflow hardening across admin/ops sections (the "broken padding" class of bugs).** Root cause fixed at the source: `AdminSection`'s root was `grid` with an *implicit* auto column — implicit tracks size to content, so any wide child (data table, long AWB/email, unwrapped filter row) inflated the whole section past the mobile viewport; the shell's `overflow-x-hidden` then clipped the right edge, which read as broken padding. Now `grid grid-cols-1 min-w-0` (`grid-cols-1` = `minmax(0,1fr)` — clamps to container). Same hardening on the other implicit-grid card roots (`AdminMutationPanel`, orders filter card, `AdminOrderDetailPanel`, `OpsSessionPanel`, ops-ui card) and `AdminTableScroll` (`min-w-0 max-w-full`). Return-request status stepper scrolls horizontally on narrow phones; shipment drawer `Row` values wrap with `break-words`; coupon Discount-Type cards shrink correctly in their 3-column mobile grid.
+- **Sidebar Orders badge + bell are now genuinely live.** Poll tightened 60s → 20s (the count query is `limit=1`, meta.total only), added a `window focus` listener (`visibilitychange` never fires when switching between desktop windows — the tab stays "visible"), refresh on every in-console route change, and the open bell panel itself now refetches on admin data mutations + a 20s poll instead of only on open/manual refresh.
+
+**Propagation:**
+- Severity: NORMAL · Layers: frontend (admin/ops components) · Migration: NO · Flag: none
+- Design impact: none (structural classes + polling only) · Breaking: NO
+- Rollback: revert the 11 component files
+- Pairs with backend-core 0.1.50 (BullMQ jobId fix — the backend half of "notifications not arriving").
+
 ## [0.1.31] — 2026-07-03
 
 ### Changed

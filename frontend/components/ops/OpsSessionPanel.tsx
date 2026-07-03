@@ -39,7 +39,7 @@ function OpsSessionDetails() {
   }
 
   return (
-    <section className="grid gap-4 rounded-lg border border-border p-6">
+    <section className="grid min-w-0 grid-cols-1 gap-4 rounded-lg border border-border p-6">
       <h2 className="font-heading text-xl font-semibold">Session bootstrap</h2>
       <dl className="grid gap-2 text-sm">
         <div>

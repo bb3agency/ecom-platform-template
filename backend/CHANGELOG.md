@@ -12,6 +12,18 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.50] — 2026-07-04
+
+### Fixed
+- **BullMQ silently rejected our colon-separated custom jobIds — the root cause of "Delhivery cancel never reaches the provider" AND "no OrderShipped notification".** BullMQ 5.x throws `Custom Id cannot contain :` for any custom jobId whose colon-split length ≠ 3 (a legacy repeatable-job compat quirk). Ids like `cancel-shipment:<orderId>` (2 segments) and `shipping:primary:<orderId>:shipped` (4 segments) therefore failed EVERY `queue.add`, dead-lettering the outbox rows: cancel-shipment jobs never ran (order cancelled in our DB, still live at the courier) and OrderShipped mails never sent — while 3-segment ids (`analytics:x:y`) passed, which is why other notifications kept working. Fixes: (1) the outbox dispatcher sanitizes `:` → `-` before every `queue.add` (also heals existing stuck rows and dead-letter replays), (2) the shipping + order-processing worker enqueue helpers sanitize both branches, (3) auth/ops invite + OTP + maintenance-activation jobIds normalized to hyphens at construction.
+- **Delhivery cancel verification now accepts "Returned"/RT tracking statuses.** Per Delhivery's Cancel Order API docs, a successful cancellation moves a *pickup* package to "Cancelled" but a forward *Prepaid/COD* package to **"Returned"** — the 0.1.47 verification only matched "Cancelled"/CN and would have false-failed legitimate prepaid/COD cancellations.
+
+**Propagation:**
+- Severity: HIGH · Layers: backend (`queues/workers/{outbox-dispatch,shipping,order-processing}.worker.ts`, `modules/auth/admin-invites.service.ts`, `modules/ops/ops.service.ts`, `shipping/adapters/delhivery.adapter.ts`)
+- Migration: NO · Flag: none · Design impact: none · Breaking: NO
+- Rollback: revert the six files (returns the silent-drop behavior)
+- Ops note: previously dead-lettered `cancel-shipment` / `send-primary` outbox rows can now be replayed successfully from the ops dead-letter surface.
+
 ## [0.1.49] — 2026-07-03
 
 ### Fixed

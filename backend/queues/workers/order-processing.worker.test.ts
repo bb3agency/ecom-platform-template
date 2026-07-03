@@ -193,7 +193,7 @@ describe('order-processing worker error and retry behavior', () => {
         providerOrderId: 'order_1'
       }),
       expect.objectContaining({
-        jobId: 'process-order-update:confirmed:order_1'
+        jobId: 'process-order-update-confirmed-order_1'
       })
     );
     expect(state.tx.order.updateMany).not.toHaveBeenCalled();
@@ -566,7 +566,7 @@ describe('order-processing worker error and retry behavior', () => {
         triggeredBy: 'PAYMENT_WEBHOOK'
       }),
       expect.objectContaining({
-        jobId: 'process-order-update:confirmed:order_1'
+        jobId: 'process-order-update-confirmed-order_1'
       })
     );
     expect(state.tx.order.updateMany).not.toHaveBeenCalled();

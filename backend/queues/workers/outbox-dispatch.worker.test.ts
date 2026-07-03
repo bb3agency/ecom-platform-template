@@ -86,6 +86,35 @@ describe('outbox-dispatch worker', () => {
     );
   });
 
+  it('sanitizes colon jobIds before queue.add (BullMQ rejects ids with ":" — cancel-shipment / OrderShipped regression)', async () => {
+    createOutboxDispatchWorker({} as never, workerDeps);
+    pending = [
+      {
+        id: 'outbox_colon',
+        queueName: 'shipping',
+        jobName: 'cancel-shipment',
+        payload: { orderId: 'order_1', awbNumber: 'AWB1' },
+        jobId: 'cancel-shipment:order_1',
+        attemptCount: 0,
+        createdAt: new Date()
+      }
+    ];
+
+    await processor?.({ name: 'publish-pending', data: {} });
+
+    expect(queueAdd).toHaveBeenCalledWith(
+      'cancel-shipment',
+      { orderId: 'order_1', awbNumber: 'AWB1' },
+      { jobId: 'cancel-shipment-order_1' }
+    );
+    expect(outboxUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'outbox_colon' },
+        data: expect.objectContaining({ status: 'PUBLISHED' })
+      })
+    );
+  });
+
   it('moves dead-letter message back to pending on replay request', async () => {
     createOutboxDispatchWorker({} as never, workerDeps);
     await processor?.({

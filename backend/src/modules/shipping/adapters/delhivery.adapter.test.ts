@@ -536,6 +536,27 @@ describe('DelhiveryAdapter', () => {
     }
   });
 
+  it('cancelShipment accepts "Returned" tracking status (prepaid/COD cancel outcome per Delhivery docs)', async () => {
+    const fetchMock = vi.fn().mockImplementation(async (url: string) => {
+      if (url.includes('/api/v1/packages/json')) {
+        return {
+          ok: true,
+          status: 200,
+          text: async () =>
+            JSON.stringify({
+              ShipmentData: [{ Shipment: { Status: { Status: 'Returned', StatusType: 'RT' }, Scans: [] } }]
+            })
+        };
+      }
+      return { ok: true, status: 200, text: async () => JSON.stringify({ status: true }) };
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const adapter = new DelhiveryAdapter({ apiKey: 'test_key' });
+    const result = await adapter.cancelShipment('56555510000140');
+    expect(result.cancelled).toBe(true);
+  });
+
   it('cancelShipment treats a track-API hiccup as inconclusive and keeps the positive edit response', async () => {
     const fetchMock = vi.fn().mockImplementation(async (url: string) => {
       if (url.includes('/api/v1/packages/json')) {
