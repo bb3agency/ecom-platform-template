@@ -11,32 +11,8 @@ import { formatPrice } from "@/lib/format-price";
 import { formatPaymentModeLabel } from "@/lib/format-payment-mode";
 import { toast } from "@/lib/toast";
 import { EmptyState } from "@/components/shared/EmptyState";
+import { formatOrderDate, orderStatusChipClass, orderStatusLabel } from "@/lib/order-status-ui";
 
-/** Status → chip styling (brand-neutral status colours, same convention as the toaster). */
-const STATUS_CHIP: Record<string, string> = {
-  CONFIRMED: "bg-sky-50 text-sky-700 ring-sky-200",
-  PROCESSING: "bg-amber-50 text-amber-700 ring-amber-200",
-  SHIPPED: "bg-indigo-50 text-indigo-700 ring-indigo-200",
-  OUT_FOR_DELIVERY: "bg-indigo-50 text-indigo-700 ring-indigo-200",
-  DELIVERED: "bg-green-50 text-green-700 ring-green-200",
-  CANCELLED: "bg-red-50 text-red-700 ring-red-200",
-  REFUNDED: "bg-zinc-100 text-zinc-700 ring-zinc-200",
-  PENDING_PAYMENT: "bg-amber-50 text-amber-700 ring-amber-200",
-};
-
-function statusLabel(status: string): string {
-  return status
-    .toLowerCase()
-    .split("_")
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(" ");
-}
-
-function formatOrderDate(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "";
-  return new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "numeric" }).format(date);
-}
 
 export default function AccountOrdersPage() {
   const accessToken = useAuthStore((s) => s.accessToken);
@@ -114,7 +90,7 @@ export default function AccountOrdersPage() {
 
       <div className="grid gap-3">
         {orders.map((order) => {
-          const chip = STATUS_CHIP[order.status] ?? "bg-zinc-100 text-zinc-700 ring-zinc-200";
+          const chip = orderStatusChipClass(order.status);
           return (
             <article
               key={order.id}
@@ -131,7 +107,7 @@ export default function AccountOrdersPage() {
                       <span
                         className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ring-1 ${chip}`}
                       >
-                        {statusLabel(order.status)}
+                        {orderStatusLabel(order.status)}
                       </span>
                     </div>
                     <p className="mt-0.5 text-xs text-[#767676] sm:text-sm">

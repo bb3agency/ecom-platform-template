@@ -12,6 +12,17 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.40] — 2026-07-03
+
+### Added
+- **Customer order detail items are enriched for the storefront UI.** `GET /api/v1/orders/:id` items now carry `productSlug`, `imageUrl` (first product image, `null` when none) and `isPurchasable` (variant AND product still active) — loaded via the variant→product relation on the customer path only. Admin order paths keep the exact legacy item shape (`orderItemSchema` gains the three fields as optional). The raw Prisma `variant` relation is explicitly mapped away so it can never leak into the payload (regression-tested).
+
+**Propagation:**
+- Severity: NORMAL (additive response fields) · Layers: backend (`modules/orders/{orders.service.ts,orders.schemas.ts}` + security test)
+- Migration: NO · Flag: none · Design impact: none · Breaking: NO
+- Rollback: revert the listed files
+- Pairs with frontend-core 0.1.26 (order detail redesign: item thumbnails deep-linking to `/products/<slug>?variant=<id>` + invoice-style table).
+
 ## [0.1.39] — 2026-07-03
 
 ### Added

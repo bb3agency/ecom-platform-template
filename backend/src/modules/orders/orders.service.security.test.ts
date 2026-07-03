@@ -194,4 +194,86 @@ describe('OrdersService secure data flow', () => {
     expect(result.statusHistory[0]?.note).toBeNull();
     expect(result.statusHistory[1]?.note).toBe('Packed and shipped');
   });
+
+  it('enriches customer order items with PDP slug, thumbnail and purchasability', async () => {
+    const findFirst = vi.fn(async () => ({
+      id: 'order_3',
+      orderNumber: 'ORD-2026-00003',
+      userId: 'user_1',
+      status: 'DELIVERED',
+      shippingAddress: {
+        fullName: 'Jane Doe',
+        phone: '9999999999',
+        line1: 'Street 1',
+        city: 'Hyderabad',
+        state: 'TS',
+        pincode: '500001'
+      },
+      subtotal: 10000,
+      shippingCharge: 0,
+      discountAmount: 0,
+      total: 10000,
+      notes: null,
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+      items: [
+        {
+          id: 'item_1',
+          variantId: 'variant_1',
+          productName: 'Cold-Pressed Oil',
+          variantName: '1L',
+          sku: 'OIL-1L',
+          quantity: 2,
+          unitPrice: 5000,
+          totalPrice: 10000,
+          variant: {
+            isActive: true,
+            product: {
+              slug: 'cold-pressed-oil',
+              isActive: true,
+              images: [{ url: 'https://cdn.example/oil.jpg' }]
+            }
+          }
+        },
+        {
+          id: 'item_2',
+          variantId: 'variant_2',
+          productName: 'Retired Product',
+          variantName: '500g',
+          sku: 'RET-500',
+          quantity: 1,
+          unitPrice: 0,
+          totalPrice: 0,
+          variant: {
+            isActive: false,
+            product: { slug: 'retired-product', isActive: true, images: [] }
+          }
+        }
+      ],
+      statusHistory: [],
+      payment: null,
+      invoice: null,
+      shipment: null
+    }));
+    const service = new OrdersService({
+      prisma: {
+        order: { findFirst }
+      }
+    } as unknown as ConstructorParameters<typeof OrdersService>[0]);
+    const result = await service.getMyOrderById('user_1', 'order_3');
+    const items = result.items as Array<Record<string, unknown>>;
+    expect(items[0]).toMatchObject({
+      productSlug: 'cold-pressed-oil',
+      imageUrl: 'https://cdn.example/oil.jpg',
+      isPurchasable: true
+    });
+    // Deactivated variant: still enriched (slug shown) but flagged not purchasable; no image → null.
+    expect(items[1]).toMatchObject({
+      productSlug: 'retired-product',
+      imageUrl: null,
+      isPurchasable: false
+    });
+    // The raw Prisma relation must never leak into the API payload.
+    expect(items[0]).not.toHaveProperty('variant');
+  });
 });

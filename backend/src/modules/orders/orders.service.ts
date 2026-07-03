@@ -733,7 +733,28 @@ export class OrdersService {
     const order = await this.fastify.prisma.order.findFirst({
       where: { id: orderId, userId },
       include: {
-        items: true,
+        // Variant → product slug + first image let the storefront render item thumbnails and
+        // deep-link each line back to its PDP (`/products/<slug>?variant=<id>`).
+        items: {
+          include: {
+            variant: {
+              select: {
+                isActive: true,
+                product: {
+                  select: {
+                    slug: true,
+                    isActive: true,
+                    images: {
+                      orderBy: { sortOrder: 'asc' },
+                      take: 1,
+                      select: { url: true }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
         payment: true,
         couponUsages: {
           include: {
@@ -4174,7 +4195,37 @@ export class OrdersService {
       notes: order.notes,
       createdAt: order.createdAt.toISOString(),
       updatedAt: order.updatedAt.toISOString(),
-      items: order.items,
+      // When the caller loaded the variant→product relation (customer order detail), enrich each
+      // line with the PDP slug + a thumbnail so the UI can render images and deep-link back to the
+      // product. Callers that load `items: true` (admin paths) keep the exact legacy shape.
+      items: order.items.map((item) => {
+        const variantRelation = (
+          item as {
+            variant?: {
+              isActive: boolean;
+              product: { slug: string; isActive: boolean; images: Array<{ url: string }> };
+            };
+          }
+        ).variant;
+        return {
+          id: item.id,
+          variantId: item.variantId,
+          productName: item.productName,
+          variantName: item.variantName,
+          sku: item.sku,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          totalPrice: item.totalPrice,
+          ...(variantRelation?.product
+            ? {
+                productSlug: variantRelation.product.slug,
+                imageUrl: variantRelation.product.images[0]?.url ?? null,
+                // Only offer "view product" when both variant and product are still live.
+                isPurchasable: variantRelation.isActive && variantRelation.product.isActive
+              }
+            : {})
+        };
+      }),
       statusHistory: order.statusHistory.map((history) => ({
         ...history,
         note: exposeInternalReferences

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AddToCartButton } from "@/components/cart/AddToCartButton";
 import { PriceDisplay } from "@/components/shared/PriceDisplay";
 import type { Product, ProductVariant } from "@/types/product";
@@ -16,6 +16,17 @@ export function ProductVariantSelector({
 }: ProductVariantSelectorProps) {
   const [selectedVariant, setSelectedVariant] =
     useState<ProductVariant>(defaultVariant);
+
+  // `?variant=<id>` deep-links (e.g. from order history) preselect that variant. Read from
+  // window on mount — NOT useSearchParams — so the statically-rendered PDP needs no Suspense
+  // boundary and stays fully ISR-cacheable.
+  useEffect(() => {
+    const requestedId = new URLSearchParams(window.location.search).get("variant");
+    if (!requestedId) return;
+    const requested = product.variants.find((v) => v.id === requestedId);
+    if (requested) setSelectedVariant(requested);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const hasDiscount =
     typeof selectedVariant?.compareAtPrice === "number" &&

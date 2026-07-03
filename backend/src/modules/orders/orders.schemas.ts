@@ -425,7 +425,12 @@ const orderItemSchema = {
     sku: { type: 'string', maxLength: 100 },
     quantity: { type: 'integer', minimum: 1, maximum: 1000000 },
     unitPrice: { type: 'integer', minimum: 0, maximum: 1000000000 },
-    totalPrice: { type: 'integer', minimum: 0, maximum: 1000000000 }
+    totalPrice: { type: 'integer', minimum: 0, maximum: 1000000000 },
+    // Optional PDP enrichment (customer order detail only): thumbnail + deep-link back to the
+    // product page. Absent on admin paths that load bare order items.
+    productSlug: { type: 'string', maxLength: 220 },
+    imageUrl: { anyOf: [{ type: 'string', maxLength: 1000 }, { type: 'null' }] },
+    isPurchasable: { type: 'boolean' }
   }
 } as const;
 

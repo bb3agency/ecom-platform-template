@@ -1,15 +1,114 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
+import Image from "next/image";
 import { useParams, useRouter } from "next/navigation";
+import {
+  ArrowLeft,
+  FileDown,
+  Loader2,
+  MapPin,
+  Package,
+  Receipt,
+  Truck,
+  ExternalLink,
+} from "lucide-react";
 import { useAuthStore } from "@/stores/auth";
-import { getMyOrder, cancelMyOrder, createReturnRequest, downloadCustomerInvoicePdf, type OrderSummary } from "@/lib/orders-api";
+import {
+  getMyOrder,
+  cancelMyOrder,
+  createReturnRequest,
+  downloadCustomerInvoicePdf,
+  type OrderSummary,
+  type OrderLineItem,
+} from "@/lib/orders-api";
 import { getApiErrorMessage } from "@/lib/error-messages";
 import { formatPrice } from "@/lib/format-price";
 import { formatPaymentModeLabel } from "@/lib/format-payment-mode";
 import { shippingProviderLabel } from "@/lib/shipping-provider-labels";
+import { formatOrderDate, orderStatusChipClass, orderStatusLabel } from "@/lib/order-status-ui";
+import { toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 import { OrderReviewPrompt } from "@/components/product/OrderReviewPrompt";
+
+const PLACEHOLDER_IMAGE = "/images/product-placeholder.svg";
+
+/** Card shell shared by every section on this page. */
+function DetailCard({
+  icon,
+  title,
+  action,
+  children,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-2xl border border-[#efe8e4] bg-white p-4 sm:p-6">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-[#eff5ee] text-[#23403d]">
+            {icon}
+          </div>
+          <h2 className="font-heading text-base font-bold text-[#23403d] sm:text-lg">{title}</h2>
+        </div>
+        {action}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/** One order line — thumbnail + names + qty; deep-links to the PDP when still purchasable. */
+function OrderItemRow({ item }: { item: OrderLineItem }) {
+  const canLink = Boolean(item.productSlug) && item.isPurchasable !== false;
+  const href = item.productSlug
+    ? `/products/${item.productSlug}?variant=${encodeURIComponent(item.variantId)}`
+    : null;
+
+  const content = (
+    <>
+      <div className="relative size-14 shrink-0 overflow-hidden rounded-xl border border-[#efe8e4] bg-[#faf3ef] sm:size-16">
+        <Image
+          src={item.imageUrl || PLACEHOLDER_IMAGE}
+          alt={item.productName}
+          fill
+          sizes="64px"
+          className="object-cover"
+        />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-bold text-[#23403d]">
+          {item.productName}
+          {canLink && (
+            <ExternalLink className="ml-1.5 inline size-3 text-[#767676] opacity-0 transition-opacity group-hover/item:opacity-100" aria-hidden />
+          )}
+        </p>
+        <p className="truncate text-xs text-[#767676]">{item.variantName}</p>
+        <p className="mt-0.5 text-xs text-[#767676]">
+          {item.quantity} × {formatPrice(item.unitPrice)}
+        </p>
+      </div>
+      <p className="shrink-0 text-sm font-bold text-[#23403d]">{formatPrice(item.totalPrice)}</p>
+    </>
+  );
+
+  if (canLink && href) {
+    return (
+      <Link
+        href={href}
+        className="group/item flex items-center gap-3 rounded-xl p-2 transition-colors hover:bg-[#faf3ef]/70 sm:gap-4"
+        aria-label={`View ${item.productName} (${item.variantName}) on the store`}
+      >
+        {content}
+      </Link>
+    );
+  }
+  return <div className="flex items-center gap-3 p-2 sm:gap-4">{content}</div>;
+}
 
 export default function AccountOrderDetailPage() {
   const params = useParams<{ id: string }>();
@@ -19,11 +118,13 @@ export default function AccountOrderDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [downloadingInvoice, setDownloadingInvoice] = useState(false);
-  
+
   // Return request states
   const [showReturnForm, setShowReturnForm] = useState(false);
   const [returnReason, setReturnReason] = useState("");
-  const [returnItems, setReturnItems] = useState<Record<string, { quantity: number; reason: string; selected: boolean }>>({});
+  const [returnItems, setReturnItems] = useState<
+    Record<string, { quantity: number; reason: string; selected: boolean }>
+  >({});
 
   useEffect(() => {
     let cancelled = false;
@@ -62,13 +163,13 @@ export default function AccountOrderDetailPage() {
     if (!accessToken || !order) return;
     if (!confirm("Are you sure you want to cancel this order?")) return;
     setBusyAction("cancel");
-    setError(null);
     try {
       await cancelMyOrder(order.id, accessToken, "Cancelled by customer");
       const result = await getMyOrder(order.id, accessToken);
       setOrder(result);
+      toast.success("Order cancelled");
     } catch (err) {
-      setError(getApiErrorMessage(err));
+      toast.error(getApiErrorMessage(err));
     } finally {
       setBusyAction(null);
     }
@@ -82,15 +183,10 @@ export default function AccountOrderDetailPage() {
   const handleDownloadInvoice = async () => {
     if (!accessToken || !order?.invoice?.hasPdf) return;
     setDownloadingInvoice(true);
-    setError(null);
     try {
-      await downloadCustomerInvoicePdf(
-        order.id,
-        accessToken,
-        `${order.invoice.invoiceNumber}.pdf`,
-      );
+      await downloadCustomerInvoicePdf(order.id, accessToken, `${order.invoice.invoiceNumber}.pdf`);
     } catch (err) {
-      setError(getApiErrorMessage(err));
+      toast.error(getApiErrorMessage(err));
     } finally {
       setDownloadingInvoice(false);
     }
@@ -109,17 +205,16 @@ export default function AccountOrderDetailPage() {
       }));
 
     if (selectedItems.length === 0) {
-      setError("Please select at least one item to return.");
+      toast.error("Please select at least one item to return.");
       return;
     }
 
     if (!returnReason.trim()) {
-      setError("Please provide an overall reason for the return.");
+      toast.error("Please provide an overall reason for the return.");
       return;
     }
 
     setBusyAction("return");
-    setError(null);
     try {
       await createReturnRequest(
         order.id,
@@ -140,8 +235,9 @@ export default function AccountOrderDetailPage() {
         refreshed[item.id] = { quantity: item.quantity, reason: "", selected: false };
       });
       setReturnItems(refreshed);
+      toast.success("Return request submitted");
     } catch (err) {
-      setError(getApiErrorMessage(err));
+      toast.error(getApiErrorMessage(err));
     } finally {
       setBusyAction(null);
     }
@@ -151,7 +247,13 @@ export default function AccountOrderDetailPage() {
     return <p className="text-sm text-destructive">{error}</p>;
   }
   if (!order) {
-    return <p className="text-sm text-muted-foreground">Loading order...</p>;
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="h-24 animate-pulse rounded-2xl border border-[#efe8e4] bg-[#eff5ee]" />
+        <div className="h-48 animate-pulse rounded-2xl border border-[#efe8e4] bg-[#eff5ee]" />
+        <div className="h-64 animate-pulse rounded-2xl border border-[#efe8e4] bg-[#eff5ee]" />
+      </div>
+    );
   }
 
   const canCancel = ["CONFIRMED", "PROCESSING"].includes(order.status);
@@ -159,33 +261,58 @@ export default function AccountOrderDetailPage() {
     order.paymentMode !== "COD" &&
     (order.status === "PENDING_PAYMENT" || order.status === "PAYMENT_FAILED");
   const addr = order.shippingAddress;
+  const items = order.items ?? [];
 
   return (
-    <section className="grid gap-6">
-      <div className="grid gap-3 rounded-lg border border-border p-4">
+    <section className="flex flex-col gap-4 sm:gap-5">
+      {/* ── Header ─────────────────────────────────────────────────────── */}
+      <div className="rounded-2xl border border-[#efe8e4] bg-white p-4 sm:p-6">
+        <Link
+          href="/orders"
+          className="mb-3 inline-flex items-center gap-1.5 text-xs font-bold text-[#767676] transition-colors hover:text-[#ec6e55]"
+        >
+          <ArrowLeft className="size-3.5" aria-hidden />
+          Back to orders
+        </Link>
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h1 className="font-heading text-lg font-semibold sm:text-2xl">{order.orderNumber}</h1>
-            <p className="text-sm text-muted-foreground">
-              {order.status} · {formatPaymentModeLabel(order.paymentMode)}
+            <div className="flex flex-wrap items-center gap-2.5">
+              <h1 className="font-heading text-xl font-bold text-[#23403d] sm:text-2xl">
+                {order.orderNumber}
+              </h1>
+              <span
+                className={`inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ring-1 ${orderStatusChipClass(order.status)}`}
+              >
+                {orderStatusLabel(order.status)}
+              </span>
+            </div>
+            <p className="mt-1 text-sm text-[#767676]">
+              Placed {formatOrderDate(order.createdAt ?? "")} · {formatPaymentModeLabel(order.paymentMode)}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-             {order.invoice?.hasPdf ? (
+            {order.invoice?.hasPdf ? (
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
+                className="gap-1.5"
                 disabled={downloadingInvoice || busyAction !== null}
                 onClick={() => void handleDownloadInvoice()}
               >
-                {downloadingInvoice ? "Downloading…" : "Invoice"}
+                {downloadingInvoice ? (
+                  <Loader2 className="size-3.5 animate-spin" aria-hidden />
+                ) : (
+                  <FileDown className="size-3.5" aria-hidden />
+                )}
+                Invoice PDF
               </Button>
             ) : null}
             {canRetry && (
               <Button
                 variant="default"
                 size="sm"
+                className="bg-[#23403d] hover:bg-[#1a302e]"
                 disabled={busyAction !== null}
                 onClick={() => handleRetryPayment()}
               >
@@ -193,62 +320,138 @@ export default function AccountOrderDetailPage() {
               </Button>
             )}
             {canCancel && (
-               <Button
+              <Button
                 variant="destructive"
                 size="sm"
                 disabled={busyAction !== null}
                 onClick={handleCancel}
               >
-                {busyAction === "cancel" ? "Cancelling..." : "Cancel Order"}
+                {busyAction === "cancel" ? "Cancelling…" : "Cancel Order"}
               </Button>
             )}
           </div>
         </div>
 
-        {error && <p className="text-sm text-destructive">{error}</p>}
-
         {canRetry && (
-          <div className="rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-800">
+          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-sm text-amber-800">
             {order.status === "PAYMENT_FAILED"
               ? "Payment failed for this order. Please retry to complete your purchase."
-              : "Payment is pending for this order. Click \"Retry Payment\" to complete your purchase."}
+              : 'Payment is pending for this order. Click "Retry Payment" to complete your purchase.'}
           </div>
         )}
-
-        <div className="mt-4 grid gap-2 border-t border-border pt-4">
-          <p className="flex justify-between text-sm">
-            <span>Subtotal</span>
-            <span>{formatPrice(order.subtotal)}</span>
-          </p>
-          <p className="flex justify-between text-sm">
-            <span>Shipping</span>
-            <span>{formatPrice(order.shippingCharge)}</span>
-          </p>
-          {order.discountAmount > 0 && (
-            <>
-              <p className="flex justify-between text-sm">
-                <span>Discount</span>
-                <span className="text-[#00aa63]">-{formatPrice(order.discountAmount)}</span>
-              </p>
-              {order.couponCode && (
-                <p className="text-xs text-[#767676]">
-                  Coupon: <span className="font-mono font-medium">{order.couponCode}</span>
-                </p>
-              )}
-            </>
-          )}
-          <p className="flex justify-between border-t border-border pt-2 font-medium">
-            <span>Total</span>
-            <span className="text-[#ec6e55]">{formatPrice(order.total)}</span>
-          </p>
-        </div>
       </div>
 
+      {/* ── Items ──────────────────────────────────────────────────────── */}
+      <DetailCard icon={<Package className="size-4" aria-hidden />} title={`Items (${items.length})`}>
+        <div className="flex flex-col divide-y divide-[#f5efe9]">
+          {items.map((item) => (
+            <OrderItemRow key={item.id} item={item} />
+          ))}
+        </div>
+      </DetailCard>
+
+      {/* ── Invoice ────────────────────────────────────────────────────── */}
+      <DetailCard
+        icon={<Receipt className="size-4" aria-hidden />}
+        title="Invoice"
+        action={
+          order.invoice?.hasPdf ? (
+            <button
+              type="button"
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#efe8e4] px-3 text-xs font-bold text-[#23403d] transition-colors hover:bg-[#faf3ef] disabled:opacity-50"
+              disabled={downloadingInvoice}
+              onClick={() => void handleDownloadInvoice()}
+            >
+              {downloadingInvoice ? (
+                <Loader2 className="size-3.5 animate-spin" aria-hidden />
+              ) : (
+                <FileDown className="size-3.5" aria-hidden />
+              )}
+              Download PDF
+            </button>
+          ) : undefined
+        }
+      >
+        {order.invoice ? (
+          <p className="mb-3 text-xs text-[#767676]">
+            Invoice <span className="font-mono font-bold text-[#23403d]">{order.invoice.invoiceNumber}</span>
+            {" · "}issued {formatOrderDate(order.invoice.issuedAt)}
+          </p>
+        ) : null}
+
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[420px] text-sm">
+            <thead>
+              <tr className="border-b border-[#efe8e4] text-left text-[11px] font-bold uppercase tracking-wider text-[#767676]">
+                <th scope="col" className="py-2.5 pr-3 font-bold">Item</th>
+                <th scope="col" className="px-3 py-2.5 text-center font-bold">Qty</th>
+                <th scope="col" className="px-3 py-2.5 text-right font-bold">Unit Price</th>
+                <th scope="col" className="py-2.5 pl-3 text-right font-bold">Amount</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#f5efe9]">
+              {items.map((item) => (
+                <tr key={item.id}>
+                  <td className="py-3 pr-3">
+                    <p className="font-medium text-[#23403d]">{item.productName}</p>
+                    <p className="text-xs text-[#767676]">
+                      {item.variantName} · SKU {item.sku}
+                    </p>
+                  </td>
+                  <td className="px-3 py-3 text-center text-[#23403d]">{item.quantity}</td>
+                  <td className="px-3 py-3 text-right text-[#23403d]">{formatPrice(item.unitPrice)}</td>
+                  <td className="py-3 pl-3 text-right font-medium text-[#23403d]">
+                    {formatPrice(item.totalPrice)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot className="text-sm">
+              <tr>
+                <td colSpan={3} className="pt-4 text-right text-[#767676]">Subtotal</td>
+                <td className="pt-4 pl-3 text-right font-medium text-[#23403d]">
+                  {formatPrice(order.subtotal)}
+                </td>
+              </tr>
+              {order.discountAmount > 0 && (
+                <tr>
+                  <td colSpan={3} className="pt-2 text-right text-[#767676]">
+                    Discount
+                    {order.couponCode ? (
+                      <span className="ml-1.5 rounded-full bg-[#eff5ee] px-2 py-0.5 font-mono text-[10px] font-bold text-[#23403d]">
+                        {order.couponCode}
+                      </span>
+                    ) : null}
+                  </td>
+                  <td className="pt-2 pl-3 text-right font-medium text-[#00aa63]">
+                    -{formatPrice(order.discountAmount)}
+                  </td>
+                </tr>
+              )}
+              <tr>
+                <td colSpan={3} className="pt-2 text-right text-[#767676]">Shipping</td>
+                <td className="pt-2 pl-3 text-right font-medium text-[#23403d]">
+                  {order.shippingCharge > 0 ? formatPrice(order.shippingCharge) : "Free"}
+                </td>
+              </tr>
+              <tr>
+                <td colSpan={3} className="pt-3 text-right font-heading text-base font-bold text-[#23403d]">
+                  Total
+                </td>
+                <td className="border-t border-[#efe8e4] pt-3 pl-3 text-right font-heading text-base font-bold text-[#ec6e55]">
+                  {formatPrice(order.total)}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </DetailCard>
+
+      {/* ── Shipping address ───────────────────────────────────────────── */}
       {addr ? (
-        <div className="grid gap-3 rounded-lg border border-border p-4">
-          <h2 className="font-heading text-lg font-semibold">Shipping address</h2>
-          <address className="text-sm not-italic text-muted-foreground">
-            <p className="font-medium text-foreground">{addr.fullName}</p>
+        <DetailCard icon={<MapPin className="size-4" aria-hidden />} title="Shipping Address">
+          <address className="text-sm not-italic leading-relaxed text-[#767676]">
+            <p className="font-bold text-[#23403d]">{addr.fullName}</p>
             <p>{addr.phone}</p>
             <p>
               {addr.line1}
@@ -258,88 +461,86 @@ export default function AccountOrderDetailPage() {
               {addr.city}, {addr.state} {addr.pincode}
             </p>
           </address>
-        </div>
+        </DetailCard>
       ) : null}
-
-      <div className="grid gap-3 rounded-lg border border-border p-4">
-        <h2 className="font-heading text-lg font-semibold">Items</h2>
-        <div className="grid gap-4">
-          {order.items?.map((item) => (
-            <div key={item.id} className="flex flex-col gap-1 text-sm sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="font-medium">{item.productName}</p>
-                <p className="text-muted-foreground">{item.variantName}</p>
-                <p className="text-muted-foreground">Qty: {item.quantity}</p>
-              </div>
-              <p className="font-medium">{formatPrice(item.totalPrice)}</p>
-            </div>
-          ))}
-        </div>
-      </div>
 
       <OrderReviewPrompt orderId={order.id} orderStatus={order.status} />
 
       {order.status === "DELIVERED" && !showReturnForm && (
-        <div className="rounded-lg border border-border p-4 text-center">
-          <p className="text-sm text-muted-foreground mb-3">Is there an issue with your items?</p>
+        <div className="rounded-2xl border border-[#efe8e4] bg-white p-4 text-center sm:p-5">
+          <p className="mb-3 text-sm text-[#767676]">Is there an issue with your items?</p>
           <Button variant="outline" size="sm" onClick={() => setShowReturnForm(true)}>
-             Request a Return / Replacement
+            Request a Return / Replacement
           </Button>
         </div>
       )}
 
       {order.status === "DELIVERED" && showReturnForm && (
-        <form onSubmit={handleReturnSubmit} className="grid gap-4 rounded-lg border border-[#ec6e55]/30 bg-[#faf3ef]/20 p-4">
+        <form
+          onSubmit={handleReturnSubmit}
+          className="grid gap-4 rounded-2xl border border-[#ec6e55]/30 bg-[#faf3ef]/40 p-4 sm:p-5"
+        >
           <h2 className="font-heading text-lg font-bold text-[#23403d]">Request a Return</h2>
-          <p className="text-xs text-[#767676] mb-2">Select the items you would like to return and specify the details.</p>
+          <p className="mb-2 text-xs text-[#767676]">
+            Select the items you would like to return and specify the details.
+          </p>
 
           <div className="grid gap-4">
             {order.items?.map((item) => {
               const config = returnItems[item.id] || { selected: false, quantity: item.quantity, reason: "" };
               return (
-                <div key={item.id} className="grid gap-2 rounded border border-border p-3 text-sm bg-white">
+                <div key={item.id} className="grid gap-2 rounded-xl border border-[#efe8e4] bg-white p-3 text-sm">
                   <div className="flex items-start gap-3">
                     <input
                       type="checkbox"
                       id={`check-${item.id}`}
                       className="mt-1 h-4 w-4 rounded border-gray-300 text-[#ec6e55] focus:ring-[#ec6e55]"
                       checked={config.selected}
-                      onChange={(e) => setReturnItems({
-                        ...returnItems,
-                        [item.id]: { ...config, selected: e.target.checked }
-                      })}
+                      onChange={(e) =>
+                        setReturnItems({
+                          ...returnItems,
+                          [item.id]: { ...config, selected: e.target.checked },
+                        })
+                      }
                     />
-                    <label htmlFor={`check-${item.id}`} className="font-medium flex-1 cursor-pointer">
+                    <label htmlFor={`check-${item.id}`} className="flex-1 cursor-pointer font-medium">
                       {item.productName} ({item.variantName})
                     </label>
                   </div>
                   {config.selected && (
-                    <div className="pl-7 grid gap-3 mt-2">
+                    <div className="mt-2 grid gap-3 pl-7">
                       <div>
-                        <label className="text-xs font-medium block mb-1">Quantity</label>
+                        <label className="mb-1 block text-xs font-medium">Quantity</label>
                         <input
                           type="number"
                           min={1}
                           max={item.quantity}
                           className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                           value={config.quantity}
-                          onChange={(e) => setReturnItems({
-                            ...returnItems,
-                            [item.id]: { ...config, quantity: Math.min(item.quantity, Math.max(1, parseInt(e.target.value) || 1)) }
-                          })}
+                          onChange={(e) =>
+                            setReturnItems({
+                              ...returnItems,
+                              [item.id]: {
+                                ...config,
+                                quantity: Math.min(item.quantity, Math.max(1, parseInt(e.target.value) || 1)),
+                              },
+                            })
+                          }
                         />
                       </div>
                       <div className="sm:col-span-2">
-                        <label className="text-xs font-medium block mb-1">Reason for this item (Optional)</label>
+                        <label className="mb-1 block text-xs font-medium">Reason for this item (Optional)</label>
                         <input
                           type="text"
                           placeholder="e.g. damaged, wrong size"
                           className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                           value={config.reason}
-                          onChange={(e) => setReturnItems({
-                            ...returnItems,
-                            [item.id]: { ...config, reason: e.target.value }
-                          })}
+                          onChange={(e) =>
+                            setReturnItems({
+                              ...returnItems,
+                              [item.id]: { ...config, reason: e.target.value },
+                            })
+                          }
                         />
                       </div>
                     </div>
@@ -349,62 +550,81 @@ export default function AccountOrderDetailPage() {
             })}
           </div>
 
-          <div className="grid gap-1.5 mt-2">
-             <label className="text-xs font-bold block">Overall return reason</label>
-             <textarea
-               className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-               placeholder="Please specify why you are raising this return request..."
-               value={returnReason}
-               onChange={(e) => setReturnReason(e.target.value)}
-               required
-             />
+          <div className="mt-2 grid gap-1.5">
+            <label className="block text-xs font-bold">Overall return reason</label>
+            <textarea
+              className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              placeholder="Please specify why you are raising this return request..."
+              value={returnReason}
+              onChange={(e) => setReturnReason(e.target.value)}
+              required
+            />
           </div>
 
-          <div className="flex flex-col-reverse gap-2 mt-2 sm:flex-row sm:justify-end">
-             <Button type="button" variant="outline" size="sm" disabled={busyAction === "return"} onClick={() => setShowReturnForm(false)}>
-                Cancel
-             </Button>
-             <Button type="submit" variant="default" size="sm" disabled={busyAction === "return"}>
-                {busyAction === "return" ? "Submitting..." : "Submit Return"}
-             </Button>
+          <div className="mt-2 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={busyAction === "return"}
+              onClick={() => setShowReturnForm(false)}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" variant="default" size="sm" disabled={busyAction === "return"}>
+              {busyAction === "return" ? "Submitting…" : "Submit Return"}
+            </Button>
           </div>
         </form>
       )}
 
+      {/* ── Tracking ───────────────────────────────────────────────────── */}
       {order.shipment?.awb && (
-        <div className="grid gap-3 rounded-lg border border-border p-4">
-          <h2 className="font-heading text-lg font-semibold">Tracking</h2>
+        <DetailCard icon={<Truck className="size-4" aria-hidden />} title="Tracking">
           <div className="text-sm">
-            <p className="mb-2"><span className="font-medium">AWB:</span> {order.shipment.awb}</p>
-            <p className="mb-4"><span className="font-medium">Status:</span> {order.shipment.status}</p>
+            <p className="mb-1.5">
+              <span className="font-bold text-[#23403d]">AWB:</span>{" "}
+              <span className="font-mono text-[#767676]">{order.shipment.awb}</span>
+            </p>
+            <p className="mb-3">
+              <span className="font-bold text-[#23403d]">Status:</span>{" "}
+              <span className="text-[#767676]">{order.shipment.status}</span>
+            </p>
             {order.shipment.trackingUrl && (
               <a
                 href={order.shipment.trackingUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="text-primary underline"
+                className="inline-flex items-center gap-1.5 text-sm font-bold text-[#ec6e55] hover:underline"
               >
                 Track on {shippingProviderLabel(order.shipment?.provider ?? "")}
+                <ExternalLink className="size-3.5" aria-hidden />
               </a>
             )}
           </div>
           {order.shipment.events?.length > 0 && (
-            <div className="mt-4 border-t border-border pt-4">
-              <h3 className="mb-3 font-medium text-sm">Tracking History</h3>
-              <div className="grid gap-3">
-                 {order.shipment.events.map((event, i) => (
-                    <div key={i} className="text-xs">
-                      <p className="font-medium">{event.status}</p>
-                      <p className="text-muted-foreground">{event.description}</p>
-                      <p className="text-muted-foreground">
-                        {new Date(event.occurredAt).toLocaleString()} {event.location ? `· ${event.location}` : ""}
-                      </p>
-                    </div>
-                 ))}
-              </div>
+            <div className="mt-4 border-t border-[#efe8e4] pt-4">
+              <h3 className="mb-3 text-sm font-bold text-[#23403d]">Tracking History</h3>
+              <ol className="relative ml-1.5 flex flex-col gap-4 border-l border-[#efe8e4] pl-4">
+                {order.shipment.events.map((event, i) => (
+                  <li key={i} className="relative text-xs">
+                    <span
+                      className={`absolute -left-[21.5px] top-1 size-2.5 rounded-full ring-2 ring-white ${
+                        i === 0 ? "bg-[#ec6e55]" : "bg-[#c5dac2]"
+                      }`}
+                      aria-hidden
+                    />
+                    <p className="font-bold text-[#23403d]">{event.status}</p>
+                    <p className="text-[#767676]">{event.description}</p>
+                    <p className="mt-0.5 text-[#767676]/80">
+                      {new Date(event.occurredAt).toLocaleString()} {event.location ? `· ${event.location}` : ""}
+                    </p>
+                  </li>
+                ))}
+              </ol>
             </div>
           )}
-        </div>
+        </DetailCard>
       )}
     </section>
   );
