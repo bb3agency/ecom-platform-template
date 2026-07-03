@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
-import { User, LogOut, ShoppingCart } from "lucide-react";
+import { User, LogOut } from "lucide-react";
 import { useAuthStore } from "@/stores/auth";
 import { logoutSession } from "@/lib/auth-api";
 import { useCartStore } from "@/stores/cart";
@@ -10,7 +10,7 @@ import { useWishlistStore } from "@/stores/wishlist";
 import { useCartSync } from "@/hooks/use-cart-sync";
 import { useWishlistSync } from "@/hooks/use-wishlist-sync";
 import { useSessionBootstrap } from "@/hooks/use-session-bootstrap";
-import { PriceDisplay } from "@/components/shared/PriceDisplay";
+import { CartDropdown } from "@/components/cart/CartDropdown";
 
 export function MainNav() {
   useSessionBootstrap();
@@ -23,10 +23,6 @@ export function MainNav() {
   const accessToken = useAuthStore((s) => s.accessToken);
   const sessionStatus = useAuthStore((s) => s.storefrontSessionStatus);
   const clearCart = useCartStore((s) => s.clearCart);
-
-  const cartItems = useCartStore((s) => s.items);
-  const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
-  const cartTotal = cartItems.reduce((sum, item) => sum + item.lineTotal, 0);
 
   const isSignedIn = Boolean(accessToken);
   const isCheckingSession = sessionStatus === "checking" && !accessToken;
@@ -99,22 +95,8 @@ export function MainNav() {
         </div>
       </div>
 
-      {/* Mini Cart Trigger */}
-      <Link href="/cart" className="group flex items-center gap-3">
-        <div className="relative flex size-9 items-center justify-center rounded-full bg-[#eff5ee] text-[#23403d] transition-colors group-hover:bg-[#ec6e55] group-hover:text-white sm:size-11">
-          <ShoppingCart className="size-4 sm:size-5" />
-          <span className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-[#ec6e55] text-[8px] font-bold leading-none text-white shadow-sm ring-2 ring-white transition-colors group-hover:bg-[#23403d] sm:size-[18px] sm:text-[10px]">
-            {cartCount > 99 ? "99+" : cartCount}
-          </span>
-        </div>
-        
-        <div className="hidden flex-col lg:flex">
-          <span className="text-xs font-bold text-[#767676]">Your Cart</span>
-          <span className="text-sm font-bold text-[#ec6e55]">
-             <PriceDisplay pricePaise={cartTotal} />
-          </span>
-        </div>
-      </Link>
+      {/* Mini Cart — click opens a dropdown right below the icon (items + Go to Cart). */}
+      <CartDropdown />
     </div>
   );
 }

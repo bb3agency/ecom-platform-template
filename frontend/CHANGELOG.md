@@ -12,6 +12,20 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.29] — 2026-07-03
+
+### Added
+- **Header mini-cart dropdown** (`components/cart/CartDropdown.tsx`, new). Clicking the cart icon now opens a small popover anchored directly below the icon — current cart lines (thumbnail, name, variant · qty × unit price, line total), subtotal, empty state, and a **Go to Cart** button — instead of navigating straight to `/cart`. Viewport-aware: fixed 320px panel on desktop, clamped to `calc(100vw-1.5rem)` on mobile so it never overflows; closes on outside tap/click and Escape; count badge and header price label preserved exactly (markup moved from `MainNav` into the trigger).
+
+### Fixed
+- **Order-detail invoice totals were horizontally clipped on mobile.** Subtotal/Discount/Shipping/Total lived inside the `overflow-x-auto` line-items table, so on narrow screens they scrolled out of view ("Subt…", "To…"). Totals now render as a static block OUTSIDE the scroll container (always fully visible); the Unit Price column folds into the item cell on mobile (`… each`), letting the table min-width drop 420→340px.
+- **PDP overflowed the mobile viewport (content clipped at the right edge, no wrap).** Root cause: the gallery thumbnail strip (`overflow-x-auto`) sits inside a CSS-grid item, and grid items default to `min-width:auto` — the strip's intrinsic width inflated the column past the viewport, and the body's `overflow-x-hidden` clipped everything instead of scrolling. Added `min-w-0` to the PDP grid children (gallery + info panel). Same latent guard applied to the other grid-item scroll/flex containers: `AccountNav` (account grid child with `overflow-x-auto`), the account content column, and the cart items column.
+
+**Propagation:**
+- Severity: HIGH (PDP unreadable on phones) · Layers: frontend (`components/cart/CartDropdown.tsx` new, `components/layout/MainNav.tsx`, `components/layout/AccountNav.tsx`, `components/cart/CartWorkspace.tsx`, `app/(storefront)/products/[slug]/page.tsx`, `app/(account)/{layout.tsx,orders/[id]/page.tsx}`)
+- Migration: NO · Flag: none · Design impact: uses existing palette tokens/hexes · Breaking: NO
+- Rollback: revert the listed files
+
 ## [0.1.28] — 2026-07-03
 
 ### Added

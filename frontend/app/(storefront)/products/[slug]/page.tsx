@@ -124,13 +124,16 @@ export default async function ProductDetailPage({ params }: ProductDetailPagePro
 
         {/* ── Main product grid ─────────────────────────────────────────────── */}
         <div className="grid gap-6 rounded-[20px] bg-white p-4 shadow-sm sm:gap-10 sm:p-6 lg:grid-cols-[52%_48%] lg:p-12">
-          {/* Gallery */}
-          <div className="rounded-[20px] bg-[#faf3ef] p-4 lg:p-8">
+          {/* Gallery — min-w-0 lets the thumbnail strip's overflow-x-auto actually shrink and
+              scroll: grid items default to min-width:auto, so without it the strip's intrinsic
+              width inflates the column past the viewport on mobile (the overflow is then
+              clipped by the body's overflow-x-hidden instead of scrolling). */}
+          <div className="min-w-0 rounded-[20px] bg-[#faf3ef] p-4 lg:p-8">
             <ProductGallery images={product.images} productName={product.name} />
           </div>
 
           {/* Info panel */}
-          <section className="flex flex-col gap-5">
+          <section className="flex min-w-0 flex-col gap-5">
             {/* Category */}
             <Link
               href={`/categories/${product.category.slug}`}

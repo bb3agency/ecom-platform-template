@@ -389,71 +389,73 @@ export default function AccountOrderDetailPage() {
           </p>
         ) : null}
 
+        {/* Line items — scrollable on narrow screens. Totals live OUTSIDE the scroll container
+            so Subtotal/Shipping/Total are always fully visible on mobile. */}
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[420px] text-sm">
+          <table className="w-full min-w-[340px] text-sm">
             <thead>
               <tr className="border-b border-[#efe8e4] text-left text-[11px] font-bold uppercase tracking-wider text-[#767676]">
-                <th scope="col" className="py-2.5 pr-3 font-bold">Item</th>
-                <th scope="col" className="px-3 py-2.5 text-center font-bold">Qty</th>
-                <th scope="col" className="px-3 py-2.5 text-right font-bold">Unit Price</th>
-                <th scope="col" className="py-2.5 pl-3 text-right font-bold">Amount</th>
+                <th scope="col" className="py-2.5 pr-2 font-bold">Item</th>
+                <th scope="col" className="px-2 py-2.5 text-center font-bold">Qty</th>
+                <th scope="col" className="hidden px-2 py-2.5 text-right font-bold sm:table-cell">Unit Price</th>
+                <th scope="col" className="py-2.5 pl-2 text-right font-bold">Amount</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#f5efe9]">
               {items.map((item) => (
                 <tr key={item.id}>
-                  <td className="py-3 pr-3">
+                  <td className="py-3 pr-2">
                     <p className="font-medium text-[#23403d]">{item.productName}</p>
                     <p className="text-xs text-[#767676]">
                       {item.variantName} · SKU {item.sku}
+                      {/* Unit price folds into the item cell on mobile (hidden column). */}
+                      <span className="sm:hidden"> · {formatPrice(item.unitPrice)} each</span>
                     </p>
                   </td>
-                  <td className="px-3 py-3 text-center text-[#23403d]">{item.quantity}</td>
-                  <td className="px-3 py-3 text-right text-[#23403d]">{formatPrice(item.unitPrice)}</td>
-                  <td className="py-3 pl-3 text-right font-medium text-[#23403d]">
+                  <td className="px-2 py-3 text-center text-[#23403d]">{item.quantity}</td>
+                  <td className="hidden px-2 py-3 text-right text-[#23403d] sm:table-cell">
+                    {formatPrice(item.unitPrice)}
+                  </td>
+                  <td className="py-3 pl-2 text-right font-medium text-[#23403d]">
                     {formatPrice(item.totalPrice)}
                   </td>
                 </tr>
               ))}
             </tbody>
-            <tfoot className="text-sm">
-              <tr>
-                <td colSpan={3} className="pt-4 text-right text-[#767676]">Subtotal</td>
-                <td className="pt-4 pl-3 text-right font-medium text-[#23403d]">
-                  {formatPrice(order.subtotal)}
-                </td>
-              </tr>
-              {order.discountAmount > 0 && (
-                <tr>
-                  <td colSpan={3} className="pt-2 text-right text-[#767676]">
-                    Discount
-                    {order.couponCode ? (
-                      <span className="ml-1.5 rounded-full bg-[#eff5ee] px-2 py-0.5 font-mono text-[10px] font-bold text-[#23403d]">
-                        {order.couponCode}
-                      </span>
-                    ) : null}
-                  </td>
-                  <td className="pt-2 pl-3 text-right font-medium text-[#00aa63]">
-                    -{formatPrice(order.discountAmount)}
-                  </td>
-                </tr>
-              )}
-              <tr>
-                <td colSpan={3} className="pt-2 text-right text-[#767676]">Shipping</td>
-                <td className="pt-2 pl-3 text-right font-medium text-[#23403d]">
-                  {order.shippingCharge > 0 ? formatPrice(order.shippingCharge) : "Free"}
-                </td>
-              </tr>
-              <tr>
-                <td colSpan={3} className="pt-3 text-right font-heading text-base font-bold text-[#23403d]">
-                  Total
-                </td>
-                <td className="border-t border-[#efe8e4] pt-3 pl-3 text-right font-heading text-base font-bold text-[#ec6e55]">
-                  {formatPrice(order.total)}
-                </td>
-              </tr>
-            </tfoot>
           </table>
+        </div>
+
+        {/* Totals — static block, never horizontally clipped. */}
+        <div className="mt-3 flex flex-col gap-1.5 border-t border-[#efe8e4] pt-3 text-sm">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-[#767676]">Subtotal</span>
+            <span className="font-medium text-[#23403d]">{formatPrice(order.subtotal)}</span>
+          </div>
+          {order.discountAmount > 0 && (
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-[#767676]">
+                Discount
+                {order.couponCode ? (
+                  <span className="ml-1.5 rounded-full bg-[#eff5ee] px-2 py-0.5 font-mono text-[10px] font-bold text-[#23403d]">
+                    {order.couponCode}
+                  </span>
+                ) : null}
+              </span>
+              <span className="font-medium text-[#00aa63]">-{formatPrice(order.discountAmount)}</span>
+            </div>
+          )}
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-[#767676]">Shipping</span>
+            <span className="font-medium text-[#23403d]">
+              {order.shippingCharge > 0 ? formatPrice(order.shippingCharge) : "Free"}
+            </span>
+          </div>
+          <div className="mt-1 flex items-center justify-between gap-3 border-t border-[#efe8e4] pt-2.5">
+            <span className="font-heading text-base font-bold text-[#23403d]">Total</span>
+            <span className="font-heading text-base font-bold text-[#ec6e55]">
+              {formatPrice(order.total)}
+            </span>
+          </div>
         </div>
       </DetailCard>
 

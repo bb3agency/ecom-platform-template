@@ -57,7 +57,7 @@ export default async function AccountLayout({ children }: AccountLayoutProps) {
             <section className="mx-auto w-full max-w-[1440px] px-4 pt-6 sm:pt-12 lg:px-8">
               <div className="grid gap-4 sm:gap-8 lg:grid-cols-[260px_1fr] lg:items-start">
                 <AccountNav />
-                <div className="rounded-[20px] bg-white p-4 shadow-sm sm:p-6 lg:p-8">
+                <div className="min-w-0 rounded-[20px] bg-white p-4 shadow-sm sm:p-6 lg:p-8">
                   {children}
                 </div>
               </div>

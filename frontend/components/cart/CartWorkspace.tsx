@@ -137,7 +137,7 @@ export function CartWorkspace() {
     <div className="grid gap-6 lg:grid-cols-[1fr_380px] lg:items-start xl:gap-8">
 
       {/* ── Cart Items ──────────────────────────────────────────────────── */}
-      <section className="flex flex-col gap-4">
+      <section className="flex min-w-0 flex-col gap-4">
         {/* Header row */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">

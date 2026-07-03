@@ -42,7 +42,7 @@ export function AccountNav() {
 
   return (
     <nav
-      className="flex flex-row items-center gap-1.5 overflow-x-auto rounded-[20px] bg-white p-2 shadow-sm scrollbar-none lg:flex-col lg:items-stretch lg:gap-1 lg:overflow-x-visible lg:p-4"
+      className="flex min-w-0 flex-row items-center gap-1.5 overflow-x-auto rounded-[20px] bg-white p-2 shadow-sm scrollbar-none lg:flex-col lg:items-stretch lg:gap-1 lg:overflow-x-visible lg:p-4"
       aria-label="Account"
     >
       {/* Profile card — desktop sidebar only */}
