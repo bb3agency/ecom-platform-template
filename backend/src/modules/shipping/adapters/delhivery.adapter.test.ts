@@ -448,11 +448,23 @@ describe('DelhiveryAdapter', () => {
     }
   });
 
-  it('cancelShipment posts raw JSON with cancellation:"true" to /api/p/edit', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      text: async () => JSON.stringify({ status: true, remark: 'cancelled' })
+  it('cancelShipment posts raw JSON with cancellation:"true" to /api/p/edit and verifies via tracking', async () => {
+    const fetchMock = vi.fn().mockImplementation(async (url: string) => {
+      if (url.includes('/api/v1/packages/json')) {
+        return {
+          ok: true,
+          status: 200,
+          text: async () =>
+            JSON.stringify({
+              ShipmentData: [{ Shipment: { Status: { Status: 'Cancelled', StatusType: 'CN' }, Scans: [] } }]
+            })
+        };
+      }
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ status: true, remark: 'cancelled' })
+      };
     });
     vi.stubGlobal('fetch', fetchMock);
 
@@ -466,6 +478,79 @@ describe('DelhiveryAdapter', () => {
     expect(typeof init.body).toBe('string');
     const body = JSON.parse(init.body as string) as { waybill: string; cancellation: unknown };
     expect(body).toEqual({ waybill: '56555510000140', cancellation: 'true' });
+    // Verification call hit the track API.
+    const trackCall = fetchMock.mock.calls.find(([u]) => (u as string).includes('/api/v1/packages/json'));
+    expect(trackCall).toBeDefined();
+    expect(result.cancelled).toBe(true);
+  });
+
+  it('cancelShipment rejects a bare waybill echo without an affirmative status (silent-ignore guard)', async () => {
+    // Delhivery echoes the waybill even when it silently ignores the cancellation
+    // (e.g. already picked up). That alone must NOT count as success.
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ waybill: '56555510000140' })
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const adapter = new DelhiveryAdapter({ apiKey: 'test_key' });
+    await expect(adapter.cancelShipment('56555510000140')).rejects.toMatchObject({
+      statusCode: 422,
+      message: expect.stringContaining('did not confirm cancellation')
+    });
+  });
+
+  it('cancelShipment fails loudly when edit is accepted but tracking still shows the package active', async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchMock = vi.fn().mockImplementation(async (url: string) => {
+        if (url.includes('/api/v1/packages/json')) {
+          return {
+            ok: true,
+            status: 200,
+            text: async () =>
+              JSON.stringify({
+                ShipmentData: [{ Shipment: { Status: { Status: 'In Transit', StatusType: 'UD' }, Scans: [] } }]
+              })
+          };
+        }
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({ status: true })
+        };
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      const adapter = new DelhiveryAdapter({ apiKey: 'test_key' });
+      const pending = adapter.cancelShipment('56555510000140');
+      const assertion = expect(pending).rejects.toMatchObject({
+        statusCode: 422,
+        message: expect.stringContaining('tracking still shows the package as active')
+      });
+      await vi.advanceTimersByTimeAsync(10_000);
+      await assertion;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('cancelShipment treats a track-API hiccup as inconclusive and keeps the positive edit response', async () => {
+    const fetchMock = vi.fn().mockImplementation(async (url: string) => {
+      if (url.includes('/api/v1/packages/json')) {
+        return { ok: false, status: 500, text: async () => 'upstream error' };
+      }
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ status: true, remark: 'cancelled' })
+      };
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const adapter = new DelhiveryAdapter({ apiKey: 'test_key' });
+    const result = await adapter.cancelShipment('56555510000140');
     expect(result.cancelled).toBe(true);
   });
 

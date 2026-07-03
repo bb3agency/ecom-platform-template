@@ -16,6 +16,7 @@ import {
 import { NoopShippingAdapter } from '@modules/shipping/adapters/noop-shipping.adapter';
 import { resolveDualShippingRuntime } from '@modules/shipping/shipping-provider';
 import { computeChargeableWeightGrams } from '@common/shipping/chargeable-weight';
+import { applyShippingNotificationSurcharge } from '@common/shipping/notification-surcharge';
 import { parseBoxPresets, type BoxPreset } from '@common/shipping/select-box-preset';
 import { sendTechnicalFailureAlert } from '@modules/notifications/notification-failure-alert';
 import { AddCartItemInput, ApplyCouponInput, UpdateCartItemInput } from './cart.types';
@@ -759,7 +760,11 @@ export class CartService {
 
     // Free-shipping discount applies ONLY to the customer-facing charge, after the cheapest provider
     // has been selected on true cost. Provider/courier lock still points at the cheapest real option.
-    const customerFacingChargePaise = isFreeShipping ? 0 : winner.shippingChargePaise;
+    // The WhatsApp-notification surcharge is folded into the customer-facing charge AFTER the
+    // cheapest provider is picked on true cost — it must never skew the provider comparison.
+    const customerFacingChargePaise = isFreeShipping
+      ? 0
+      : applyShippingNotificationSurcharge(winner.shippingChargePaise);
 
     return {
       pincode: input.pincode,
@@ -978,7 +983,9 @@ export class CartService {
     const couponsEnabled = await isStorefrontCouponsEnabled(this.fastify.prisma);
     const effectiveCoupon = couponsEnabled ? input.cart.coupon : null;
     const shippingChargePaise =
-      effectiveCoupon?.type === CouponType.FREE_SHIPPING ? 0 : rate.shippingChargePaise;
+      effectiveCoupon?.type === CouponType.FREE_SHIPPING
+        ? 0
+        : applyShippingNotificationSurcharge(rate.shippingChargePaise);
 
     return {
       shippingChargePaise,

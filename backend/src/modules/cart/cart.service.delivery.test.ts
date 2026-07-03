@@ -173,7 +173,7 @@ describe('CartService delivery utility methods', () => {
     const service = new CartService(fastify);
     await expect(service.getDeliveryRates('user_1', undefined, '500001')).resolves.toMatchObject({
       pincode: '500001',
-      shippingCharge: 9950,
+      shippingCharge: 10450, // ₹99.50 provider rate + ₹5 notification surcharge
       estimatedDays: 3
     });
   });
@@ -368,10 +368,11 @@ describe('CartService dual-provider delivery rates', () => {
       selectedShippingProvider?: string;
     };
 
-    // Backend auto-selects cheapest provider; Delhivery (4500 paise) cheaper than Shiprocket (6500 paise)
+    // Backend auto-selects cheapest provider; Delhivery (4500 paise) cheaper than Shiprocket (6500 paise).
+    // Customer-facing charge = true cost + ₹5 notification surcharge.
     expect(result.selectedShippingProvider).toBeDefined();
     expect(result.selectedShippingProvider).toBe('DELHIVERY');
-    expect(result.shippingCharge).toBe(4500);
+    expect(result.shippingCharge).toBe(5000);
   });
 
   it('persists the winning quote to Redis and reuses it verbatim at checkout', async () => {
@@ -454,13 +455,13 @@ describe('CartService dual-provider delivery rates', () => {
     };
 
     expect(quote.selectedShippingProvider).toBe('SHIPROCKET');
-    expect(quote.shippingCharge).toBe(13000);
+    expect(quote.shippingCharge).toBe(13500); // ₹130 + ₹5 notification surcharge
     expect(quote.courierCompanyId).toBe(7);
     expect(redis.set).toHaveBeenCalled();
 
     // Checkout reuses the exact quote — provider, rate, AND courier — for the same cart.
     const stored = await service.getStoredShippingQuote('user_1', undefined, 'cart_1', '500001', 'PREPAID');
-    expect(stored).toEqual({ provider: 'SHIPROCKET', shippingChargePaise: 13000, estimatedDays: 3, courierCompanyId: 7 });
+    expect(stored).toEqual({ provider: 'SHIPROCKET', shippingChargePaise: 13500, estimatedDays: 3, courierCompanyId: 7 });
 
     // A different cart must NOT reuse the quote (cart fingerprint guard).
     const mismatched = await service.getStoredShippingQuote('user_1', undefined, 'cart_other', '500001', 'PREPAID');
@@ -526,7 +527,7 @@ describe('CartService dual-provider delivery rates', () => {
 
     expect(result).not.toBeNull();
     expect(result?.provider).toBe('DELHIVERY');
-    expect(result?.shippingChargePaise).toBe(15600);
+    expect(result?.shippingChargePaise).toBe(16100); // ₹156 + ₹5 notification surcharge
   });
 
   it('getCheapestProviderQuoteForCart locks the Shiprocket courier when Shiprocket is cheapest', async () => {
@@ -587,7 +588,7 @@ describe('CartService dual-provider delivery rates', () => {
     });
 
     expect(result?.provider).toBe('SHIPROCKET');
-    expect(result?.shippingChargePaise).toBe(9000);
+    expect(result?.shippingChargePaise).toBe(9500); // ₹90 + ₹5 notification surcharge
     expect(result?.courierCompanyId).toBe(12);
   });
 

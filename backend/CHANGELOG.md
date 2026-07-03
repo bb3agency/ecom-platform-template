@@ -12,6 +12,19 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.47] — 2026-07-03
+
+### Fixed
+- **Delhivery cancellations could silently no-op while we reported success.** Two guards added to `DelhiveryAdapter.cancelShipment`: (1) a bare waybill echo in the `/api/p/edit/` response no longer counts as a positive signal — Delhivery echoes the waybill even when it ignores the cancellation (e.g. package already picked up), which left orders "cancelled" in our DB but live in Delhivery's dashboard; (2) after a positive edit response, the adapter verifies via the track API that the package actually moved to Cancelled (one retry after 3 s). A definitive live status fails loudly (422, retried by the outbox job + ops alert, with dashboard/support remediation in the message); a track-API hiccup is inconclusive and keeps the positive edit result. Shiprocket cancels (by Shiprocket order id) were unaffected.
+
+### Added
+- **₹5 WhatsApp-notification surcharge folded into the customer-facing shipping charge** (`src/common/shipping/notification-surcharge.ts`, applied in `cart.service.ts` at both quote choke points — multi-provider winner + single-provider/noop compute — so quotes, checkout totals, payment capture, and invoices all carry it as plain "shipping cost" with no separate line). Applied AFTER cheapest-provider selection (never skews the comparison), never applied on ₹0/free-shipping charges. Override/disable via `SHIPPING_NOTIFICATION_SURCHARGE_PAISE` (documented in `.env.example`).
+
+**Propagation:**
+- Severity: NORMAL · Layers: backend (`shipping/adapters/delhivery.adapter.ts`, `common/shipping/notification-surcharge.ts`, `cart/cart.service.ts`, `.env.example`)
+- Migration: NO · Flag: env-tunable (`SHIPPING_NOTIFICATION_SURCHARGE_PAISE`, default 500) · Design impact: none · Breaking: NO (shipping totals rise ₹5 on paid-shipping orders by design)
+- Rollback: revert the three source files, or set `SHIPPING_NOTIFICATION_SURCHARGE_PAISE=0` to disable the surcharge without a code rollback
+
 ## [0.1.46] — 2026-07-03
 
 ### Fixed

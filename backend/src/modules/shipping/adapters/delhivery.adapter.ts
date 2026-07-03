@@ -268,13 +268,16 @@ export default class DelhiveryAdapter implements ShippingProviderAdapter {
       payload.success === false ||
       /not\s+(cancell?ed|accepted|allowed)/.test(statusText) ||
       /\berror\b/.test(statusText);
+    // NOTE: a bare waybill echo is NOT a positive signal. Delhivery's edit API
+    // echoes the waybill back even when it silently ignores the cancellation
+    // (e.g. package already picked up / in transit), which previously made us
+    // report "cancelled" while the shipment stayed active in their dashboard.
     const positiveSignal =
       payload.status === true ||
       payload.success === true ||
       /\bcancell?ed\b/.test(statusText) ||
       /cancell?ation\s+accepted/.test(statusText) ||
-      /\bsuccess(ful)?\b/.test(statusText) ||
-      this.pickString(payload, [['waybill']]) === awbNumber;
+      /\bsuccess(ful)?\b/.test(statusText);
 
     const cancelled = positiveSignal && !explicitFailure;
 
@@ -285,7 +288,59 @@ export default class DelhiveryAdapter implements ShippingProviderAdapter {
         422
       );
     }
+
+    // Delhivery can return status:true ("request accepted") without actually
+    // cancelling the package (silently ignored once the package is picked up
+    // or in transit). Verify against the track API that the package really
+    // moved to Cancelled; retry once after a short delay because the edit can
+    // take a moment to reflect. A track-API hiccup is treated as inconclusive
+    // (we keep the positive edit response) — but a definitive non-cancelled
+    // tracking status fails loudly so the outbox job retries and the operator
+    // is alerted instead of the order silently staying live at Delhivery.
+    const verification = await this.verifyCancellationViaTracking(awbNumber);
+    if (verification === 'not-cancelled') {
+      throw new AppError(
+        ERROR_CODES.INTERNAL_ERROR,
+        `Delhivery accepted the cancellation request for AWB ${awbNumber} but tracking still shows the package as active. ` +
+          `If the package was already picked up, cancel it from the Delhivery dashboard or via Delhivery support.`,
+        422
+      );
+    }
+
     return { cancelled: true, providerPayload: payload };
+  }
+
+  /**
+   * Confirms via the track API that a package is actually cancelled after an
+   * edit/cancellation request. Returns:
+   *  - 'cancelled'      → tracking shows Cancelled (definitive success)
+   *  - 'not-cancelled'  → tracking definitively shows a live, non-cancelled package
+   *  - 'inconclusive'   → track API failed or returned no status (do not block)
+   */
+  private async verifyCancellationViaTracking(
+    awbNumber: string
+  ): Promise<'cancelled' | 'not-cancelled' | 'inconclusive'> {
+    const isCancelledStatus = (status: string): boolean =>
+      /cancel/i.test(status) || status.trim().toUpperCase() === 'CN';
+
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (attempt > 0) {
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+      }
+      try {
+        const tracked = await this.trackShipment(awbNumber);
+        if (!tracked.status || tracked.status === 'UNKNOWN') {
+          return 'inconclusive';
+        }
+        if (isCancelledStatus(tracked.status)) {
+          return 'cancelled';
+        }
+        // Live status — retry once in case the cancellation hasn't reflected yet.
+      } catch {
+        return 'inconclusive';
+      }
+    }
+    return 'not-cancelled';
   }
 
   async checkServiceability(pincode: string, _originPincode?: string): Promise<ServiceabilityResult> {
