@@ -95,6 +95,36 @@ export async function registerGlobalErrorHandler(fastify: FastifyInstance): Prom
             component: 'app-error-handler'
           });
         }
+
+        // 500s expose NOTHING internal to callers: no throw-site message, no classification
+        // fields (kind/hintKey), no spread details. Full detail is logged server-side only.
+        if (error.statusCode === 500) {
+          fastify.log.error(
+            {
+              error: redactSensitiveData({
+                code: error.code,
+                message: error.message,
+                details: error.details ?? null
+              }),
+              request: { id: request.id, method: request.method, url: request.url }
+            },
+            'Internal AppError (500) — full detail logged server-side, generic body sent to caller'
+          );
+          reply.status(500).send({
+            success: false,
+            error: {
+              code: ERROR_CODES.INTERNAL_ERROR,
+              message: 'Something went wrong. Please try again later.',
+              statusCode: 500,
+              details: {
+                retryable: true,
+                remediation: 'Retry later. If the issue persists, contact support.'
+              }
+            }
+          });
+          return;
+        }
+
         if (
           error.statusCode === 429 &&
           error.details &&
@@ -187,17 +217,17 @@ export async function registerGlobalErrorHandler(fastify: FastifyInstance): Prom
         terminalFailure: true
       });
 
+      // Generic 500 body only — no internal classification fields (kind/hintKey) and no error
+      // message from the throw site. The full error was logged above, server-side only.
       reply.status(500).send({
         success: false,
         error: {
           code: ERROR_CODES.INTERNAL_ERROR,
-          message: 'Internal server error',
+          message: 'Something went wrong. Please try again later.',
           statusCode: 500,
           details: {
-            kind: 'internal',
-            hintKey: 'internal_error',
             retryable: true,
-            remediation: 'Retry later. If issue persists, contact support.'
+            remediation: 'Retry later. If the issue persists, contact support.'
           }
         }
       });

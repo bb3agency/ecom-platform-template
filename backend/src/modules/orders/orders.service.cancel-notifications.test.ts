@@ -66,7 +66,10 @@ describe('OrdersService cancellation notification enqueue', () => {
 
     const fastify = {
       prisma: {
-        $transaction: vi.fn(async (fn: (trx: typeof tx) => Promise<unknown>) => fn(tx))
+        $transaction: vi.fn(async (fn: (trx: typeof tx) => Promise<unknown>) => fn(tx)),
+        order: {
+          findUnique: vi.fn().mockResolvedValue({ orderNumber: 'ORD-2026-00001' })
+        }
       },
       queues: {
         notifications: {
@@ -90,7 +93,7 @@ describe('OrdersService cancellation notification enqueue', () => {
         email: 'customer@example.com',
         phone: '9999999999',
         template: 'OrderCancelled',
-        data: { orderId: 'order_1' }
+        data: { orderId: 'order_1', orderNumber: 'ORD-2026-00001' }
       }),
       expect.objectContaining({
         jobId: 'notifications-primary-order_1-OrderCancelled'
@@ -205,7 +208,10 @@ describe('OrdersService cancellation notification enqueue', () => {
 
     const fastify = {
       prisma: {
-        $transaction: vi.fn(async (fn: (trx: typeof tx) => Promise<unknown>) => fn(tx))
+        $transaction: vi.fn(async (fn: (trx: typeof tx) => Promise<unknown>) => fn(tx)),
+        order: {
+          findUnique: vi.fn().mockResolvedValue({ orderNumber: 'ORD-2026-00001' })
+        }
       },
       queues: {
         notifications: {
@@ -235,7 +241,7 @@ describe('OrdersService cancellation notification enqueue', () => {
         email: 'customer@example.com',
         phone: '9999999999',
         template: 'OrderCancelled',
-        data: { orderId: 'order_1' }
+        data: { orderId: 'order_1', orderNumber: 'ORD-2026-00001' }
       }),
       expect.objectContaining({
         jobId: 'notifications-primary-order_1-OrderCancelled'

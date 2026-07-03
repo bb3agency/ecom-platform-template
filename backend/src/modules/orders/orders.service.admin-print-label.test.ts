@@ -16,6 +16,9 @@ function buildFastify(shipmentOverrides?: Record<string, unknown>) {
   };
 
   const prisma = {
+    order: {
+      findUnique: vi.fn().mockResolvedValue({ status: 'SHIPPED' })
+    },
     shipment: {
       findFirst: vi.fn().mockResolvedValue(shipment),
       update: vi.fn().mockResolvedValue({ ...shipment, labelUrl: 'https://label.example/abc.pdf' })

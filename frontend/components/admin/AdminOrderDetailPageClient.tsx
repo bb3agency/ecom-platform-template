@@ -28,13 +28,16 @@ export function AdminOrderDetailPageClient({ orderId }: { orderId: string }) {
 
       <AdminOrderDetailPanel key={`detail-${refreshKey}`} orderId={orderId} />
 
+      {/* min-w-0 on every grid child: grid items default to min-width:auto, so any wide
+          content (mono AWBs, tables, long emails) would inflate the column past the
+          viewport on mobile and get clipped by the shell's overflow-x-hidden. */}
       <div className="grid gap-6 lg:grid-cols-3">
-        <div className="grid gap-6 lg:col-span-2">
+        <div className="grid min-w-0 gap-6 lg:col-span-2">
           <AdminOrderItemsPanel orderId={orderId} onUpdated={bumpRefresh} />
           <AdminOrderFulfillmentPanel initialOrderId={orderId} hideOrderPicker />
           <AdminOrderReturnRequestsPanel orderId={orderId} />
         </div>
-        <div>
+        <div className="min-w-0">
           <AdminOrderTimelinePanel key={`timeline-${refreshKey}`} orderId={orderId} />
         </div>
       </div>

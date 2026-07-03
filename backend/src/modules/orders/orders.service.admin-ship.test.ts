@@ -97,7 +97,7 @@ describe('OrdersService admin ship enqueue', () => {
         email: 'merchant@example.com',
         phone: '9888877777',
         template: 'OrderShipped',
-        data: { orderId: 'order_1' }
+        data: { orderId: 'order_1', orderNumber: 'ORD-2026-00001' }
       }),
       expect.objectContaining({
         jobId: 'merchant-notifications-primary-order_1-OrderShipped'

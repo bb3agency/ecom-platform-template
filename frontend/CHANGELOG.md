@@ -12,6 +12,25 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.30] — 2026-07-03
+
+### Changed
+- **Cart page promo-code box removed** — coupon entry lives at checkout only (`CheckoutForm` keeps apply/remove). The cart summary is a clean recap; an applied coupon still shows as the Discount line. Dead coupon state/handlers/imports stripped from `CartWorkspace`.
+
+### Fixed
+- **Admin fulfilment panel hides Ship/Schedule-pickup/Print-label entirely on cancelled/refunded orders** (and cancelled shipments), replaced by a terminal notice — pairs with the backend 409 guards (backend-core 0.1.44). `InfoChip` values now wrap (`min-w-0 break-words`) so long mono AWBs can't inflate the panel.
+- **Mobile viewport overflow sweep (admin + storefront):**
+  - Admin orders list: date/export filter rows stack in a 2-col grid on phones (was a fixed non-shrinking flex row that pushed the page wider than the screen).
+  - Admin order detail + product editor: `min-w-0` on all layout-grid children (grid items default to `min-width:auto`; wide content — tables, mono refs, long slugs — inflated columns past the viewport and got clipped by the shell's `overflow-x-hidden`).
+  - Checkout: progress-stepper connectors narrowed on phones (4 steps + labels now fit 375px); `min-w-0` wrappers on the checkout grid children (form + sidebar) and the cart Order Summary column.
+- **Generic-500 companion:** the backend's new generic 500 message added to `GENERIC_BACKEND_MESSAGES` so ops/admin panels don't echo it as a redundant "Server: …" detail line.
+
+**Propagation:**
+- Severity: NORMAL · Layers: frontend (`components/cart/CartWorkspace.tsx`, `components/admin/{AdminOrderFulfillmentPanel,AdminOrderDetailPageClient,AdminOrdersList,AdminProductEditor}.tsx`, `app/(storefront)/checkout/page.tsx`, `lib/error-messages.ts`)
+- Migration: NO · Flag: none · Design impact: none · Breaking: NO
+- Rollback: revert the listed files
+- Pairs with backend-core 0.1.44.
+
 ## [0.1.29] — 2026-07-03
 
 ### Added

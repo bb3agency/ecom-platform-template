@@ -335,13 +335,13 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
           </div>
         </div>
 
-        <div className="flex flex-wrap items-end justify-between gap-2 border-t border-border/40 pt-4 mt-2">
-          <div className="flex gap-4">
-            <label className="grid gap-1 text-xs text-muted-foreground font-medium">
+        <div className="flex flex-col gap-3 border-t border-border/40 pt-4 mt-2 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
+          <div className="grid w-full grid-cols-2 gap-3 sm:w-auto">
+            <label className="grid min-w-0 gap-1 text-xs text-muted-foreground font-medium">
               From Date
               <input
                 type="date"
-                className={`${inputClass} bg-muted/20 border-border/50 text-foreground`}
+                className={`${inputClass} w-full min-w-0 bg-muted/20 border-border/50 text-foreground`}
                 value={fromDate}
                 onChange={(event) => {
                   setFromDate(event.target.value);
@@ -349,11 +349,11 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
                 }}
               />
             </label>
-            <label className="grid gap-1 text-xs text-muted-foreground font-medium">
+            <label className="grid min-w-0 gap-1 text-xs text-muted-foreground font-medium">
               To Date
               <input
                 type="date"
-                className={`${inputClass} bg-muted/20 border-border/50 text-foreground`}
+                className={`${inputClass} w-full min-w-0 bg-muted/20 border-border/50 text-foreground`}
                 value={toDate}
                 onChange={(event) => {
                   setToDate(event.target.value);
@@ -363,21 +363,21 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
             </label>
           </div>
 
-          <div className="flex gap-4">
-            <label className="grid gap-1 text-xs text-muted-foreground font-medium">
+          <div className="grid w-full grid-cols-2 items-end gap-3 sm:w-auto">
+            <label className="grid min-w-0 gap-1 text-xs text-muted-foreground font-medium">
               Export From
               <input
                 type="date"
-                className={`${inputClass} bg-muted/20 border-border/50 text-foreground`}
+                className={`${inputClass} w-full min-w-0 bg-muted/20 border-border/50 text-foreground`}
                 value={exportFrom}
                 onChange={(event) => setExportFrom(event.target.value)}
               />
             </label>
-            <label className="grid gap-1 text-xs text-muted-foreground font-medium">
+            <label className="grid min-w-0 gap-1 text-xs text-muted-foreground font-medium">
               Export To
               <input
                 type="date"
-                className={`${inputClass} bg-muted/20 border-border/50 text-foreground`}
+                className={`${inputClass} w-full min-w-0 bg-muted/20 border-border/50 text-foreground`}
                 value={exportTo}
                 onChange={(event) => setExportTo(event.target.value)}
               />
@@ -386,7 +386,7 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
               type="button"
               size="sm"
               variant="outline"
-              className="h-9 self-end gap-2"
+              className="col-span-2 h-9 gap-2 sm:col-span-1 sm:self-end"
               disabled={exporting || !exportFrom || !exportTo}
               onClick={() => void exportCsv()}
             >

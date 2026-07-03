@@ -160,6 +160,8 @@ export function isConflictErrorCode(code: string): boolean {
 
 const GENERIC_BACKEND_MESSAGES = new Set([
   "Internal server error",
+  // Generic 500 body — the backend strips internal detail from 500s (see error-handler.ts).
+  "Something went wrong. Please try again later.",
   "Request validation failed",
   "Rate limit exceeded",
   "",

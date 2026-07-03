@@ -204,10 +204,16 @@ export class OrdersService {
   private async enqueueMerchantShipmentNotifications(orderId: string): Promise<void> {
     let merchantRecipient = 'merchant-contact-missing';
     try {
-      const settings = await this.fastify.prisma.storeSettings.findUnique({
-        where: { singletonKey: 'default' },
-        select: { contactEmail: true, contactPhone: true }
-      });
+      const [settings, order] = await Promise.all([
+        this.fastify.prisma.storeSettings.findUnique({
+          where: { singletonKey: 'default' },
+          select: { contactEmail: true, contactPhone: true }
+        }),
+        this.fastify.prisma.order.findUnique({
+          where: { id: orderId },
+          select: { orderNumber: true }
+        })
+      ]);
       const merchantPhone = settings?.contactPhone?.trim() ?? null;
       const merchantEmail = settings?.contactEmail?.trim().toLowerCase() ?? null;
       merchantRecipient = merchantEmail ?? merchantPhone ?? merchantRecipient;
@@ -222,7 +228,8 @@ export class OrdersService {
           email: merchantEmail,
           phone: merchantPhone,
           template: 'OrderShipped',
-          data: { orderId }
+          // orderNumber → human-readable ref in the message body (not the UUID).
+          data: { orderId, orderNumber: order?.orderNumber ?? orderId }
         },
         `merchant:notifications:primary:${orderId}:OrderShipped`
       );
@@ -2205,6 +2212,8 @@ export class OrdersService {
         ? {
             OR: [
               { orderNumber: { contains: query.search.trim(), mode: 'insensitive' as const } },
+              // Search by shipment AWB / tracking number (operators paste it from courier tools).
+              { shipment: { awbNumber: { contains: query.search.trim(), mode: 'insensitive' as const } } },
               {
                 user: { firstName: { contains: query.search.trim(), mode: 'insensitive' as const } }
               },
@@ -2435,6 +2444,8 @@ export class OrdersService {
         ? {
             OR: [
               { orderNumber: { contains: query.search.trim(), mode: 'insensitive' as const } },
+              // Search by shipment AWB / tracking number (operators paste it from courier tools).
+              { shipment: { awbNumber: { contains: query.search.trim(), mode: 'insensitive' as const } } },
               {
                 user: { firstName: { contains: query.search.trim(), mode: 'insensitive' as const } }
               },
@@ -2961,12 +2972,35 @@ export class OrdersService {
     return this.serializeOrder(existing);
   }
 
+  /** Rejects fulfilment actions on terminal orders (cancelled/refunded) or cancelled shipments. */
+  private async assertOrderFulfilmentActive(orderId: string, action: string): Promise<void> {
+    const order = await this.fastify.prisma.order.findUnique({
+      where: { id: orderId },
+      select: { status: true }
+    });
+    if (order && (order.status === OrderStatus.CANCELLED || order.status === OrderStatus.REFUNDED)) {
+      throw new AppError(
+        ERROR_CODES.INVALID_STATUS_TRANSITION,
+        `Cannot ${action}: this order is ${order.status.toLowerCase()}.`,
+        409
+      );
+    }
+  }
+
   async adminSchedulePickup(orderId: string) {
+    await this.assertOrderFulfilmentActive(orderId, 'schedule pickup');
     const shipment = await this.fastify.prisma.shipment.findFirst({
       where: { orderId }
     });
     if (!shipment) {
       throw new AppError(ERROR_CODES.NOT_FOUND, 'Shipment not found for this order', 404);
+    }
+    if (shipment.status === 'CANCELLED') {
+      throw new AppError(
+        ERROR_CODES.INVALID_STATUS_TRANSITION,
+        'Cannot schedule pickup: the shipment for this order was cancelled.',
+        409
+      );
     }
 
     const shipmentExt = shipment as typeof shipment & {
@@ -3011,6 +3045,7 @@ export class OrdersService {
   }
 
   async adminPrintLabel(orderId: string) {
+    await this.assertOrderFulfilmentActive(orderId, 'print label');
     const shipment = await this.fastify.prisma.shipment.findFirst({
       where: { orderId }
     });
@@ -3361,6 +3396,10 @@ export class OrdersService {
       if (!email && !phone) {
         return;
       }
+      const order = await this.fastify.prisma.order.findUnique({
+        where: { id: orderId },
+        select: { orderNumber: true }
+      });
       await this.enqueueOutboxMessage(
         'notifications',
         'send-primary',
@@ -3368,7 +3407,8 @@ export class OrdersService {
           email,
           phone,
           template: 'OrderCancelled',
-          data: { orderId }
+          // orderNumber → human-readable ref in the message body (not the UUID).
+          data: { orderId, orderNumber: order?.orderNumber ?? orderId }
         },
         `notifications:primary:${orderId}:OrderCancelled`
       );

@@ -48,8 +48,12 @@ export class SmsTemplateRegistry {
    * Builds safe SMS template data with store name injected.
    */
   static composeTemplateData(input: TemplateData, storeName?: string | null): TemplateData {
+    // `{{orderId}}` must render the human-readable order number (e.g. ORD-G343-TRCN), not the
+    // internal UUID. Enqueue sites pass both; prefer `orderNumber`.
+    const orderNumber = typeof input.orderNumber === 'string' ? input.orderNumber.trim() : '';
     return {
       ...input,
+      ...(orderNumber.length > 0 ? { orderId: orderNumber } : {}),
       storeName: SmsTemplateRegistry.normalizeStoreName(storeName)
     };
   }

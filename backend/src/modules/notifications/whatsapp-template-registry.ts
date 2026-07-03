@@ -139,8 +139,21 @@ export class WhatsappTemplateRegistry {
     return {
       ...input,
       storeName: WhatsappTemplateRegistry.normalizeStoreName(storeName),
+      // `{{orderId}}` must render the HUMAN-READABLE order number (e.g. ORD-G343-TRCN), never the
+      // internal UUID. Enqueue sites pass both `orderId` (uuid) and `orderNumber`; prefer the
+      // latter so customers see the same reference shown in their account + admin.
+      orderId: WhatsappTemplateRegistry.resolveOrderRef(input),
       trackingInfo: trackingUrl.length > 0 ? trackingUrl : 'your account orders page'
     };
+  }
+
+  /** Human-readable order reference: orderNumber when present, else the raw orderId. */
+  static resolveOrderRef(input: TemplateData): string {
+    const orderNumber = typeof input.orderNumber === 'string' ? input.orderNumber.trim() : '';
+    if (orderNumber.length > 0) {
+      return orderNumber;
+    }
+    return typeof input.orderId === 'string' ? input.orderId : '';
   }
 
   /**

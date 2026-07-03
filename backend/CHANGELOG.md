@@ -12,6 +12,22 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.44] — 2026-07-03
+
+### Security
+- **500 responses no longer leak internal fields to callers.** The global error handler previously (a) sent `details.kind`/`details.hintKey` on every 500 and (b) — worse — spread a 500-class `AppError`'s entire throw-site `details` object AND its message into the response (e.g. `Server: Shiprocket API HTTP 400: {...}` reached unauthenticated browsers). Now every 500 returns a generic body — `code: INTERNAL_ERROR`, message `"Something went wrong. Please try again later."`, details limited to `retryable`/`remediation` — while the full error (code, message, details) is logged server-side only. 4xx/503 contracts unchanged (`kind`/`hintKey` still sent; storefront OTP-hint logic is 4xx-only). Schema: `errorDetailsSchema` now requires only `retryable`/`remediation`. Regression tests: unexpected-error 500, AppError-500 with fake secrets (nothing leaks, hintKey IS in the server log), 409 keeps kind/hintKey.
+
+### Fixed
+- **Notifications rendered the internal order UUID instead of the order number.** WhatsApp/SMS templates fill `{{orderId}}`; enqueue sites pass both `orderId` (uuid) and `orderNumber`, but the registries forwarded the uuid. Both `composeTemplateData()`s now prefer `orderNumber` — customers see `ORD-G343-TRCN`, never `947f0937-…`. Also added the missing `orderNumber` to the merchant OrderShipped alert and the customer OrderCancelled enqueue. Registry regression test added.
+- **Admin order search now matches shipment AWB / tracking numbers** (both admin order-list queries) in addition to order number, customer name/email/phone.
+- **Fulfilment actions blocked on terminal orders.** `adminSchedulePickup` / `adminPrintLabel` now 409 (`INVALID_STATUS_TRANSITION`) when the order is CANCELLED/REFUNDED or the shipment is CANCELLED — previously they'd call the courier API and surface provider errors (e.g. Shiprocket "Order is already canceled").
+
+**Propagation:**
+- Severity: HIGH (500 detail leak = information disclosure) · Layers: backend (`common/errors/{error-handler.ts,error-response.schema.ts}`, `modules/notifications/{whatsapp,sms}-template-registry.ts`, `modules/orders/orders.service.ts` + tests)
+- Migration: NO · Flag: none · Design impact: none · Breaking: NO (4xx contract unchanged; 500 consumers must not rely on kind/hintKey — none did)
+- Rollback: revert the listed files
+- Pairs with frontend-core 0.1.30 (generic-500 message suppression, fulfilment button gating, viewport fixes).
+
 ## [0.1.43] — 2026-07-03
 
 ### Fixed (docs-only — brings every WhatsApp/notification/pointer doc up to date with 0.1.30–0.1.42)

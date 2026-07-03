@@ -1198,9 +1198,12 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-zinc-900 border-t-transparent"></div>
         </div>
       ) : (
+        // min-w-0 on grid children: grid items default to min-width:auto, so wide inner
+        // content (variant tables, long slugs/URLs) would inflate columns past the mobile
+        // viewport and get clipped by the shell's overflow-x-hidden.
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           {/* Left Column - 2/3 Width */}
-          <div className="flex flex-col gap-6 lg:col-span-2">
+          <div className="flex min-w-0 flex-col gap-6 lg:col-span-2">
             {/* Basic Information Section */}
             <div className="rounded-xl border border-border/40 bg-card p-5 shadow-sm flex flex-col gap-4">
               <h3 className="font-heading text-base font-bold text-foreground">
@@ -2158,7 +2161,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
           </div>
 
           {/* Right Column - 1/3 Width */}
-          <div className="flex flex-col gap-6 lg:col-span-1">
+          <div className="flex min-w-0 flex-col gap-6 lg:col-span-1">
             {/* Publish Control Card */}
             <div className="rounded-xl border border-border/40 bg-card p-5 shadow-sm flex flex-col gap-4">
               <div className="flex items-center justify-between border-b border-border/20 pb-2.5">

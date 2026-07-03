@@ -353,6 +353,11 @@ export function AdminOrderFulfillmentPanel({
   const shipment = detail?.shipment;
   const hasShipment = Boolean(shipment?.awb);
   const pickupScheduled = Boolean(shipment?.pickupScheduledDate);
+  // A cancelled/refunded order (or a cancelled shipment) is terminal for fulfilment — no more
+  // ship/pickup/label/sync actions apply, even if an AWB was booked before cancellation.
+  const orderTerminal = ["CANCELLED", "REFUNDED"].includes(detail?.status ?? "");
+  const shipmentCancelled = shipment?.status === "CANCELLED";
+  const fulfilmentActive = Boolean(detail) && !orderTerminal && !shipmentCancelled;
   // Admin can cancel up to and including SHIPPED (in transit). Once OUT_FOR_DELIVERY /
   // DELIVERED / terminal, cancellation is no longer possible — mirrors the backend guard.
   const cancellableStatuses = ["CONFIRMED", "PROCESSING", "SHIPPED"];
@@ -364,8 +369,12 @@ export function AdminOrderFulfillmentPanel({
   // schedules pickup by warehouse location — so gate on a booked shipment, not a
   // Shiprocket-specific id (which would permanently disable the button for Delhivery).
   const canSchedulePickup =
-    hasShipment && !pickupScheduled && !pickupWasScheduled && detail?.status !== "DELIVERED";
-  const canPrintLabel = hasShipment;
+    fulfilmentActive &&
+    hasShipment &&
+    !pickupScheduled &&
+    !pickupWasScheduled &&
+    detail?.status !== "DELIVERED";
+  const canPrintLabel = fulfilmentActive && hasShipment;
   const canShip = detail?.canShipNow === true;
   const canSync =
     hasShipment && !["DELIVERED", "CANCELLED"].includes(detail?.shipment?.status ?? "");
@@ -584,49 +593,57 @@ export function AdminOrderFulfillmentPanel({
           </div>
         ) : null}
 
-        {/* Primary action steps */}
-        <div className="grid gap-3 sm:grid-cols-3">
-          <ActionButton
-            step={1}
-            label="Ship order"
-            sublabel="Book AWB"
-            icon={<Truck className="h-4 w-4" />}
-            busy={busyAction === "ship"}
-            disabled={!canWrite || !canShip || busyAction !== null}
-            onClick={() => runAction("ship", "/admin/orders/:id/ship")}
-            primary
-          />
-          <ActionButton
-            step={2}
-            label="Schedule pickup"
-            sublabel="Courier visit"
-            icon={<Calendar className="h-4 w-4" />}
-            busy={busyAction === "schedule-pickup"}
-            disabled={!canWrite || !canSchedulePickup || busyAction !== null}
-            onClick={runSchedulePickup}
-            title={
-              canSchedulePickup
-                ? "Requests a courier pickup for your warehouse. One pickup collects every ready shipment — safe to schedule on each order."
-                : !hasShipment
-                  ? "Book the shipment (AWB) first"
-                  : pickupScheduled || pickupWasScheduled
-                    ? "Pickup already scheduled — this shipment is covered"
-                    : "Pickup unavailable for this order"
-            }
-          />
-          <ActionButton
-            step={3}
-            label="Print label"
-            sublabel="Download PDF"
-            icon={<Printer className="h-4 w-4" />}
-            busy={busyAction === "print-label"}
-            disabled={!canPrintLabel || busyAction !== null}
-            onClick={runPrintLabel}
-            title={canPrintLabel ? undefined : "Book shipment first"}
-          />
-        </div>
+        {/* Primary action steps — hidden entirely once the order/shipment is terminal
+            (cancelled/refunded): shipping, pickup and label no longer apply. */}
+        {fulfilmentActive ? (
+          <div className="grid gap-3 sm:grid-cols-3">
+            <ActionButton
+              step={1}
+              label="Ship order"
+              sublabel="Book AWB"
+              icon={<Truck className="h-4 w-4" />}
+              busy={busyAction === "ship"}
+              disabled={!canWrite || !canShip || busyAction !== null}
+              onClick={() => runAction("ship", "/admin/orders/:id/ship")}
+              primary
+            />
+            <ActionButton
+              step={2}
+              label="Schedule pickup"
+              sublabel="Courier visit"
+              icon={<Calendar className="h-4 w-4" />}
+              busy={busyAction === "schedule-pickup"}
+              disabled={!canWrite || !canSchedulePickup || busyAction !== null}
+              onClick={runSchedulePickup}
+              title={
+                canSchedulePickup
+                  ? "Requests a courier pickup for your warehouse. One pickup collects every ready shipment — safe to schedule on each order."
+                  : !hasShipment
+                    ? "Book the shipment (AWB) first"
+                    : pickupScheduled || pickupWasScheduled
+                      ? "Pickup already scheduled — this shipment is covered"
+                      : "Pickup unavailable for this order"
+              }
+            />
+            <ActionButton
+              step={3}
+              label="Print label"
+              sublabel="Download PDF"
+              icon={<Printer className="h-4 w-4" />}
+              busy={busyAction === "print-label"}
+              disabled={!canPrintLabel || busyAction !== null}
+              onClick={runPrintLabel}
+              title={canPrintLabel ? undefined : "Book shipment first"}
+            />
+          </div>
+        ) : (
+          <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
+            This order is {(detail?.status ?? "cancelled").toLowerCase()}. Fulfilment actions
+            (ship, schedule pickup, print label) are no longer available.
+          </div>
+        )}
 
-        {hasShipment ? (
+        {fulfilmentActive && hasShipment ? (
           <p className="-mt-1 flex items-start gap-1.5 text-xs text-muted-foreground">
             <Calendar className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
             <span>
@@ -739,10 +756,10 @@ function InfoChip({
   valueClass?: string;
 }) {
   return (
-    <div className="grid gap-0.5">
+    <div className="grid min-w-0 gap-0.5">
       <span className="text-xs text-muted-foreground">{label}</span>
       {valueNode ?? (
-        <span className={`text-sm font-medium ${mono ? "font-mono" : ""} ${valueClass ?? ""}`}>
+        <span className={`min-w-0 break-words text-sm font-medium ${mono ? "font-mono" : ""} ${valueClass ?? ""}`}>
           {value}
         </span>
       )}

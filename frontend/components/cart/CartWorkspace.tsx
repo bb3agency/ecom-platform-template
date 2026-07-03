@@ -8,13 +8,12 @@ import { useCartStore } from "@/stores/cart";
 import { useAuthStore } from "@/stores/auth";
 import { useCartSync } from "@/hooks/use-cart-sync";
 import { formatPrice } from "@/lib/format-price";
-import { ShoppingCart, Plus, Minus, X, Trash2, ArrowRight, AlertTriangle, Tag, ShoppingBag, Sparkles } from "lucide-react";
-import { clearCart, removeCartItem, updateCartItem, applyCartCoupon, removeCartCoupon } from "@/lib/cart-api";
-import { getApiErrorMessage, getApiErrorMessageWithHint } from "@/lib/error-messages";
+import { ShoppingCart, Plus, Minus, X, Trash2, ArrowRight, AlertTriangle, ShoppingBag, Sparkles } from "lucide-react";
+import { clearCart, removeCartItem, updateCartItem } from "@/lib/cart-api";
+import { getApiErrorMessage } from "@/lib/error-messages";
 import { CartLineProductDetails } from "@/components/cart/CartLineProductDetails";
 import { getCartLineImageAlt, getCartLineImageUrl, getCartLineProductName } from "@/lib/cart-line-display";
 import { useStoreConfig } from "@/components/providers/StoreConfigProvider";
-import { formatAppliedCouponLabel } from "@/lib/coupon-display";
 
 export function CartWorkspace() {
   const { couponsEnabled, minOrderValuePaise, configAvailable } = useStoreConfig();
@@ -25,8 +24,6 @@ export function CartWorkspace() {
   const accessToken = useAuthStore((s) => s.accessToken);
   const [error, setError] = useState<string | null>(null);
   const [loadingItemId, setLoadingItemId] = useState<string | null>(null);
-  const [couponCode, setCouponCode] = useState("");
-  const [couponLoading, setCouponLoading] = useState(false);
 
   const summary = useMemo(() => {
     if (!cart) return { subtotal: 0, discountAmount: 0, total: 0 };
@@ -100,36 +97,6 @@ export function CartWorkspace() {
       setCart(next);
     } catch (err) {
       setError(getApiErrorMessage(err));
-    }
-  };
-
-  const handleApplyCoupon = async () => {
-    if (!couponsEnabled) { setError("Coupons are not available right now."); return; }
-    const trimmed = couponCode.trim();
-    if (!trimmed) return;
-    try {
-      setError(null);
-      setCouponLoading(true);
-      const next = await applyCartCoupon(trimmed, accessToken);
-      setCart(next);
-      setCouponCode("");
-    } catch (err) {
-      setError(getApiErrorMessageWithHint(err));
-    } finally {
-      setCouponLoading(false);
-    }
-  };
-
-  const handleRemoveCoupon = async () => {
-    try {
-      setError(null);
-      setCouponLoading(true);
-      const next = await removeCartCoupon(accessToken);
-      setCart(next);
-    } catch (err) {
-      setError(getApiErrorMessageWithHint(err));
-    } finally {
-      setCouponLoading(false);
     }
   };
 
@@ -286,7 +253,7 @@ export function CartWorkspace() {
       </section>
 
       {/* ── Order Summary ────────────────────────────────────────────────── */}
-      <aside className="flex flex-col gap-4 lg:sticky lg:top-24">
+      <aside className="flex min-w-0 flex-col gap-4 lg:sticky lg:top-24">
         <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-black/[0.04]">
           {/* Header */}
           <div className="border-b border-[#f0ece8] bg-gradient-to-r from-[#faf8f5] to-white px-5 py-4 sm:px-6">
@@ -294,49 +261,9 @@ export function CartWorkspace() {
           </div>
 
           <div className="flex flex-col gap-0 px-5 py-5 sm:px-6">
-            {/* Coupon */}
-            {couponsEnabled ? (
-              <div className="mb-5 flex flex-col gap-2 rounded-xl border border-[#efe8e4] bg-[#faf8f5] p-3.5">
-                <div className="flex items-center gap-2">
-                  <Tag className="size-3.5 text-[#ec6e55]" aria-hidden />
-                  <span className="text-xs font-bold uppercase tracking-wide text-[#767676]">Promo Code</span>
-                </div>
-                {cart?.coupon ? (
-                  <div className="flex items-center justify-between rounded-lg bg-[#eff5ee] px-3 py-2">
-                    <span className="text-xs font-bold text-[#00aa63]">
-                      {formatAppliedCouponLabel(cart.coupon) ?? "Coupon applied"}
-                    </span>
-                    <button
-                      type="button"
-                      disabled={couponLoading}
-                      onClick={handleRemoveCoupon}
-                      className="text-xs font-bold text-[#ec6e55] hover:underline disabled:opacity-50"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={couponCode}
-                      onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
-                      placeholder="Enter code"
-                      aria-label="Coupon code"
-                      className="h-9 flex-1 rounded-lg border border-[#efe8e4] bg-white px-3 text-xs font-bold uppercase text-[#23403d] placeholder:font-normal placeholder:normal-case placeholder:text-[#bbb] focus:border-[#23403d] focus:outline-none"
-                    />
-                    <button
-                      type="button"
-                      disabled={couponLoading || couponCode.trim().length === 0}
-                      onClick={handleApplyCoupon}
-                      className="h-9 rounded-lg bg-[#23403d] px-4 text-xs font-bold text-white transition-colors hover:bg-[#ec6e55] disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      Apply
-                    </button>
-                  </div>
-                )}
-              </div>
-            ) : null}
+            {/* Promo-code entry intentionally lives at CHECKOUT only (CheckoutForm) — the cart
+                summary stays a clean read-only recap. Any coupon already applied still shows
+                below as the Discount line. */}
 
             {/* Line items */}
             <div className="flex flex-col gap-3 text-sm">

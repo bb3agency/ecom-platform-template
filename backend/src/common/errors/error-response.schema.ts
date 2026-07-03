@@ -1,7 +1,10 @@
 export const errorDetailsSchema = {
   type: 'object',
   additionalProperties: false,
-  required: ['kind', 'hintKey', 'retryable', 'remediation'],
+  // `kind`/`hintKey` are intentionally OPTIONAL: they are internal classification fields and are
+  // stripped from 500 responses (generic body only — full detail is logged server-side). 4xx/503
+  // responses keep sending them; the storefront branches on them only for 4xx flows (OTP hints).
+  required: ['retryable', 'remediation'],
   properties: {
     kind: {
       type: 'string',

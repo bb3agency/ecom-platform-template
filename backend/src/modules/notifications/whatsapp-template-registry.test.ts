@@ -54,6 +54,17 @@ describe('WhatsappTemplateRegistry', () => {
     expect(resolved?.parameters).toEqual(['Our Store', 'ORD-7', 'your account orders page']);
   });
 
+  it('renders the human-readable orderNumber for {{orderId}}, never the internal UUID', () => {
+    const data = WhatsappTemplateRegistry.composeTemplateData(
+      { orderId: '947f0937-d89b-4a78-950d-99aba2d73c96', orderNumber: 'ORD-G343-TRCN' },
+      'Raghava Organics'
+    );
+    const resolved = registry.resolve('OrderConfirmed', data);
+    // {{1}} storeName, {{2}} orderId — must be the order NUMBER, not the uuid.
+    expect(resolved?.parameters).toEqual(['Raghava Organics', 'ORD-G343-TRCN']);
+    expect(resolved?.parameters[1]).not.toContain('947f0937');
+  });
+
   it('maps the customer OTP template as an authentication template with the code only', () => {
     const resolved = registry.resolve('CustomerOtpVerification', { otp: '123456', storeName: 'Raghava Organics' });
     expect(resolved?.metaName).toBe('otp_verify');

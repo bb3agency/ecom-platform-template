@@ -71,8 +71,9 @@ export default async function CheckoutPage() {
                     {label}
                   </span>
                 </div>
+                {/* Narrow connectors on phones — 4 steps + labels must fit inside 375px. */}
                 {idx < 3 && (
-                  <div className="mx-2 mb-5 h-px w-10 bg-white/20 sm:w-16" aria-hidden />
+                  <div className="mx-1.5 mb-5 h-px w-4 bg-white/20 sm:mx-2 sm:w-16" aria-hidden />
                 )}
               </div>
             ))}
@@ -83,11 +84,15 @@ export default async function CheckoutPage() {
       {/* ── Main Content ──────────────────────────────────────────────────── */}
       <CheckoutStartedTracker />
       <section className="mx-auto w-full max-w-[1440px] px-4 pt-6 sm:pt-10 lg:px-8">
+        {/* min-w-0 wrappers: grid items default to min-width:auto — wide inner content would
+            otherwise inflate the column past the mobile viewport (clipped, not scrollable). */}
         <div className="grid gap-6 sm:gap-8 lg:grid-cols-[1fr_380px] lg:items-start">
-          <CheckoutForm />
+          <div className="min-w-0">
+            <CheckoutForm />
+          </div>
 
           {/* ── Info Sidebar ─────────────────────────────────────────────── */}
-          <aside className="flex flex-col gap-4 lg:sticky lg:top-24">
+          <aside className="flex min-w-0 flex-col gap-4 lg:sticky lg:top-24">
             <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-black/[0.04]">
               <div className="border-b border-[#f0ece8] bg-gradient-to-r from-[#faf8f5] to-white px-5 py-4">
                 <h2 className="font-heading text-base font-bold text-[#23403d]">Payment Options</h2>
