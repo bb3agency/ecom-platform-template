@@ -197,9 +197,23 @@ export default class ShiprocketAdapter implements ShippingProviderAdapter {
 
     if (!res.ok) {
       const errBody = await res.text().catch(() => '');
+      // Surface only Shiprocket's human-readable `message` (e.g. "Order is already canceled") —
+      // never the raw response payload. The full body stays available in server logs via the
+      // technical-failure alert paths that log `error.message` alongside the request context.
+      let providerMessage = '';
+      try {
+        const parsed = JSON.parse(errBody) as { message?: unknown };
+        if (typeof parsed.message === 'string') {
+          providerMessage = parsed.message.slice(0, 160);
+        }
+      } catch {
+        // Non-JSON body — omit it from the client-facing message entirely.
+      }
       throw new AppError(
         ERROR_CODES.INTERNAL_ERROR,
-        `Shiprocket API HTTP ${res.status}: ${errBody.slice(0, 200)}`,
+        providerMessage
+          ? `Shiprocket rejected the request (HTTP ${res.status}): ${providerMessage}`
+          : `Shiprocket request failed (HTTP ${res.status})`,
         422
       );
     }

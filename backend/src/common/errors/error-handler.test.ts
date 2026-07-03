@@ -132,6 +132,54 @@ describe('global error handler', () => {
     await app.close();
   });
 
+  it('sanitizes 502s: keeps the crafted message but drops kind/hintKey and details spread', async () => {
+    const app = Fastify();
+    await registerGlobalErrorHandler(app);
+
+    app.get('/api/v1/upstream-502', async () => {
+      throw new AppError(ERROR_CODES.INTERNAL_ERROR, 'Unable to initiate payment order', 502, {
+        kind: 'dependency',
+        hintKey: 'razorpay_down',
+        providerResponse: { secret: 'raw-provider-dump' }
+      });
+    });
+
+    const response = await app.inject({ method: 'GET', url: '/api/v1/upstream-502' });
+
+    expect(response.statusCode).toBe(502);
+    const body = response.json() as {
+      error: { message: string; details: Record<string, unknown> };
+    };
+    // In-house crafted message is kept (useful to callers, contains nothing internal)…
+    expect(body.error.message).toBe('Unable to initiate payment order');
+    // …but classification fields and the throw-site details object never leave the server.
+    expect(body.error.details).not.toHaveProperty('kind');
+    expect(body.error.details).not.toHaveProperty('hintKey');
+    expect(JSON.stringify(body)).not.toContain('raw-provider-dump');
+  });
+
+  it('preserves the 503 contract (message + hintKey retry guidance for ops/admin UIs)', async () => {
+    const app = Fastify();
+    await registerGlobalErrorHandler(app);
+
+    app.get('/api/v1/lock-timeout', async () => {
+      throw new AppError(ERROR_CODES.INTERNAL_ERROR, 'Timed out acquiring ops audit chain lock', 503, {
+        kind: 'transient',
+        hintKey: 'ops_audit_chain_lock_timeout',
+        retryable: true,
+        retryAfterSeconds: 1,
+        remediation: 'Retry the operation.'
+      });
+    });
+
+    const response = await app.inject({ method: 'GET', url: '/api/v1/lock-timeout' });
+
+    expect(response.statusCode).toBe(503);
+    const body = response.json() as { error: { details: Record<string, unknown> } };
+    expect(body.error.details.hintKey).toBe('ops_audit_chain_lock_timeout');
+    expect(body.error.details.retryAfterSeconds).toBe(1);
+  });
+
   it('keeps kind/hintKey on 4xx responses (client contract unchanged)', async () => {
     const app = Fastify();
     await registerGlobalErrorHandler(app);

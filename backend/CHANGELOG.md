@@ -12,6 +12,17 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.45] — 2026-07-03
+
+### Security
+- **Closed the residual 5xx leak gaps around 0.1.44's generic-500 fix.** (1) **502/504** AppErrors still spread the throw-site `details` object (and `kind`/`hintKey`) into responses — now every >500 status EXCEPT 503 keeps its crafted in-house message but sends only `retryable`/`remediation`, with the full detail logged server-side. **503 is deliberately exempt**: all hintKey-bearing 5xx contracts (`ops_audit_chain_lock_timeout`, `ops_restart_*`, OTP-deliverability guidance) are 503s that ops/admin UIs consume — verified and covered by a regression test. (2) **Shiprocket adapter no longer embeds raw provider response bodies in error messages** (the "Shiprocket API HTTP 400: {json…}" strings — thrown as 422, so the 5xx sanitizer never saw them). It now extracts only Shiprocket's human-readable `message` field ("Order is already canceled"), or a bare `HTTP <status>` when the body isn't parseable. Delhivery's messages were audited — already curated (specific `remarks`/key names only).
+
+**Propagation:**
+- Severity: HIGH (information disclosure follow-up) · Layers: backend (`common/errors/error-handler.ts` + tests, `modules/shipping/adapters/shiprocket.adapter.ts`)
+- Migration: NO · Flag: none · Design impact: none · Breaking: NO (503 contract byte-identical; 502 messages unchanged)
+- Rollback: revert the two files
+- Completes 0.1.44's generic-500 hardening.
+
 ## [0.1.44] — 2026-07-03
 
 ### Security

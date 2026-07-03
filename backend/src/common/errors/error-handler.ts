@@ -125,6 +125,37 @@ export async function registerGlobalErrorHandler(fastify: FastifyInstance): Prom
           return;
         }
 
+        // Other 5xx (502/504 upstream failures — but NOT 503, whose message + hintKey are an
+        // intentional retry/remediation contract for ops/admin UIs): keep the crafted in-house
+        // message, but never forward classification fields or the throw-site details object.
+        if (error.statusCode > 500 && error.statusCode !== 503) {
+          fastify.log.error(
+            {
+              error: redactSensitiveData({
+                code: error.code,
+                message: error.message,
+                statusCode: error.statusCode,
+                details: error.details ?? null
+              }),
+              request: { id: request.id, method: request.method, url: request.url }
+            },
+            'Upstream AppError (5xx) — details logged server-side, sanitized body sent to caller'
+          );
+          reply.status(error.statusCode).send({
+            success: false,
+            error: {
+              code: error.code,
+              message: error.message,
+              statusCode: error.statusCode,
+              details: {
+                retryable: true,
+                remediation: 'Retry later. If the issue persists, contact support.'
+              }
+            }
+          });
+          return;
+        }
+
         if (
           error.statusCode === 429 &&
           error.details &&
