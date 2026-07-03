@@ -26,6 +26,8 @@ export interface PublicStoreConfig {
   /** Merchant toggle from Admin → Coupons (StoreSettings.couponsEnabled). */
   couponsEnabled: boolean;
   reviewsEnabled: boolean;
+  /** Merchant returns toggle — gates the customer return-request flow. */
+  returnsEnabled: boolean;
   wishlistEnabled: boolean;
   gstInvoicingEnabled: boolean;
   /** Merchant store identity/contact (Admin → Settings → Store) — shown in footer/contact. */
@@ -45,6 +47,7 @@ const FAIL_CLOSED_CONFIG: PublicStoreConfig = {
   mobileOtpSignupEnabled: false,
   couponsEnabled: false,
   reviewsEnabled: false,
+  returnsEnabled: false,
   wishlistEnabled: false,
   gstInvoicingEnabled: false,
   storeName: null,
@@ -90,6 +93,10 @@ export function parsePublicStoreConfig(body: unknown): PublicStoreConfig {
       typeof record.reviewsEnabled === "boolean"
         ? record.reviewsEnabled
         : FAIL_CLOSED_CONFIG.reviewsEnabled,
+    returnsEnabled:
+      typeof record.returnsEnabled === "boolean"
+        ? record.returnsEnabled
+        : FAIL_CLOSED_CONFIG.returnsEnabled,
     wishlistEnabled:
       typeof record.wishlistEnabled === "boolean"
         ? record.wishlistEnabled

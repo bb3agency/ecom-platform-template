@@ -265,7 +265,7 @@ Check if a pincode is serviceable. Body: `{ pincode }`. Returns `{ serviceable, 
 Get delivery rate estimates for the cart. Query: `pincode` (required), `paymentMode` (optional, `PREPAID` | `COD`, default `PREPAID`). Returns shipping charge and estimated days for the active provider. COD and prepaid quotes may differ.
 
 ### `GET /api/v1/store/config`
-Public runtime storefront configuration. No auth. Returns `isCodEnabled`, `minOrderValuePaise`, `mobileOtpSignupEnabled`, and mirrors of backend `FEATURE_*` flags (`couponsEnabled`, `reviewsEnabled`, `wishlistEnabled`, `gstInvoicingEnabled`). Does not expose GSTIN or secrets.
+Public runtime storefront configuration. No auth. Returns `isCodEnabled`, `minOrderValuePaise`, `mobileOtpSignupEnabled`, merchant toggles (`reviewsEnabled`, `returnsEnabled`), and mirrors of backend `FEATURE_*` flags (`couponsEnabled`, `wishlistEnabled`, `gstInvoicingEnabled`). Does not expose GSTIN or secrets.
 
 ---
 
@@ -298,7 +298,7 @@ Customer self-service cancel. **Allowed only from `CONFIRMED` or `PROCESSING`** 
 Track a shipment by AWB number. Public, no auth required. Returns courier status, tracking URL, estimated delivery date, and timeline events. Shows data from the linked order's shipment record.
 
 ### `POST /api/v1/orders/:id/return-requests`
-Create a return request for a delivered order. Body: `{ items: [{ orderItemId, quantity, reason? }], reason }`. Returns request with status `REQUESTED`.
+Create a return request for a delivered order. Body: `{ items: [{ orderItemId, quantity, reason? }], reason }`. Returns request with status `REQUESTED`. Guards: 400 when the merchant has disabled returns (`StoreSettings.returnsEnabled`, Admin → Settings); 409 `CONFLICT` while an earlier request for the same order is still open (`REQUESTED`/`APPROVED`/`PICKED_UP`).
 
 ---
 
@@ -468,7 +468,7 @@ Manual stock adjustment for a variant. Body: `{ quantity, note? }`. Creates an a
 |---|---|---|
 | `GET /api/v1/admin/return-requests` | `orders:read` | Paginated list of all return requests. Query: `status`, `page`, `limit`. |
 | `GET /api/v1/admin/return-requests/:id` | `orders:read` | Full detail for a single return request: customer, items requested for return, reason, current status, `adminNote`. |
-| `PATCH /api/v1/admin/return-requests/:id` | `orders:write` | Update return request status: `APPROVED`, `REJECTED`, `PICKED_UP`, `REFUNDED`. Body: `{ status, adminNote? }`. |
+| `PATCH /api/v1/admin/return-requests/:id` | `orders:write` | Update return request status. Body: `{ status, adminNote? }`. Transitions are enforced (`REQUESTED→APPROVED/REJECTED`, `APPROVED→PICKED_UP/REJECTED`, `PICKED_UP→REFUNDED`; `REJECTED`/`REFUNDED` terminal — otherwise 409 `INVALID_STATUS_TRANSITION`). Real transitions email the customer (`ReturnRequestUpdate` template, audit markers stripped from the note). |
 
 ---
 

@@ -16,6 +16,7 @@ interface CodSettings {
   sellerState: string | null;
   mobileOtpSignupEnabled?: boolean;
   reviewsEnabled?: boolean;
+  returnsEnabled?: boolean;
 }
 
 export function CodSettingsPanel() {
@@ -29,6 +30,7 @@ export function CodSettingsPanel() {
   const [cancellationWindowHours, setCancellationWindowHours] = useState(24);
   const [mobileOtpSignupEnabled, setMobileOtpSignupEnabled] = useState(false);
   const [reviewsEnabled, setReviewsEnabled] = useState(false);
+  const [returnsEnabled, setReturnsEnabled] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -54,6 +56,7 @@ export function CodSettingsPanel() {
         setCancellationWindowHours(result.cancellationWindowHours);
         setMobileOtpSignupEnabled(result.mobileOtpSignupEnabled ?? false);
         setReviewsEnabled(result.reviewsEnabled ?? false);
+        setReturnsEnabled(result.returnsEnabled ?? true);
       } catch (err) {
         if (!cancelled) {
           setError(getApiErrorMessage(err));
@@ -77,6 +80,7 @@ export function CodSettingsPanel() {
         cancellationWindowHours,
         mobileOtpSignupEnabled,
         reviewsEnabled,
+        returnsEnabled,
       };
       const updated = await api<CodSettings>("/admin/settings/cod", {
         method: "PATCH",
@@ -86,6 +90,7 @@ export function CodSettingsPanel() {
       setSettings(updated);
       setMobileOtpSignupEnabled(updated.mobileOtpSignupEnabled ?? false);
       setReviewsEnabled(updated.reviewsEnabled ?? false);
+      setReturnsEnabled(updated.returnsEnabled ?? true);
       setSuccess("Settings updated successfully.");
       setTimeout(() => setSuccess(null), 4000);
     } catch (err) {
@@ -243,6 +248,26 @@ export function CodSettingsPanel() {
                   When enabled, star ratings show on product cards and product pages, and
                   customers can review products they&apos;ve had delivered (reviews appear
                   after you approve them in Reviews). Disabled by default.
+                </p>
+              </div>
+            </label>
+
+            <label className="flex items-start gap-3 rounded-lg border border-border bg-background/60 p-4 transition-all hover:bg-background cursor-pointer">
+              <input
+                type="checkbox"
+                checked={returnsEnabled}
+                onChange={(event) => setReturnsEnabled(event.target.checked)}
+                className="mt-1 h-4 w-4 rounded-sm border-border text-primary focus:ring-primary/20"
+              />
+              <div className="space-y-0.5 min-w-0">
+                <span className="text-sm font-medium text-foreground">
+                  Allow Order Returns
+                </span>
+                <p className="text-xs text-muted-foreground">
+                  When enabled, customers can request a return/replacement on delivered orders
+                  from their account; requests land in your Returns queue for approval. Turning
+                  this off hides the return option on the storefront and blocks new requests
+                  server-side — returns already in progress are unaffected.
                 </p>
               </div>
             </label>

@@ -61,6 +61,15 @@ export interface OrderSummary {
   total: number;
   createdAt?: string;
   items?: OrderLineItem[];
+  /** Customer-visible return requests for this order (latest first; admin markers stripped). */
+  returnRequests?: Array<{
+    id: string;
+    status: "REQUESTED" | "APPROVED" | "REJECTED" | "PICKED_UP" | "REFUNDED" | string;
+    reason: string;
+    adminNote: string | null;
+    createdAt: string;
+    updatedAt: string;
+  }>;
   invoice?: { hasPdf: boolean; invoiceNumber: string; issuedAt: string } | null;
   shipment?: {
     id: string;

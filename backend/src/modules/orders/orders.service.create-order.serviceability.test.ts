@@ -130,6 +130,8 @@ describe('OrdersService createOrder serviceability enforcement', () => {
     const tx = {
       $executeRaw: vi.fn().mockResolvedValue(undefined),
       $queryRaw: vi.fn().mockResolvedValue([{ nextval: 1n }]),
+      // generateUniqueOrderNumber pre-insert check — null = candidate unused
+      order: { findUnique: vi.fn().mockResolvedValue(null) },
       cart: {
         findFirst: vi.fn().mockResolvedValue({
           id: 'cart_1',

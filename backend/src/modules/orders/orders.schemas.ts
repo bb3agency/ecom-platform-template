@@ -634,6 +634,23 @@ const customerOrderDetailSchema = {
   required: adminOrderDetailSchema.required.filter((field) => field !== 'userId'),
   properties: {
     ...adminOrderDetailSchemaWithoutUserIdProperties,
+    // Customer-visible return requests for this order (admin audit markers stripped from notes).
+    returnRequests: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['id', 'status', 'reason', 'adminNote', 'createdAt', 'updatedAt'],
+        properties: {
+          id: { type: 'string', maxLength: 64 },
+          status: { type: 'string', maxLength: 30 },
+          reason: { type: 'string', maxLength: 2000 },
+          adminNote: { anyOf: [{ type: 'string', maxLength: 2000 }, { type: 'null' }] },
+          createdAt: { type: 'string', maxLength: 64 },
+          updatedAt: { type: 'string', maxLength: 64 }
+        }
+      }
+    },
     payment: {
       anyOf: [
         {

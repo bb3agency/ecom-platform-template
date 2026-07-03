@@ -38,6 +38,7 @@ describe('SettingsService getPublicStoreConfig', () => {
         minOrderValuePaise: 25000,
         mobileOtpSignupEnabled: true,
         reviewsEnabled: true,
+        returnsEnabled: true,
         storeName: 'Acme Store',
         sellerAddress: '12 Market Rd, Hyderabad',
         sellerState: 'Telangana',
@@ -60,6 +61,7 @@ describe('SettingsService getPublicStoreConfig', () => {
       mobileOtpSignupEnabled: true,
       couponsEnabled: true,
       reviewsEnabled: true,
+      returnsEnabled: true,
       wishlistEnabled: true,
       gstInvoicingEnabled: false,
       // store identity/contact exposed for the storefront footer (sellerAddress → storeAddress)

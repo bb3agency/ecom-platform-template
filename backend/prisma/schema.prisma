@@ -1016,6 +1016,7 @@ model StoreSettings {
   isCodEnabled              Boolean  @default(false)
   couponsEnabled            Boolean  @default(false)
   reviewsEnabled            Boolean  @default(false)
+  returnsEnabled            Boolean  @default(true)
   mobileOtpSignupEnabled    Boolean  @default(false)
   cancellationWindowHours   Int      @default(24)
   notifyEmailEnabled        Boolean  @default(true)

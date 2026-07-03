@@ -60,6 +60,8 @@ describe('OrdersService createOrder minimum order value', () => {
         update: vi.fn().mockResolvedValue(undefined)
       },
       order: {
+        // generateUniqueOrderNumber pre-insert check — null = candidate unused
+        findUnique: vi.fn().mockResolvedValue(null),
         create: vi.fn().mockResolvedValue({
           id: 'order_1'
         }),

@@ -53,6 +53,18 @@ const STATUS_META: Record<string, StatusMeta> = {
 const STATUS_FLOW = ["REQUESTED", "APPROVED", "PICKED_UP", "REFUNDED"];
 const ALL_STATUSES = ["REQUESTED", "APPROVED", "REJECTED", "PICKED_UP", "REFUNDED"];
 
+/**
+ * Valid next statuses per current status — mirrors the backend transition guard
+ * (OrdersService.RETURN_STATUS_TRANSITIONS). REJECTED and REFUNDED are terminal.
+ */
+const NEXT_STATUS_OPTIONS: Record<string, string[]> = {
+  REQUESTED: ["APPROVED", "REJECTED"],
+  APPROVED: ["PICKED_UP", "REJECTED"],
+  PICKED_UP: ["REFUNDED"],
+  REJECTED: [],
+  REFUNDED: [],
+};
+
 function StatusBadge({ status }: { status: string }) {
   const meta = STATUS_META[status];
   if (!meta) return <span className="text-xs text-muted-foreground">{status}</span>;
@@ -377,6 +389,12 @@ export function AdminReturnDetailPanel({ returnId }: AdminReturnDetailPanelProps
                 {ALL_STATUSES.map((status) => {
                   const meta = STATUS_META[status];
                   if (!meta) return null;
+                  // Only the current status and its valid next steps are selectable — the
+                  // backend rejects anything else with INVALID_STATUS_TRANSITION (409).
+                  const allowed =
+                    status === detail.status ||
+                    (NEXT_STATUS_OPTIONS[detail.status] ?? []).includes(status);
+                  if (!allowed) return null;
                   const Icon = meta.icon;
                   const active = nextStatus === status;
                   return (

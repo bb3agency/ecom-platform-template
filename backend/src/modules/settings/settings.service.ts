@@ -404,25 +404,27 @@ export class SettingsService {
     };
   }
 
-  async getCodSettings(): Promise<{ isCodEnabled: boolean; mobileOtpSignupEnabled: boolean; reviewsEnabled: boolean; cancellationWindowHours: number; sellerState: string | null }> {
+  async getCodSettings(): Promise<{ isCodEnabled: boolean; mobileOtpSignupEnabled: boolean; reviewsEnabled: boolean; returnsEnabled: boolean; cancellationWindowHours: number; sellerState: string | null }> {
     const settings = await this.fastify.prisma.storeSettings.findUnique({
       where: { singletonKey: SettingsService.singletonKey },
-      select: { isCodEnabled: true, mobileOtpSignupEnabled: true, reviewsEnabled: true, cancellationWindowHours: true, sellerState: true }
-    }) as { isCodEnabled: boolean; mobileOtpSignupEnabled: boolean; reviewsEnabled: boolean; cancellationWindowHours: number; sellerState: string | null } | null;
+      select: { isCodEnabled: true, mobileOtpSignupEnabled: true, reviewsEnabled: true, returnsEnabled: true, cancellationWindowHours: true, sellerState: true }
+    }) as { isCodEnabled: boolean; mobileOtpSignupEnabled: boolean; reviewsEnabled: boolean; returnsEnabled: boolean; cancellationWindowHours: number; sellerState: string | null } | null;
     return {
       isCodEnabled: settings?.isCodEnabled ?? false,
       mobileOtpSignupEnabled: settings?.mobileOtpSignupEnabled ?? false,
       reviewsEnabled: settings?.reviewsEnabled ?? false,
+      returnsEnabled: settings?.returnsEnabled ?? true,
       cancellationWindowHours: settings?.cancellationWindowHours ?? 24,
       sellerState: settings?.sellerState ?? null
     };
   }
 
-  async updateCodSettings(input: { isCodEnabled?: boolean; mobileOtpSignupEnabled?: boolean; reviewsEnabled?: boolean; cancellationWindowHours?: number; sellerState?: string | null }): Promise<{ isCodEnabled: boolean; mobileOtpSignupEnabled: boolean; reviewsEnabled: boolean; cancellationWindowHours: number; sellerState: string | null }> {
+  async updateCodSettings(input: { isCodEnabled?: boolean; mobileOtpSignupEnabled?: boolean; reviewsEnabled?: boolean; returnsEnabled?: boolean; cancellationWindowHours?: number; sellerState?: string | null }): Promise<{ isCodEnabled: boolean; mobileOtpSignupEnabled: boolean; reviewsEnabled: boolean; returnsEnabled: boolean; cancellationWindowHours: number; sellerState: string | null }> {
     const updateData: Record<string, unknown> = {};
     if (input.isCodEnabled !== undefined) updateData['isCodEnabled'] = input.isCodEnabled;
     if (input.mobileOtpSignupEnabled !== undefined) updateData['mobileOtpSignupEnabled'] = input.mobileOtpSignupEnabled;
     if (input.reviewsEnabled !== undefined) updateData['reviewsEnabled'] = input.reviewsEnabled;
+    if (input.returnsEnabled !== undefined) updateData['returnsEnabled'] = input.returnsEnabled;
     if (input.cancellationWindowHours !== undefined) updateData['cancellationWindowHours'] = Math.max(1, Math.floor(input.cancellationWindowHours));
     if (input.sellerState !== undefined) updateData['sellerState'] = input.sellerState;
     const defaultPickupPincode = await this.resolveDefaultPickupPincodeForCreate();
@@ -436,12 +438,13 @@ export class SettingsService {
         defaultLowStockThreshold: 5,
         ...updateData
       },
-      select: { isCodEnabled: true, mobileOtpSignupEnabled: true, reviewsEnabled: true, cancellationWindowHours: true, sellerState: true }
-    }) as { isCodEnabled: boolean; mobileOtpSignupEnabled: boolean; reviewsEnabled: boolean; cancellationWindowHours: number; sellerState: string | null };
+      select: { isCodEnabled: true, mobileOtpSignupEnabled: true, reviewsEnabled: true, returnsEnabled: true, cancellationWindowHours: true, sellerState: true }
+    }) as { isCodEnabled: boolean; mobileOtpSignupEnabled: boolean; reviewsEnabled: boolean; returnsEnabled: boolean; cancellationWindowHours: number; sellerState: string | null };
     return {
       isCodEnabled: updated.isCodEnabled ?? false,
       mobileOtpSignupEnabled: updated.mobileOtpSignupEnabled ?? false,
       reviewsEnabled: updated.reviewsEnabled ?? false,
+      returnsEnabled: updated.returnsEnabled ?? true,
       cancellationWindowHours: updated.cancellationWindowHours ?? 24,
       sellerState: updated.sellerState ?? null
     };
@@ -490,6 +493,7 @@ export class SettingsService {
     mobileOtpSignupEnabled: boolean;
     couponsEnabled: boolean;
     reviewsEnabled: boolean;
+    returnsEnabled: boolean;
     wishlistEnabled: boolean;
     gstInvoicingEnabled: boolean;
     storeName: string | null;
@@ -507,6 +511,8 @@ export class SettingsService {
           mobileOtpSignupEnabled: true,
           // Merchant reviews toggle (Admin → Settings) — drives storefront review UI.
           reviewsEnabled: true,
+          // Merchant returns toggle (Admin → Settings) — gates the whole return-request flow.
+          returnsEnabled: true,
           // Public store identity/contact — merchant-editable in Admin → Settings → Store,
           // rendered in the storefront footer + contact surfaces.
           storeName: true,
@@ -524,6 +530,7 @@ export class SettingsService {
       mobileOtpSignupEnabled: settings?.mobileOtpSignupEnabled ?? false,
       couponsEnabled,
       reviewsEnabled: settings?.reviewsEnabled ?? false,
+      returnsEnabled: settings?.returnsEnabled ?? true,
       wishlistEnabled: featureFlags.wishlist,
       gstInvoicingEnabled: featureFlags.gstInvoicing,
       storeName: settings?.storeName ?? null,

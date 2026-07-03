@@ -421,6 +421,55 @@ export function OrderCancelledEmail(orderId: string): ReactElement {
   );
 }
 
+/** Human copy per return-request status for the customer decision email. */
+const RETURN_STATUS_COPY: Record<string, { badge: string; heading: string; body: string }> = {
+  APPROVED: {
+    badge: 'Return Approved',
+    heading: 'Your return request has been approved',
+    body: 'We have approved your return request. Our team will coordinate the pickup of your items — please keep them ready in their original packaging.'
+  },
+  REJECTED: {
+    badge: 'Return Declined',
+    heading: 'Your return request could not be approved',
+    body: 'After reviewing your return request, we are unable to approve it this time. If you believe this is a mistake, please reply to this email or contact our support team.'
+  },
+  PICKED_UP: {
+    badge: 'Items Picked Up',
+    heading: 'Your return items have been picked up',
+    body: 'The courier has collected your return items. Once they are received and checked, your refund will be initiated.'
+  },
+  REFUNDED: {
+    badge: 'Refund Processed',
+    heading: 'Your refund has been processed',
+    body: 'Your refund for the returned items has been processed. Depending on your bank, it may take 5–7 business days to reflect in your account.'
+  }
+};
+
+export function ReturnRequestUpdateEmail(orderId: string, status: string, note?: string): ReactElement {
+  const copy = RETURN_STATUS_COPY[status] ?? {
+    badge: 'Return Update',
+    heading: 'There is an update on your return request',
+    body: `Your return request status is now ${status}.`
+  };
+  return Wrapper(
+    StatusBadge(copy.badge, status === 'REJECTED' ? B.errorRed : B.successGreen, status === 'REJECTED' ? '#fdecea' : B.successBg),
+    Heading(copy.heading),
+    Body(copy.body),
+    InfoBox(
+      el('table', { width: '100%', cellPadding: 0, cellSpacing: 0 },
+        el('tbody', null,
+          InfoRow('Order ID', orderId),
+          InfoRow('Return Status', copy.badge),
+          ...(note ? [InfoRow('Note from the store', note)] : [])
+        )
+      )
+    ),
+    el('p', {
+      style: { fontSize: '13px', color: B.textMuted, margin: '24px 0 0', lineHeight: '1.6' }
+    }, 'You can review the full details of this order and your return request from the Orders section of your account.')
+  );
+}
+
 export function LowStockAlertEmail(items: Array<{ sku: string; quantity: number; lowStockThreshold: number }>): ReactElement {
   const rows = items.map((item) =>
     el('tr', null,

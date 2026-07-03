@@ -31,6 +31,7 @@ import { formatOrderDate, orderStatusChipClass, orderStatusLabel } from "@/lib/o
 import { toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 import { OrderReviewPrompt } from "@/components/product/OrderReviewPrompt";
+import { useStoreConfig } from "@/components/providers/StoreConfigProvider";
 
 const PLACEHOLDER_IMAGE = "/images/product-placeholder.svg";
 
@@ -113,6 +114,7 @@ function OrderItemRow({ item }: { item: OrderLineItem }) {
 export default function AccountOrderDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
+  const { returnsEnabled } = useStoreConfig();
   const accessToken = useAuthStore((s) => s.accessToken);
   const [order, setOrder] = useState<OrderSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -262,6 +264,14 @@ export default function AccountOrderDetailPage() {
     (order.status === "PENDING_PAYMENT" || order.status === "PAYMENT_FAILED");
   const addr = order.shippingAddress;
   const items = order.items ?? [];
+  // Return flow: latest request (if any) + whether a new one may be filed. The merchant toggle
+  // (returnsEnabled) and any in-flight request both hide the CTA; the backend enforces the same.
+  const returnRequests = order.returnRequests ?? [];
+  const latestReturn = returnRequests[0] ?? null;
+  const hasOpenReturn =
+    latestReturn !== null && ["REQUESTED", "APPROVED", "PICKED_UP"].includes(latestReturn.status);
+  const canRequestReturn =
+    returnsEnabled && order.status === "DELIVERED" && !hasOpenReturn;
 
   return (
     <section className="flex flex-col gap-4 sm:gap-5">
@@ -466,7 +476,35 @@ export default function AccountOrderDetailPage() {
 
       <OrderReviewPrompt orderId={order.id} orderStatus={order.status} />
 
-      {order.status === "DELIVERED" && !showReturnForm && (
+      {/* Existing return request status — visible whatever the toggle says. */}
+      {latestReturn ? (
+        <div className="rounded-2xl border border-[#efe8e4] bg-white p-4 sm:p-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="font-heading text-base font-bold text-[#23403d]">Return Request</h2>
+            <span
+              className={`inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ring-1 ${
+                latestReturn.status === "REJECTED"
+                  ? "bg-red-50 text-red-700 ring-red-200"
+                  : latestReturn.status === "REFUNDED"
+                    ? "bg-green-50 text-green-700 ring-green-200"
+                    : "bg-sky-50 text-sky-700 ring-sky-200"
+              }`}
+            >
+              {orderStatusLabel(latestReturn.status)}
+            </span>
+          </div>
+          <p className="mt-2 text-sm text-[#767676]">
+            Filed {formatOrderDate(latestReturn.createdAt)} — “{latestReturn.reason}”
+          </p>
+          {latestReturn.adminNote ? (
+            <p className="mt-2 rounded-lg bg-[#faf3ef]/70 px-3 py-2 text-xs text-[#767676]">
+              <span className="font-bold text-[#23403d]">Store note:</span> {latestReturn.adminNote}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {canRequestReturn && !showReturnForm && (
         <div className="rounded-2xl border border-[#efe8e4] bg-white p-4 text-center sm:p-5">
           <p className="mb-3 text-sm text-[#767676]">Is there an issue with your items?</p>
           <Button variant="outline" size="sm" onClick={() => setShowReturnForm(true)}>
@@ -475,7 +513,7 @@ export default function AccountOrderDetailPage() {
         </div>
       )}
 
-      {order.status === "DELIVERED" && showReturnForm && (
+      {canRequestReturn && showReturnForm && (
         <form
           onSubmit={handleReturnSubmit}
           className="grid gap-4 rounded-2xl border border-[#ec6e55]/30 bg-[#faf3ef]/40 p-4 sm:p-5"

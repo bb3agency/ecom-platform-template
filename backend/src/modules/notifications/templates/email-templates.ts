@@ -8,6 +8,7 @@ import {
   NotificationDeliveryFailureEmail,
   OtpVerificationEmail,
   OrderCancelledEmail,
+  ReturnRequestUpdateEmail,
   OrderConfirmedEmail,
   OrderDeliveredEmail,
   OrderShippedEmail,
@@ -26,6 +27,7 @@ export const supportedEmailTemplates = [
   'OutForDelivery',
   'OrderDelivered',
   'OrderCancelled',
+  'ReturnRequestUpdate',
   'LowStockAlert',
   'OtpVerification',
   'CustomerOtpVerification',
@@ -98,6 +100,18 @@ export async function renderNotificationEmail(template: string, data: Record<str
         subject: `Your order ${orderRef} has been cancelled`,
         html: await render(OrderCancelledEmail(orderRef))
       };
+    case 'ReturnRequestUpdate': {
+      const returnStatus =
+        typeof data.returnStatus === 'string' && data.returnStatus.trim()
+          ? escapeHtml(data.returnStatus.trim())
+          : 'updated';
+      const note =
+        typeof data.note === 'string' && data.note.trim() ? escapeHtml(data.note.trim()) : undefined;
+      return {
+        subject: `Update on your return request for ${orderRef}`,
+        html: await render(ReturnRequestUpdateEmail(orderRef, returnStatus, note))
+      };
+    }
     case 'LowStockAlert':
       {
         const items = Array.isArray(data.items)

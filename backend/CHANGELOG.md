@@ -12,6 +12,25 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.41] — 2026-07-03
+
+### Changed
+- **Order numbers are now random and unguessable (`ORD-XXXX-XXXX`), not sequential.** `ORD-2026-00039`-style sequential numbers leaked business volume (two orders reveal the sales rate) and made references enumerable. New format follows large-marketplace practice: `crypto.randomInt` over an unambiguous 31-char alphabet (no I/L/O/0/1 — phone-readable), grouped `ORD-XXXX-XXXX`, ~8.5e11 space; pre-insert uniqueness check (5 attempts, fails loudly) on top of the DB `@unique` constraint. New `modules/orders/order-number.ts` + tests; both checkout paths (COD `createOrder` + prepaid `confirmPrepaid`) migrated off the Postgres `order_number_seq` (sequence left in place, unused; existing orders keep their old numbers — both formats coexist under the same unique column). **Audited every consumer:** nothing parses the format — Razorpay `receipt` (≤40 chars ✓), Shiprocket `order_id`/fallback `sku`, Delhivery order ref, webhooks (resolve via `providerOrderId`/AWB, never the order number), emails/WhatsApp (display-only), admin search (substring). **GST invoice numbers (`INV-YYYY-#####`) intentionally remain SEQUENTIAL** — CGST Rule 46(b) requires consecutive invoice serials; only the customer-facing order reference is randomized.
+
+### Added
+- **Merchant returns toggle + hardened return flow** (see also frontend-core 0.1.27):
+  - `StoreSettings.returnsEnabled` (migration `20260703120000`, default **true**) — editable in Admin → Settings; exposed in `GET /store/config`; enforced server-side in `createReturnRequest` (400 when off).
+  - **One open return per order:** new request → 409 `CONFLICT` while an earlier one is `REQUESTED`/`APPROVED`/`PICKED_UP` (a `REJECTED` request may be retried).
+  - **Status transition guard:** `REQUESTED→APPROVED/REJECTED`, `APPROVED→PICKED_UP/REJECTED`, `PICKED_UP→REFUNDED`; `REJECTED`/`REFUNDED` terminal — otherwise 409 `INVALID_STATUS_TRANSITION`.
+  - **Customer decision emails:** new `ReturnRequestUpdate` template (per-status copy for approved/declined/picked-up/refunded + store note with `[admin:…]` markers stripped) enqueued best-effort on every real transition.
+  - **Customer visibility:** `GET /orders/:id` now returns `returnRequests` (sanitized notes) so the storefront shows return status and suppresses duplicate filing.
+
+**Propagation:**
+- Severity: HIGH (security posture of order references + complete returns control) · Layers: backend (`modules/orders/{order-number.ts,orders.service.ts,orders.schemas.ts}`, `modules/settings/**`, `modules/notifications/templates/**`, `prisma/schema.prisma` + migration, tests, `docs/ROUTE_SURFACE_COMPLETE_REFERENCE.md`)
+- Migration: YES — `20260703120000_add_store_settings_returns_enabled` (additive column, default true; auto-applied by deploy) · Flag: `StoreSettings.returnsEnabled` (DB-backed merchant toggle, default ON = behaviour unchanged) · Design impact: none · Breaking: NO
+- Rollback: revert the listed files (existing random order numbers remain valid strings)
+- Pairs with frontend-core 0.1.27.
+
 ## [0.1.40] — 2026-07-03
 
 ### Added

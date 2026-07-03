@@ -85,6 +85,8 @@ describe('OrdersService createOrder coupon merchant toggle', () => {
         update: vi.fn().mockResolvedValue(undefined)
       },
       order: {
+        // generateUniqueOrderNumber pre-insert check — null = candidate unused
+        findUnique: vi.fn().mockResolvedValue(null),
         create: orderCreate,
         findUniqueOrThrow: vi.fn().mockResolvedValue({
           id: 'order_1',

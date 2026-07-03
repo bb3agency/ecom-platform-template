@@ -12,6 +12,21 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.27] — 2026-07-03
+
+### Added
+- **Merchant returns toggle + return-status UX** (pairs with backend-core 0.1.41):
+  - Admin → Settings → Store Policies: new **"Allow Order Returns"** checkbox (`CodSettingsPanel`) saved via the cod-settings PATCH.
+  - `PublicStoreConfig.returnsEnabled` (fail-closed `false`) via `useStoreConfig()`.
+  - Customer order detail: **Return Request status card** (chip + filed date + reason + store note); the "Request a Return / Replacement" CTA renders only when returns are enabled, the order is DELIVERED, and no request is in flight — mirroring the server guards. `OrderSummary.returnRequests` typed.
+  - Admin return detail: the status pills now offer only **valid next transitions** (mirrors the backend guard: `REQUESTED→APPROVED/REJECTED`, `APPROVED→PICKED_UP/REJECTED`, `PICKED_UP→REFUNDED`; terminals immutable) instead of every status.
+- Order numbers are display-only on the frontend — the new random `ORD-XXXX-XXXX` format (backend-core 0.1.41) needs no frontend changes; verified nothing parses the format.
+
+**Propagation:**
+- Severity: NORMAL (additive UI; server enforces everything) · Layers: frontend (`components/admin/{CodSettingsPanel,AdminReturnDetailPanel}.tsx`, `app/(account)/orders/[id]/page.tsx`, `lib/{storefront-settings.ts,orders-api.ts}` + tests)
+- Migration: NO · Flag: merchant toggle (default ON) · Design impact: none · Breaking: NO
+- Rollback: revert the listed files
+
 ## [0.1.26] — 2026-07-03
 
 ### Changed

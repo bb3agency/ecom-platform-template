@@ -250,11 +250,12 @@ export const updateInventorySettingsSchema = {
 const codSettingsShape = {
   type: 'object',
   additionalProperties: false,
-  required: ['isCodEnabled', 'cancellationWindowHours', 'mobileOtpSignupEnabled', 'reviewsEnabled'],
+  required: ['isCodEnabled', 'cancellationWindowHours', 'mobileOtpSignupEnabled', 'reviewsEnabled', 'returnsEnabled'],
   properties: {
     isCodEnabled: { type: 'boolean' },
     mobileOtpSignupEnabled: { type: 'boolean' },
     reviewsEnabled: { type: 'boolean' },
+    returnsEnabled: { type: 'boolean' },
     cancellationWindowHours: { type: 'integer', minimum: 1 },
     sellerState: { anyOf: [{ type: 'string', maxLength: 100 }, { type: 'null' }] }
   }
@@ -283,6 +284,7 @@ export const updateCodSettingsSchema = {
       isCodEnabled: { type: 'boolean' },
       mobileOtpSignupEnabled: { type: 'boolean' },
       reviewsEnabled: { type: 'boolean' },
+      returnsEnabled: { type: 'boolean' },
       cancellationWindowHours: { type: 'integer', minimum: 1, maximum: 720 },
       sellerState: { anyOf: [{ type: 'string', maxLength: 100 }, { type: 'null' }] }
     }
@@ -369,6 +371,7 @@ export const getPublicStoreConfigSchema = {
         'mobileOtpSignupEnabled',
         'couponsEnabled',
         'reviewsEnabled',
+        'returnsEnabled',
         'wishlistEnabled',
         'gstInvoicingEnabled'
       ],
@@ -381,6 +384,10 @@ export const getPublicStoreConfigSchema = {
           description: 'Mirrors StoreSettings.couponsEnabled — toggled in Admin → Coupons.'
         },
         reviewsEnabled: { type: 'boolean' },
+        returnsEnabled: {
+          type: 'boolean',
+          description: 'Merchant returns toggle — gates the customer return-request flow.'
+        },
         wishlistEnabled: { type: 'boolean' },
         gstInvoicingEnabled: { type: 'boolean' },
         storeName: { type: ['string', 'null'] },

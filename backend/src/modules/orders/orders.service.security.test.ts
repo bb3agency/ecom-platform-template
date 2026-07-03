@@ -84,7 +84,8 @@ describe('OrdersService secure data flow', () => {
 
     const service = new OrdersService({
       prisma: {
-        order: { findFirst }
+        order: { findFirst },
+        returnRequest: { findMany: vi.fn(async () => []) }
       }
     } as unknown as ConstructorParameters<typeof OrdersService>[0]);
 
@@ -134,7 +135,8 @@ describe('OrdersService secure data flow', () => {
     }));
     const service = new OrdersService({
       prisma: {
-        order: { findFirst }
+        order: { findFirst },
+        returnRequest: { findMany: vi.fn(async () => []) }
       }
     } as unknown as ConstructorParameters<typeof OrdersService>[0]);
     const result = await service.getMyOrderById('user_1', 'order_1');
@@ -187,7 +189,8 @@ describe('OrdersService secure data flow', () => {
     }));
     const service = new OrdersService({
       prisma: {
-        order: { findFirst }
+        order: { findFirst },
+        returnRequest: { findMany: vi.fn(async () => []) }
       }
     } as unknown as ConstructorParameters<typeof OrdersService>[0]);
     const result = await service.getMyOrderById('user_1', 'order_2');
@@ -257,7 +260,8 @@ describe('OrdersService secure data flow', () => {
     }));
     const service = new OrdersService({
       prisma: {
-        order: { findFirst }
+        order: { findFirst },
+        returnRequest: { findMany: vi.fn(async () => []) }
       }
     } as unknown as ConstructorParameters<typeof OrdersService>[0]);
     const result = await service.getMyOrderById('user_1', 'order_3');

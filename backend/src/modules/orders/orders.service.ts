@@ -11,6 +11,7 @@ import {
   ShippingProvider
 } from '@prisma/client';
 import { FastifyInstance } from 'fastify';
+import { generateUniqueOrderNumber } from './order-number';
 import { AppError } from '@common/errors/app-error';
 import { ERROR_CODES } from '@common/errors/error-codes';
 import { decryptOpsConfigValue } from '@common/security/ops-config-crypto';
@@ -410,13 +411,9 @@ export class OrdersService {
     }
 
     const createdOrder = await this.fastify.prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`CREATE SEQUENCE IF NOT EXISTS order_number_seq START 1`;
-      const sequenceResult = await tx.$queryRaw<
-        Array<{ nextval: bigint }>
-      >`SELECT nextval('order_number_seq')`;
-      const sequenceNumber = Number(sequenceResult[0]?.nextval ?? 1n);
-      const year = new Date().getFullYear();
-      const orderNumber = `ORD-${year}-${String(sequenceNumber).padStart(5, '0')}`;
+      // Random, unguessable customer-facing reference (see order-number.ts) — sequential
+      // numbers leaked order volume and were enumerable.
+      const orderNumber = await generateUniqueOrderNumber(tx as unknown as Parameters<typeof generateUniqueOrderNumber>[0]);
 
       const cart = await tx.cart.findFirst({
         where: { userId },
@@ -793,10 +790,28 @@ export class OrdersService {
       throw new AppError(ERROR_CODES.NOT_FOUND, 'Order not found', 404);
     }
 
-    return this.serializeOrder(order, {
-      exposeProviderReferences: false,
-      exposeInternalReferences: false
+    // Surface the order's return requests so the customer can see the status of a return they
+    // filed (and the UI can hide the "request a return" action while one is in flight).
+    const returnRequests = await this.fastify.prisma.returnRequest.findMany({
+      where: { orderId },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, status: true, reason: true, adminNote: true, createdAt: true, updatedAt: true }
     });
+
+    return {
+      ...this.serializeOrder(order, {
+        exposeProviderReferences: false,
+        exposeInternalReferences: false
+      }),
+      returnRequests: returnRequests.map((rr) => ({
+        id: rr.id,
+        status: rr.status,
+        reason: rr.reason,
+        adminNote: this.sanitizeCustomerVisibleNote(rr.adminNote),
+        createdAt: rr.createdAt.toISOString(),
+        updatedAt: rr.updatedAt.toISOString()
+      }))
+    };
   }
 
   async getMyInvoicePdf(
@@ -1451,11 +1466,8 @@ export class OrdersService {
 
     try {
       const createdOrder = await this.fastify.prisma.$transaction(async (tx) => {
-        await tx.$executeRaw`CREATE SEQUENCE IF NOT EXISTS order_number_seq START 1`;
-        const sequenceResult = await tx.$queryRaw<Array<{ nextval: bigint }>>`SELECT nextval('order_number_seq')`;
-        const sequenceNumber = Number(sequenceResult[0]?.nextval ?? 1n);
-        const year = new Date().getFullYear();
-        const orderNumber = `ORD-${year}-${String(sequenceNumber).padStart(5, '0')}`;
+        // Random, unguessable customer-facing reference (see order-number.ts).
+        const orderNumber = await generateUniqueOrderNumber(tx as unknown as Parameters<typeof generateUniqueOrderNumber>[0]);
 
         const effectiveCoupon = session.couponId
           ? await tx.coupon.findUnique({ where: { id: session.couponId } })
@@ -3926,6 +3938,20 @@ export class OrdersService {
       reason: string;
     }
   ) {
+    // Merchant kill-switch (Admin → Settings → Store Policies). Checked server-side so a stale
+    // or hand-crafted client can never open returns while the merchant has them off.
+    const returnSettings = await this.fastify.prisma.storeSettings.findUnique({
+      where: { singletonKey: 'default' },
+      select: { returnsEnabled: true }
+    });
+    if (returnSettings && returnSettings.returnsEnabled === false) {
+      throw new AppError(
+        ERROR_CODES.VALIDATION_ERROR,
+        'Returns are currently not accepted by this store. Please contact support for help with your order.',
+        400
+      );
+    }
+
     const order = await this.fastify.prisma.order.findFirst({
       where: { id: orderId, userId },
       include: { items: true, payment: true }
@@ -3937,6 +3963,21 @@ export class OrdersService {
       throw new AppError(
         ERROR_CODES.INVALID_STATUS_TRANSITION,
         'Return requests can only be created for delivered orders',
+        409
+      );
+    }
+
+    // One open return per order: block a new request while an earlier one is still in flight
+    // (REQUESTED/APPROVED/PICKED_UP). A REJECTED request may be retried; REFUNDED is settled —
+    // a second return for other items is legitimate only after the first fully closes.
+    const openReturn = await this.fastify.prisma.returnRequest.findFirst({
+      where: { orderId, status: { in: ['REQUESTED', 'APPROVED', 'PICKED_UP'] } },
+      select: { id: true, status: true }
+    });
+    if (openReturn) {
+      throw new AppError(
+        ERROR_CODES.CONFLICT,
+        'A return request for this order is already in progress. You can track it from the order page.',
         409
       );
     }
@@ -3978,6 +4019,18 @@ export class OrdersService {
     };
   }
 
+  /**
+   * Valid return-request lifecycle. REJECTED and REFUNDED are terminal; the forward path is
+   * REQUESTED → APPROVED → PICKED_UP → REFUNDED, with REJECTED available until pickup.
+   */
+  private static readonly RETURN_STATUS_TRANSITIONS: Record<string, string[]> = {
+    REQUESTED: ['APPROVED', 'REJECTED'],
+    APPROVED: ['PICKED_UP', 'REJECTED'],
+    PICKED_UP: ['REFUNDED'],
+    REJECTED: [],
+    REFUNDED: []
+  };
+
   async adminUpdateReturnRequest(
     adminUserId: string,
     returnRequestId: string,
@@ -3988,6 +4041,15 @@ export class OrdersService {
     });
     if (!returnRequest) {
       throw new AppError(ERROR_CODES.NOT_FOUND, 'Return request not found', 404);
+    }
+
+    const allowedNext = OrdersService.RETURN_STATUS_TRANSITIONS[returnRequest.status] ?? [];
+    if (input.status !== returnRequest.status && !allowedNext.includes(input.status)) {
+      throw new AppError(
+        ERROR_CODES.INVALID_STATUS_TRANSITION,
+        `Cannot move a return request from ${returnRequest.status} to ${input.status}`,
+        409
+      );
     }
 
     const updated = (await this.fastify.prisma.returnRequest.update({
@@ -4005,6 +4067,39 @@ export class OrdersService {
       adminNote: string | null;
       updatedAt: Date;
     };
+
+    // Notify the customer about the decision (real transitions only — not no-op re-saves).
+    // Best-effort: a notification failure must never roll back the status change.
+    if (input.status !== returnRequest.status) {
+      try {
+        const orderForNotify = await this.fastify.prisma.order.findUnique({
+          where: { id: returnRequest.orderId },
+          select: { orderNumber: true, user: { select: { email: true } } }
+        });
+        const recipient = orderForNotify?.user?.email;
+        if (recipient) {
+          await this.fastify.queues.notifications.add(
+            'send-email',
+            {
+              to: recipient,
+              template: 'ReturnRequestUpdate',
+              data: {
+                orderNumber: orderForNotify?.orderNumber ?? returnRequest.orderId,
+                returnStatus: input.status,
+                // Customer-visible note: strip the [admin:<id>] audit marker.
+                ...(input.adminNote ? { note: this.sanitizeCustomerVisibleNote(input.adminNote) } : {})
+              }
+            },
+            { jobId: `return-request-update-${returnRequestId}-${input.status}-${Date.now()}` }
+          );
+        }
+      } catch (notifyError) {
+        this.fastify.log.error(
+          { err: notifyError, returnRequestId, status: input.status },
+          'Failed to enqueue return-request update notification'
+        );
+      }
+    }
 
     return {
       id: updated.id,

@@ -75,6 +75,8 @@ describe('OrdersService createOrder — COD', () => {
         findUnique: vi.fn().mockResolvedValue({ isCodEnabled, cancellationWindowHours: 24 })
       },
       order: {
+        // generateUniqueOrderNumber pre-insert check — null = candidate unused
+        findUnique: vi.fn().mockResolvedValue(null),
         create: vi.fn().mockResolvedValue({ id: 'order_1', status: isCodEnabled ? OrderStatus.CONFIRMED : OrderStatus.PENDING_PAYMENT }),
         findUniqueOrThrow: vi.fn().mockResolvedValue({
           id: 'order_1', orderNumber: 'ORD-2026-00001', userId: 'user_1',
@@ -476,7 +478,9 @@ describe('OrdersService createReturnRequest', () => {
       prisma: {
         order: {
           findFirst: vi.fn().mockResolvedValue({ ...deliveredOrder, status: OrderStatus.CONFIRMED })
-        }
+        },
+        storeSettings: { findUnique: vi.fn().mockResolvedValue({ returnsEnabled: true }) },
+        returnRequest: { findFirst: vi.fn().mockResolvedValue(null) }
       },
       log: baseLog(),
       queues: baseQueues(),
@@ -493,7 +497,8 @@ describe('OrdersService createReturnRequest', () => {
     const fastify = {
       prisma: {
         order: { findFirst: vi.fn().mockResolvedValue(deliveredOrder) },
-        returnRequest: { create: returnRequestCreate }
+        storeSettings: { findUnique: vi.fn().mockResolvedValue({ returnsEnabled: true }) },
+        returnRequest: { create: returnRequestCreate, findFirst: vi.fn().mockResolvedValue(null) }
       },
       log: baseLog(),
       queues: baseQueues(),
@@ -509,7 +514,9 @@ describe('OrdersService createReturnRequest', () => {
   it('throws NOT_FOUND for unknown orderItemId', async () => {
     const fastify = {
       prisma: {
-        order: { findFirst: vi.fn().mockResolvedValue(deliveredOrder) }
+        order: { findFirst: vi.fn().mockResolvedValue(deliveredOrder) },
+        storeSettings: { findUnique: vi.fn().mockResolvedValue({ returnsEnabled: true }) },
+        returnRequest: { findFirst: vi.fn().mockResolvedValue(null) }
       },
       log: baseLog(),
       queues: baseQueues(),
@@ -532,7 +539,8 @@ describe('OrdersService createReturnRequest', () => {
     const fastify = {
       prisma: {
         order: { findFirst: vi.fn().mockResolvedValue(deliveredOrder) },
-        returnRequest: { create: returnRequestCreate }
+        storeSettings: { findUnique: vi.fn().mockResolvedValue({ returnsEnabled: true }) },
+        returnRequest: { create: returnRequestCreate, findFirst: vi.fn().mockResolvedValue(null) }
       },
       log: baseLog(),
       queues: baseQueues(),
@@ -547,10 +555,112 @@ describe('OrdersService createReturnRequest', () => {
     expect(result.orderId).toBe('order_1');
     expect(returnRequestCreate).toHaveBeenCalledOnce();
   });
+
+  it('rejects new requests when the merchant has disabled returns', async () => {
+    const returnRequestCreate = vi.fn();
+    const fastify = {
+      prisma: {
+        order: { findFirst: vi.fn().mockResolvedValue(deliveredOrder) },
+        storeSettings: { findUnique: vi.fn().mockResolvedValue({ returnsEnabled: false }) },
+        returnRequest: { create: returnRequestCreate, findFirst: vi.fn().mockResolvedValue(null) }
+      },
+      log: baseLog(),
+      queues: baseQueues(),
+      redis: { set: vi.fn() }
+    } as unknown as FastifyInstance;
+    const service = new OrdersService(fastify);
+    await expect(
+      service.createReturnRequest('user_1', 'order_1', {
+        items: [{ orderItemId: 'oi_1', quantity: 1 }],
+        reason: 'damaged'
+      })
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', statusCode: 400 });
+    expect(returnRequestCreate).not.toHaveBeenCalled();
+  });
+
+  it('throws 409 CONFLICT when an open return already exists for the order', async () => {
+    const returnRequestCreate = vi.fn();
+    const fastify = {
+      prisma: {
+        order: { findFirst: vi.fn().mockResolvedValue(deliveredOrder) },
+        storeSettings: { findUnique: vi.fn().mockResolvedValue({ returnsEnabled: true }) },
+        returnRequest: {
+          create: returnRequestCreate,
+          findFirst: vi.fn().mockResolvedValue({ id: 'rr_open', status: 'REQUESTED' })
+        }
+      },
+      log: baseLog(),
+      queues: baseQueues(),
+      redis: { set: vi.fn() }
+    } as unknown as FastifyInstance;
+    const service = new OrdersService(fastify);
+    await expect(
+      service.createReturnRequest('user_1', 'order_1', {
+        items: [{ orderItemId: 'oi_1', quantity: 1 }],
+        reason: 'damaged'
+      })
+    ).rejects.toMatchObject({ code: 'CONFLICT', statusCode: 409 });
+    expect(returnRequestCreate).not.toHaveBeenCalled();
+  });
 });
 
 describe('OrdersService admin return-request operations', () => {
   beforeEach(() => vi.clearAllMocks());
+
+  it('rejects invalid status transitions (terminal states are immutable)', async () => {
+    const returnRequestUpdate = vi.fn();
+    const fastify = {
+      prisma: {
+        returnRequest: {
+          findUnique: vi.fn().mockResolvedValue({ id: 'rr_1', orderId: 'order_1', status: 'REJECTED' }),
+          update: returnRequestUpdate
+        }
+      },
+      log: baseLog(),
+      queues: baseQueues(),
+      redis: { set: vi.fn() }
+    } as unknown as FastifyInstance;
+    const service = new OrdersService(fastify);
+    await expect(
+      service.adminUpdateReturnRequest('admin_1', 'rr_1', { status: 'APPROVED' })
+    ).rejects.toMatchObject({ code: 'INVALID_STATUS_TRANSITION', statusCode: 409 });
+    expect(returnRequestUpdate).not.toHaveBeenCalled();
+  });
+
+  it('notifies the customer by email when the return status changes', async () => {
+    const queues = baseQueues();
+    const fastify = {
+      prisma: {
+        returnRequest: {
+          findUnique: vi.fn().mockResolvedValue({ id: 'rr_1', orderId: 'order_1', status: 'REQUESTED' }),
+          update: vi.fn().mockResolvedValue({
+            id: 'rr_1',
+            orderId: 'order_1',
+            status: 'APPROVED',
+            adminNote: 'ok [admin:admin_1]',
+            updatedAt: new Date()
+          })
+        },
+        order: {
+          findUnique: vi.fn().mockResolvedValue({ orderNumber: 'ORD-2026-1', user: { email: 'c@example.com' } })
+        }
+      },
+      log: baseLog(),
+      queues,
+      redis: { set: vi.fn() }
+    } as unknown as FastifyInstance;
+    const service = new OrdersService(fastify);
+    await service.adminUpdateReturnRequest('admin_1', 'rr_1', { status: 'APPROVED', adminNote: 'ok' });
+    expect(queues.notifications.add).toHaveBeenCalledWith(
+      'send-email',
+      expect.objectContaining({
+        to: 'c@example.com',
+        template: 'ReturnRequestUpdate',
+        data: expect.objectContaining({ orderNumber: 'ORD-2026-1', returnStatus: 'APPROVED', note: 'ok' })
+      }),
+      expect.anything()
+    );
+  });
 
   it('throws NOT_FOUND when admin updates missing return request', async () => {
     const fastify = {
@@ -581,9 +691,10 @@ describe('OrdersService admin return-request operations', () => {
     const fastify = {
       prisma: {
         returnRequest: {
-          findUnique: vi.fn().mockResolvedValue({ id: 'rr_1' }),
+          findUnique: vi.fn().mockResolvedValue({ id: 'rr_1', orderId: 'order_1', status: 'REQUESTED' }),
           update: returnRequestUpdate
-        }
+        },
+        order: { findUnique: vi.fn().mockResolvedValue({ orderNumber: 'ORD-1', user: { email: 'c@example.com' } }) }
       },
       log: baseLog(),
       queues: baseQueues(),

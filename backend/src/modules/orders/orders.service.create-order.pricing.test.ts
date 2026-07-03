@@ -66,6 +66,8 @@ function buildFastifyForCreateOrder(couponType: 'PERCENTAGE_OFF' | 'FREE_SHIPPIN
       update: vi.fn().mockResolvedValue(undefined)
     },
     order: {
+      // generateUniqueOrderNumber pre-insert check — null = candidate unused
+      findUnique: vi.fn().mockResolvedValue(null),
       create: vi.fn().mockImplementation(({ data }: { data: { shippingCharge: number; total: number } }) => {
         createdOrders.push({
           shippingCharge: data.shippingCharge,
