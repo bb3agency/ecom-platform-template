@@ -41,6 +41,9 @@ describe('ops config contract', () => {
     expect(isOpsConfigRuntimeOverlayKey('REPLAY_AUDIT_RETENTION_DAYS')).toBe(true);
     expect(isOpsConfigMutableKey('TRUSTED_PROXY_ALLOWLIST_CIDR')).toBe(true);
     expect(isOpsConfigRuntimeOverlayKey('TRUSTED_PROXY_ALLOWLIST_CIDR')).toBe(true);
+    // WhatsApp-notification shipping surcharge is operator-tunable via Ops UI (DB overlay, restart to apply)
+    expect(isOpsConfigMutableKey('SHIPPING_NOTIFICATION_SURCHARGE_PAISE')).toBe(true);
+    expect(isOpsConfigRuntimeOverlayKey('SHIPPING_NOTIFICATION_SURCHARGE_PAISE')).toBe(true);
   });
 
   it('exposes expected mutable keys in allowlist', () => {
@@ -318,6 +321,7 @@ describe('ops config contract', () => {
       ['SHIPPING_CB_FAILURE_THRESHOLD'],
       ['SHIPPING_CB_COOLDOWN_MS'],
       ['SHIPPING_WEBHOOK_ALLOWLIST_CIDR'],
+      ['SHIPPING_NOTIFICATION_SURCHARGE_PAISE'],
       ['PAYMENT_PROVIDER'],
       ['PAYMENT_PROVIDER_FAILOVER_ENABLED'],
       ['PAYMENT_CB_FAILURE_THRESHOLD'],

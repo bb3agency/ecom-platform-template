@@ -109,6 +109,12 @@ export const OPS_CONFIG_OVERVIEW_GROUPS: Array<{
       { key: 'SHIPPING_CB_FAILURE_THRESHOLD', mutableViaOps: true, requiresRestart: true },
       { key: 'SHIPPING_CB_COOLDOWN_MS', mutableViaOps: true, requiresRestart: true },
       { key: 'SHIPPING_WEBHOOK_ALLOWLIST_CIDR', mutableViaOps: true, requiresRestart: true, runtimeSource: 'db-overlay' },
+      {
+        key: 'SHIPPING_NOTIFICATION_SURCHARGE_PAISE',
+        mutableViaOps: true,
+        requiresRestart: true,
+        note: 'Flat per-order surcharge in paise folded into the customer-facing shipping charge (covers the WhatsApp Business API conversation cost). Default 500 (₹5); 0 disables. Never applied on ₹0/free-shipping charges and never affects cheapest-provider selection.'
+      },
       { key: 'DELHIVERY_API_KEY', mutableViaOps: true, requiresRestart: true },
       {
         key: 'DELHIVERY_BASE_URL',

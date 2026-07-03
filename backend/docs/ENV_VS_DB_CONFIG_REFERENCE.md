@@ -326,6 +326,10 @@ These are stored AES-256-GCM encrypted in the `OpsConfigSecret` table and applie
 **`SHIPPING_PROVIDER_FAILOVER_ENABLED`**, **`SHIPPING_CB_FAILURE_THRESHOLD`**, **`SHIPPING_CB_COOLDOWN_MS`**
 - **What:** Circuit-breaker controls per shipping provider. In dual-provider mode, each provider maintains its own process-local circuit breaker — if one trips open, the other continues serving requests.
 
+**`SHIPPING_NOTIFICATION_SURCHARGE_PAISE`**
+- **What:** Flat per-order surcharge in paise folded into the customer-facing shipping charge to recover the WhatsApp Business API conversation cost. Default `500` (₹5); `0` disables. Never applied on ₹0/free-shipping charges and applied only after cheapest-provider selection (never skews the comparison). No separate invoice line — it is simply part of "shipping cost" on quote, checkout, payment, and invoice.
+- **Mutable via Ops UI:** yes (DB overlay, restart required to apply). Invalid/negative values fall back to the default.
+
 ---
 
 ### Notifications
