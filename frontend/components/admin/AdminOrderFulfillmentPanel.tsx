@@ -7,7 +7,6 @@ import {
   Calendar,
   Printer,
   RefreshCw,
-  RotateCcw,
   Ban,
   Mail,
   FileDown,
@@ -67,7 +66,6 @@ export function AdminOrderFulfillmentPanel({
   const accessToken = useAuthStore((s) => s.accessToken);
   const user = useAuthStore((s) => s.user);
   const canWrite = hasAdminPermission(user, ADMIN_PERMISSIONS.ordersWrite);
-  const canRefund = hasAdminPermission(user, ADMIN_PERMISSIONS.ordersRefund);
   const canNotify = hasAdminPermission(user, ADMIN_PERMISSIONS.ordersNotify);
 
   const [orders, setOrders] = useState<AdminOrdersListResponse["items"]>([]);
@@ -672,29 +670,11 @@ export function AdminOrderFulfillmentPanel({
           <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             Other actions
           </p>
+          {/* NOTE: the standalone "Request refund" button was removed intentionally — refunds
+              are issued via "Cancel order" (auto-refunds prepaid payments); a separate refund
+              action on a live order only invited mistakes. Refund state still shows in the
+              payment chip; the backend refund route remains for the status-management surface. */}
           <div className="flex flex-wrap gap-2">
-            {canRefund ? (
-              <SecondaryButton
-                icon={<RotateCcw className="h-3.5 w-3.5" />}
-                label={
-                  detail?.status === "REFUND_PENDING" || detail?.status === "REFUNDED"
-                    ? "Refund pending…"
-                    : "Request refund"
-                }
-                disabled={
-                  busyAction !== null ||
-                  detail?.status === "REFUND_PENDING" ||
-                  detail?.status === "REFUNDED"
-                }
-                variant="danger"
-                onClick={() =>
-                  runAction("refund", "/admin/orders/:id/status", {
-                    method: "PATCH",
-                    body: { status: "REFUNDED", note: "Refund initiated from admin fulfillment panel" },
-                  })
-                }
-              />
-            ) : null}
             {canWrite ? (
               <SecondaryButton
                 icon={<Ban className="h-3.5 w-3.5" />}
@@ -716,7 +696,8 @@ export function AdminOrderFulfillmentPanel({
             {canNotify ? (
               <SecondaryButton
                 icon={<Mail className="h-3.5 w-3.5" />}
-                label="Retrigger email"
+                label="Resend notification"
+                title="Resends the order-confirmation notification to the customer by email"
                 disabled={busyAction !== null}
                 onClick={() =>
                   runAction("retrigger", "/admin/orders/:id/notifications/retrigger", {

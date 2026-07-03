@@ -3290,6 +3290,7 @@ export class OrdersService {
       where: { id: orderId },
       select: {
         id: true,
+        orderNumber: true,
         user: {
           select: {
             email: true,
@@ -3323,7 +3324,7 @@ export class OrdersService {
         {
           to: email,
           template: input.template,
-          data: { orderId: order.id }
+          data: { orderId: order.id, orderNumber: order.orderNumber }
         },
         `notifications:email:${order.id}:${input.template}`
       );
@@ -3344,7 +3345,7 @@ export class OrdersService {
         {
           phone,
           template: input.template,
-          data: { orderId: order.id }
+          data: { orderId: order.id, orderNumber: order.orderNumber }
         },
         `notifications:sms:${order.id}:${input.template}`
       );
@@ -3372,7 +3373,7 @@ export class OrdersService {
         {
           phone,
           template: input.template,
-          data: { orderId: order.id }
+          data: { orderId: order.id, orderNumber: order.orderNumber }
         },
         `notifications:whatsapp:${order.id}:${input.template}`
       );
@@ -4340,6 +4341,8 @@ export class OrdersService {
       ...(order.couponUsages && order.couponUsages.length > 0 && order.couponUsages[0]?.coupon
         ? { coupon: order.couponUsages[0].coupon }
         : { coupon: null }),
+      // Flat code for surfaces that only need the label (customer order page shows the chip).
+      couponCode: order.couponUsages?.[0]?.coupon?.code ?? null,
       total: order.total,
       notes: order.notes,
       createdAt: order.createdAt.toISOString(),

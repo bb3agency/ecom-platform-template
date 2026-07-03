@@ -12,6 +12,18 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.46] — 2026-07-03
+
+### Fixed
+- **Applied coupon never showed on the admin order detail ("No coupon applied" even when one was used).** The serializer emits a `coupon` object, but the admin/customer order-detail schema only declared `couponCode` — `additionalProperties: false` stripped `coupon` entirely, and nothing ever set `couponCode`. Fixed both: the schema now declares the nullable `coupon` object (code-only on customer reads, full fields on admin reads), and the serializer also emits a flat `couponCode` for chip-style surfaces. FREE_SHIPPING coupons (₹0 discount) were already finalized into `CouponUsage` on every payment path — display-only bug.
+- **`POST /admin/orders/:id/notifications/retrigger` sent the internal UUID as the order reference** on all three channels — now selects + passes `orderNumber` (completes the 0.1.44 orderNumber sweep).
+
+**Propagation:**
+- Severity: NORMAL · Layers: backend (`modules/orders/{orders.service.ts,orders.schemas.ts}`)
+- Migration: NO · Flag: none · Design impact: none · Breaking: NO (additive schema property)
+- Rollback: revert the two files
+- Pairs with frontend-core 0.1.31. NOTE: cartonization was evaluated for further tightening (pairwise-sum footprints find mathematically smaller boxes) but intentionally NOT changed — the suite pins merchant-verified realistic packs (stacked-on-base over flat-spread), and the candidate change regressed those expectations.
+
 ## [0.1.45] — 2026-07-03
 
 ### Security

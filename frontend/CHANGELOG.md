@@ -12,6 +12,22 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.31] — 2026-07-03
+
+### Changed
+- **Admin badge counts are now live.** The sidebar Orders badge + bell count refetch (1) instantly after any in-app order mutation via the `notifyAdminDataChanged` bus, (2) every 60s in the background (skipped while the tab is hidden), and (3) immediately when the tab regains focus — no more page refresh to see new orders.
+- **"Request refund" removed from the fulfilment panel** — refunds are issued via "Cancel order" (auto-refunds prepaid); a standalone refund action on a live order invited mistakes. Refund state still shows in the payment chip; the backend refund route remains available to the status-management surface.
+- **"Retrigger email" → "Resend notification"** (with a tooltip explaining what it resends).
+
+### Fixed
+- Coupon panel on admin order detail now populates (backend-core 0.1.46 stopped stripping the `coupon` object) — FREE_SHIPPING coupons render as "Free Shipping".
+
+**Propagation:**
+- Severity: NORMAL · Layers: frontend (`components/admin/{AdminConsoleShell,AdminOrderFulfillmentPanel}.tsx`)
+- Migration: NO · Flag: none · Design impact: none · Breaking: NO
+- Rollback: revert the two files
+- Pairs with backend-core 0.1.46.
+
 ## [0.1.30] — 2026-07-03
 
 ### Changed

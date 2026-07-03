@@ -490,6 +490,26 @@ const adminOrderDetailSchema = {
     selectedShippingProvider: { anyOf: [{ type: 'string', maxLength: 40 }, { type: 'null' }] },
     discountAmount: { type: 'integer', minimum: 0, maximum: 1000000000 },
     couponCode: { anyOf: [{ type: 'string', maxLength: 50 }, { type: 'null' }] },
+    // Applied coupon (from CouponUsage). Nullable; fields beyond `code` are present on admin
+    // reads (full select) and absent on customer reads (code-only select) — hence all optional.
+    coupon: {
+      anyOf: [
+        {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            id: { type: 'string', maxLength: 64 },
+            code: { type: 'string', maxLength: 50 },
+            type: { type: 'string', maxLength: 30 },
+            value: { type: 'integer', minimum: 0, maximum: 1000000000 },
+            minOrderPaise: { type: 'integer', minimum: 0, maximum: 1000000000 },
+            maxUsesTotal: { anyOf: [{ type: 'integer', minimum: 0 }, { type: 'null' }] },
+            usesCount: { type: 'integer', minimum: 0 }
+          }
+        },
+        { type: 'null' }
+      ]
+    },
     total: { type: 'integer', minimum: 0, maximum: 1000000000 },
     canShipNow: { type: 'boolean' },
     shipBlockReason: { anyOf: [{ type: 'string', maxLength: 240 }, { type: 'null' }] },

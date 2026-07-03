@@ -3,7 +3,8 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { useAdminDataRefreshEffect } from "@/hooks/use-admin-data-refresh-effect";
 import { AdminAuthProvider, useAdminAuth } from "@/contexts/admin-auth-context";
 import {
   AdminShellProvider,
@@ -75,23 +76,38 @@ function AdminConsoleFrame({ children }: { children: ReactNode }) {
   const { accessToken, adminUser } = useAdminAuth();
   const api = useAuthenticatedApi();
 
-  // Fetch pending orders count for badge + bell
-  useEffect(() => {
-    let cancelled = false;
+  // Pending-orders count for the sidebar badge + bell. Kept live without a refresh:
+  //  - refetches whenever any admin surface mutates order data (notifyAdminDataChanged bus);
+  //  - background-polls every 60s so counts move even when the change happened elsewhere
+  //    (another admin, a customer checkout, a webhook) — skipped while the tab is hidden.
+  const refreshPendingCount = useCallback(() => {
     void api<PaginatedResponse<AdminOrderListItem>>(
       "/admin/orders?page=1&limit=1&status=CONFIRMED",
     )
-      .then((res) => {
-        if (!cancelled)
-          setPendingOrdersCount(coercePaginatedResponse(res).meta.total);
-      })
+      .then((res) => setPendingOrdersCount(coercePaginatedResponse(res).meta.total))
       .catch((err: unknown) => {
         console.error("[AdminConsoleShell] Failed to fetch pending orders count", err);
       });
-    return () => {
-      cancelled = true;
-    };
   }, [api]);
+
+  useEffect(() => {
+    refreshPendingCount();
+    const interval = window.setInterval(() => {
+      if (!document.hidden) refreshPendingCount();
+    }, 60_000);
+    // Refresh immediately when the tab regains focus (e.g. admin returns after a break).
+    const onVisible = () => {
+      if (!document.hidden) refreshPendingCount();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [refreshPendingCount]);
+
+  // Instant update after in-app mutations (ship/cancel/refund/status changes).
+  useAdminDataRefreshEffect(refreshPendingCount, ["orders", "dashboard"]);
 
   // Close bell on outside click
   useEffect(() => {
