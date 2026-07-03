@@ -12,6 +12,16 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.28] — 2026-07-03
+
+### Added
+- **"Return request update" row in Admin → Settings → Notifications per-template routing** — merchants can toggle Email / SMS / WhatsApp for return-decision notifications (backend-core 0.1.42 routes them via `send-primary`). WhatsApp requires the approved `return_request_update` Meta template; the existing provisioned/enabled guards apply as for every other row.
+
+**Propagation:**
+- Severity: LOW (one routing row) · Layers: frontend (`components/admin/NotificationsChannelPanel.tsx`)
+- Migration: NO · Flag: none · Design impact: none · Breaking: NO
+- Rollback: revert the file
+
 ## [0.1.27] — 2026-07-03
 
 ### Added

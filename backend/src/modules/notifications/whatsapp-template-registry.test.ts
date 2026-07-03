@@ -12,6 +12,24 @@ describe('WhatsappTemplateRegistry', () => {
     expect(registry.resolve('OrderDelivered', {})?.metaName).toBe('order_delivered');
     expect(registry.resolve('OrderCancelled', {})?.metaName).toBe('order_cancelled');
     expect(registry.resolve('PaymentFailed', {})?.metaName).toBe('payment_failed');
+    expect(registry.resolve('ReturnRequestUpdate', {})?.metaName).toBe('return_request_update');
+  });
+
+  it('fills the return-request template with storeName, orderId and the composed status line', () => {
+    const data = WhatsappTemplateRegistry.composeTemplateData(
+      {
+        orderId: 'ORD-K4MQ-2F9X',
+        returnStatusLine: 'approved — our team will arrange the pickup of your items'
+      },
+      'Raghava Organics'
+    );
+    const resolved = registry.resolve('ReturnRequestUpdate', data);
+    expect(resolved?.parameters).toEqual([
+      'Raghava Organics',
+      'ORD-K4MQ-2F9X',
+      'approved — our team will arrange the pickup of your items'
+    ]);
+    expect(resolved?.authentication).toBe(false);
   });
 
   it('returns positional parameters in declared order, not alphabetical', () => {

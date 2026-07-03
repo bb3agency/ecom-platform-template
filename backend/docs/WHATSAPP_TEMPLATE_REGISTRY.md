@@ -50,6 +50,7 @@ set its entry in the notifications `primaryChannels` config to `WHATSAPP`.
 | `OrderDelivered`     | `order_delivered`  | `{{1}}` storeName, `{{2}}` orderId |
 | `OrderCancelled`     | `order_cancelled`  | `{{1}}` storeName, `{{2}}` orderId |
 | `PaymentFailed`      | `payment_failed`   | `{{1}}` storeName, `{{2}}` orderId |
+| `ReturnRequestUpdate` | `return_request_update` | `{{1}}` storeName, `{{2}}` orderId, `{{3}}` returnStatusLine |
 
 ### `otp_verify`
 **Category:** **Authentication** (Meta REJECTS verification-code content in Utility — the
@@ -118,6 +119,16 @@ Hi! {{1}}: Your order {{2}} has been cancelled. If you paid online, your refund 
 Hi! {{1}}: We couldn't process the payment for your order {{2}}. Please retry the payment from your order page to avoid cancellation.
 ```
 **Sample values:** `{{1}}` = `Raghava Organics`, `{{2}}` = `ORD-10234`
+
+### `return_request_update`
+**Category:** Utility. Covers every return lifecycle stage — the stage-specific wording
+travels in `{{3}}` (composed by the backend from the return status), so ONE approved
+template serves approved / declined / picked-up / refunded.
+**Body:**
+```
+Hi! {{1}}: Update on your return request for order {{2}}: {{3}}. You can see the full details on your account orders page.
+```
+**Sample values:** `{{1}}` = `Raghava Organics`, `{{2}}` = `ORD-K4MQ-2F9X`, `{{3}}` = `approved — our team will arrange the pickup of your items`
 
 ## Changing a template
 

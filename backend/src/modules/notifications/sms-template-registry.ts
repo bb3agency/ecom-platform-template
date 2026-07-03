@@ -31,6 +31,8 @@ export class SmsTemplateRegistry {
         '{{storeName}}: Order {{orderId}} has been delivered. We hope you love your products! Share your feedback in the app.',
       OrderCancelled:
         '{{storeName}}: Your order {{orderId}} has been cancelled. If a payment was made, your refund will be processed within 5-7 business days. Contact support for help.',
+      ReturnRequestUpdate:
+        '{{storeName}}: Update on your return for order {{orderId}}: {{returnStatusLine}}. See your account orders page for details.',
       PaymentFailed:
         '{{storeName}} Payment Alert: Payment for order {{orderId}} could not be processed. Please retry payment from your order page to avoid cancellation.',
       FailedDelivery:

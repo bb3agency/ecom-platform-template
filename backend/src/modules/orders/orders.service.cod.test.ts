@@ -627,7 +627,7 @@ describe('OrdersService admin return-request operations', () => {
     expect(returnRequestUpdate).not.toHaveBeenCalled();
   });
 
-  it('notifies the customer by email when the return status changes', async () => {
+  it('notifies the customer via multi-channel routing when the return status changes', async () => {
     const queues = baseQueues();
     const fastify = {
       prisma: {
@@ -642,7 +642,10 @@ describe('OrdersService admin return-request operations', () => {
           })
         },
         order: {
-          findUnique: vi.fn().mockResolvedValue({ orderNumber: 'ORD-2026-1', user: { email: 'c@example.com' } })
+          findUnique: vi.fn().mockResolvedValue({
+            orderNumber: 'ORD-K4MQ-2F9X',
+            user: { email: 'c@example.com', phone: '9999999999' }
+          })
         }
       },
       log: baseLog(),
@@ -651,12 +654,20 @@ describe('OrdersService admin return-request operations', () => {
     } as unknown as FastifyInstance;
     const service = new OrdersService(fastify);
     await service.adminUpdateReturnRequest('admin_1', 'rr_1', { status: 'APPROVED', adminNote: 'ok' });
+    // send-primary honours the merchant's per-template channel toggles (email/WhatsApp/SMS)
+    // and carries BOTH identifiers so any enabled channel can deliver.
     expect(queues.notifications.add).toHaveBeenCalledWith(
-      'send-email',
+      'send-primary',
       expect.objectContaining({
-        to: 'c@example.com',
+        email: 'c@example.com',
+        phone: '9999999999',
         template: 'ReturnRequestUpdate',
-        data: expect.objectContaining({ orderNumber: 'ORD-2026-1', returnStatus: 'APPROVED', note: 'ok' })
+        data: expect.objectContaining({
+          orderNumber: 'ORD-K4MQ-2F9X',
+          returnStatus: 'APPROVED',
+          returnStatusLine: expect.stringContaining('approved'),
+          note: 'ok'
+        })
       }),
       expect.anything()
     );

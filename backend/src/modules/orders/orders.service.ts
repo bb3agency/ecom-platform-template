@@ -4069,23 +4069,37 @@ export class OrdersService {
     };
 
     // Notify the customer about the decision (real transitions only — not no-op re-saves).
-    // Best-effort: a notification failure must never roll back the status change.
+    // Routed via `send-primary` so it honours the merchant's per-template channel toggles
+    // (email + WhatsApp `return_request_update` Meta template + SMS). Best-effort: a
+    // notification failure must never roll back the status change.
     if (input.status !== returnRequest.status) {
       try {
         const orderForNotify = await this.fastify.prisma.order.findUnique({
           where: { id: returnRequest.orderId },
-          select: { orderNumber: true, user: { select: { email: true } } }
+          select: { orderNumber: true, user: { select: { email: true, phone: true } } }
         });
-        const recipient = orderForNotify?.user?.email;
-        if (recipient) {
+        const email = orderForNotify?.user?.email?.trim() || null;
+        const phone = orderForNotify?.user?.phone?.trim() || null;
+        if (email || phone) {
+          // One human-readable line per lifecycle stage — fills WhatsApp {{3}} / SMS
+          // {{returnStatusLine}} so a single approved Meta template covers every status.
+          const statusLines: Record<string, string> = {
+            APPROVED: 'approved — our team will arrange the pickup of your items',
+            REJECTED: 'declined — please contact support if you have questions',
+            PICKED_UP: 'items picked up — your refund follows once they are checked',
+            REFUNDED: 'refund processed — it may take 5-7 business days to reflect'
+          };
           await this.fastify.queues.notifications.add(
-            'send-email',
+            'send-primary',
             {
-              to: recipient,
+              email,
+              phone,
               template: 'ReturnRequestUpdate',
               data: {
                 orderNumber: orderForNotify?.orderNumber ?? returnRequest.orderId,
+                orderId: orderForNotify?.orderNumber ?? returnRequest.orderId,
                 returnStatus: input.status,
+                returnStatusLine: statusLines[input.status] ?? `status updated to ${input.status}`,
                 // Customer-visible note: strip the [admin:<id>] audit marker.
                 ...(input.adminNote ? { note: this.sanitizeCustomerVisibleNote(input.adminNote) } : {})
               }

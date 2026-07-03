@@ -12,6 +12,19 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.42] — 2026-07-03
+
+### Changed
+- **Return-request updates now route through the merchant's multi-channel toggles (`send-primary`) instead of a hard-coded email.** `adminUpdateReturnRequest` enqueues `send-primary` with BOTH the customer's email and phone plus a composed `returnStatusLine` — so the decision can fan out to Email + WhatsApp + SMS per `primaryNotificationChannels['ReturnRequestUpdate']` (defaults to `['EMAIL']` for merchants whose stored routing predates the template; worker default-seeding verified).
+- **WhatsApp:** registry maps `ReturnRequestUpdate` → Meta Utility template **`return_request_update`** (`{{1}}` storeName, `{{2}}` orderId, `{{3}}` returnStatusLine — one approved template covers approved/declined/picked-up/refunded). ⚠️ **Operator action:** the template must be created + approved in WhatsApp Manager (canonical body in `docs/WHATSAPP_TEMPLATE_REGISTRY.md`) before enabling the WhatsApp toggle for this row; until then keep it Email-only.
+- **SMS:** default `ReturnRequestUpdate` text added to the SMS template registry.
+
+**Propagation:**
+- Severity: NORMAL (channel routing for an existing notification) · Layers: backend (`modules/orders/orders.service.ts`, `modules/notifications/{whatsapp-template-registry.ts,sms-template-registry.ts}` + tests, `docs/WHATSAPP_TEMPLATE_REGISTRY.md`)
+- Migration: NO · Flag: merchant per-template channel toggles (Email default) · Design impact: none · Breaking: NO
+- Rollback: revert the listed files
+- Pairs with frontend-core 0.1.28 (routing row in the notifications panel).
+
 ## [0.1.41] — 2026-07-03
 
 ### Changed

@@ -59,6 +59,11 @@ const CUSTOMER_TEMPLATES: Array<{ id: string; label: string; hint: string }> = [
     hint: "Sent when an order is cancelled by admin or customer",
   },
   {
+    id: "ReturnRequestUpdate",
+    label: "Return request update",
+    hint: "Sent when you approve/decline a return, mark items picked up, or process the refund",
+  },
+  {
     id: "OtpVerification",
     label: "OTP / verification code",
     hint: "Delivery channel for login and identity verification OTPs",

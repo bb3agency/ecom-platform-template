@@ -117,6 +117,14 @@ export class WhatsappTemplateRegistry {
         metaName: 'payment_failed',
         language: 'en',
         params: ['storeName', 'orderId']
+      },
+      // Return-request decision updates (approved / declined / picked up / refunded).
+      // {{3}} is a full human-readable status line composed by the service so the SAME
+      // approved Utility template covers every lifecycle stage.
+      ReturnRequestUpdate: {
+        metaName: 'return_request_update',
+        language: 'en',
+        params: ['storeName', 'orderId', 'returnStatusLine']
       }
     };
   }
