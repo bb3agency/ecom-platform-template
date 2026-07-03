@@ -12,6 +12,18 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.25] — 2026-07-03
+
+### Fixed
+- **Order detail page crashed with "useStoreConfig must be used within StoreConfigProvider".** The `(account)` route group's layout didn't mount `StoreConfigProvider` — only the storefront layout did — so `/orders/[id]` (whose `OrderReviewPrompt` reads `useStoreConfig().reviewsEnabled`) threw the error boundary on every visit. The account layout now mirrors the storefront layout: it fetches categories + public store config and wraps everything in `StoreConfigProvider`.
+- **Account pages now share the storefront chrome.** The same fix adds the site `Header` (nav, search, cart) and `Footer` to all account pages (`/dashboard`, `/orders`, `/orders/[id]`, `/addresses`, `/settings`), which previously rendered as bare standalone pages. Session bootstrap in the Header and the AccountGuard share the same deduped customer restore, so no double refresh-token consumption.
+
+**Propagation:**
+- Severity: HIGH (order detail page was broken for customers) · Layers: frontend (`app/(account)/layout.tsx`)
+- Migration: NO · Flag: none · Design impact: none (uses existing chrome) · Breaking: NO
+- Rollback: revert the file (restores the crash)
+- Follow-up to 0.1.24 (account redesign).
+
 ## [0.1.24] — 2026-07-03
 
 ### Added
