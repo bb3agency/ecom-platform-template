@@ -28,7 +28,8 @@ Public, no auth. Returns only customer-safe fields:
 | `minOrderValuePaise` | DB `StoreSettings` | Block checkout below minimum (0 = none) |
 | `mobileOtpSignupEnabled` | DB `StoreSettings` | Show mobile OTP signup tab |
 | `couponsEnabled` | Backend `FEATURE_COUPONS_ENABLED` | Cart coupon UI, PDP promos |
-| `reviewsEnabled` | Backend `FEATURE_REVIEWS_ENABLED` | PDP reviews, homepage testimonials |
+| `reviewsEnabled` | DB `StoreSettings` (merchant toggle, Admin → Settings) | PDP reviews, homepage testimonials |
+| `returnsEnabled` | DB `StoreSettings` (merchant toggle, Admin → Settings) | Show/hide the return-request CTA on delivered orders (server also enforces) |
 | `wishlistEnabled` | Backend `FEATURE_WISHLIST_ENABLED` | Wishlist buttons |
 | `gstInvoicingEnabled` | Backend `FEATURE_GST_INVOICING_ENABLED` | Admin GST field visibility (also fetched client-side in admin panels) |
 
@@ -673,7 +674,7 @@ Backend bootstrap toggles (`ECOM_MASTER.md` §12.2, `.env.example`):
 
 **Storefront + admin GST visibility (runtime — preferred):**
 
-Fetch **`GET /api/v1/store/config`** (§1.2). Fields `couponsEnabled`, `reviewsEnabled`, `wishlistEnabled`, `gstInvoicingEnabled` mirror the backend `FEATURE_*` flags. `isCodEnabled` and `minOrderValuePaise` come from DB `StoreSettings`.
+Fetch **`GET /api/v1/store/config`** (§1.2). Fields `couponsEnabled`, `wishlistEnabled`, `gstInvoicingEnabled` mirror the backend `FEATURE_*` flags. `isCodEnabled`, `minOrderValuePaise`, `reviewsEnabled` and `returnsEnabled` come from DB `StoreSettings` (merchant toggles).
 
 **Legacy build-time keys (`frontend/.env.example`):** `NEXT_PUBLIC_FEATURE_*` — not authoritative in this repo; kept for backward compatibility only.
 

@@ -141,8 +141,13 @@ work for every client):
 | `order_delivered` | `{{1}}`=store, `{{2}}`=orderId | "Hi! {{1}}: Your order {{2}} has been delivered…" |
 | `order_cancelled` | `{{1}}`=store, `{{2}}`=orderId | "Hi! {{1}}: Your order {{2}} has been cancelled…" |
 | `payment_failed` | `{{1}}`=store, `{{2}}`=orderId | "Hi! {{1}}: We couldn't process the payment for order {{2}}…" |
+| `return_request_update` | `{{1}}`=store, `{{2}}`=orderId, `{{3}}`=statusLine | "Hi! {{1}}: Update on your return request for order {{2}}: {{3}}…" |
 
 Fill a Variable sample for each `{{n}}` → Submit. Utility templates usually auto-approve in minutes.
+
+> `return_request_update` carries the stage-specific wording in `{{3}}` (composed by the backend:
+> approved / declined / picked up / refunded), so ONE approved template covers the whole return
+> lifecycle. Sample for `{{3}}`: `approved — our team will arrange the pickup of your items`.
 
 **5.2 Authentication template (OTP) — REQUIRED to be Authentication, never Utility:**
 Create template → **Authentication** → sub-type **One-time Passcode** → Next → name **`otp_verify`**
@@ -252,5 +257,5 @@ the templates you want (e.g. `OrderConfirmed`, `OrderShipped`, `CustomerOtpVerif
 ## Rough time per client
 
 Business Suite + System User ~15 min · App + credentials ~10 min · Phone + register ~10 min ·
-Webhook ~10 min · Templates (6 utility + 1 auth) ~20 min · App Review form ~20 min + screencast.
+Webhook ~10 min · Templates (7 utility + 1 auth) ~20 min · App Review form ~20 min + screencast.
 Async waits: Business Verification 2–10 days, display-name approval 1–3 days, App Review 5–7 days.

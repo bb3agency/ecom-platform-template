@@ -138,13 +138,13 @@ Dispatch policy (applies regardless of provider):
   - MSG91 delivery normalizes phone numbers to Indian `91XXXXXXXXXX` format; accepted inputs are 10-digit Indian numbers (with or without separators) or already `91`-prefixed values.
   - Meta WhatsApp uses E.164 phone format (`+91XXXXXXXXXX`) for all message sends.
 
-- Per-template primary notification channel (DB-backed):
-  - Primary channel for each template is configured in `StoreSettings.primaryNotificationChannels` (JSON object mapping template name to `EMAIL` | `SMS` | `WHATSAPP`).
-  - 13 supported templates: `OrderConfirmed`, `PaymentFailed`, `OrderShipped`, `OutForDelivery`, `OrderDelivered`, `OrderCancelled`, `LowStockAlert`, `OtpVerification`, `NotificationDeliveryFailure`, `PasswordReset`, `AdminInviteSetup`, `OpsInviteSetup`, `OpsActionOtp`.
-  - Default for all templates is `EMAIL`.
-  - No fallback: if the configured primary channel fails (disabled, missing credentials, provider error), the notification fails immediately and triggers a technical failure alert.
-  - Per-template channels are configured via direct API: `PATCH /api/v1/admin/settings/notifications` with `primaryChannels` payload (admin JWT). **Note (2026-06-07):** Merchant admin UI for this was removed; use the API directly or set defaults at go-live. Provider availability toggles are in ops config (`/ops/config`).
-  - Worker reads primary channel from DB at job processing time, not from environment variables.
+- Per-template notification channels (DB-backed, **MULTI-channel** since backend-core 0.1.30):
+  - Channels for each template are configured in `StoreSettings.primaryNotificationChannels` — a JSON object mapping template name to a **SET** of channels (e.g. `["EMAIL","WHATSAPP"]`; legacy single-string values are still accepted and normalized). A notification fans out to EVERY selected channel.
+  - Supported templates track `supportedEmailTemplates` (includes the order lifecycle set, `OtpVerification`/`CustomerOtpVerification`, `PasswordReset`, `ReturnRequestUpdate`, invite/ops templates). Default for every template is `["EMAIL"]`.
+  - **Fallback:** the worker filters the configured set to currently-deliverable channels (enabled + credentials present) and falls back to `["EMAIL"]` when none can deliver — a WhatsApp-only mapping still notifies by email while WhatsApp is off. Multi-channel delivery is best-effort per channel (one failing channel neither blocks the others nor re-sends the ones that succeeded); single-channel keeps strict retry semantics. WhatsApp/SMS legs are skipped for recipients without a phone on file.
+  - OTP-over-WhatsApp additionally requires the ops `OTP_WHATSAPP_ENABLED` gate (paid feature; cost meter on Ops → Config).
+  - Merchant UI: **Admin → Settings → Notifications** (`NotificationsChannelPanel`) — per-template on/off toggles for Email/SMS/WhatsApp, with provisioned/enabled guards (re-added 2026-07; the 2026-06-07 removal note is obsolete). API: `PATCH /api/v1/admin/settings/notifications` (`primaryChannels` accepts string OR array per template). Provider credentials/availability stay in ops config (`/ops/config`).
+  - Worker reads the channel sets from DB at job processing time, not from environment variables.
 
 ### 2.5 Fast2SMS (SMS/OTP — no DLT required)
 

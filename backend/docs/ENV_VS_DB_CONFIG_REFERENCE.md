@@ -382,7 +382,7 @@ These are stored AES-256-GCM encrypted in the `OpsConfigSecret` table and applie
 - **What:** Meta Graph API version string. **Default `v25.0`** (adapter fallback since `backend-core 0.1.26`). Update when Meta deprecates older versions.
 
 **`OTP_WHATSAPP_ENABLED`** *(added `backend-core 0.1.26`)*
-- **What:** When `true` **and** WhatsApp is deliverable, the customer signup/login OTP is also sent over WhatsApp **in addition to** the primary channel (usually email) — same OTP, one hash, verified identically. Admin login OTP is unaffected (email-based).
+- **What:** When `true` **and** WhatsApp is deliverable, the signup/login OTP is also sent over WhatsApp **in addition to** the configured channels (email stays the floor) — same OTP, one hash, verified identically. Applies to CUSTOMER signup/login/forgot-password AND to ADMIN login + admin invite setup (admins/invitees need a phone on file; email is always kept as a security floor for admin OTP).
 - **Default:** `false`. Read live per request (no restart). Requires an approved Meta **Authentication** template mapped as `CustomerOtpVerification` → `otp_verify` (see `WHATSAPP_TEMPLATE_REGISTRY.md`); until that exists, leave off (email OTP still works).
 - **DB-layer:** DB-overlay key, editable as a true/false dropdown in **Ops → Config → Notifications**.
 

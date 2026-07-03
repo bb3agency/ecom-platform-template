@@ -12,6 +12,23 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.43] — 2026-07-03
+
+### Fixed (docs-only — brings every WhatsApp/notification/pointer doc up to date with 0.1.30–0.1.42)
+- **`META_WHATSAPP_SETUP_GUIDE.md`**: added `return_request_update` to the Utility template table (+ note that `{{3}}` carries the stage wording so one template covers the whole return lifecycle); time-budget count 6→7 utility templates.
+- **`THIRD_PARTY_INTEGRATIONS_SETUP_AND_KEY_MANAGEMENT_GUIDE.md`**: rewrote the per-template channel section — it still described the OLD single-primary model ("13 templates", "no fallback", "merchant UI removed"). Now documents the multi-channel SET model, the deliverable-filter + email fallback, phone-required skip, the `OTP_WHATSAPP_ENABLED` gate, and the re-added Admin → Settings → Notifications panel.
+- **`ENV_VS_DB_CONFIG_REFERENCE.md`**: `OTP_WHATSAPP_ENABLED` note claimed "Admin login OTP is unaffected (email-based)" — stale since 0.1.33; now covers customer + admin login + admin invite setup with the email security floor.
+- **`MASTER_DEPLOYMENT_PLAYBOOK.md`**: staging notification-routing test updated to array values + fan-out/fallback semantics ("13 templates"/"no fallback" removed); sample order shape now shows the random `ORD-XXXX-XXXX` reference.
+- **`CLIENT_HANDOFF_INDEX.md`**: WhatsApp pointer now says 7 utility templates incl. `return_request_update`.
+- **`API_ENDPOINT_INDEX.md`**: annotated `PATCH /users/me` (phone add/update/remove + last-identifier guard), return-request create (toggle gate + open-request 409), admin return PATCH (enforced transitions + customer notification), and `GET /store/config` (merchant toggles incl. `returnsEnabled`).
+- **`NEXTJS_FRONTEND_INTEGRATION_GUIDE.md`**: store-config field table — `reviewsEnabled` corrected to DB merchant toggle (was "Backend FEATURE_REVIEWS_ENABLED") and `returnsEnabled` row added.
+- **Root `docs/clients/raghava-organics/VPS_INPUTS.template.md`**: new "Meta WhatsApp (Ops UI)" section — all 9 Ops keys with go-live guidance, webhook URL/fields, and the 8-template approval checklist.
+
+**Propagation:**
+- Severity: LOW (documentation) · Layers: backend docs only
+- Migration: NO · Flag: none · Design impact: none · Breaking: NO
+- Rollback: revert the doc files
+
 ## [0.1.42] — 2026-07-03
 
 ### Changed

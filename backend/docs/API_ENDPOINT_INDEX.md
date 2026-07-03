@@ -65,7 +65,7 @@ Identity boundary contract (critical):
 
 | Method | Endpoint | Purpose | Notes |
 |---|---|---|---|
-| GET | `/api/v1/store/config` | Public storefront runtime config | COD, min order, mobile OTP signup, `FEATURE_*` mirrors — no auth; ISR-friendly |
+| GET | `/api/v1/store/config` | Public storefront runtime config | COD, min order, mobile OTP signup, merchant toggles (`reviewsEnabled`, `returnsEnabled`), `FEATURE_*` mirrors — no auth; ISR-friendly |
 | GET | `/api/v1/cart` | Get current cart | Guest/customer session aware |
 | POST | `/api/v1/cart/items` | Add cart item | Idempotency guarded |
 | PATCH | `/api/v1/cart/items/:id` | Update cart item quantity | Cart mutation |
@@ -84,9 +84,9 @@ Identity boundary contract (critical):
 | POST | `/api/v1/orders/:id/cancel` | Customer order cancel | Idempotency guarded; CONFIRMED+ only |
 | POST | `/api/v1/payments/retry` | Retry failed payment (old flow) | Customer flow; for PAYMENT_FAILED orders only |
 | GET | `/api/v1/shipping/track/:awb` | Track shipment | Customer auth |
-| POST | `/api/v1/orders/:id/return-requests` | Create return request | Customer flow |
+| POST | `/api/v1/orders/:id/return-requests` | Create return request (400 when merchant returns toggle is off; 409 while one is open) | Customer flow |
 | GET | `/api/v1/users/me` | Current customer profile | Customer auth |
-| PATCH | `/api/v1/users/me` | Update profile | Customer auth |
+| PATCH | `/api/v1/users/me` | Update profile (name/email + phone add/update/remove — phone removal blocked when it is the only sign-in identifier) | Customer auth |
 | GET | `/api/v1/users/me/addresses` | List addresses | Customer auth |
 | POST | `/api/v1/users/me/addresses` | Create address | Customer auth |
 | PATCH | `/api/v1/users/me/addresses/:id` | Update address | Customer auth |
@@ -169,7 +169,7 @@ Admin UI should be served under `/admin/*` in the frontend and call `/api/v1/adm
 | GET | `/api/v1/admin/orders/:id/timeline` | Order status transition timeline |
 | GET | `/api/v1/admin/return-requests` | Return request queue |
 | GET | `/api/v1/admin/return-requests/:id` | Single return request detail |
-| PATCH | `/api/v1/admin/return-requests/:id` | Update return request |
+| PATCH | `/api/v1/admin/return-requests/:id` | Update return request (enforced transitions; notifies customer via send-primary) |
 
 ### Inventory
 

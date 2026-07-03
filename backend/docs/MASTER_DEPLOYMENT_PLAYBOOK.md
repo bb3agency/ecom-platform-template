@@ -939,13 +939,13 @@ Perform these steps on staging before switching traffic:
 
 - Read current notification settings:
   - `GET /api/v1/admin/settings/notifications`
-  - Confirm `primaryChannels` is present and lists 13 templates with defaults (`EMAIL`).
-- Pick a non-critical template and set a temporary primary channel:
-  - `PATCH /api/v1/admin/settings/notifications` with `{ "primaryChannels": { "LowStockAlert": "SMS" } }` (example)
+  - Confirm `primaryChannels` is present and lists every supported template with default `["EMAIL"]` (values are ARRAYS — multi-channel since backend-core 0.1.30).
+- Pick a non-critical template and set a temporary channel selection:
+  - `PATCH /api/v1/admin/settings/notifications` with `{ "primaryChannels": { "LowStockAlert": ["SMS"] } }` (example; single strings are also accepted and normalized)
   - Verify response reflects the change; re-read with `GET` and confirm.
-- Trigger a test notification for that template (via admin action or test job) and observe delivery only on the configured primary channel.
-  - Confirm there is no fallback to other channels.
-  - If delivery fails (disabled channel or bad credentials), verify:
+- Trigger a test notification for that template (via admin action or test job) and observe delivery on the configured channel(s).
+  - Multi-channel selections fan out to EVERY enabled channel; if NO configured channel is deliverable the worker falls back to email.
+  - If a delivery leg fails (disabled channel or bad credentials), verify:
     - `NotificationLog.status` is `FAILED` for that attempt
     - A technical failure alert email was sent to active Ops and verified Admin users.
 - Revert the temporary change (`LowStockAlert` back to `EMAIL`).
@@ -1452,7 +1452,7 @@ Public runtime storefront config (no auth). Used by Next.js ISR and admin GST pa
 ```jsonc
 {
   "id": "uuid",
-  "orderNumber": "ORD-20260115-001",
+  "orderNumber": "ORD-K4MQ-2F9X", // random unguessable reference (backend-core 0.1.41) — never sequential
   "status": "PENDING_PAYMENT",
   "shippingAddress": { "fullName": "...", "phone": "...", "line1": "...", "line2": null, "city": "...", "state": "...", "pincode": "500001" },
   "subtotal": 999000,
