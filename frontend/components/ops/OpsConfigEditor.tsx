@@ -87,8 +87,8 @@ function OpsConfigFieldRow({
   const canEditField = canWrite && !field.envLocked;
 
   return (
-    <div className="grid gap-3 rounded-lg border border-border/60 bg-muted/15 p-4 sm:grid-cols-[minmax(0,220px)_1fr_auto] sm:items-start sm:gap-4">
-      <div className="grid gap-1">
+    <div className="grid min-w-0 grid-cols-1 gap-3 rounded-lg border border-border/60 bg-muted/15 p-4 sm:grid-cols-[minmax(0,220px)_1fr_auto] sm:items-start sm:gap-4">
+      <div className="grid min-w-0 grid-cols-1 gap-1">
         <code className="text-xs font-medium text-foreground">{field.key}</code>
         <p className="text-xs text-muted-foreground">{field.label}</p>
         <div className="flex flex-wrap gap-1">
@@ -107,7 +107,7 @@ function OpsConfigFieldRow({
         </div>
       </div>
 
-      <div className="grid gap-2">
+      <div className="grid min-w-0 grid-cols-1 gap-2">
         {field.envLocked ? (
           <div className="rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
             Runtime value is currently sourced from environment. Edit the deployment env file and
@@ -219,7 +219,7 @@ function ShippingModeStatus({ overview }: { overview: OpsConfigOverview }) {
   return (
     <div className={`flex items-start gap-3 rounded-lg border p-4 ${tone}`}>
       <Package className="mt-0.5 size-4 shrink-0" aria-hidden />
-      <div className="grid gap-1">
+      <div className="grid min-w-0 grid-cols-1 gap-1">
         <p className="text-sm font-medium">{label}</p>
         <p className="text-xs">{description}</p>
         <div className="mt-1 flex gap-3 text-xs">
@@ -452,14 +452,14 @@ export function OpsConfigEditor({ overview, stored, onConfigSaved }: OpsConfigEd
   }
 
   return (
-    <form onSubmit={handleSave} className="grid gap-8">
+    <form onSubmit={handleSave} className="grid min-w-0 grid-cols-1 gap-8">
       {sections.map((section) => (
         <OpsCard key={section.domain}>
           <OpsCardHeader
             title={section.label}
             description="DB-overlay keys — variable name is fixed; edit the value column."
           />
-          <div className="grid gap-3">
+          <div className="grid min-w-0 grid-cols-1 gap-3">
             {section.domain === "shipping" ? (
               <ShippingModeStatus overview={overview} />
             ) : null}
@@ -488,7 +488,7 @@ export function OpsConfigEditor({ overview, stored, onConfigSaved }: OpsConfigEd
           }
         />
 
-        <div className="grid gap-4">
+        <div className="grid min-w-0 grid-cols-1 gap-4">
           <p className="text-sm text-muted-foreground">
             {dirtyCount > 0
               ? `${dirtyCount} unsaved change(s) ready to persist.`
@@ -547,7 +547,7 @@ export function OpsConfigEditor({ overview, stored, onConfigSaved }: OpsConfigEd
           {message ? <OpsAlert tone="success">{message}</OpsAlert> : null}
           {error ? (
             <OpsAlert tone="error">
-              <div className="grid gap-1">
+              <div className="grid min-w-0 grid-cols-1 gap-1">
                 <span>{error}</span>
                 {errorDetail ? (
                   <span className="font-mono text-xs text-destructive/80">{errorDetail}</span>

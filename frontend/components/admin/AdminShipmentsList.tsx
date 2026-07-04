@@ -469,7 +469,7 @@ export function AdminShipmentsList({
           </div>
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="grid min-w-0 grid-cols-1 gap-6 lg:grid-cols-3 xl:grid-cols-4">
           {/* Main Table Section */}
           <div className="flex flex-col rounded-xl border border-border/40 bg-card shadow-sm lg:col-span-2 xl:col-span-3">
             <div className="flex flex-col gap-4 border-b border-border/40 p-4 xl:flex-row xl:items-center xl:justify-between">
@@ -886,7 +886,7 @@ export function AdminShipmentsList({
         ) : detailError ? (
           <p className="text-sm text-destructive">{detailError}</p>
         ) : detail ? (
-          <dl className="grid gap-2 text-sm">
+          <dl className="grid min-w-0 grid-cols-1 gap-2 text-sm">
             <Row label="Provider" value={detail.provider} />
             <Row label="Status" value={detail.status} />
             <Row label="AWB" value={detail.awbNumber ?? "—"} />

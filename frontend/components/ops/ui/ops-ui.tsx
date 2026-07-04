@@ -245,14 +245,14 @@ export function OpsDataTable<T>({
 
   return (
     <div className="overflow-hidden rounded-xl border border-border/80">
-      <div className="grid gap-3 p-3 md:hidden">
+      <div className="grid min-w-0 grid-cols-1 gap-3 p-3 md:hidden">
         {rows.map((row) => (
           <article
             key={rowKey(row)}
             className="grid min-w-0 grid-cols-1 gap-3 rounded-lg border border-border/70 bg-card/60 p-3 shadow-sm"
           >
             {mobileCardTitle ? (
-              <div className="grid gap-1">
+              <div className="grid min-w-0 grid-cols-1 gap-1">
                 <h3 className="text-sm font-semibold leading-tight text-foreground">
                   {mobileCardTitle(row)}
                 </h3>
@@ -261,9 +261,9 @@ export function OpsDataTable<T>({
                 ) : null}
               </div>
             ) : null}
-            <dl className="grid gap-2">
+            <dl className="grid min-w-0 grid-cols-1 gap-2">
               {columns.map((col) => (
-                <div key={col.key} className="grid gap-1">
+                <div key={col.key} className="grid min-w-0 grid-cols-1 gap-1">
                   <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                     {col.header}
                   </dt>

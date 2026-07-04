@@ -54,7 +54,7 @@ export function OpsConfigPagePanel() {
   }
 
   return (
-    <div className="grid gap-8">
+    <div className="grid min-w-0 grid-cols-1 gap-8">
       <OpsAlert tone="info">
         Bootstrap keys (<code className="text-xs">DATABASE_URL</code>,{" "}
         <code className="text-xs">OPS_DB_ENCRYPTION_KEY</code>) are read-only here — change via

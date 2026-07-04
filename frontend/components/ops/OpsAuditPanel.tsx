@@ -52,9 +52,9 @@ export function OpsAuditPanel() {
   }, []);
 
   return (
-    <div className="grid gap-6">
+    <div className="grid min-w-0 grid-cols-1 gap-6">
       <OpsCard padding="md">
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-3">
           <OpsField label="Status" htmlFor="audit-status">
             <OpsSelect
               id="audit-status"

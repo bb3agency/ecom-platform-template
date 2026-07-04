@@ -102,7 +102,7 @@ export function AdminOrderDetailPanel({ orderId }: AdminOrderDetailPanelProps) {
     <div className="grid min-w-0 grid-cols-1 gap-4">
       {/* Page header */}
       <div className="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-border bg-card px-6 py-5">
-        <div className="grid gap-1">
+        <div className="grid min-w-0 grid-cols-1 gap-1">
           <h1 className="font-heading text-xl font-semibold">{order.orderNumber}</h1>
           <p className="text-sm text-muted-foreground">
             {formatAdminDate(order.createdAt)} · {order.paymentMode}
@@ -128,7 +128,7 @@ export function AdminOrderDetailPanel({ orderId }: AdminOrderDetailPanelProps) {
       </div>
 
       {/* Summary grid */}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <InfoCard icon={<User className="h-4 w-4" />} title="Customer">
           <p className="font-medium leading-tight">{order.customer.name}</p>
           <p className="mt-0.5 text-xs text-muted-foreground">
@@ -164,7 +164,7 @@ export function AdminOrderDetailPanel({ orderId }: AdminOrderDetailPanelProps) {
 
         <InfoCard icon={<CreditCard className="h-4 w-4" />} title="Payment">
           {order.payment ? (
-            <div className="grid gap-1.5">
+            <div className="grid min-w-0 grid-cols-1 gap-1.5">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs text-muted-foreground">Status</span>
                 <AdminStatusBadge
@@ -183,7 +183,7 @@ export function AdminOrderDetailPanel({ orderId }: AdminOrderDetailPanelProps) {
 
         <InfoCard icon={<Truck className="h-4 w-4" />} title="Shipment">
           {order.shipment ? (
-            <div className="grid gap-1.5">
+            <div className="grid min-w-0 grid-cols-1 gap-1.5">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs text-muted-foreground">Status</span>
                 <AdminStatusBadge
@@ -210,7 +210,7 @@ export function AdminOrderDetailPanel({ orderId }: AdminOrderDetailPanelProps) {
 
         <InfoCard icon={<Package className="h-4 w-4" />} title="Packing box">
           {order.packingBox ? (
-            <div className="grid gap-1.5">
+            <div className="grid min-w-0 grid-cols-1 gap-1.5">
               <Row
                 label="Dimensions"
                 value={`${order.packingBox.lengthCm} × ${order.packingBox.widthCm} × ${order.packingBox.heightCm} cm`}
@@ -232,7 +232,7 @@ export function AdminOrderDetailPanel({ orderId }: AdminOrderDetailPanelProps) {
 
         <InfoCard icon={<Tag className="h-4 w-4" />} title="Coupon">
           {order.coupon ? (
-            <div className="grid gap-1.5">
+            <div className="grid min-w-0 grid-cols-1 gap-1.5">
               <Row label="Code" value={order.coupon.code} />
               <Row label="Discount" value={getCouponDiscountDisplay(order.coupon)} />
               <Row label="Min. Order" value={formatPaise(order.coupon.minOrderPaise)} />
@@ -309,7 +309,7 @@ function TotalItem({
   bold?: boolean;
 }) {
   return (
-    <div className="grid gap-0.5">
+    <div className="grid min-w-0 grid-cols-1 gap-0.5">
       <span className="text-xs text-muted-foreground">{label}</span>
       <span className={bold ? "text-base font-semibold" : "text-sm font-medium"}>
         {value}

@@ -60,7 +60,7 @@ export function OpsSessionGate({ children }: OpsSessionGateProps) {
 
   if (!session) {
     return (
-      <div className="grid gap-3 rounded-md border border-amber-500/40 bg-amber-500/10 p-4 text-sm">
+      <div className="grid min-w-0 grid-cols-1 gap-3 rounded-md border border-amber-500/40 bg-amber-500/10 p-4 text-sm">
         <p>{error ?? "Sign in to continue."}</p>
         <Link href="/ops/login" className="font-medium text-primary underline-offset-4 hover:underline">
           Go to ops login

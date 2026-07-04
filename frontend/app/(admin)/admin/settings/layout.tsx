@@ -69,7 +69,7 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
       </header>
 
       {/* Settings Grid Workspace */}
-      <div className="grid gap-4 sm:gap-6 lg:grid-cols-4 items-start">
+      <div className="grid min-w-0 grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-4 items-start">
         {/* Navigation Sidebar */}
         <aside className="lg:col-span-1 min-w-0 overflow-hidden">
           {/* Desktop Nav */}

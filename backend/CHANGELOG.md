@@ -12,6 +12,17 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.55] — 2026-07-04
+
+### Fixed
+- **`POST /admin/shipments/:id/sync` 500'd on EVERY call** — the response schema declared `{ id, status, updatedAt }` but `adminSyncShipmentStatus` returns `{ synced, message, shipmentStatus, orderStatus }`; fast-json-stringify failed the required check AFTER the sync had committed, so the UI showed "Something went wrong" while the DB had actually updated. Schema now mirrors the real shape (which the frontend already consumed) + a serialization regression test (`orders.sync-schema.test.ts`).
+
+**Propagation:**
+- Severity: NORMAL · Layers: backend (`modules/orders/orders.schemas.ts`)
+- Migration: NO · Flag: none · Design impact: none · Breaking: NO
+- Rollback: revert the schema block
+
+
 ## [0.1.54] — 2026-07-04
 
 ### Fixed

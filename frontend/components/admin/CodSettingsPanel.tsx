@@ -161,8 +161,8 @@ export function CodSettingsPanel() {
               Policies & Restrictions
             </h4>
 
-            <div className="grid gap-5 sm:gap-6 sm:grid-cols-2">
-              <label className="grid gap-1.5 text-sm font-medium text-foreground sm:col-span-2">
+            <div className="grid min-w-0 grid-cols-1 gap-5 sm:gap-6 sm:grid-cols-2">
+              <label className="grid min-w-0 grid-cols-1 gap-1.5 text-sm font-medium text-foreground sm:col-span-2">
                 Cancellation Window (Hours)
                 <div className="relative">
                   <input
@@ -184,7 +184,7 @@ export function CodSettingsPanel() {
                 </span>
               </label>
 
-              <div className="grid gap-1.5 text-sm font-medium text-foreground sm:col-span-2">
+              <div className="grid min-w-0 grid-cols-1 gap-1.5 text-sm font-medium text-foreground sm:col-span-2">
                 <div className="flex items-center gap-1.5">
                   <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
                   Seller Operating State

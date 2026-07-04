@@ -12,6 +12,18 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.34] — 2026-07-04
+
+### Fixed
+- **Mobile overflow, closed for good across admin + ops (115 spots in 42 files).** 0.1.32 clamped `AdminSection`, but the same defect lived in every other implicit grid: `grid gap-N` without `grid-cols-1` creates an implicit `auto` track that grows to its content — `min-w-0` on children cannot help because the TRACK itself inflates past the viewport (why the order-detail page still clipped on phones after the child-level fixes). Mechanical sweep: every `className="grid gap-…"` in admin/ops components and pages is now `grid min-w-0 grid-cols-1 gap-…` (`grid-cols-1` = `minmax(0,1fr)`, clamps to container; existing `sm:`/`lg:` column overrides untouched). Covers the order detail page + fulfillment panel (the reported surface) and 40 other files.
+
+**Propagation:**
+- Severity: NORMAL · Layers: frontend (admin/ops components + pages, structural classes only)
+- Migration: NO · Flag: none · Design impact: none · Breaking: NO
+- Rollback: revert the sweep commit
+- Pairs with backend-core 0.1.55 (shipment-sync 500 fix).
+
+
 ## [0.1.33] — 2026-07-04
 
 ### Added

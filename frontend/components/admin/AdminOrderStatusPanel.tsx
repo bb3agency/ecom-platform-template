@@ -96,7 +96,7 @@ export function AdminOrderStatusPanel({ orderId, onUpdated }: AdminOrderStatusPa
     >
       {order ? (
         <div className="grid max-w-md gap-3">
-          <label className="grid gap-1 text-sm">
+          <label className="grid min-w-0 grid-cols-1 gap-1 text-sm">
             Status
             <select className={inputClass} value={status} onChange={(e) => setStatus(e.target.value)}>
               {ORDER_FILTER_STATUSES.filter(
@@ -108,7 +108,7 @@ export function AdminOrderStatusPanel({ orderId, onUpdated }: AdminOrderStatusPa
               ))}
             </select>
           </label>
-          <label className="grid gap-1 text-sm">
+          <label className="grid min-w-0 grid-cols-1 gap-1 text-sm">
             Note (optional)
             <textarea
               className="min-h-20 rounded-md border border-border bg-background px-3 py-2 text-sm"

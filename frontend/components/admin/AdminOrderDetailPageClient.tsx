@@ -17,7 +17,7 @@ export function AdminOrderDetailPageClient({ orderId }: { orderId: string }) {
   }
 
   return (
-    <div className="grid gap-6">
+    <div className="grid min-w-0 grid-cols-1 gap-6">
       <Link
         href="/admin/orders"
         className="flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
@@ -31,8 +31,8 @@ export function AdminOrderDetailPageClient({ orderId }: { orderId: string }) {
       {/* min-w-0 on every grid child: grid items default to min-width:auto, so any wide
           content (mono AWBs, tables, long emails) would inflate the column past the
           viewport on mobile and get clipped by the shell's overflow-x-hidden. */}
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="grid min-w-0 gap-6 lg:col-span-2">
+      <div className="grid min-w-0 grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="grid min-w-0 grid-cols-1 gap-6 lg:col-span-2">
           <AdminOrderItemsPanel orderId={orderId} onUpdated={bumpRefresh} />
           <AdminOrderFulfillmentPanel initialOrderId={orderId} hideOrderPicker />
           <AdminOrderReturnRequestsPanel orderId={orderId} />

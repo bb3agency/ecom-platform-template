@@ -89,7 +89,7 @@ export function OpsSetupForm({ token }: OpsSetupFormProps) {
         title="Operator onboarding"
         description="Step 1: confirm your profile and request an email OTP. Step 2: verify and activate your account."
       />
-      <div className="grid gap-5">
+      <div className="grid min-w-0 grid-cols-1 gap-5">
         <OpsField label="Full name" htmlFor="setup-name">
           <OpsInput
             id="setup-name"

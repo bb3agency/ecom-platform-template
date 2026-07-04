@@ -48,7 +48,7 @@ export function AdminMutationPanel({
   return (
     <section className="grid min-w-0 grid-cols-1 gap-3 rounded-lg border border-border p-4">
       <h3 className="font-medium">{title}</h3>
-      <label className="grid gap-1 text-sm">
+      <label className="grid min-w-0 grid-cols-1 gap-1 text-sm">
         {payloadLabel}
         <textarea
           value={payload}

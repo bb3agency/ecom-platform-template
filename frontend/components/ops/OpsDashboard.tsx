@@ -84,7 +84,7 @@ export function OpsDashboard() {
   }
 
   return (
-    <div className="grid min-w-0 gap-5 sm:gap-6 lg:gap-8">
+    <div className="grid min-w-0 grid-cols-1 gap-5 sm:gap-6 lg:gap-8">
       {error ? <OpsAlert tone="error">{error}</OpsAlert> : null}
 
       <OpsRuntimeReadinessCard />
@@ -116,10 +116,10 @@ export function OpsDashboard() {
         />
       </div>
 
-      <div className="grid min-w-0 gap-5 lg:grid-cols-2 lg:gap-6">
+      <div className="grid min-w-0 grid-cols-1 gap-5 lg:grid-cols-2 lg:gap-6">
         <OpsCard className="min-w-0">
           <OpsCardHeader title="Operator profile" description="Live session from GET /ops/session" />
-          <dl className="grid gap-4 text-sm sm:grid-cols-2">
+          <dl className="grid min-w-0 grid-cols-1 gap-4 text-sm sm:grid-cols-2">
             <div className="min-w-0">
               <dt className="text-xs uppercase tracking-wider text-muted-foreground">Name</dt>
               <dd className="mt-1 break-words font-medium">{session.name}</dd>
@@ -169,7 +169,7 @@ export function OpsDashboard() {
           {recentAudit.length === 0 ? (
             <p className="text-sm text-muted-foreground">No audit entries yet.</p>
           ) : (
-            <ul className="grid gap-3">
+            <ul className="grid min-w-0 grid-cols-1 gap-3">
               {recentAudit.map((entry) => (
                 <li
                   key={entry.id}
@@ -198,7 +198,7 @@ export function OpsDashboard() {
 
       <OpsCard className="min-w-0">
         <OpsCardHeader title="Quick links" description="Jump to common control-plane tasks" />
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {[
             { href: "/ops/config", label: "Runtime config", desc: "Validate and save DB overlay keys" },
             { href: "/ops/queues", label: "Queue monitor", desc: "Bull Board and DLQ summary" },

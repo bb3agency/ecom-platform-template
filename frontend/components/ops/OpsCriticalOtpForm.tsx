@@ -169,7 +169,7 @@ export function OpsCriticalOtpForm({
           </div>
         }
       />
-      <form onSubmit={handleSubmit} className="grid gap-5">
+      <form onSubmit={handleSubmit} className="grid min-w-0 grid-cols-1 gap-5">
         {children}
         <div className="flex flex-wrap gap-2">
           <Button type="button" variant="outline" onClick={() => void handleRequestOtp()} disabled={isLoading}>
@@ -207,7 +207,7 @@ export function OpsCriticalOtpForm({
         {message ? <OpsAlert tone="success">{message}</OpsAlert> : null}
         {error ? (
           <OpsAlert tone="error">
-            <div className="grid gap-1">
+            <div className="grid min-w-0 grid-cols-1 gap-1">
               <span>{error}</span>
               {errorDetail ? (
                 <span className="font-mono text-xs text-destructive/80">{errorDetail}</span>

@@ -92,7 +92,7 @@ export function InventorySettingsPanel() {
             </h4>
             
             <div className="space-y-4">
-              <label className="grid gap-1.5 text-sm font-medium text-foreground">
+              <label className="grid min-w-0 grid-cols-1 gap-1.5 text-sm font-medium text-foreground">
                 Default Low-Stock Threshold
                 <input
                   type="number"

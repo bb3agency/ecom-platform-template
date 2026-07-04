@@ -82,11 +82,11 @@ export function AdminBulkInventoryForm() {
       title="Bulk inventory update"
       description="Update up to 100 variants in one request."
     >
-      <div className="grid gap-2">
+      <div className="grid min-w-0 grid-cols-1 gap-2">
         {rows.map((row, index) => (
           <div
             key={index}
-            className="grid gap-2 rounded-md border border-border p-2 md:grid-cols-4"
+            className="grid min-w-0 grid-cols-1 gap-2 rounded-md border border-border p-2 md:grid-cols-4"
           >
             <input
               className={inputClass}

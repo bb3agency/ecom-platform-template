@@ -74,7 +74,7 @@ export function AdminOrderTimelinePanel({ orderId }: AdminOrderTimelinePanelProp
           {[1, 2, 3].map((i) => (
             <div key={i} className="flex gap-3">
               <div className="mt-1 h-3 w-3 shrink-0 animate-pulse rounded-full bg-muted" />
-              <div className="grid gap-1.5 flex-1">
+              <div className="grid min-w-0 grid-cols-1 gap-1.5 flex-1">
                 <div className="h-3.5 w-24 animate-pulse rounded bg-muted" />
                 <div className="h-3 w-32 animate-pulse rounded bg-muted" />
               </div>

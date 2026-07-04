@@ -337,7 +337,7 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
 
         <div className="flex flex-col gap-3 border-t border-border/40 pt-4 mt-2 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
           <div className="grid w-full grid-cols-2 gap-3 sm:w-auto">
-            <label className="grid min-w-0 gap-1 text-xs text-muted-foreground font-medium">
+            <label className="grid min-w-0 grid-cols-1 gap-1 text-xs text-muted-foreground font-medium">
               From Date
               <input
                 type="date"
@@ -349,7 +349,7 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
                 }}
               />
             </label>
-            <label className="grid min-w-0 gap-1 text-xs text-muted-foreground font-medium">
+            <label className="grid min-w-0 grid-cols-1 gap-1 text-xs text-muted-foreground font-medium">
               To Date
               <input
                 type="date"
@@ -364,7 +364,7 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
           </div>
 
           <div className="grid w-full grid-cols-2 items-end gap-3 sm:w-auto">
-            <label className="grid min-w-0 gap-1 text-xs text-muted-foreground font-medium">
+            <label className="grid min-w-0 grid-cols-1 gap-1 text-xs text-muted-foreground font-medium">
               Export From
               <input
                 type="date"
@@ -373,7 +373,7 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
                 onChange={(event) => setExportFrom(event.target.value)}
               />
             </label>
-            <label className="grid min-w-0 gap-1 text-xs text-muted-foreground font-medium">
+            <label className="grid min-w-0 grid-cols-1 gap-1 text-xs text-muted-foreground font-medium">
               Export To
               <input
                 type="date"

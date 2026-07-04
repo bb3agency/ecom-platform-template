@@ -1345,7 +1345,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
 
                 {/* Storefront link — only shown for existing products with a saved slug */}
                 {!isCreate && slug ? (
-                  <div className="grid gap-1.5">
+                  <div className="grid min-w-0 grid-cols-1 gap-1.5">
                     <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                       Storefront Link
                     </span>
@@ -1356,7 +1356,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                 ) : null}
               </div>
 
-              <label className="grid gap-1.5 text-xs font-bold text-muted-foreground uppercase tracking-wider">
+              <label className="grid min-w-0 grid-cols-1 gap-1.5 text-xs font-bold text-muted-foreground uppercase tracking-wider">
                 Short Description
                 <div className="relative">
                   <textarea
@@ -1374,8 +1374,8 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
               </label>
 
               {gstInvoicingEnabled ? (
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <label className="grid gap-1.5 text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">
+                  <label className="grid min-w-0 grid-cols-1 gap-1.5 text-xs font-bold text-muted-foreground uppercase tracking-wider">
                     GST Rate (%)
                     <input
                       type="number"
@@ -1599,7 +1599,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                   ) : null}
                 </label>
 
-                <label className="grid gap-1.5 text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                <label className="grid min-w-0 grid-cols-1 gap-1.5 text-xs font-bold text-muted-foreground uppercase tracking-wider">
                   <span className="flex items-center gap-1">
                     Compare at Price
                     <span className="normal-case font-medium text-muted-foreground/70">(optional)</span>
@@ -1636,7 +1636,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
               </div>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 items-center">
-                <label className="grid gap-1.5 text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                <label className="grid min-w-0 grid-cols-1 gap-1.5 text-xs font-bold text-muted-foreground uppercase tracking-wider">
                   <span className="flex items-center gap-1">
                     Weight (g)
                     <span title="Weight in grams — required for shipping rate calculation.">
@@ -1663,7 +1663,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                     disabled={!canWrite}
                   />
                 </label>
-                <label className="grid gap-1.5 text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                <label className="grid min-w-0 grid-cols-1 gap-1.5 text-xs font-bold text-muted-foreground uppercase tracking-wider">
                   Box Length (cm)
                   <input
                     className={`${inputClass} border-border/50 text-foreground`}
@@ -1685,7 +1685,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                     disabled={!canWrite}
                   />
                 </label>
-                <label className="grid gap-1.5 text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                <label className="grid min-w-0 grid-cols-1 gap-1.5 text-xs font-bold text-muted-foreground uppercase tracking-wider">
                   Box Width (cm)
                   <input
                     className={`${inputClass} border-border/50 text-foreground`}
@@ -1707,7 +1707,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                     disabled={!canWrite}
                   />
                 </label>
-                <label className="grid gap-1.5 text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                <label className="grid min-w-0 grid-cols-1 gap-1.5 text-xs font-bold text-muted-foreground uppercase tracking-wider">
                   Box Height (cm)
                   <input
                     className={`${inputClass} border-border/50 text-foreground`}
@@ -1749,7 +1749,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                   />
                   Keep upright (fragile / this-side-up)
                 </label>
-                <label className="grid gap-1.5 text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                <label className="grid min-w-0 grid-cols-1 gap-1.5 text-xs font-bold text-muted-foreground uppercase tracking-wider">
                   Stock Quantity <span className="text-rose-500">*</span>
                   <input
                     className={`${inputClass} border-border/50 text-foreground`}
@@ -1770,7 +1770,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                   />
                 </label>
 
-                <label className="grid gap-1.5 text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                <label className="grid min-w-0 grid-cols-1 gap-1.5 text-xs font-bold text-muted-foreground uppercase tracking-wider">
                   Low Stock Threshold
                   <input
                     className={`${inputClass} border-border/50 text-foreground`}
@@ -2172,7 +2172,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
               </div>
 
               <div className="flex flex-col gap-4 text-sm font-semibold">
-                <label className="grid gap-1 text-muted-foreground">
+                <label className="grid min-w-0 grid-cols-1 gap-1 text-muted-foreground">
                   Status
                   <select
                     className={`${inputClass} border-border/50 text-foreground mt-1.5 font-bold`}

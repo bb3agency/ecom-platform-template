@@ -82,12 +82,12 @@ export function AdminCustomerDetailPanel({ customerId }: AdminCustomerDetailPane
   }
 
   return (
-    <div className="grid gap-6">
+    <div className="grid min-w-0 grid-cols-1 gap-6">
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
       {message ? <p className="text-sm text-muted-foreground">{message}</p> : null}
 
       <AdminSection title="Profile">
-        <div className="grid gap-2 text-sm sm:grid-cols-2">
+        <div className="grid min-w-0 grid-cols-1 gap-2 text-sm sm:grid-cols-2">
           <p>
             <span className="text-muted-foreground">Name:</span> {profile.firstName}{" "}
             {profile.lastName}
@@ -220,7 +220,7 @@ export function AdminCustomerDetailPanel({ customerId }: AdminCustomerDetailPane
         </ul>
         {canWrite ? (
           <form
-            className="grid gap-2"
+            className="grid min-w-0 grid-cols-1 gap-2"
             onSubmit={(event) => {
               event.preventDefault();
               void api(`/admin/users/${customerId}/notes`, {

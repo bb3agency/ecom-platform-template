@@ -4,7 +4,7 @@ import { AdminMutationPanel } from "@/components/admin/AdminMutationPanel";
 export default function AdminCatalogWritePage() {
   return (
     <AdminDevToolsGate title="Catalog write surfaces">
-      <div className="grid gap-6">
+      <div className="grid min-w-0 grid-cols-1 gap-6">
         <header className="rounded-lg border border-border p-4">
           <h2 className="font-heading text-xl font-semibold">Catalog write surfaces</h2>
           <p className="text-sm text-muted-foreground">

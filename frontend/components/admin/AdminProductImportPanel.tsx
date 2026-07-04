@@ -53,7 +53,7 @@ export function AdminProductImportPanel() {
       title="CSV import"
       description="Bulk create or update products from a CSV file."
     >
-      <div className="grid gap-3">
+      <div className="grid min-w-0 grid-cols-1 gap-3">
         <input
           type="file"
           accept=".csv,text/csv"

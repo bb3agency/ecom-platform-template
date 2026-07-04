@@ -1579,16 +1579,19 @@ export const adminSyncShipmentStatusSchema = {
     properties: { id: { type: 'string', maxLength: 64 } }
   },
   response: {
+    // MUST mirror adminSyncShipmentStatus's actual return shape. The previous
+    // schema declared { id, status, updatedAt } — fields the service never
+    // returned — so fast-json-stringify failed the required check and turned
+    // EVERY sync into a 500 (after the sync work had already committed).
     200: {
       type: 'object',
       additionalProperties: false,
-      required: ['id', 'status', 'updatedAt'],
+      required: ['synced', 'message', 'shipmentStatus', 'orderStatus'],
       properties: {
-        id: { type: 'string' },
-        status: { type: 'string' },
-        awbNumber: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-        trackingUrl: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-        updatedAt: { type: 'string' }
+        synced: { type: 'boolean' },
+        message: { type: 'string' },
+        shipmentStatus: { type: 'string' },
+        orderStatus: { type: 'string' }
       }
     },
     ...standardAdminErrorResponses

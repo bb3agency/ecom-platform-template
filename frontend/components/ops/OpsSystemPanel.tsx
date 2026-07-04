@@ -17,7 +17,7 @@ export function OpsSystemPanel() {
   }
 
   return (
-    <div className="grid gap-6">
+    <div className="grid min-w-0 grid-cols-1 gap-6">
       <OpsAlert tone="warning" title="Payment-safe restart">
         Backend drains in-flight PREPAID orders before signaling API and worker containers to restart.
         Load-shed switches to emergency during the window.

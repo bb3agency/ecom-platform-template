@@ -128,8 +128,8 @@ export function ShippingSettingsPanel() {
               Fulfillment & Delivery Origin
             </h4>
             
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className="grid gap-1.5 text-sm font-medium text-foreground">
+            <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">
+              <label className="grid min-w-0 grid-cols-1 gap-1.5 text-sm font-medium text-foreground">
                 Pickup Pincode (Origin Pincode)
                 <div className="relative">
                   <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-muted-foreground/60 select-none">
@@ -150,7 +150,7 @@ export function ShippingSettingsPanel() {
                 </span>
               </label>
 
-              <label className="grid gap-1.5 text-sm font-medium text-foreground">
+              <label className="grid min-w-0 grid-cols-1 gap-1.5 text-sm font-medium text-foreground">
                 Minimum Order Value (₹)
                 <div className="relative">
                   <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-muted-foreground/60 select-none">
@@ -196,7 +196,7 @@ export function ShippingSettingsPanel() {
                   </span>
                 </div>
               )}
-              <div className="grid gap-2 sm:grid-cols-2">
+              <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2">
                 <div className={`flex items-center gap-2.5 rounded-lg border p-3 text-sm ${settings.providerAvailability.delhiveryConfigured ? "border-green-500/30 bg-green-500/10" : "border-border bg-muted/20"}`}>
                   <div className={`h-2 w-2 shrink-0 rounded-full ${settings.providerAvailability.delhiveryConfigured ? "bg-green-500" : "bg-muted-foreground/30"}`} />
                   <div className="min-w-0">

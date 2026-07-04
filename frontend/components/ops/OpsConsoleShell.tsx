@@ -292,7 +292,7 @@ function OpsNavLink({ item, active, onNavigate }: OpsNavLinkProps) {
         )}
         aria-hidden
       />
-      <span className="grid gap-0.5">
+      <span className="grid min-w-0 grid-cols-1 gap-0.5">
         <span className="font-medium leading-none">{item.label}</span>
         <span className="text-xs leading-snug opacity-80">{item.description}</span>
       </span>

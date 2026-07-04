@@ -400,7 +400,7 @@ export function AdminOrderFulfillmentPanel({
   };
 
   return (
-    <section className="rounded-xl border border-border bg-card">
+    <section className="min-w-0 rounded-xl border border-border bg-card">
       {/* Header */}
       <header className="border-b border-border px-6 py-4">
         <div className="flex items-center justify-between gap-2">
@@ -431,7 +431,7 @@ export function AdminOrderFulfillmentPanel({
       <div className="p-6 grid gap-6">
         {/* Order picker */}
         {!hideOrderPicker ? (
-          <label className="grid gap-1.5 text-sm font-medium">
+          <label className="grid min-w-0 grid-cols-1 gap-1.5 text-sm font-medium">
             Select order
             <select
               className="h-10 rounded-lg border border-border bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
@@ -466,7 +466,7 @@ export function AdminOrderFulfillmentPanel({
 
         {/* Order info grid */}
         {detail && detail.id === selectedOrderId ? (
-          <div className="grid gap-3 rounded-xl border border-border bg-muted/20 p-4 sm:grid-cols-2">
+          <div className="grid min-w-0 grid-cols-1 gap-3 rounded-xl border border-border bg-muted/20 p-4 sm:grid-cols-2">
             <InfoChip
               label="Payment mode"
               value={detail.paymentMode}
@@ -594,7 +594,7 @@ export function AdminOrderFulfillmentPanel({
         {/* Primary action steps — hidden entirely once the order/shipment is terminal
             (cancelled/refunded): shipping, pickup and label no longer apply. */}
         {fulfilmentActive ? (
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-3">
             <ActionButton
               step={1}
               label="Ship order"
@@ -738,7 +738,7 @@ function InfoChip({
   valueClass?: string;
 }) {
   return (
-    <div className="grid min-w-0 gap-0.5">
+    <div className="grid min-w-0 grid-cols-1 gap-0.5">
       <span className="text-xs text-muted-foreground">{label}</span>
       {valueNode ?? (
         <span className={`min-w-0 break-words text-sm font-medium ${mono ? "font-mono" : ""} ${valueClass ?? ""}`}>

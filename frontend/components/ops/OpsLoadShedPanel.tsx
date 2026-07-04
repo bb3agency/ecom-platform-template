@@ -77,7 +77,7 @@ export function OpsLoadShedPanel() {
       : null;
 
   return (
-    <div className="grid gap-6">
+    <div className="grid min-w-0 grid-cols-1 gap-6">
       {error ? <OpsAlert tone="error">{error}</OpsAlert> : null}
       {mode ? (
         <OpsCard padding="md" className="flex flex-col gap-3">
@@ -141,7 +141,7 @@ export function OpsLoadShedPanel() {
             });
           }}
         >
-          <div className="grid gap-4">
+          <div className="grid min-w-0 grid-cols-1 gap-4">
             <OpsField label="Target mode" htmlFor="load-shed-mode">
               <OpsSelect
                 id="load-shed-mode"

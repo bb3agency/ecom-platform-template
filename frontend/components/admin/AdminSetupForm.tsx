@@ -184,8 +184,8 @@ export function AdminSetupForm({ token }: AdminSetupFormProps) {
       </div>
 
       {step === "details" ? (
-        <div className="grid gap-4">
-          <label className="grid gap-1.5 text-sm font-medium text-[#23403d]">
+        <div className="grid min-w-0 grid-cols-1 gap-4">
+          <label className="grid min-w-0 grid-cols-1 gap-1.5 text-sm font-medium text-[#23403d]">
             <span className="flex items-center gap-1.5">
               <User className="h-3.5 w-3.5 text-[#769b97]" />
               Full name
@@ -199,7 +199,7 @@ export function AdminSetupForm({ token }: AdminSetupFormProps) {
             />
           </label>
 
-          <label className="grid gap-1.5 text-sm font-medium text-[#23403d]">
+          <label className="grid min-w-0 grid-cols-1 gap-1.5 text-sm font-medium text-[#23403d]">
             <span className="flex items-center gap-1.5">
               <Phone className="h-3.5 w-3.5 text-[#769b97]" />
               Phone {otpChannel === "email" ? "(optional)" : "(required)"}
@@ -213,7 +213,7 @@ export function AdminSetupForm({ token }: AdminSetupFormProps) {
             />
           </label>
 
-          <label className="grid gap-1.5 text-sm font-medium text-[#23403d]">
+          <label className="grid min-w-0 grid-cols-1 gap-1.5 text-sm font-medium text-[#23403d]">
             <span className="flex items-center gap-1.5">
               <Lock className="h-3.5 w-3.5 text-[#769b97]" />
               Password
@@ -261,7 +261,7 @@ export function AdminSetupForm({ token }: AdminSetupFormProps) {
           </button>
         </div>
       ) : (
-        <div className="grid gap-4">
+        <div className="grid min-w-0 grid-cols-1 gap-4">
           <p className="text-sm text-[#769b97]">
             Enter the 6-digit OTP sent to{" "}
             {otpChannel === "email" ? "your email" : "your phone"}.
@@ -275,7 +275,7 @@ export function AdminSetupForm({ token }: AdminSetupFormProps) {
             ) : null}
           </p>
 
-          <label className="grid gap-1.5 text-sm font-medium text-[#23403d]">
+          <label className="grid min-w-0 grid-cols-1 gap-1.5 text-sm font-medium text-[#23403d]">
             OTP code
             <input
               value={otp}

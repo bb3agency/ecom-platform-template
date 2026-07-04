@@ -112,7 +112,7 @@ export default function OpsLoginPage() {
     >
       {step === "email" ? (
         <OpsCard>
-          <form onSubmit={handleRequestOtp} className="grid gap-5">
+          <form onSubmit={handleRequestOtp} className="grid min-w-0 grid-cols-1 gap-5">
             <OpsField label="Work email" htmlFor="ops-login-email">
               <OpsInput
                 id="ops-login-email"
@@ -142,7 +142,7 @@ export default function OpsLoginPage() {
         </OpsCard>
       ) : (
         <OpsCard>
-          <form onSubmit={handleVerify} className="grid gap-5">
+          <form onSubmit={handleVerify} className="grid min-w-0 grid-cols-1 gap-5">
             <OpsAlert tone="info">
               Code sent to <strong>{form.getValues("email")}</strong>. Check your inbox.
             </OpsAlert>

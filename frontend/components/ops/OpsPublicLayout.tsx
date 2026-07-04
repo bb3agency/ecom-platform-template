@@ -30,7 +30,7 @@ export function OpsPublicLayout({ title, description, children }: OpsPublicLayou
               Browser-session authentication, email OTP for privileged actions, and encrypted
               configuration overlays — aligned with the Fastify ops API contract.
             </p>
-            <ul className="grid gap-2 text-sm text-muted-foreground">
+            <ul className="grid min-w-0 grid-cols-1 gap-2 text-sm text-muted-foreground">
               <li>HttpOnly session cookies — no API keys in the browser</li>
               <li>Secondary OTP for config, load-shed, restarts, and user lifecycle</li>
               <li>Masked secrets and restart-aware config saves</li>

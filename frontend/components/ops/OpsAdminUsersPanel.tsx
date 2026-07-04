@@ -63,7 +63,7 @@ export function OpsAdminUsersPanel() {
   }
 
   return (
-    <div className="grid gap-6">
+    <div className="grid min-w-0 grid-cols-1 gap-6">
       {message ? <OpsAlert tone="success">{message}</OpsAlert> : null}
       {error ? <OpsAlert tone="error">{error}</OpsAlert> : null}
 

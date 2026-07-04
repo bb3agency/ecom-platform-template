@@ -35,7 +35,7 @@ export function OpsQueuesPanel() {
   const boardUrl = getOpsQueuesBoardUrl();
 
   return (
-    <div className="grid gap-6">
+    <div className="grid min-w-0 grid-cols-1 gap-6">
       <OpsCard>
         <OpsCardHeader
           title="Bull Board"
@@ -62,7 +62,7 @@ export function OpsQueuesPanel() {
 
       {summary ? (
         <>
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">
             <OpsStatCard
               label="Dead-letter total"
               value={summary.total}
@@ -79,7 +79,7 @@ export function OpsQueuesPanel() {
           {summary.total > 0 ? (
             <OpsCard>
               <OpsCardHeader title="Breakdown by source queue" />
-              <ul className="grid gap-2">
+              <ul className="grid min-w-0 grid-cols-1 gap-2">
                 {Object.entries(summary.bySourceQueue ?? {}).map(([queue, count]) => (
                   <li
                     key={queue}

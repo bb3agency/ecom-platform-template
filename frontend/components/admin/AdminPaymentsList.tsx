@@ -373,7 +373,7 @@ export function AdminPaymentsList({ from, to }: AdminPaymentsListProps = {}) {
         ) : detailError ? (
           <p className="text-sm text-destructive">{detailError}</p>
         ) : detail ? (
-          <dl className="grid gap-2 text-sm">
+          <dl className="grid min-w-0 grid-cols-1 gap-2 text-sm">
             <DetailRow label="Provider" value={detail.provider} />
             <DetailRow label="Status" value={detail.status} />
             <DetailRow label="Method" value={detail.method ?? "—"} />

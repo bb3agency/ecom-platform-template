@@ -164,8 +164,8 @@ export function StoreSettingsPanel() {
           </span>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="grid gap-1.5 min-w-0">
+        <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="grid min-w-0 grid-cols-1 gap-1.5 min-w-0">
             <span className="text-sm font-medium text-foreground">Store Name</span>
             <div className="flex min-w-0 items-center gap-2 rounded-lg border border-border bg-muted/40 px-3.5 py-2">
               <Store className="h-4 w-4 shrink-0 text-muted-foreground/60" aria-hidden />
@@ -176,7 +176,7 @@ export function StoreSettingsPanel() {
             </span>
           </div>
 
-          <div className="grid gap-1.5 min-w-0">
+          <div className="grid min-w-0 grid-cols-1 gap-1.5 min-w-0">
             <span className="text-sm font-medium text-foreground">Website URL</span>
             <div className="flex min-w-0 items-center gap-2 rounded-lg border border-border bg-muted/40 px-3.5 py-2">
               <span className="text-sm text-foreground truncate">{DEPLOYED_WEBSITE_URL}</span>
@@ -216,8 +216,8 @@ export function StoreSettingsPanel() {
               <div className="h-20 animate-pulse rounded-lg bg-muted/60" />
             </div>
           ) : (
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className="grid gap-1.5 text-sm font-medium text-foreground sm:col-span-2">
+            <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">
+              <label className="grid min-w-0 grid-cols-1 gap-1.5 text-sm font-medium text-foreground sm:col-span-2">
                 Seller Legal Name
                 <input
                   type="text"
@@ -230,7 +230,7 @@ export function StoreSettingsPanel() {
                 />
               </label>
 
-              <label className="grid gap-1.5 text-sm font-medium text-foreground sm:col-span-2">
+              <label className="grid min-w-0 grid-cols-1 gap-1.5 text-sm font-medium text-foreground sm:col-span-2">
                 Store Address
                 <textarea
                   rows={3}
@@ -247,7 +247,7 @@ export function StoreSettingsPanel() {
                 </span>
               </label>
 
-              <label className="grid gap-1.5 text-sm font-medium text-foreground">
+              <label className="grid min-w-0 grid-cols-1 gap-1.5 text-sm font-medium text-foreground">
                 Contact Phone
                 <input
                   type="tel"
@@ -265,7 +265,7 @@ export function StoreSettingsPanel() {
                 </span>
               </label>
 
-              <label className="grid gap-1.5 text-sm font-medium text-foreground">
+              <label className="grid min-w-0 grid-cols-1 gap-1.5 text-sm font-medium text-foreground">
                 Contact Email
                 <input
                   type="email"
@@ -283,7 +283,7 @@ export function StoreSettingsPanel() {
                 </span>
               </label>
 
-              <label className="grid gap-1.5 text-sm font-medium text-foreground sm:col-span-2">
+              <label className="grid min-w-0 grid-cols-1 gap-1.5 text-sm font-medium text-foreground sm:col-span-2">
                 Operating State
                 <input
                   type="text"
@@ -300,7 +300,7 @@ export function StoreSettingsPanel() {
                 </span>
               </label>
 
-              <label className="grid gap-1.5 text-sm font-medium text-foreground">
+              <label className="grid min-w-0 grid-cols-1 gap-1.5 text-sm font-medium text-foreground">
                 Facebook Link
                 <input
                   type="url"
@@ -317,7 +317,7 @@ export function StoreSettingsPanel() {
                 </span>
               </label>
 
-              <label className="grid gap-1.5 text-sm font-medium text-foreground">
+              <label className="grid min-w-0 grid-cols-1 gap-1.5 text-sm font-medium text-foreground">
                 Instagram Link
                 <input
                   type="url"
@@ -370,8 +370,8 @@ export function StoreSettingsPanel() {
               <div className="h-14 animate-pulse rounded-lg bg-muted/60" />
             </div>
           ) : (
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className="grid gap-1.5 text-sm font-medium text-foreground">
+            <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">
+              <label className="grid min-w-0 grid-cols-1 gap-1.5 text-sm font-medium text-foreground">
                 GSTIN
                 <input
                   type="text"
@@ -388,7 +388,7 @@ export function StoreSettingsPanel() {
                 </span>
               </label>
 
-              <label className="grid gap-1.5 text-sm font-medium text-foreground">
+              <label className="grid min-w-0 grid-cols-1 gap-1.5 text-sm font-medium text-foreground">
                 FSSAI License Number
                 <input
                   type="text"

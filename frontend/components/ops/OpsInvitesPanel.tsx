@@ -160,7 +160,7 @@ export function OpsInvitesPanel() {
   }
 
   return (
-    <div className="grid gap-6">
+    <div className="grid min-w-0 grid-cols-1 gap-6">
       {message ? <OpsAlert tone="success">{message}</OpsAlert> : null}
       {error ? <OpsAlert tone="error">{error}</OpsAlert> : null}
 
@@ -170,7 +170,7 @@ export function OpsInvitesPanel() {
             title="Create invite"
             description="Ops operators only — not for merchant admins. setupBaseUrl is storefront origin only (no path). New ops users receive OPS_READ + OPS_WRITE."
           />
-          <form onSubmit={handleCreate} className="grid gap-4 sm:grid-cols-2">
+          <form onSubmit={handleCreate} className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">
             <OpsField label="Email" htmlFor="invite-email">
               <OpsInput id="invite-email" name="email" type="email" required />
             </OpsField>
@@ -309,7 +309,7 @@ export function OpsInvitesPanel() {
             title="Create merchant admin invite"
             description="Bootstraps merchant admins at /admin/setup. Deactivated merchant admin emails can be re-invited here—the same account is reactivated (audit history kept)."
           />
-          <form onSubmit={handleCreateAdminInvite} className="grid gap-4 sm:grid-cols-2">
+          <form onSubmit={handleCreateAdminInvite} className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">
             <OpsField label="Admin email" htmlFor="admin-invite-email">
               <OpsInput id="admin-invite-email" name="email" type="email" required />
             </OpsField>
@@ -326,7 +326,7 @@ export function OpsInvitesPanel() {
             </OpsField>
             <div className="sm:col-span-2 grid gap-2">
               <p className="text-sm font-medium">Permissions</p>
-              <div className="grid gap-2 sm:grid-cols-2">
+              <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2">
                 {ADMIN_PERMISSION_CHOICES.map((permission) => (
                   <label key={permission} className="flex items-center gap-2 text-xs text-muted-foreground">
                     <input

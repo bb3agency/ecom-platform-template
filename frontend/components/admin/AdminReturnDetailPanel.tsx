@@ -249,7 +249,7 @@ export function AdminReturnDetailPanel({ returnId }: AdminReturnDetailPanelProps
         <div className="border-b border-border/40 px-4 py-3">
           <h2 className="text-sm font-semibold text-foreground">Request Details</h2>
         </div>
-        <div className="grid gap-4 p-4 sm:grid-cols-2">
+        <div className="grid min-w-0 grid-cols-1 gap-4 p-4 sm:grid-cols-2">
           <InfoRow icon={User} label="Customer">
             {detail.customerName}
           </InfoRow>
