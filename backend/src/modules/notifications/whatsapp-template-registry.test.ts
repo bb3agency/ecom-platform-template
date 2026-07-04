@@ -89,3 +89,31 @@ describe('WhatsappTemplateRegistry', () => {
     expect(registry.resolve('OpsActionOtp', { otp: '123456' })).toBeNull();
   });
 });
+
+describe('AdminNewOrder whatsapp mapping', () => {
+  it('resolves admin_new_order with store, order ref, customer, and amount line', () => {
+    const registry = new WhatsappTemplateRegistry();
+    const data = WhatsappTemplateRegistry.composeTemplateData(
+      {
+        orderId: 'uuid-1',
+        orderNumber: 'ORD-2026-00001',
+        customerName: 'Dhanush Ram',
+        amount: 'Rs 450.00',
+        paymentMode: 'PREPAID'
+      },
+      'Raghava Organics'
+    );
+    const resolved = registry.resolve('AdminNewOrder', data);
+    expect(resolved?.metaName).toBe('admin_new_order');
+    expect(resolved?.parameters).toEqual([
+      'Raghava Organics',
+      'ORD-2026-00001',
+      'Dhanush Ram',
+      'Rs 450.00 - PREPAID'
+    ]);
+  });
+
+  it('amount line falls back when amount/paymentMode missing (Meta rejects empty params)', () => {
+    expect(WhatsappTemplateRegistry.composeOrderAmountLine({})).toBe('see admin panel');
+  });
+});

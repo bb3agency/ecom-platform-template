@@ -10,6 +10,7 @@ import {
   OrderCancelledEmail,
   ReturnRequestUpdateEmail,
   OrderConfirmedEmail,
+  AdminNewOrderEmail,
   OrderDeliveredEmail,
   OrderShippedEmail,
   OutForDeliveryEmail,
@@ -27,6 +28,7 @@ export const supportedEmailTemplates = [
   'OutForDelivery',
   'OrderDelivered',
   'OrderCancelled',
+  'AdminNewOrder',
   'ReturnRequestUpdate',
   'LowStockAlert',
   'OtpVerification',
@@ -83,6 +85,15 @@ export async function renderNotificationEmail(template: string, data: Record<str
       return {
         subject: `Your order ${orderRef} has been shipped`,
         html: await render(OrderShippedEmail(orderRef, shippedOptions))
+      };
+    }
+    case 'AdminNewOrder': {
+      const customerName = typeof data.customerName === 'string' && data.customerName.trim() ? escapeHtml(data.customerName.trim()) : 'A customer';
+      const amount = typeof data.amount === 'string' ? escapeHtml(data.amount) : '';
+      const paymentMode = typeof data.paymentMode === 'string' ? escapeHtml(data.paymentMode) : '';
+      return {
+        subject: 'New order ' + orderRef + ' — ' + (amount || 'review in admin panel'),
+        html: await render(AdminNewOrderEmail({ orderRef, customerName, amount, paymentMode }))
       };
     }
     case 'OutForDelivery':

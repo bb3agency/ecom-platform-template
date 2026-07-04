@@ -171,6 +171,81 @@ async function enqueueOutboxOrQueue(
   await queue.add(jobName, payload, safeJobId ? { jobId: safeJobId } : undefined);
 }
 
+/**
+ * Fans out an AdminNewOrder notification to every ADMIN user who opted in
+ * (orderNotificationsEnabled), on each of their selected channels. Channels
+ * are per-admin — deliberately NOT routed through send-primary (which uses the
+ * store-wide per-template channel map).
+ */
+async function enqueueAdminNewOrderNotifications(
+  prisma: RealPrismaClient,
+  notificationsQueue: { add: (name: string, data: Record<string, unknown>, opts?: { jobId?: string }) => Promise<unknown> },
+  orderId: string
+): Promise<void> {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: {
+      id: true,
+      orderNumber: true,
+      total: true,
+      paymentMode: true,
+      shippingAddress: true,
+      user: { select: { firstName: true, lastName: true, email: true } }
+    }
+  });
+  if (!order) return;
+
+  const admins = await prisma.user.findMany({
+    where: { role: 'ADMIN', isBanned: false, orderNotificationsEnabled: true },
+    select: { id: true, email: true, phone: true, orderNotificationChannels: true }
+  });
+  if (admins.length === 0) return;
+
+  const shippingName =
+    order.shippingAddress && typeof order.shippingAddress === 'object' && !Array.isArray(order.shippingAddress)
+      ? String((order.shippingAddress as Record<string, unknown>).fullName ?? '').trim()
+      : '';
+  const customerName =
+    [order.user?.firstName, order.user?.lastName].filter(Boolean).join(' ').trim() ||
+    shippingName ||
+    order.user?.email ||
+    'Customer';
+  const amount = `Rs ${(order.total / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  const payload = {
+    orderId: order.id,
+    orderNumber: order.orderNumber,
+    customerName,
+    amount,
+    paymentMode: order.paymentMode
+  };
+
+  for (const admin of admins) {
+    const channels = new Set(admin.orderNotificationChannels);
+    if (channels.has('EMAIL') && admin.email?.trim()) {
+      await enqueueOutboxOrQueue(prisma, 'notifications', 'send-email', {
+        to: admin.email,
+        template: 'AdminNewOrder',
+        data: payload
+      }, notificationsQueue, `admin-new-order-email-${order.id}-${admin.id}`);
+    }
+    if (channels.has('WHATSAPP') && admin.phone?.trim()) {
+      await enqueueOutboxOrQueue(prisma, 'notifications', 'send-whatsapp', {
+        phone: admin.phone,
+        template: 'AdminNewOrder',
+        data: payload
+      }, notificationsQueue, `admin-new-order-whatsapp-${order.id}-${admin.id}`);
+    }
+    if (channels.has('SMS') && admin.phone?.trim()) {
+      await enqueueOutboxOrQueue(prisma, 'notifications', 'send-sms', {
+        phone: admin.phone,
+        template: 'AdminNewOrder',
+        data: payload
+      }, notificationsQueue, `admin-new-order-sms-${order.id}-${admin.id}`);
+    }
+  }
+}
+
 async function updateOrderStatusWithCasCompat(
   tx: Prisma.TransactionClient,
   input: {
@@ -792,6 +867,28 @@ async function handleProcessOrderUpdate(
         providerOrderId: data.providerOrderId ?? ''
       }
     }, notificationsQueue, `notifications-primary-${sideEffectsTarget.id}-OrderConfirmed`);
+  }
+
+  // Per-admin opt-in "new order" alerts: every ADMIN who enabled
+  // orderNotificationsEnabled gets an AdminNewOrder notification on each of
+  // their selected channels. Best-effort — a failure here never blocks the
+  // customer-facing side effects.
+  try {
+    await enqueueAdminNewOrderNotifications(prisma, notificationsQueue, sideEffectsTarget.id);
+  } catch (adminNotifyError) {
+    await sendTechnicalFailureAlert({
+      prisma,
+      template: 'AdminNewOrder',
+      channel: 'UNKNOWN',
+      recipient: sideEffectsTarget.id,
+      errorMessage:
+        adminNotifyError instanceof Error ? adminNotifyError.message : 'Unknown admin notify error',
+      failureStage: 'QUEUE_ENQUEUE',
+      domain: 'orders',
+      component: 'admin-new-order-notifications',
+      queueName: 'notifications',
+      jobName: 'admin-new-order'
+    });
   }
 
   if (featureFlags.gstInvoicing) {

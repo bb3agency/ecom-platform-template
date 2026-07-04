@@ -200,6 +200,10 @@ model User {
   adminAuditLogs AdminAuditLog[]
   returnRequests ReturnRequest[]
   isBanned     Boolean   @default(false)
+  // Per-ADMIN opt-in: notify this admin when a customer places an order, on the
+  // selected channels (EMAIL / WHATSAPP / SMS). Ignored for CUSTOMER rows.
+  orderNotificationsEnabled Boolean  @default(false)
+  orderNotificationChannels String[] @default([])
   bannedAt     DateTime?
   bannedReason String?
   adminNotes   UserAdminNote[]

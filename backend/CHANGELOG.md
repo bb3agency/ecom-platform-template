@@ -12,6 +12,24 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.57] — 2026-07-04
+
+### Added
+- **Per-admin opt-in new-order notifications.** New `User` columns `orderNotificationsEnabled` + `orderNotificationChannels` (additive migration `20260704150000_add_admin_order_notification_prefs`). Self-service endpoints `GET/PATCH /api/v1/admin/me/notification-preferences` (any active admin, no extra permission; validates a phone exists before enabling WhatsApp/SMS and an email before EMAIL). On every order confirmation (PREPAID capture + COD — both flow through `process-order-update`), the order-processing worker fans out an `AdminNewOrder` notification to each opted-in admin on exactly their selected channels (per-admin channels — deliberately NOT the store-wide `send-primary` routing). New `AdminNewOrder` template across email (React Email component), SMS registry, and WhatsApp registry (`admin_new_order`, params: store, order ref, customer, "amount - payment mode" line).
+
+### Changed
+- **Removed the store-contact "order shipped" alert** (`enqueueMerchantShipmentNotifications`) — admins were getting an OrderShipped message for shipments they had just created themselves. Replaced by the opt-in new-order alerts above.
+
+### Fixed
+- **Delhivery "Not Picked" tracking status now maps to BOOKED** (it is the manifested-awaiting-pickup state) — Sync no longer reports "has no mapped internal status" for freshly-booked AWBs.
+
+**Propagation:**
+- Severity: NORMAL · Layers: backend (`prisma` + migration, `modules/users/*`, `modules/notifications/*`, `queues/workers/order-processing.worker.ts`, `common/orders/webhook-status-mappers.ts`, `modules/orders/orders.service.ts`)
+- Migration: YES (additive — two columns on "User", `prisma migrate deploy`, no backfill) · Flag: none (feature is per-admin opt-in, OFF by default) · Design impact: none · Breaking: NO
+- Rollback: revert files + drop the two columns
+- Operator note: the `admin_new_order` WhatsApp template must be created + approved in Meta WhatsApp Manager before the WHATSAPP channel delivers (EMAIL/SMS work immediately). See `docs/WHATSAPP_TEMPLATE_REGISTRY.md`.
+- Pairs with frontend-core 0.1.35 (opt-in UI).
+
 ## [0.1.56] — 2026-07-04
 
 ### Fixed

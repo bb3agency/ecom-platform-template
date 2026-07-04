@@ -731,3 +731,33 @@ export function ProcessRestartAlertEmail(args: {
     SecurityNote('If you did not authorize this restart, investigate immediately. Check the Ops Console audit log for details.')
   );
 }
+
+// ─── Merchant/admin-facing templates ─────────────────────────────────────────
+
+/** Sent to admins who opted in to per-admin new-order notifications. */
+export function AdminNewOrderEmail(input: {
+  orderRef: string;
+  customerName: string;
+  amount: string;
+  paymentMode: string;
+}): ReactElement {
+  return Wrapper(
+    StatusBadge('New Order', B.successGreen, B.successBg),
+    Heading('A new order just came in!'),
+    Body(`${input.customerName} placed order ${input.orderRef}. Open the admin panel to review and process it.`),
+    InfoBox(
+      el('table', { width: '100%', cellPadding: 0, cellSpacing: 0 },
+        el('tbody', null,
+          InfoRow('Order ID', input.orderRef),
+          InfoRow('Customer', input.customerName),
+          InfoRow('Amount', input.amount),
+          InfoRow('Payment', input.paymentMode)
+        )
+      ),
+      B.successBg, B.successBorder
+    ),
+    el('p', { style: { fontSize: '13px', color: B.textMuted, margin: '24px 0 0', lineHeight: '1.6' } },
+      'You are receiving this because you enabled new-order notifications in Admin → Settings → Notifications. You can opt out there at any time.'
+    )
+  );
+}

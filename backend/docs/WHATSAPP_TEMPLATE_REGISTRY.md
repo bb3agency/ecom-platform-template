@@ -51,6 +51,16 @@ set its entry in the notifications `primaryChannels` config to `WHATSAPP`.
 | `OrderCancelled`     | `order_cancelled`  | `{{1}}` storeName, `{{2}}` orderId |
 | `PaymentFailed`      | `payment_failed`   | `{{1}}` storeName, `{{2}}` orderId |
 | `ReturnRequestUpdate` | `return_request_update` | `{{1}}` storeName, `{{2}}` orderId, `{{3}}` returnStatusLine |
+| `AdminNewOrder`      | `admin_new_order`  | `{{1}}` storeName, `{{2}}` orderId, `{{3}}` customerName, `{{4}}` orderAmountLine ("Rs 450.00 - PREPAID") |
+
+### `admin_new_order`
+**Merchant-facing alert (2026-07-04):** sent ONLY to admin users who opted in via
+Admin → Settings → Notifications → "Notify me about new orders" — never to customers.
+Fired at order confirmation (order-processing worker) once per opted-in admin per
+selected channel. `{{4}}` is a composed "amount - payment mode" line (never empty —
+falls back to "see admin panel"). Category: Utility. The old store-contact
+"order shipped" alert (`enqueueMerchantShipmentNotifications`) was removed in the
+same change.
 
 ### `otp_verify`
 **Category:** **Authentication** (Meta REJECTS verification-code content in Utility — the

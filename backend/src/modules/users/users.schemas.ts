@@ -572,3 +572,52 @@ export const adminDeleteUserNoteSchema = {
   }
 } as const;
 
+
+const adminNotificationPreferencesResponseSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['enabled', 'channels', 'email', 'phone'],
+  properties: {
+    enabled: { type: 'boolean' },
+    channels: {
+      type: 'array',
+      maxItems: 3,
+      items: { type: 'string', enum: ['EMAIL', 'WHATSAPP', 'SMS'] }
+    },
+    // Own contact points, so the UI can warn when WHATSAPP/SMS is selected
+    // without a phone number on file.
+    email: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    phone: { anyOf: [{ type: 'string' }, { type: 'null' }] }
+  }
+} as const;
+
+export const getAdminNotificationPreferencesSchema = {
+  params: emptyParamsSchema,
+  querystring: emptyQuerystringSchema,
+  response: {
+    200: adminNotificationPreferencesResponseSchema,
+    ...standardAdminErrorResponses
+  }
+} as const;
+
+export const updateAdminNotificationPreferencesSchema = {
+  params: emptyParamsSchema,
+  querystring: emptyQuerystringSchema,
+  body: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['enabled', 'channels'],
+    properties: {
+      enabled: { type: 'boolean' },
+      channels: {
+        type: 'array',
+        maxItems: 3,
+        items: { type: 'string', enum: ['EMAIL', 'WHATSAPP', 'SMS'] }
+      }
+    }
+  },
+  response: {
+    200: adminNotificationPreferencesResponseSchema,
+    ...standardAdminErrorResponses
+  }
+} as const;

@@ -5,6 +5,9 @@ let failedHandler: ((job: unknown, error: Error) => void) | undefined;
 const state = {
   processor: undefined as undefined | ((job: { name: string; data: unknown }) => Promise<void>),
   notificationsAdd: vi.fn(),
+  // Top-level prisma (outside $transaction) — admin new-order fan-out reads these.
+  topOrderFindUnique: vi.fn(),
+  adminFindMany: vi.fn(),
   paymentFindFirst: vi.fn(),
   tx: {
     $executeRaw: vi.fn(),
@@ -60,6 +63,12 @@ function MockPrismaClient() {
     },
     payment: {
       findFirst: state.paymentFindFirst
+    },
+    order: {
+      findUnique: state.topOrderFindUnique
+    },
+    user: {
+      findMany: state.adminFindMany
     }
   };
 }
@@ -117,6 +126,10 @@ describe('order-processing worker error and retry behavior', () => {
     state.tx.invoice.findUnique.mockReset();
     state.tx.invoice.create.mockReset();
     state.notificationsAdd.mockReset();
+    state.topOrderFindUnique.mockReset();
+    state.adminFindMany.mockReset();
+    state.adminFindMany.mockResolvedValue([]);
+    state.topOrderFindUnique.mockResolvedValue(null);
     state.tx.couponUsage.findUnique.mockResolvedValue(null);
     state.tx.couponUsage.findMany.mockResolvedValue([]);
     state.tx.cart.findFirst.mockResolvedValue({ id: 'cart_1' });
@@ -198,6 +211,69 @@ describe('order-processing worker error and retry behavior', () => {
     );
     expect(state.tx.order.updateMany).not.toHaveBeenCalled();
     expect(state.tx.inventory.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('fans out AdminNewOrder to opted-in admins on their selected channels only', async () => {
+    boot();
+    state.tx.order.findUnique.mockResolvedValue({
+      id: 'order_1',
+      orderNumber: 'ORD-2026-00001',
+      userId: 'user_1',
+      status: 'PENDING_PAYMENT',
+      discountAmount: 0,
+      coupons: [],
+      user: { email: 'customer@example.com', phone: '9999999999' },
+      items: [{ variantId: 'variant_1', quantity: 1 }],
+      payment: { id: 'payment_1', status: 'CREATED' }
+    });
+    state.tx.order.updateMany.mockResolvedValue({ count: 1 });
+    state.tx.inventory.updateMany.mockResolvedValue({ count: 1 });
+    state.tx.payment.update.mockResolvedValue(undefined);
+    state.tx.orderStatusHistory.create.mockResolvedValue(undefined);
+    // Order details for the admin alert payload (top-level read, outside tx).
+    state.topOrderFindUnique.mockResolvedValue({
+      id: 'order_1',
+      orderNumber: 'ORD-2026-00001',
+      total: 45000,
+      paymentMode: 'PREPAID',
+      shippingAddress: { fullName: 'Dhanush Ram' },
+      user: { firstName: 'Dhanush', lastName: 'Ram', email: 'customer@example.com' }
+    });
+    // Two opted-in admins with different channels; a third opted out is not returned.
+    state.adminFindMany.mockResolvedValue([
+      { id: 'admin_1', email: 'a1@example.com', phone: '9888800001', orderNotificationChannels: ['EMAIL', 'WHATSAPP'] },
+      { id: 'admin_2', email: 'a2@example.com', phone: null, orderNotificationChannels: ['WHATSAPP', 'SMS'] }
+    ]);
+
+    await state.processor?.({
+      name: 'process-order-update',
+      data: { orderId: 'order_1', toStatus: 'CONFIRMED', triggeredBy: 'PAYMENT_WEBHOOK', providerPaymentId: 'pay_1', providerOrderId: 'order_1' }
+    });
+
+    expect(state.adminFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { role: 'ADMIN', isBanned: false, orderNotificationsEnabled: true }
+      })
+    );
+    expect(state.notificationsAdd).toHaveBeenCalledWith(
+      'send-email',
+      expect.objectContaining({
+        to: 'a1@example.com',
+        template: 'AdminNewOrder',
+        data: expect.objectContaining({ orderNumber: 'ORD-2026-00001', customerName: 'Dhanush Ram', paymentMode: 'PREPAID' })
+      }),
+      expect.objectContaining({ jobId: 'admin-new-order-email-order_1-admin_1' })
+    );
+    expect(state.notificationsAdd).toHaveBeenCalledWith(
+      'send-whatsapp',
+      expect.objectContaining({ phone: '9888800001', template: 'AdminNewOrder' }),
+      expect.objectContaining({ jobId: 'admin-new-order-whatsapp-order_1-admin_1' })
+    );
+    // admin_2 has no phone → WHATSAPP/SMS silently skipped, and no email selected.
+    const admin2Calls = state.notificationsAdd.mock.calls.filter(
+      (call) => JSON.stringify(call).includes('admin_2')
+    );
+    expect(admin2Calls).toHaveLength(0);
   });
 
   it('process-order-update confirms order, deducts inventory and enqueues side effects', async () => {

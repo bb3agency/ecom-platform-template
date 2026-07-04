@@ -105,7 +105,14 @@ export function mapShipmentWebhookStatus(status: string): ShipmentStatus | null 
   if (normalized === 'MIS') return SHIPMENT_STATUS.IN_TRANSIT; // Misrouted — still in transit
 
   // Delhivery + Shiprocket shared human-readable mappings
-  if (normalized === 'BOOKED' || normalized === 'MANIFESTED' || normalized === 'MANIFEST_GENERATED') {
+  // "Not Picked" is Delhivery's manifested-but-awaiting-pickup state (AWB
+  // booked, courier hasn't collected) — same bucket as Manifested.
+  if (
+    normalized === 'BOOKED' ||
+    normalized === 'MANIFESTED' ||
+    normalized === 'MANIFEST_GENERATED' ||
+    normalized === 'NOT_PICKED'
+  ) {
     return SHIPMENT_STATUS.BOOKED;
   }
   if (normalized === 'SHIPPED' || normalized === 'DISPATCHED' || normalized === 'SHIPMENT_DISPATCHED') return SHIPMENT_STATUS.IN_TRANSIT;

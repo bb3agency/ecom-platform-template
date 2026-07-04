@@ -118,6 +118,13 @@ export class WhatsappTemplateRegistry {
         language: 'en',
         params: ['storeName', 'orderId']
       },
+      // Merchant/admin alert: sent only to admins who opted in (per-admin
+      // channel prefs). Params: store, order ref, customer, amount+mode line.
+      AdminNewOrder: {
+        metaName: 'admin_new_order',
+        language: 'en',
+        params: ['storeName', 'orderId', 'customerName', 'orderAmountLine']
+      },
       // Return-request decision updates (approved / declined / picked up / refunded).
       // {{3}} is a full human-readable status line composed by the service so the SAME
       // approved Utility template covers every lifecycle stage.
@@ -143,8 +150,18 @@ export class WhatsappTemplateRegistry {
       // internal UUID. Enqueue sites pass both `orderId` (uuid) and `orderNumber`; prefer the
       // latter so customers see the same reference shown in their account + admin.
       orderId: WhatsappTemplateRegistry.resolveOrderRef(input),
-      trackingInfo: trackingUrl.length > 0 ? trackingUrl : 'your account orders page'
+      trackingInfo: trackingUrl.length > 0 ? trackingUrl : 'your account orders page',
+      // AdminNewOrder {{4}}: 'Rs 1,234.00 - PREPAID' (Meta rejects empty params).
+      orderAmountLine: WhatsappTemplateRegistry.composeOrderAmountLine(input)
     };
+  }
+
+  /** 'amount - paymentMode' line for the admin new-order template; never empty. */
+  static composeOrderAmountLine(input: TemplateData): string {
+    const amount = typeof input.amount === 'string' ? input.amount.trim() : '';
+    const paymentMode = typeof input.paymentMode === 'string' ? input.paymentMode.trim() : '';
+    const line = [amount, paymentMode].filter(Boolean).join(' - ');
+    return line.length > 0 ? line : 'see admin panel';
   }
 
   /** Human-readable order reference: orderNumber when present, else the raw orderId. */

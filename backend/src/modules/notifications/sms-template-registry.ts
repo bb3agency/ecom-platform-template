@@ -33,6 +33,8 @@ export class SmsTemplateRegistry {
         '{{storeName}}: Your order {{orderId}} has been cancelled. If a payment was made, your refund will be processed within 5-7 business days. Contact support for help.',
       ReturnRequestUpdate:
         '{{storeName}}: Update on your return for order {{orderId}}: {{returnStatusLine}}. See your account orders page for details.',
+      AdminNewOrder:
+        '{{storeName}} Admin: New order {{orderId}} placed by {{customerName}} for {{amount}} ({{paymentMode}}). Open the admin panel to process it.',
       PaymentFailed:
         '{{storeName}} Payment Alert: Payment for order {{orderId}} could not be processed. Please retry payment from your order page to avoid cancellation.',
       FailedDelivery:

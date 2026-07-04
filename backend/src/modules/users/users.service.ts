@@ -710,5 +710,81 @@ export class UsersService {
 
     return { deleted: true, noteId };
   }
+
+  /** Own new-order notification preferences (any active admin — no extra permission). */
+  async getAdminNotificationPreferences(adminId: string) {
+    const admin = await this.fastify.prisma.user.findUnique({
+      where: { id: adminId },
+      select: {
+        email: true,
+        phone: true,
+        orderNotificationsEnabled: true,
+        orderNotificationChannels: true
+      }
+    });
+    if (!admin) {
+      throw new AppError(ERROR_CODES.NOT_FOUND, 'Admin not found', 404);
+    }
+    return {
+      enabled: admin.orderNotificationsEnabled,
+      channels: admin.orderNotificationChannels,
+      email: admin.email,
+      phone: admin.phone
+    };
+  }
+
+  async updateAdminNotificationPreferences(
+    adminId: string,
+    input: { enabled: boolean; channels: Array<'EMAIL' | 'WHATSAPP' | 'SMS'> }
+  ) {
+    const channels = [...new Set(input.channels)];
+    if (input.enabled && channels.length === 0) {
+      throw new AppError(
+        ERROR_CODES.VALIDATION_ERROR,
+        'Select at least one channel to enable new-order notifications',
+        400
+      );
+    }
+
+    const existing = await this.fastify.prisma.user.findUnique({
+      where: { id: adminId },
+      select: { email: true, phone: true }
+    });
+    if (!existing) {
+      throw new AppError(ERROR_CODES.NOT_FOUND, 'Admin not found', 404);
+    }
+    if (input.enabled) {
+      if (channels.includes('EMAIL') && !existing.email?.trim()) {
+        throw new AppError(ERROR_CODES.VALIDATION_ERROR, 'Your admin account has no email address — cannot enable EMAIL notifications', 400);
+      }
+      if ((channels.includes('WHATSAPP') || channels.includes('SMS')) && !existing.phone?.trim()) {
+        throw new AppError(
+          ERROR_CODES.VALIDATION_ERROR,
+          'Your admin account has no phone number on file — cannot enable WhatsApp/SMS notifications',
+          400
+        );
+      }
+    }
+
+    const updated = await this.fastify.prisma.user.update({
+      where: { id: adminId },
+      data: {
+        orderNotificationsEnabled: input.enabled,
+        orderNotificationChannels: channels
+      },
+      select: {
+        email: true,
+        phone: true,
+        orderNotificationsEnabled: true,
+        orderNotificationChannels: true
+      }
+    });
+    return {
+      enabled: updated.orderNotificationsEnabled,
+      channels: updated.orderNotificationChannels,
+      email: updated.email,
+      phone: updated.phone
+    };
+  }
 }
 

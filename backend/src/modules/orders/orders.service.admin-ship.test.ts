@@ -47,7 +47,7 @@ function buildOrder(overrides?: Partial<Record<string, unknown>>) {
 }
 
 describe('OrdersService admin ship enqueue', () => {
-  it('enqueues create-shipment and merchant primary notification', async () => {
+  it('enqueues create-shipment WITHOUT the removed merchant shipped-notification', async () => {
     const shippingAdd = vi.fn().mockResolvedValue(undefined);
     const notificationAdd = vi.fn().mockResolvedValue(undefined);
     const order = buildOrder();
@@ -91,18 +91,9 @@ describe('OrdersService admin ship enqueue', () => {
       }),
       undefined
     );
-    expect(notificationAdd).toHaveBeenCalledWith(
-      'send-primary',
-      expect.objectContaining({
-        email: 'merchant@example.com',
-        phone: '9888877777',
-        template: 'OrderShipped',
-        data: { orderId: 'order_1', orderNumber: 'ORD-2026-00001' }
-      }),
-      expect.objectContaining({
-        jobId: 'merchant-notifications-primary-order_1-OrderShipped'
-      })
-    );
+    // The store-contact "order shipped" alert was removed (2026-07-04) in favour
+    // of per-admin opt-in AdminNewOrder notifications at order placement.
+    expect(notificationAdd).not.toHaveBeenCalled();
     expect(result).toEqual(
       expect.objectContaining({
         id: 'order_1',

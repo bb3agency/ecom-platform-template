@@ -201,66 +201,9 @@ export class OrdersService {
     return { canShipNow: true, shipBlockReason: null };
   }
 
-  private async enqueueMerchantShipmentNotifications(orderId: string): Promise<void> {
-    let merchantRecipient = 'merchant-contact-missing';
-    try {
-      const [settings, order] = await Promise.all([
-        this.fastify.prisma.storeSettings.findUnique({
-          where: { singletonKey: 'default' },
-          select: { contactEmail: true, contactPhone: true }
-        }),
-        this.fastify.prisma.order.findUnique({
-          where: { id: orderId },
-          select: { orderNumber: true }
-        })
-      ]);
-      const merchantPhone = settings?.contactPhone?.trim() ?? null;
-      const merchantEmail = settings?.contactEmail?.trim().toLowerCase() ?? null;
-      merchantRecipient = merchantEmail ?? merchantPhone ?? merchantRecipient;
-      if (!merchantPhone && !merchantEmail) {
-        return;
-      }
-
-      await this.enqueueOutboxMessage(
-        'notifications',
-        'send-primary',
-        {
-          email: merchantEmail,
-          phone: merchantPhone,
-          template: 'OrderShipped',
-          // orderNumber → human-readable ref in the message body (not the UUID).
-          data: { orderId, orderNumber: order?.orderNumber ?? orderId }
-        },
-        `merchant:notifications:primary:${orderId}:OrderShipped`
-      );
-    } catch (error) {
-      await sendTechnicalFailureAlert({
-        prisma: this.fastify.prisma,
-        template: 'OrderShipped',
-        channel: 'UNKNOWN',
-        recipient: merchantRecipient,
-        errorMessage:
-          error instanceof Error
-            ? error.message
-            : 'Unknown merchant shipment notification enqueue error',
-        failureStage: 'QUEUE_ENQUEUE',
-        domain: 'orders',
-        component: 'enqueue-merchant-shipment-notifications',
-        queueName: 'notifications',
-        jobName: 'send-primary'
-      });
-      this.fastify.log.error(
-        {
-          orderId,
-          error:
-            error instanceof Error
-              ? error.message
-              : 'Unknown merchant shipment notification enqueue error'
-        },
-        'Failed to enqueue merchant shipment notifications'
-      );
-    }
-  }
+  // (Removed 2026-07-04) enqueueMerchantShipmentNotifications: the store-contact
+  // "order shipped" alert is replaced by per-admin opt-in AdminNewOrder
+  // notifications on order placement (see order-processing.worker).
 
   private secureTokenMatch(actual: string | undefined, expected: string): boolean {
     if (!actual) {
@@ -2966,8 +2909,6 @@ export class OrdersService {
     } catch {
       throw new AppError(ERROR_CODES.INTERNAL_ERROR, 'Unable to enqueue shipment booking', 502);
     }
-
-    await this.enqueueMerchantShipmentNotifications(existing.id);
 
     return this.serializeOrder(existing);
   }

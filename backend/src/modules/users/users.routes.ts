@@ -22,7 +22,9 @@ import {
   listAddressesSchema,
   listOrdersSchema,
   patchMeSchema,
-  updateAddressSchema
+  updateAddressSchema,
+  getAdminNotificationPreferencesSchema,
+  updateAdminNotificationPreferencesSchema
 } from './users.schemas';
 import { UsersService } from './users.service';
 
@@ -144,6 +146,39 @@ export async function registerUsersRoutes(fastify: FastifyInstance): Promise<voi
   );
 
   const adminGuard = [jwtAuthGuard, rolesGuard(Role.ADMIN)];
+
+  // Own new-order notification preferences — any active admin manages their own
+  // opt-in + channels (no adminPermissionGuard: strictly self-service).
+  fastify.get(
+    '/api/v1/admin/me/notification-preferences',
+    {
+      schema: getAdminNotificationPreferencesSchema,
+      preHandler: adminGuard,
+      config: {
+        rateLimit: routeRateLimitProfiles.adminRead
+      }
+    },
+    async (request) => {
+      const user = getCurrentUser(request);
+      return usersService.getAdminNotificationPreferences(user.sub);
+    }
+  );
+
+  fastify.patch(
+    '/api/v1/admin/me/notification-preferences',
+    {
+      schema: updateAdminNotificationPreferencesSchema,
+      preHandler: [...adminGuard, idempotencyPreHandler],
+      config: {
+        rateLimit: routeRateLimitProfiles.adminWrite
+      }
+    },
+    async (request) => {
+      const user = getCurrentUser(request);
+      return usersService.updateAdminNotificationPreferences(user.sub, request.body as never);
+    }
+  );
+
 
   fastify.get(
     '/api/v1/admin/users',

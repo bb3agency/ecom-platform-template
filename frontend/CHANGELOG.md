@@ -12,6 +12,17 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.35] — 2026-07-04
+
+### Added
+- **"Notify me about new orders" panel** (Admin → Settings → Notifications, above the store-wide routing). Personal per-admin opt-in with EMAIL / WHATSAPP / SMS channel checkboxes, wired to `GET/PATCH /admin/me/notification-preferences`. Saves instantly on toggle; WhatsApp/SMS options are disabled with a hint when the admin account has no phone number; enabling with nothing selected defaults to EMAIL; a failed save reloads server truth so the toggles never lie.
+
+**Propagation:**
+- Severity: NORMAL · Layers: frontend (`components/admin/AdminMyOrderAlertsPanel.tsx`, notifications settings page)
+- Migration: NO · Flag: none (per-admin opt-in, OFF by default) · Design impact: none · Breaking: NO
+- Rollback: revert the two files
+- Pairs with backend-core 0.1.57 (prefs endpoints + AdminNewOrder fan-out).
+
 ## [0.1.34] — 2026-07-04
 
 ### Fixed
