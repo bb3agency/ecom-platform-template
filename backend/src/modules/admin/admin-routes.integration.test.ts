@@ -263,12 +263,14 @@ describe('admin routes integration', () => {
 
   it('POST /admin/shipments/:id/sync allows user with orders:write', async () => {
     const app = createApp();
+    // Mirrors the REAL adminSyncShipmentStatus return shape (the response
+    // schema is pinned to it — a mismatched mock here previously masked a
+    // serializer 500 in production).
     vi.spyOn(OrdersService.prototype, 'adminSyncShipmentStatus').mockResolvedValue({
-      id: 'ship-123',
-      status: 'IN_TRANSIT',
-      awbNumber: 'AWB001',
-      trackingUrl: null,
-      updatedAt: new Date().toISOString()
+      synced: true,
+      message: 'Synced: BOOKED → IN_TRANSIT',
+      shipmentStatus: 'IN_TRANSIT',
+      orderStatus: 'SHIPPED'
     } as never);
     const prisma = {
       $connect: vi.fn(),
