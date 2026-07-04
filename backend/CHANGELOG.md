@@ -12,6 +12,18 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.54] — 2026-07-04
+
+### Fixed
+- **Completed the admin rate-limit raise across every mirror the guardrails check:** `backend/nginx/rate-zones.conf.template` (api_admin 60r/m → 180r/m) and `client.conf.template` (api_admin burst 15 → 40, all three locations) now match `edge-policy.ts`; `backend/nginx/**` added to the core-sync manifest (it was unsynced — same trap as TRD.md in 0.1.53, so clients received the parity check but not the nginx templates it validates).
+
+**Propagation:**
+- Severity: LOW · Layers: backend (`backend/nginx/*`, `core-manifest.json`)
+- Migration: NO · Flag: none · Design impact: none · Breaking: NO
+- Ops note: redeploy regenerates the live Nginx conf from the templates; if a client VPS has a hand-edited copy, update api_admin to 180r/m burst 40.
+- Rollback: revert the two nginx templates + manifest line
+
+
 ## [0.1.53] — 2026-07-04
 
 ### Fixed
