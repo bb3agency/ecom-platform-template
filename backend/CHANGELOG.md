@@ -12,6 +12,17 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.53] — 2026-07-04
+
+### Fixed
+- **0.1.52 still failed the docs-runtime drift gate in client CI** — `backend/TRD.md` was never part of the core-sync manifest, so clients received the updated drift-check script but not the TRD it validates. Added `backend/TRD.md` to `core-manifest.json` backendCore includes; the sync now carries the doc with the script. Supersedes the 0.1.52 sync PRs.
+
+**Propagation:**
+- Severity: LOW · Layers: platform (`core-manifest.json`)
+- Migration: NO · Flag: none · Design impact: none · Breaking: NO
+- Rollback: remove the manifest line
+
+
 ## [0.1.51] — 2026-07-04
 
 ### Added
