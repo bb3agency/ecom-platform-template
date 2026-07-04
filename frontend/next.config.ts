@@ -167,6 +167,18 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: frontendRoot,
   },
+  experimental: {
+    // Client-side Router Cache TTLs. Default kept deactivated products (and any
+    // other admin change) visible on the storefront during client navigation —
+    // visited/prefetched pages replayed stale RSC payloads until a hard refresh.
+    // dynamic: 0 → every client-side navigation refetches the page from the
+    // server (all product surfaces render fresh, server fetches are no-store);
+    // static: 60 → prefetched static shells stay snappy for a minute.
+    staleTimes: {
+      dynamic: 0,
+      static: 60,
+    },
+  },
   async rewrites() {
     return [
       {

@@ -21,6 +21,10 @@ import { getApiErrorMessage } from "@/lib/error-messages";
 import { toast } from "@/lib/toast";
 import { createIdempotencyKey } from "@/lib/idempotency";
 import { notifyAdminDataChanged } from "@/lib/admin-data-refresh";
+import { uploadAdminCategoryImage } from "@/lib/admin-product-media";
+import { resolveProductImageUrl } from "@/lib/media-url";
+import { useAuthStore } from "@/stores/auth";
+import Image from "next/image";
 import { useAuthenticatedApi } from "@/hooks/use-authenticated-api";
 import { cn } from "@/lib/utils";
 
@@ -112,6 +116,12 @@ export function AdminCategoryForm({ open, category, onSaved, onClose }: AdminCat
   const [slugTouched, setSlugTouched] = useState(false);
   const [parentId, setParentId] = useState("");
   const [imageUrl, setImageUrl] = useState("");
+  // Direct file upload — mirrors the product image pipeline. Edit mode uploads
+  // immediately; create mode holds the file and uploads right after POST.
+  const [pendingImageFile, setPendingImageFile] = useState<File | null>(null);
+  const [pendingPreviewUrl, setPendingPreviewUrl] = useState<string | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const accessToken = useAuthStore((st) => st.accessToken);
   const [isActive, setIsActive] = useState(true);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -195,6 +205,32 @@ export function AdminCategoryForm({ open, category, onSaved, onClose }: AdminCat
     return Object.keys(next).length === 0;
   }
 
+  async function handleImageFileSelected(file: File | null) {
+    if (!file) return;
+    if (isEdit && category) {
+      if (!accessToken) {
+        setSubmitError("Session expired — sign in again to upload images.");
+        return;
+      }
+      setUploadingImage(true);
+      try {
+        const uploadedUrl = await uploadAdminCategoryImage(accessToken, category.id, file);
+        setImageUrl(uploadedUrl);
+        notifyAdminDataChanged(["categories", "products", "dashboard"]);
+      } catch (err) {
+        setSubmitError(err instanceof Error ? err.message : "Image upload failed");
+      } finally {
+        setUploadingImage(false);
+      }
+      return;
+    }
+    setPendingImageFile(file);
+    setPendingPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return URL.createObjectURL(file);
+    });
+  }
+
   async function handleSubmit() {
     if (!validate()) return;
     setSaving(true);
@@ -222,11 +258,24 @@ export function AdminCategoryForm({ open, category, onSaved, onClose }: AdminCat
           ...(parentId.trim() ? { parentId: parentId.trim() } : {}),
           ...(imageUrl.trim() ? { imageUrl: imageUrl.trim() } : {}),
         };
-        await api("/admin/categories", {
+        const created = await api<AdminCategoryListItem>("/admin/categories", {
           method: "POST",
           idempotencyKey: createIdempotencyKey(),
           body: JSON.stringify(payload),
         });
+        // Upload the held image now that the category has an id — a failed
+        // upload must not roll back the created category.
+        if (pendingImageFile && created?.id && accessToken) {
+          try {
+            await uploadAdminCategoryImage(accessToken, created.id, pendingImageFile);
+          } catch (uploadErr) {
+            toast.error(
+              uploadErr instanceof Error
+                ? `Category created, but the image upload failed: ${uploadErr.message}`
+                : "Category created, but the image upload failed.",
+            );
+          }
+        }
       }
 
       notifyAdminDataChanged(["categories", "products", "dashboard"]);
@@ -347,13 +396,57 @@ export function AdminCategoryForm({ open, category, onSaved, onClose }: AdminCat
                 </select>
               </Field>
 
-              <Field label="Image URL" hint="Optional. Must start with https://">
-                <input
-                  className={inputClass}
-                  placeholder="https://example.com/image.jpg"
-                  value={imageUrl}
-                  onChange={(e) => setImageUrl(e.target.value)}
-                />
+              <Field
+                label="Category image"
+                hint={
+                  isEdit
+                    ? uploadingImage
+                      ? "Uploading…"
+                      : "Optional. Uploads immediately; replaces any existing image."
+                    : "Optional. Uploads right after the category is created."
+                }
+              >
+                <div className="grid min-w-0 grid-cols-1 gap-2">
+                  {pendingPreviewUrl || imageUrl.trim() ? (
+                    <div className="flex items-center gap-3">
+                      <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-border/50">
+                        <Image
+                          src={pendingPreviewUrl ?? resolveProductImageUrl(imageUrl.trim())}
+                          alt={name || "Category image preview"}
+                          fill
+                          className="object-cover"
+                          unoptimized={Boolean(pendingPreviewUrl)}
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        disabled={saving || uploadingImage}
+                        className="rounded-md border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground hover:border-destructive hover:text-destructive disabled:opacity-60"
+                        onClick={() => {
+                          setPendingImageFile(null);
+                          setPendingPreviewUrl((prev) => {
+                            if (prev) URL.revokeObjectURL(prev);
+                            return null;
+                          });
+                          setImageUrl("");
+                        }}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ) : null}
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/avif"
+                    disabled={saving || uploadingImage}
+                    className="block w-full text-sm text-muted-foreground file:mr-3 file:rounded-md file:border-0 file:bg-muted file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-foreground hover:file:bg-muted/70 disabled:opacity-60"
+                    aria-label="Upload category image"
+                    onChange={(e) => {
+                      void handleImageFileSelected(e.target.files?.[0] ?? null);
+                      e.target.value = "";
+                    }}
+                  />
+                </div>
               </Field>
             </div>
 

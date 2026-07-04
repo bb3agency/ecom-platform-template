@@ -69,8 +69,7 @@ export function AdminCategoryEditor({ categoryId }: AdminCategoryEditorProps) {
     fieldClassName,
     getFieldError,
     validateRequired,
-    handleSubmitError,
-    applyFieldErrors,
+    handleSubmitError
   } = useAdminFormValidation();
 
   const [name, setName] = useState("");
@@ -200,23 +199,6 @@ export function AdminCategoryEditor({ categoryId }: AdminCategoryEditorProps) {
       ]);
     if (!requiredResult.valid) {
       setError(requiredResult.message);
-      setSaving(false);
-      return;
-    }
-
-    const trimmedImageUrl = imageUrl.trim();
-    if (
-      trimmedImageUrl &&
-      !trimmedImageUrl.startsWith("https://") &&
-      !trimmedImageUrl.startsWith("/api/v1/media/categories/")
-    ) {
-      applyFieldErrors({
-        imageUrl:
-          "Image URL must be https:// or a hosted /api/v1/media/categories/ path.",
-      });
-      setError(
-        "Image URL must be https:// or a hosted /api/v1/media/categories/ path.",
-      );
       setSaving(false);
       return;
     }
@@ -429,27 +411,49 @@ export function AdminCategoryEditor({ categoryId }: AdminCategoryEditorProps) {
             </select>
           </AdminFormField>
 
-          <AdminFormField
-            label="Image URL"
-            field="imageUrl"
-            error={getFieldError("imageUrl")}
-          >
-            <input
-              data-admin-field="imageUrl"
-              aria-invalid={Boolean(getFieldError("imageUrl"))}
-              className={fieldClassName("imageUrl", inputClass)}
-              value={imageUrl}
-              disabled={inputsDisabled}
-              placeholder="https://…"
-              onChange={(e) => {
-                clearFieldError("imageUrl");
-                setImageUrl(e.target.value);
-              }}
-            />
-          </AdminFormField>
+          {/* Category image — direct file upload only (same pipeline as product
+              images: validated, stored on local disk or Cloudflare R2). */}
+          <div className="sm:col-span-2 grid min-w-0 grid-cols-1 gap-2">
+            <span className="text-sm font-medium">Category image</span>
 
-          <div className="sm:col-span-2 grid min-w-0 gap-1.5">
-            <span className="text-sm font-medium">Or upload an image</span>
+            {pendingPreviewUrl || imageUrl.trim() ? (
+              <div className="flex flex-wrap items-start gap-3">
+                <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-lg border border-border/50">
+                  <Image
+                    src={pendingPreviewUrl ?? resolveProductImageUrl(imageUrl.trim())}
+                    alt={name || "Category image preview"}
+                    fill
+                    className="object-cover"
+                    unoptimized={Boolean(pendingPreviewUrl)}
+                  />
+                </div>
+                <div className="grid min-w-0 grid-cols-1 gap-1.5">
+                  <span className="text-xs text-muted-foreground">
+                    {pendingPreviewUrl
+                      ? "Uploads when the category is created."
+                      : "Stored on the CDN. Uploading a new file replaces it."}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={inputsDisabled || uploadingImage || saving}
+                    className="w-fit rounded-md border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground hover:border-destructive hover:text-destructive disabled:opacity-60"
+                    onClick={() => {
+                      // Clearing removes the pending file, or marks the saved image
+                      // for removal (PATCH sends imageUrl: null on Save).
+                      setPendingImageFile(null);
+                      setPendingPreviewUrl((prev) => {
+                        if (prev) URL.revokeObjectURL(prev);
+                        return null;
+                      });
+                      setImageUrl("");
+                    }}
+                  >
+                    Remove image
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
             <input
               type="file"
               accept="image/jpeg,image/png,image/webp,image/avif"
@@ -462,27 +466,10 @@ export function AdminCategoryEditor({ categoryId }: AdminCategoryEditorProps) {
               }}
             />
             <span className="text-xs text-muted-foreground">
-              Optional — single image, stored on the CDN like product images.
-              {isCreate ? " Uploads after the category is created." : uploadingImage ? " Uploading…" : ""}
+              Optional — JPEG/PNG/WebP/AVIF, one image per category.
+              {isCreate ? " Uploads after the category is created." : uploadingImage ? " Uploading…" : " Uploads immediately."}
             </span>
           </div>
-
-          {pendingPreviewUrl || imageUrl.trim() ? (
-            <div className="sm:col-span-2">
-              <p className="mb-2 text-xs font-semibold text-muted-foreground">
-                {pendingPreviewUrl ? "Image preview (uploads on save)" : "Image preview (saved to CDN after submit)"}
-              </p>
-              <div className="relative h-24 w-24 overflow-hidden rounded-lg border border-border/50">
-                <Image
-                  src={pendingPreviewUrl ?? resolveProductImageUrl(imageUrl.trim())}
-                  alt={name || "Category image preview"}
-                  fill
-                  className="object-cover"
-                  unoptimized={Boolean(pendingPreviewUrl) || imageUrl.trim().startsWith("blob:")}
-                />
-              </div>
-            </div>
-          ) : null}
 
           <div className="sm:col-span-2">
             <label className="flex items-center gap-3 cursor-pointer">

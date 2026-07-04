@@ -12,7 +12,7 @@ export default async function ResetPasswordPage({
   const token = params.token ?? "";
 
   return (
-    <div className="flex flex-col gap-6 rounded-lg border border-border p-8">
+    <div className="flex min-w-0 flex-col gap-6 rounded-lg border border-border p-5 sm:p-8">
       <div>
         <h1 className="font-heading text-2xl font-semibold">Reset password</h1>
         <p className="mt-2 text-sm text-muted-foreground">

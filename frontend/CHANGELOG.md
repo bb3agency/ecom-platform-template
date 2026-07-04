@@ -12,6 +12,21 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.36] — 2026-07-04
+
+### Fixed
+- **Deactivated products no longer linger on the storefront during client-side navigation.** Server rendering was already fresh (dynamic pages, no-store fetches, backend cache invalidation on deactivate) — the staleness was Next.js's client-side **Router Cache** replaying visited/prefetched RSC payloads until a hard refresh. `next.config.ts` now sets `experimental.staleTimes = { dynamic: 0, static: 60 }`: every client-side navigation refetches the page from the server, so admin changes (deactivations, price edits, stock) appear on the customer's very next navigation.
+- **Auth pages mobile padding** — admin sign-in and reset-password cards used a fixed `p-8`; now `p-5 sm:p-8` + `min-w-0`, matching the customer login/register pages.
+
+### Changed
+- **Category image is now upload-only — exactly like product images.** The "Image URL" paste fields are gone from BOTH the category editor page and the quick-create/edit modal (`AdminCategoryForm`). In their place: a file picker (JPEG/PNG/WebP/AVIF), live thumbnail preview, and a Remove button. Edit mode uploads immediately to `POST /admin/categories/:id/image/upload` (replaces + deletes the old CDN object); create mode holds the file and uploads right after the category is created (a failed upload surfaces a toast, never rolls back the category); Remove clears `imageUrl` (PATCH `null`) so the storefront falls back to the neutral placeholder.
+
+**Propagation:**
+- Severity: NORMAL · Layers: frontend (`next.config.ts`, auth pages, `AdminCategoryEditor`, `AdminCategoryForm`)
+- Migration: NO · Flag: none · Design impact: none · Breaking: NO
+- Rollback: revert the five files
+- Note: `staleTimes.dynamic: 0` trades a little navigation snappiness for storefront correctness — server responses are still fast (backend Redis list cache, 60s TTL, invalidated on writes).
+
 ## [0.1.35] — 2026-07-04
 
 ### Added
