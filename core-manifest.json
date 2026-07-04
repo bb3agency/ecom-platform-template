@@ -9,6 +9,7 @@
       "backend/scripts/**",
       "backend/queues/**",
       "backend/tsconfig.json",
+      "backend/TRD.md",
       "backend/.env.example",
       "core-manifest.json",
       "core-purity-denylist.txt"
