@@ -55,7 +55,7 @@ function collectDocsRuntimeDriftErrors(sources) {
 
   assertRegex(edgePolicy, /auth:\s*\{[\s\S]*?appLimitPerMinute:\s*12/, 'edge policy auth app limit', errors);
   assertRegex(edgePolicy, /checkout:\s*\{[\s\S]*?appLimitPerMinute:\s*30/, 'edge policy checkout app limit', errors);
-  assertRegex(edgePolicy, /admin:\s*\{[\s\S]*?appLimitPerMinute:\s*60/, 'edge policy admin app limit', errors);
+  assertRegex(edgePolicy, /admin:\s*\{[\s\S]*?appLimitPerMinute:\s*180/, 'edge policy admin app limit', errors);
   assertRegex(edgePolicy, /catalog:\s*\{[\s\S]*?appLimitPerMinute:\s*300/, 'edge policy catalog app limit', errors);
   assertRegex(edgePolicy, /webhook:\s*\{[\s\S]*?appLimitPerMinute:\s*400/, 'edge policy webhook app limit', errors);
   assertRegex(edgePolicy, /cart:\s*\{[\s\S]*?appLimitPerMinute:\s*90/, 'edge policy cart app limit', errors);
@@ -66,8 +66,8 @@ function collectDocsRuntimeDriftErrors(sources) {
   assertIncludes(trd, '| Catalogue reads (`/products*`, `/reviews/product/*`, `/reviews/recent`) | 300 per minute (route profile) |', 'TRD catalog app limit', errors);
   assertIncludes(trd, '| Cart/user-session flows (`/cart*`, `/wishlist*`, `/users/me*`) | 90 per minute (route profile) |', 'TRD cart app limit', errors);
   assertIncludes(trd, '| Checkout/payment mutations (`/orders`, `/orders/:id/cancel`, `/payments/initiate`, `/payments/verify`) | 30 per minute (route profile) |', 'TRD checkout app limit', errors);
-  assertIncludes(trd, '| Admin read routes (`/api/v1/admin/*` reads) | 60 per minute (route profile) |', 'TRD admin-read app limit', errors);
-  assertIncludes(trd, '| Admin write routes (`/api/v1/admin/*` mutations) | 40 per minute (route profile) |', 'TRD admin-write app limit', errors);
+  assertIncludes(trd, '| Admin read routes (`/api/v1/admin/*` reads) | 180 per minute (route profile) |', 'TRD admin-read app limit', errors);
+  assertIncludes(trd, '| Admin write routes (`/api/v1/admin/*` mutations) | 120 per minute (route profile) |', 'TRD admin-write app limit', errors);
   assertIncludes(trd, 'Error responses always use the standard envelope from the global error handler. Success responses return route-specific payloads directly by default.', 'TRD response contract statement', errors);
 
   assertIncludes(sloRules, 'expr: slo:webhook_latency:p95_5m > 0.5', 'SLO webhook latency threshold', errors);
