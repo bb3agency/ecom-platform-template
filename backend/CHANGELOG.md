@@ -12,6 +12,16 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.58] — 2026-07-04
+
+### Fixed
+- **0.1.57 failed the route-discipline gate** — the self-service prefs routes intentionally use only jwt+role guards (an adminPermissionGuard grant would wrongly gate personal opt-in); added them to the documented exemption list. Supersedes the 0.1.57 sync PRs.
+
+**Propagation:**
+- Severity: LOW · Layers: backend (scripts/route-discipline-check.js)
+- Migration: NO · Flag: none · Design impact: none · Breaking: NO
+- Rollback: n/a
+
 ## [0.1.57] — 2026-07-04
 
 ### Added

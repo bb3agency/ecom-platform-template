@@ -22,6 +22,10 @@ const AUTH_ADMIN_EXEMPT_ROUTES = new Set([
   'POST /api/v1/ops/auth/login/verify-otp',
   // Admin OTP channel config is intentionally public — needed before login session exists.
   'GET /api/v1/auth/admin/otp-channel',
+  // Self-service own-profile notification prefs: any authenticated ADMIN (jwt + role
+  // guard) manages ONLY their own row — a permission grant would wrongly gate opt-in.
+  'GET /api/v1/admin/me/notification-preferences',
+  'PATCH /api/v1/admin/me/notification-preferences',
 ]);
 
 function shouldRequireCustomerPreHandler(method, routePath) {
