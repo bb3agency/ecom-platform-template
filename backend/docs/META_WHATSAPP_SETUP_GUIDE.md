@@ -142,8 +142,14 @@ work for every client):
 | `order_cancelled` | `{{1}}`=store, `{{2}}`=orderId | "Hi! {{1}}: Your order {{2}} has been cancelled…" |
 | `payment_failed` | `{{1}}`=store, `{{2}}`=orderId | "Hi! {{1}}: We couldn't process the payment for order {{2}}…" |
 | `return_request_update` | `{{1}}`=store, `{{2}}`=orderId, `{{3}}`=statusLine | "Hi! {{1}}: Update on your return request for order {{2}}: {{3}}…" |
+| `admin_new_order` | `{{1}}`=store, `{{2}}`=orderId, `{{3}}`=customerName, `{{4}}`=amountLine | MERCHANT-facing (sent only to opted-in admins): "New Order Received! … Order {{2}} … Customer {{3}} … {{4}}" |
 
 Fill a Variable sample for each `{{n}}` → Submit. Utility templates usually auto-approve in minutes.
+
+> **2026-07-04 readability overhaul:** all Utility bodies were rewritten with WhatsApp formatting
+> (*bold*, emoji, blank-line spacing) and `order_shipped` explicitly renders the tracking link in
+> `{{3}}`. The exact approved bodies live in WHATSAPP_TEMPLATE_REGISTRY.md — edits keep the same
+> names + param counts, so in-flight sends are unaffected while Meta re-reviews.
 
 > `return_request_update` carries the stage-specific wording in `{{3}}` (composed by the backend:
 > approved / declined / picked up / refunded), so ONE approved template covers the whole return

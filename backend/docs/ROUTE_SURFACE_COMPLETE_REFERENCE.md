@@ -392,6 +392,7 @@ Top-selling products by revenue or quantity. Query: `from`, `to`, `limit`.
 | `POST /api/v1/admin/categories` | Create category. Body: `{ name, slug, parentId?, imageUrl?, isActive? }`. Reactivates by slug if inactive match exists. |
 | `PATCH /api/v1/admin/categories/:id` | Update name, slug, parent (`null` clears), image (`null` clears), or `isActive`. |
 | `DELETE /api/v1/admin/categories/:id` | Soft-delete: sets `isActive: false`. Products keep their category assignment. |
+| `POST /api/v1/admin/categories/:id/image/upload` | Upload the single optional category image (multipart `file`; JPEG/PNG/WebP/AVIF, same size limits + storage provider as product images — local disk or Cloudflare R2). Replaces AND deletes any previously hosted category image, updates `Category.imageUrl`, invalidates the product-list cache. Requires `categories:write`. Registered in the admin endpoint policy registry (Layer A). |
 | `DELETE /api/v1/admin/categories/:id/permanent` | Hard-delete: permanently removes category from DB. Returns 409 if any products reference it; 404 if category not found. Requires `categories:write` permission. Idempotency guarded. **Bodyless DELETE** (no JSON body). Registered in admin endpoint policy registry (Layer A). |
 
 ---
@@ -436,7 +437,14 @@ Manual stock adjustment for a variant. Body: `{ quantity, note? }`. Creates an a
 | `PATCH /api/v1/admin/orders/:id/status` | Update order status. Body: `{ status, note? }`. Note is tagged with admin ID. Setting status to `REFUNDED` additionally requires `orders:refund` permission. |
 | `POST /api/v1/admin/orders/:id/ship` | Manually trigger shipment booking with the active courier provider. Uses the provider stored on the order's `selectedShippingProvider` field (chosen at checkout based on cheapest rate across all configured providers). Creates shipment, fetches AWB and estimated delivery days, updates order status to SHIPPED, and **immediately sends `OrderShipped` notification to customer** (email + SMS) with tracking URL and estimated delivery days. The `Shipment.provider` DB field records which provider (DELHIVERY or SHIPROCKET) fulfilled this specific order. Idempotent — if AWB already exists, skips external call and re-sends notification. |
 | `POST /api/v1/admin/orders/:id/schedule-pickup` | Schedule a courier pickup for a booked shipment. Idempotent. |
-| `POST /api/v1/admin/orders/:id/notifications/retrigger` | Re-enqueue notification for this order. Body: `{ template }`. Requires `orders:notify` permission. Idempotent. |
+| `POST /api/v1/admin/orders/:id/notifications/retrigger` | Resend notification for this order. Body: `{ template?, channels? }` — `template` is OPTIONAL: when omitted the backend derives it from the order's CURRENT status (SHIPPED → OrderShipped, DELIVERED → OrderDelivered, CANCELLED/REFUNDED → OrderCancelled, etc.), so the admin "Resend notification" button always reflects the live state. Requires `orders:notify` permission. Idempotent. |
+
+### Admin self-service (no permission grant — any active admin)
+
+| Route | What it does |
+|---|---|
+| `GET /api/v1/admin/me/notification-preferences` | Own new-order alert preferences: `{ enabled, channels, email, phone }`. Strictly self-scoped (JWT sub); listed in the route-discipline exemption set because a permission grant would wrongly gate personal opt-in. |
+| `PATCH /api/v1/admin/me/notification-preferences` | Update own opt-in + channels (`EMAIL`/`WHATSAPP`/`SMS`). Rejects enabling with zero channels, EMAIL without an email on the account, or WHATSAPP/SMS without a phone. Every opted-in admin receives an `AdminNewOrder` notification (per their channels) when any order is confirmed — the legacy store-contact "order shipped" alert was removed 2026-07-04. |
 
 ### Label-print route — `orders:read` permission, write-level guards
 

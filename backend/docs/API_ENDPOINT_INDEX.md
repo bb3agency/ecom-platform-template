@@ -147,6 +147,7 @@ Admin UI should be served under `/admin/*` in the frontend and call `/api/v1/adm
 | GET | `/api/v1/admin/categories/:id` | Category detail/editor |
 | POST | `/api/v1/admin/categories` | Create category |
 | PATCH | `/api/v1/admin/categories/:id` | Update category (`parentId`/`imageUrl` nullable to clear) |
+| POST | `/api/v1/admin/categories/:id/image/upload` | Upload the single optional category image (multipart, same CDN pipeline as product images; replaces + deletes any previous hosted image). `categories:write` |
 | DELETE | `/api/v1/admin/categories/:id` | Soft-delete (deactivate) category |
 | DELETE | `/api/v1/admin/categories/:id/permanent` | Permanent hard-delete category (409 if any products reference it). Policy registry: `categories:write`, Layer A. Bodyless DELETE. |
 
@@ -165,7 +166,7 @@ Admin UI should be served under `/admin/*` in the frontend and call `/api/v1/adm
 | POST | `/api/v1/admin/orders/:id/schedule-pickup` | Schedule pickup |
 | POST | `/api/v1/admin/orders/:id/print-label` | Print shipping label — requires `orders:read` permission; uses `adminWrite` rate limit + `idempotencyPreHandler` because it mutates `Shipment.labelUrl` and calls an external courier provider |
 | POST | `/api/v1/admin/orders/:id/cancel` | Cancel/refund-sensitive action |
-| POST | `/api/v1/admin/orders/:id/notifications/retrigger` | Retrigger order notification |
+| POST | `/api/v1/admin/orders/:id/notifications/retrigger` | Resend order notification. `template` is OPTIONAL — when omitted, the backend derives it from the order's CURRENT status (Resend notification button) |
 | GET | `/api/v1/admin/orders/:id/timeline` | Order status transition timeline |
 | GET | `/api/v1/admin/return-requests` | Return request queue |
 | GET | `/api/v1/admin/return-requests/:id` | Single return request detail |
@@ -243,7 +244,9 @@ Admin UI should be served under `/admin/*` in the frontend and call `/api/v1/adm
 | GET | `/api/v1/admin/settings/shipping` | Shipping settings (merchant admin) |
 | PATCH | `/api/v1/admin/settings/shipping` | Update shipping settings (merchant admin) |
 | GET | `/api/v1/admin/settings/store` | Store profile settings (merchant admin) |
-| PATCH | `/api/v1/admin/settings/store` | Update store profile (merchant admin) |
+| PATCH | `/api/v1/admin/settings/store` | Update store profile (merchant admin; incl. nullable `facebookUrl`/`instagramUrl` footer social links) |
+| GET | `/api/v1/admin/me/notification-preferences` | Own new-order alert prefs (any active admin — self-service, no permission grant) |
+| PATCH | `/api/v1/admin/me/notification-preferences` | Update own opt-in + channels (EMAIL/WHATSAPP/SMS); validates contact points exist |
 | GET | `/api/v1/admin/settings/notifications` | Notification settings (deprecated in frontend; ops config used instead) |
 | PATCH | `/api/v1/admin/settings/notifications` | Update notification settings (deprecated in frontend; ops config used instead) |
 | GET | `/api/v1/admin/settings/inventory` | Inventory defaults (merchant admin) |

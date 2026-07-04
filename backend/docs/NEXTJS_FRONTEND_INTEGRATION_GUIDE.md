@@ -474,6 +474,32 @@ For full operational setup and security requirements, follow `docs/OPS_CONTROL_P
 
 **Rationale:** Provider infrastructure gates (which channels can work) belong in ops. Merchants set these once at go-live and rarely change them. Consolidating to ops reduces confusion between infrastructure-layer controls and app-layer routing.
 
+### 4.3.1 Per-admin new-order alerts (2026-07-04)
+
+Each admin can personally opt in to be notified when a customer places an order,
+on their choice of channels — this is a **per-admin** setting, unrelated to the
+store-wide per-template routing above.
+
+- **UI:** Admin → Settings → Notifications → "Notify me about new orders"
+  (AdminMyOrderAlertsPanel) — toggle + EMAIL / WHATSAPP / SMS checkboxes,
+  saved instantly per change.
+- **API:** GET/PATCH /api/v1/admin/me/notification-preferences — self-service
+  (any active admin JWT; deliberately NO adminPermissionGuard, exempted in the
+  route-discipline check). Backend rejects enabling with zero channels, EMAIL
+  without an account email, or WhatsApp/SMS without a phone on the admin account.
+- **Dispatch:** on every order confirmation (PREPAID capture + COD — both flow
+  through the order-processing worker), an AdminNewOrder notification fans out
+  to each opted-in admin on exactly their selected channels (direct
+  send-email/send-whatsapp/send-sms jobs — NOT send-primary, since the
+  channel choice is per-admin, not per-template).
+- **Templates:** AdminNewOrder exists in the email renderer, the SMS registry,
+  and the WhatsApp registry (admin_new_order, 4 params — see
+  docs/WHATSAPP_TEMPLATE_REGISTRY.md; the Meta template must be approved
+  before the WhatsApp channel delivers).
+- **Removed:** the legacy store-contact "order shipped" alert
+  (enqueueMerchantShipmentNotifications) — admins no longer get notified about
+  shipments they booked themselves.
+
 ---
 
 ## 5. Customer journey — route checklist

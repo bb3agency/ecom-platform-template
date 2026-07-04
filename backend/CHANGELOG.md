@@ -12,6 +12,15 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.59] — 2026-07-04
+
+### Docs
+- **Documentation sweep for the 0.1.55–0.1.58 batch.** `API_ENDPOINT_INDEX.md`: added `GET/PATCH /admin/me/notification-preferences`, `POST /admin/categories/:id/image/upload`, noted optional `template` on the notification retrigger and the social-link fields on the store profile. `ROUTE_SURFACE_COMPLETE_REFERENCE.md`: new "Admin self-service" section (prefs routes + route-discipline exemption rationale + removal of the store-contact shipped alert), category image upload row, status-derived resend behaviour. `NEXTJS_FRONTEND_INTEGRATION_GUIDE.md` §4.3.1: per-admin new-order alerts (UI, API, dispatch, templates). `META_WHATSAPP_SETUP_GUIDE.md`: `admin_new_order` row + 2026-07-04 template readability overhaul note.
+
+**Propagation:**
+- Severity: LOW · Layers: backend (docs only) · Migration: NO · Flag: none · Design impact: none · Breaking: NO
+- Rollback: n/a
+
 ## [0.1.58] — 2026-07-04
 
 ### Fixed
