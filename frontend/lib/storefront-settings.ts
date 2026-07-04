@@ -36,6 +36,9 @@ export interface PublicStoreConfig {
   storeState: string | null;
   contactEmail: string | null;
   contactPhone: string | null;
+  /** Merchant social links (Admin → Settings → Store) — footer icons. WhatsApp derives from contactPhone. */
+  facebookUrl: string | null;
+  instagramUrl: string | null;
   /** False when GET /store/config failed — block checkout until config loads. */
   configAvailable: boolean;
 }
@@ -55,6 +58,8 @@ const FAIL_CLOSED_CONFIG: PublicStoreConfig = {
   storeState: null,
   contactEmail: null,
   contactPhone: null,
+  facebookUrl: null,
+  instagramUrl: null,
   configAvailable: false,
 };
 
@@ -110,6 +115,8 @@ export function parsePublicStoreConfig(body: unknown): PublicStoreConfig {
     storeState: typeof record.storeState === "string" ? record.storeState : null,
     contactEmail: typeof record.contactEmail === "string" ? record.contactEmail : null,
     contactPhone: typeof record.contactPhone === "string" ? record.contactPhone : null,
+    facebookUrl: typeof record.facebookUrl === "string" ? record.facebookUrl : null,
+    instagramUrl: typeof record.instagramUrl === "string" ? record.instagramUrl : null,
     configAvailable: true,
   };
 }

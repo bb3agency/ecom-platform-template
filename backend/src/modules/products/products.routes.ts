@@ -6,6 +6,7 @@ import { rolesGuard } from '@common/guards/roles.guard';
 import {
   adminCreateProductImageSchema,
   adminUploadProductImageSchema,
+  adminUploadCategoryImageSchema,
   adminGetProductByIdSchema,
   adminGetCategoryByIdSchema,
   adminImportProductsCsvSchema,
@@ -454,6 +455,51 @@ export async function registerProductsRoutes(fastify: FastifyInstance): Promise<
     async (request) => {
       const params = request.params as { id: string };
       return productsService.adminUpdateCategory(params.id, request.body as never);
+    }
+  );
+
+  fastify.post(
+    '/api/v1/admin/categories/:id/image/upload',
+    {
+      schema: adminUploadCategoryImageSchema,
+      preHandler: [...adminGuard, adminPermissionGuard('categories:write'), loadShedGuard, idempotencyPreHandler],
+      config: {
+        rateLimit: routeRateLimitProfiles.adminWrite
+      }
+    },
+    async (request) => {
+      if (!request.isMultipart()) {
+        throw new AppError(
+          ERROR_CODES.VALIDATION_ERROR,
+          'Image upload requires multipart/form-data',
+          400
+        );
+      }
+
+      const params = request.params as { id: string };
+      let file: { buffer: Buffer; mimeType: string | null } | null = null;
+      for await (const part of request.parts()) {
+        if (part.type === 'file' && (part.fieldname === 'file' || part.fieldname === 'files')) {
+          const buffer = await part.toBuffer();
+          if (buffer.length > PRODUCT_IMAGE_MAX_BYTES) {
+            throw new AppError(
+              ERROR_CODES.VALIDATION_ERROR,
+              `Image must be ${PRODUCT_IMAGE_MAX_BYTES / (1024 * 1024)} MB or smaller`,
+              400
+            );
+          }
+          // Single image per category — first file wins, extra files ignored.
+          if (!file) {
+            file = { buffer, mimeType: part.mimetype };
+          }
+        }
+      }
+
+      if (!file) {
+        throw new AppError(ERROR_CODES.VALIDATION_ERROR, 'Missing image file', 400);
+      }
+
+      return productsService.adminUploadCategoryImage(params.id, file);
     }
   );
 

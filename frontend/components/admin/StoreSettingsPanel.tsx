@@ -40,6 +40,8 @@ export function StoreSettingsPanel() {
   const [sellerState, setSellerState] = useState("");
   const [contactPhone, setContactPhone] = useState("");
   const [contactEmail, setContactEmail] = useState("");
+  const [facebookUrl, setFacebookUrl] = useState("");
+  const [instagramUrl, setInstagramUrl] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -78,6 +80,8 @@ export function StoreSettingsPanel() {
           setSellerState(result.sellerState ?? "");
           setContactPhone(result.contactPhone ?? "");
           setContactEmail(result.contactEmail ?? "");
+          setFacebookUrl(result.facebookUrl ?? "");
+          setInstagramUrl(result.instagramUrl ?? "");
           setLoaded(true);
         }
       })
@@ -106,6 +110,9 @@ export function StoreSettingsPanel() {
           sellerState: sellerState.trim() ? sellerState.trim() : null,
           contactPhone: contactPhone.trim() || undefined,
           contactEmail: contactEmail.trim() || undefined,
+          // null clears the link (hides the footer icon); undefined would leave it unchanged.
+          facebookUrl: facebookUrl.trim() ? facebookUrl.trim() : null,
+          instagramUrl: instagramUrl.trim() ? instagramUrl.trim() : null,
         }),
       });
       setSuccess("Store settings saved successfully.");
@@ -290,6 +297,41 @@ export function StoreSettingsPanel() {
                 <span className="text-xs text-muted-foreground/80">
                   State where the business is registered — also used for GST place-of-supply on
                   invoices.
+                </span>
+              </label>
+
+              <label className="grid gap-1.5 text-sm font-medium text-foreground">
+                Facebook Link
+                <input
+                  type="url"
+                  inputMode="url"
+                  placeholder="https://facebook.com/yourpage"
+                  maxLength={1000}
+                  className={inputClass}
+                  value={facebookUrl}
+                  onChange={(e) => setFacebookUrl(e.target.value)}
+                  disabled={!canWrite}
+                />
+                <span className="text-xs font-normal text-muted-foreground">
+                  Shown as the Facebook icon in the storefront footer. Leave blank to hide it.
+                </span>
+              </label>
+
+              <label className="grid gap-1.5 text-sm font-medium text-foreground">
+                Instagram Link
+                <input
+                  type="url"
+                  inputMode="url"
+                  placeholder="https://instagram.com/yourhandle"
+                  maxLength={1000}
+                  className={inputClass}
+                  value={instagramUrl}
+                  onChange={(e) => setInstagramUrl(e.target.value)}
+                  disabled={!canWrite}
+                />
+                <span className="text-xs font-normal text-muted-foreground">
+                  Shown as the Instagram icon in the storefront footer. The WhatsApp icon needs no
+                  link — it opens a chat with the Contact Phone above. Leave blank to hide it.
                 </span>
               </label>
             </div>

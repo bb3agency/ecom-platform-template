@@ -697,11 +697,12 @@ export function AdminOrderFulfillmentPanel({
               <SecondaryButton
                 icon={<Mail className="h-3.5 w-3.5" />}
                 label="Resend notification"
-                title="Resends the order-confirmation notification to the customer by email"
+                title="Resends the notification matching the order's CURRENT status (confirmed / shipped / out for delivery / delivered / cancelled) to the customer by email"
                 disabled={busyAction !== null}
                 onClick={() =>
                   runAction("retrigger", "/admin/orders/:id/notifications/retrigger", {
-                    body: { template: "OrderConfirmed", channels: ["EMAIL"] },
+                    // No template — the backend derives it from the order's current status.
+                    body: { channels: ["EMAIL"] },
                   })
                 }
               />

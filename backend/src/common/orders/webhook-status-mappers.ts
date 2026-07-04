@@ -88,7 +88,12 @@ export function mapShipmentWebhookStatus(status: string): ShipmentStatus | null 
   if (normalized === 'IT') return SHIPMENT_STATUS.IN_TRANSIT;
   if (normalized === 'OFD') return SHIPMENT_STATUS.OUT_FOR_DELIVERY;
   if (normalized === 'DL') return SHIPMENT_STATUS.DELIVERED;
-  if (normalized === 'UD') return SHIPMENT_STATUS.FAILED_DELIVERY;  // Undelivered
+  // "UD" is Delhivery's StatusType BUCKET for the entire forward journey —
+  // their own webhook sample pairs Status:"Manifested" with StatusType:"UD".
+  // Mapping it to FAILED_DELIVERY marked every freshly-booked AWB as a failed
+  // delivery. Actual delivery failures arrive as Status text ("Undelivered",
+  // "Failed Delivery") or NDR/CC codes below.
+  if (normalized === 'UD') return SHIPMENT_STATUS.IN_TRANSIT;
   if (normalized === 'NDR') return SHIPMENT_STATUS.FAILED_DELIVERY; // Non-Delivery Report
   if (normalized === 'CC') return SHIPMENT_STATUS.FAILED_DELIVERY;  // Call Center (post-NDR follow-up)
   if (normalized === 'RTO') return SHIPMENT_STATUS.RTO_INITIATED;

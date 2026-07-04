@@ -21,28 +21,12 @@ import {
 } from "@/lib/admin-api";
 import {
   defaultDateRange,
-  trendPeriodLabel,
-  prevRange,
   rangeToISO,
   type DateRange,
 } from "@/components/admin/AdminDateRangePicker";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { useAdminShell } from "@/contexts/admin-shell-context";
 import { formatPaise } from "@/lib/admin-format";
-
-// ---------- trend calc ----------
-
-interface TrendInfo {
-  value: string;
-  up: boolean;
-}
-
-function calcTrend(current: number, previous: number): TrendInfo | null {
-  if (!previous) return null;
-  const pct = ((current - previous) / previous) * 100;
-  const rounded = Math.round(Math.abs(pct) * 10) / 10;
-  return { value: `${pct >= 0 ? "+" : "-"}${rounded}%`, up: pct >= 0 };
-}
 
 // ---------- KPI card ----------
 
@@ -140,53 +124,31 @@ interface CouponCounts {
 interface AdminCouponsKpisProps {
   from: string;
   to: string;
-  trendLabel: string;
 }
 
-function AdminCouponsKpis({ from, to, trendLabel }: AdminCouponsKpisProps) {
+function AdminCouponsKpis({ from, to }: AdminCouponsKpisProps) {
   const api = useAuthenticatedApi();
   const [counts, setCounts] = useState<CouponCounts | null>(null);
-  const [prevCounts, setPrevCounts] = useState<CouponCounts | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const { fromISO, toISO } = rangeToISO(from, to);
-      const prev = prevRange(from, to);
 
       const analyticsQuery = buildAdminQuery({
         from: fromISO,
         to: toISO,
       });
 
-      const [
-        allRes,
-        activeRes,
-        expiredRes,
-        prevAllRes,
-        prevActiveRes,
-        prevExpiredRes,
-        analyticsItems,
-      ] = await Promise.all([
-        api<PaginatedResponse<AdminCouponListItem>>(
-          `/admin/coupons?page=1&limit=1&from=${encodeURIComponent(fromISO)}&to=${encodeURIComponent(toISO)}`,
-        ),
-        api<PaginatedResponse<AdminCouponListItem>>(
-          `/admin/coupons?page=1&limit=1&status=active&from=${encodeURIComponent(fromISO)}&to=${encodeURIComponent(toISO)}`,
-        ),
-        api<PaginatedResponse<AdminCouponListItem>>(
-          `/admin/coupons?page=1&limit=1&status=expired&from=${encodeURIComponent(fromISO)}&to=${encodeURIComponent(toISO)}`,
-        ),
-        api<PaginatedResponse<AdminCouponListItem>>(
-          `/admin/coupons?page=1&limit=1&from=${encodeURIComponent(prev.from)}&to=${encodeURIComponent(prev.to)}`,
-        ),
-        api<PaginatedResponse<AdminCouponListItem>>(
-          `/admin/coupons?page=1&limit=1&status=active&from=${encodeURIComponent(prev.from)}&to=${encodeURIComponent(prev.to)}`,
-        ),
-        api<PaginatedResponse<AdminCouponListItem>>(
-          `/admin/coupons?page=1&limit=1&status=expired&from=${encodeURIComponent(prev.from)}&to=${encodeURIComponent(prev.to)}`,
-        ),
+      // Total/Active/Expired are POINT-IN-TIME counts — never date-filtered.
+      // The backend's from/to filters coupons by createdAt, so scoping these
+      // to the page range made every coupon created before the window (still
+      // active!) disappear from the KPIs. Only usage analytics are range-scoped.
+      const [allRes, activeRes, expiredRes, analyticsItems] = await Promise.all([
+        api<PaginatedResponse<AdminCouponListItem>>(`/admin/coupons?page=1&limit=1`),
+        api<PaginatedResponse<AdminCouponListItem>>(`/admin/coupons?page=1&limit=1&status=active`),
+        api<PaginatedResponse<AdminCouponListItem>>(`/admin/coupons?page=1&limit=1&status=expired`),
         fetchAllPaginatedItems<AdminCouponAnalyticsItem>(async (page, limit) =>
           coercePaginatedResponse<AdminCouponAnalyticsItem>(
             await api<PaginatedResponse<AdminCouponAnalyticsItem>>(
@@ -202,23 +164,13 @@ function AdminCouponsKpis({ from, to, trendLabel }: AdminCouponsKpisProps) {
         0,
       );
 
-      const cur: CouponCounts = {
+      setCounts({
         total: coercePaginatedResponse(allRes).meta.total,
         active: coercePaginatedResponse(activeRes).meta.total,
         expired: coercePaginatedResponse(expiredRes).meta.total,
         totalUses,
         totalDiscountPaise,
-      };
-      const prv: CouponCounts = {
-        total: coercePaginatedResponse(prevAllRes).meta.total,
-        active: coercePaginatedResponse(prevActiveRes).meta.total,
-        expired: coercePaginatedResponse(prevExpiredRes).meta.total,
-        totalUses: 0,
-        totalDiscountPaise: 0,
-      };
-
-      setCounts(cur);
-      setPrevCounts(prv);
+      });
     } catch {
       // Non-fatal — the list below still loads independently
     } finally {
@@ -235,16 +187,6 @@ function AdminCouponsKpis({ from, to, trendLabel }: AdminCouponsKpisProps) {
   const fmt = (n: number | undefined) =>
     n !== undefined ? n.toLocaleString("en-IN") : "—";
 
-  const trend = (key: keyof CouponCounts) =>
-    counts && prevCounts
-      ? calcTrend(counts[key], prevCounts[key])?.value
-      : undefined;
-
-  const trendUp = (key: keyof CouponCounts) =>
-    counts && prevCounts
-      ? calcTrend(counts[key], prevCounts[key])?.up
-      : undefined;
-
   return (
     <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
       <KpiCard
@@ -253,9 +195,7 @@ function AdminCouponsKpis({ from, to, trendLabel }: AdminCouponsKpisProps) {
         icon={<Tag className="h-5 w-5 text-emerald-600" />}
         iconBg="bg-emerald-100"
         loading={loading}
-        trend={trend("total")}
-        trendUp={trendUp("total")}
-        trendLabel={trendLabel}
+        description="All time"
       />
       <KpiCard
         label="Active Coupons"
@@ -263,9 +203,7 @@ function AdminCouponsKpis({ from, to, trendLabel }: AdminCouponsKpisProps) {
         icon={<CheckCircle2 className="h-5 w-5 text-blue-600" />}
         iconBg="bg-blue-100"
         loading={loading}
-        trend={trend("active")}
-        trendUp={trendUp("active")}
-        trendLabel={trendLabel}
+        description="Currently live"
       />
       <KpiCard
         label="Total Uses"
@@ -305,7 +243,6 @@ function AdminCouponsKpis({ from, to, trendLabel }: AdminCouponsKpisProps) {
 
 export default function AdminCouponsPage() {
   const [range, setRange] = useState<DateRange>(defaultDateRange);
-  const trendLabel = trendPeriodLabel(range.from, range.to);
   const { registerExportHandler } = useAdminShell();
   const [exporting, setExporting] = useState(false);
   const api = useAuthenticatedApi();
@@ -314,16 +251,12 @@ export default function AdminCouponsPage() {
     if (exporting) return;
     setExporting(true);
     try {
-      const { fromISO, toISO } = rangeToISO(range.from, range.to);
+      // Export ALL coupons — the backend from/to filter is on createdAt, so a
+      // range-scoped export silently dropped every older (still active) coupon.
       const items = await fetchAllPaginatedItems<AdminCouponListItem>(
         (page, limit) =>
           api<PaginatedResponse<AdminCouponListItem>>(
-            `/admin/coupons${buildAdminQuery({
-              page,
-              limit,
-              from: fromISO,
-              to: toISO,
-            })}`,
+            `/admin/coupons${buildAdminQuery({ page, limit })}`,
           ),
       );
 
@@ -344,7 +277,7 @@ export default function AdminCouponsPage() {
       const objectUrl = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = objectUrl;
-      anchor.download = `coupons-${range.from}-to-${range.to}.csv`;
+      anchor.download = `coupons-all-${new Date().toISOString().slice(0, 10)}.csv`;
       anchor.click();
       URL.revokeObjectURL(objectUrl);
     } catch {
@@ -352,7 +285,7 @@ export default function AdminCouponsPage() {
     } finally {
       setExporting(false);
     }
-  }, [exporting, range, api]);
+  }, [exporting, api]);
 
   useEffect(() => {
     return registerExportHandler(() => void handleExport());
@@ -366,11 +299,7 @@ export default function AdminCouponsPage() {
         onRangeChange={setRange}
       />
 
-      <AdminCouponsKpis
-        from={range.from}
-        to={range.to}
-        trendLabel={trendLabel}
-      />
+      <AdminCouponsKpis from={range.from} to={range.to} />
 
       <AdminCouponsPageContent from={range.from} to={range.to} />
     </div>

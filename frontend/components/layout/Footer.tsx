@@ -2,6 +2,9 @@
 
 import Link from "next/link";
 import { Leaf, MapPin, Phone, Mail } from "lucide-react";
+// Brand glyphs: lucide-react ships no brand icons — react-icons is the one
+// sanctioned exception, used ONLY for social brand logos (tree-shaken imports).
+import { FaFacebookF, FaInstagram, FaWhatsapp } from "react-icons/fa6";
 import { APP_NAME } from "@/lib/constants";
 import type { CategoryWithMeta } from "@/lib/categories";
 import { useStoreConfig } from "@/components/providers/StoreConfigProvider";
@@ -9,6 +12,7 @@ import { useStoreConfig } from "@/components/providers/StoreConfigProvider";
 interface FooterProps {
   categories: CategoryWithMeta[];
 }
+
 
 export function Footer({ categories }: FooterProps) {
   // Merchant-managed store identity/contact (Admin → Settings → Store), synced via
@@ -18,6 +22,23 @@ export function Footer({ categories }: FooterProps) {
   const contactPhone = config.contactPhone?.trim() || "";
   const contactEmail = config.contactEmail?.trim() || "";
   const telHref = `tel:${contactPhone.replace(/[^\d+]/g, "")}`;
+
+  // Social links: Facebook/Instagram are merchant-managed (Admin → Settings →
+  // Store); WhatsApp derives from the same contact phone shown below — no
+  // separate setting. Icons render only when their target is configured.
+  const facebookUrl = config.facebookUrl?.trim() || "";
+  const instagramUrl = config.instagramUrl?.trim() || "";
+  const whatsappDigits = contactPhone.replace(/\D/g, "");
+  // wa.me needs country code; default bare 10-digit Indian numbers to +91.
+  const whatsappHref = whatsappDigits
+    ? `https://wa.me/${whatsappDigits.length === 10 ? `91${whatsappDigits}` : whatsappDigits}`
+    : "";
+  const socialLinks = [
+    { label: "Facebook", href: facebookUrl, icon: <FaFacebookF className="size-4" aria-hidden /> },
+    { label: "Instagram", href: instagramUrl, icon: <FaInstagram className="size-4" aria-hidden /> },
+    { label: "WhatsApp", href: whatsappHref, icon: <FaWhatsapp className="size-4" aria-hidden /> },
+  ].filter((s) => s.href);
+
   return (
     <footer className="border-t border-[#efe8e4] bg-[#faf3ef] text-[#23403d]">
       <div className="mx-auto w-full max-w-[1440px] px-4 py-10 sm:py-16 lg:px-8">
@@ -36,17 +57,22 @@ export function Footer({ categories }: FooterProps) {
               Farm-fresh chemical free produce delivered to your door. Trusted by
               families across India for quality and purity.
             </p>
-            <div className="flex gap-3">
-              <a href="https://facebook.com" className="flex size-10 items-center justify-center rounded-full bg-white text-sm font-bold text-[#23403d] shadow-sm transition-colors hover:bg-[#ec6e55] hover:text-white" aria-label="Facebook">
-                F
-              </a>
-              <a href="https://instagram.com" className="flex size-10 items-center justify-center rounded-full bg-white text-sm font-bold text-[#23403d] shadow-sm transition-colors hover:bg-[#ec6e55] hover:text-white" aria-label="Instagram">
-                I
-              </a>
-              <a href="https://twitter.com" className="flex size-10 items-center justify-center rounded-full bg-white text-sm font-bold text-[#23403d] shadow-sm transition-colors hover:bg-[#ec6e55] hover:text-white" aria-label="Twitter">
-                T
-              </a>
-            </div>
+            {socialLinks.length > 0 ? (
+              <div className="flex gap-3">
+                {socialLinks.map((social) => (
+                  <a
+                    key={social.label}
+                    href={social.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex size-10 items-center justify-center rounded-full bg-white text-[#23403d] shadow-sm transition-colors hover:bg-[#ec6e55] hover:text-white"
+                    aria-label={social.label}
+                  >
+                    {social.icon}
+                  </a>
+                ))}
+              </div>
+            ) : null}
           </div>
 
           {/* Quick links */}

@@ -472,7 +472,8 @@ describe('DelhiveryAdapter', () => {
     const result = await adapter.cancelShipment('56555510000140');
 
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toContain('/api/p/edit/');
+    // NO trailing slash — the slashed path can 301 and fetch turns the redirected POST into a body-less GET.
+    expect(url.endsWith('/api/p/edit')).toBe(true);
     // Must be a raw JSON body (not the format=json&data= form wrapper) with a string "true".
     expect((init.headers as Record<string, string>)['Content-Type']).toBe('application/json');
     expect(typeof init.body).toBe('string');

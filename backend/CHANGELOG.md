@@ -12,6 +12,26 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.51] — 2026-07-04
+
+### Added
+- **Merchant-managed social links** (`StoreSettings.facebookUrl` / `instagramUrl`, additive migration `20260704120000_add_store_settings_social_links`). Editable in Admin → Settings → Store (`GET/PATCH /admin/settings/store` — profile schema + update body accept the new nullable fields; `null` clears), exposed on public `GET /store/config` for the storefront footer icons. WhatsApp intentionally has NO column — its footer link derives from the existing `contactPhone`.
+- **Category image direct upload:** `POST /api/v1/admin/categories/:id/image/upload` (multipart, `categories:write`, idempotent, registered in the admin endpoint policy registry). Single optional image, validated and stored via the same provider as product images (local disk or Cloudflare R2 through `saveCategoryImage`); replacing deletes the previously hosted image. The existing URL-based `imageUrl` create/update path is unchanged.
+
+### Fixed
+- **Delhivery cancel finally lands in Delhivery's dashboard: the edit call was posted to `/api/p/edit/` (trailing slash).** The slashed path can 301-redirect, and `fetch` converts a redirected POST into a body-less GET — Delhivery received no cancellation payload at all, so packages stayed "Ready To Ship" while Shiprocket cancels (different endpoint) worked. Now posts to `/api/p/edit` (no slash), matching Delhivery's docs and every verified working integration.
+- **Fresh Delhivery AWBs no longer show `FAILED_DELIVERY`.** Two compounding mistakes: (1) the status mapper treated Delhivery's `StatusType "UD"` as "Undelivered" — it is actually the bucket for the ENTIRE forward journey (Delhivery's own webhook sample pairs `Status:"Manifested"` with `StatusType:"UD"`); now maps to `IN_TRANSIT`. (2) `trackShipment` preferred the coarse `StatusType` over the precise human `Status` — order flipped, so Manifested→BOOKED, Undelivered→FAILED_DELIVERY, Cancelled→CANCELLED map exactly. Real NDRs still surface via `NDR`/`CC` codes and "Undelivered"/"Failed Delivery" text.
+- **`POST /admin/shipments/:id/sync` 500:** provider scan timestamps that `new Date()` can't parse produced an Invalid Date that made Prisma throw mid-transaction. Unparseable timestamps now fall back to "now" instead of failing the whole sync.
+- **"Resend notification" now sends the order's CURRENT status.** `POST /admin/orders/:id/notifications/retrigger` `template` is now optional — when omitted, the backend derives it from the live order status (CONFIRMED→OrderConfirmed, SHIPPED→OrderShipped, OUT_FOR_DELIVERY→OutForDelivery, DELIVERED→OrderDelivered, CANCELLED/REFUNDED→OrderCancelled, PAYMENT_FAILED→PaymentFailed) and enriches the payload with AWB + tracking URL when a shipment exists. Explicit `template` still works.
+- **Admin console starved by the 60/min admin rate limit.** Analytics/dashboard pages fire 8–12 API calls each, so switching sections quickly tripped 429s that rendered "Something went wrong" on every panel (the dashboard/analytics panels were always correctly wired — the bursts were killing the calls). Admin edge class raised to 180/min (edge 180, burst 40); derived tiers scale with it (adminWrite 120, opsRead 90, opsCritical 54 — all permission/OTP-gated).
+
+**Propagation:**
+- Severity: NORMAL · Layers: backend (`prisma/schema.prisma` + migration, `modules/settings/*`, `modules/products/*`, `common/auth/admin-endpoint-policy-registry.ts`, `common/security/edge-policy.ts`)
+- Migration: YES (additive, two nullable TEXT columns — `prisma migrate deploy`, no backfill) · Flag: none · Design impact: none · Breaking: NO
+- Rollback: revert files + drop the two columns
+- Ops note: if Nginx/Cloudflare mirror the edge rate numbers, update the admin class there to 180/min too.
+- Pairs with frontend-core 0.1.33 (footer icons + admin fields + category upload UI + 429 retry).
+
 ## [0.1.50] — 2026-07-04
 
 ### Fixed

@@ -1621,6 +1621,44 @@ export class ProductsService {
     return updatedCategory;
   }
 
+  /**
+   * Direct file upload for the single optional category image — same storage
+   * provider (local disk or Cloudflare R2) and validation as product images.
+   * Replaces (and deletes) any previously hosted category image.
+   */
+  async adminUploadCategoryImage(
+    categoryId: string,
+    input: { buffer: Buffer; mimeType?: string | null }
+  ) {
+    const existing = await this.fastify.prisma.category.findUnique({ where: { id: categoryId } });
+    if (!existing) {
+      throw new AppError(ERROR_CODES.NOT_FOUND, 'Category not found', 404);
+    }
+
+    const mime = assertProductImageUpload({
+      buffer: input.buffer,
+      ...(input.mimeType != null ? { declaredMime: input.mimeType } : {})
+    });
+    const storage = getProductMediaStorage();
+    const saved = await storage.saveCategoryImage({
+      categoryId,
+      imageId: randomUUID(),
+      mime,
+      content: input.buffer
+    });
+
+    if (existing.imageUrl && isHostedCategoryImageUrl(existing.imageUrl)) {
+      await deleteHostedProductImage(existing.imageUrl);
+    }
+
+    const updated = await this.fastify.prisma.category.update({
+      where: { id: categoryId },
+      data: { imageUrl: saved.publicUrl }
+    });
+    await this.invalidateProductListCacheSafe();
+    return updated;
+  }
+
   async adminHardDeleteCategory(id: string) {
     const existing = await this.fastify.prisma.category.findUnique({ where: { id } });
     if (!existing) {

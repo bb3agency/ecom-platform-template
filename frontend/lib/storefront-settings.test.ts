@@ -11,6 +11,8 @@ const STORE_FIELDS = {
   storeState: null,
   contactEmail: null,
   contactPhone: null,
+  facebookUrl: null,
+  instagramUrl: null,
 };
 
 const FAIL_CLOSED_EXPECTED = {

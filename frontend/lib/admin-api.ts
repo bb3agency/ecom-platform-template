@@ -940,6 +940,8 @@ export interface AdminStoreProfile {
   sellerLegalName: string | null;
   sellerAddress: string | null;
   sellerState: string | null;
+  facebookUrl: string | null;
+  instagramUrl: string | null;
 }
 
 export interface AdminInventorySettings {

@@ -3291,10 +3291,17 @@ export class OrdersService {
       select: {
         id: true,
         orderNumber: true,
+        status: true,
         user: {
           select: {
             email: true,
             phone: true
+          }
+        },
+        shipment: {
+          select: {
+            awbNumber: true,
+            trackingUrl: true
           }
         }
       }
@@ -3303,6 +3310,30 @@ export class OrdersService {
     if (!order) {
       throw new AppError(ERROR_CODES.NOT_FOUND, 'Order not found', 404);
     }
+
+    // No explicit template → derive it from the order's CURRENT status, so
+    // "Resend notification" always tells the customer where the order stands
+    // right now (not a stale OrderConfirmed for an already-shipped order).
+    const statusToTemplate: Record<string, NonNullable<AdminRetriggerNotificationInput['template']>> = {
+      PENDING_PAYMENT: 'OrderConfirmed',
+      CONFIRMED: 'OrderConfirmed',
+      PROCESSING: 'OrderConfirmed',
+      SHIPPED: 'OrderShipped',
+      OUT_FOR_DELIVERY: 'OutForDelivery',
+      DELIVERED: 'OrderDelivered',
+      CANCELLED: 'OrderCancelled',
+      REFUNDED: 'OrderCancelled',
+      PAYMENT_FAILED: 'PaymentFailed'
+    };
+    const template = input.template ?? statusToTemplate[order.status] ?? 'OrderConfirmed';
+
+    // Shipped/OFD templates render AWB + tracking link when available.
+    const notificationData: Record<string, string> = {
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      ...(order.shipment?.awbNumber ? { awb: order.shipment.awbNumber } : {}),
+      ...(order.shipment?.trackingUrl ? { trackingUrl: order.shipment.trackingUrl } : {})
+    };
 
     const channels = input.channels ?? ['EMAIL', 'SMS'];
     const notificationFlags = await this.settingsService.resolveNotificationFlags();
@@ -3323,10 +3354,10 @@ export class OrdersService {
         'send-email',
         {
           to: email,
-          template: input.template,
-          data: { orderId: order.id, orderNumber: order.orderNumber }
+          template,
+          data: notificationData
         },
-        `notifications:email:${order.id}:${input.template}`
+        `notifications:email:${order.id}:${template}`
       );
       queuedJobs += 1;
     }
@@ -3344,10 +3375,10 @@ export class OrdersService {
         'send-sms',
         {
           phone,
-          template: input.template,
-          data: { orderId: order.id, orderNumber: order.orderNumber }
+          template,
+          data: notificationData
         },
-        `notifications:sms:${order.id}:${input.template}`
+        `notifications:sms:${order.id}:${template}`
       );
       queuedJobs += 1;
     }
@@ -3372,17 +3403,17 @@ export class OrdersService {
         'send-whatsapp',
         {
           phone,
-          template: input.template,
-          data: { orderId: order.id, orderNumber: order.orderNumber }
+          template,
+          data: notificationData
         },
-        `notifications:whatsapp:${order.id}:${input.template}`
+        `notifications:whatsapp:${order.id}:${template}`
       );
       queuedJobs += 1;
     }
 
     return {
       orderId: order.id,
-      template: input.template,
+      template,
       channels,
       queuedJobs
     };
@@ -4987,13 +5018,18 @@ export class OrdersService {
 
       if (tracking.events.length > 0) {
         await tx.shipmentEvent.createMany({
-          data: tracking.events.map((event) => ({
-            shipmentId: shipment.id,
-            status: event.status,
-            description: event.description,
-            location: event.location ?? null,
-            occurredAt: event.occurredAt ? new Date(event.occurredAt) : new Date()
-          })),
+          data: tracking.events.map((event) => {
+            // Guard against provider timestamps Date can't parse — an Invalid
+            // Date reaching Prisma throws and turns the whole sync into a 500.
+            const parsed = event.occurredAt ? new Date(event.occurredAt) : null;
+            return {
+              shipmentId: shipment.id,
+              status: event.status,
+              description: event.description,
+              location: event.location ?? null,
+              occurredAt: parsed && !Number.isNaN(parsed.getTime()) ? parsed : new Date()
+            };
+          }),
           skipDuplicates: false
         });
       }

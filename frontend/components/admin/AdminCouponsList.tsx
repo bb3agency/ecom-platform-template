@@ -49,9 +49,13 @@ export function AdminCouponsPageContent({
   to: string;
 }) {
   return (
-    <div className="grid gap-6 min-w-0">
+    <div className="grid min-w-0 grid-cols-1 gap-6">
       <AdminCouponsStorefrontBanner />
-      <AdminCouponsList from={from} to={to} />
+      {/* The page date range must NOT filter the coupon LIST — it filters by
+          createdAt on the backend, so with the default "last 7 days" every
+          older coupon (still active!) silently vanished from the table. The
+          range scopes only the usage analytics panel below. */}
+      <AdminCouponsList />
 
       <AdminCouponAnalyticsPanel from={from} to={to} />
     </div>

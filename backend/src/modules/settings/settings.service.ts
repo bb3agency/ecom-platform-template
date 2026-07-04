@@ -191,7 +191,9 @@ export class SettingsService {
         fssaiNumber: true,
         sellerLegalName: true,
         sellerAddress: true,
-        sellerState: true
+        sellerState: true,
+        facebookUrl: true,
+        instagramUrl: true
       }
     });
 
@@ -205,7 +207,9 @@ export class SettingsService {
       fssaiNumber: settings?.fssaiNumber ?? null,
       sellerLegalName: settings?.sellerLegalName ?? null,
       sellerAddress: settings?.sellerAddress ?? null,
-      sellerState: settings?.sellerState ?? null
+      sellerState: settings?.sellerState ?? null,
+      facebookUrl: settings?.facebookUrl ?? null,
+      instagramUrl: settings?.instagramUrl ?? null
     };
   }
 
@@ -223,7 +227,9 @@ export class SettingsService {
         ...(input.fssaiNumber !== undefined ? { fssaiNumber: input.fssaiNumber } : {}),
         ...(input.sellerLegalName !== undefined ? { sellerLegalName: input.sellerLegalName } : {}),
         ...(input.sellerAddress !== undefined ? { sellerAddress: input.sellerAddress } : {}),
-        ...(input.sellerState !== undefined ? { sellerState: input.sellerState } : {})
+        ...(input.sellerState !== undefined ? { sellerState: input.sellerState } : {}),
+        ...(input.facebookUrl !== undefined ? { facebookUrl: input.facebookUrl } : {}),
+        ...(input.instagramUrl !== undefined ? { instagramUrl: input.instagramUrl } : {})
       },
       create: {
         singletonKey: SettingsService.singletonKey,
@@ -238,7 +244,9 @@ export class SettingsService {
         ...(input.fssaiNumber !== undefined ? { fssaiNumber: input.fssaiNumber } : {}),
         ...(input.sellerLegalName !== undefined ? { sellerLegalName: input.sellerLegalName } : {}),
         ...(input.sellerAddress !== undefined ? { sellerAddress: input.sellerAddress } : {}),
-        ...(input.sellerState !== undefined ? { sellerState: input.sellerState } : {})
+        ...(input.sellerState !== undefined ? { sellerState: input.sellerState } : {}),
+        ...(input.facebookUrl !== undefined ? { facebookUrl: input.facebookUrl } : {}),
+        ...(input.instagramUrl !== undefined ? { instagramUrl: input.instagramUrl } : {})
       },
       select: {
         storeName: true,
@@ -250,7 +258,9 @@ export class SettingsService {
         fssaiNumber: true,
         sellerLegalName: true,
         sellerAddress: true,
-        sellerState: true
+        sellerState: true,
+        facebookUrl: true,
+        instagramUrl: true
       }
     });
 
@@ -264,7 +274,9 @@ export class SettingsService {
       fssaiNumber: updated.fssaiNumber,
       sellerLegalName: updated.sellerLegalName,
       sellerAddress: updated.sellerAddress,
-      sellerState: updated.sellerState
+      sellerState: updated.sellerState,
+      facebookUrl: updated.facebookUrl,
+      instagramUrl: updated.instagramUrl
     };
   }
 
@@ -501,6 +513,8 @@ export class SettingsService {
     storeState: string | null;
     contactEmail: string | null;
     contactPhone: string | null;
+    facebookUrl: string | null;
+    instagramUrl: string | null;
   }> {
     const [settings, couponsEnabled] = await Promise.all([
       this.fastify.prisma.storeSettings.findUnique({
@@ -519,7 +533,9 @@ export class SettingsService {
           sellerAddress: true,
           sellerState: true,
           contactEmail: true,
-          contactPhone: true
+          contactPhone: true,
+          facebookUrl: true,
+          instagramUrl: true
         }
       }),
       isStorefrontCouponsEnabled(this.fastify.prisma)
@@ -537,7 +553,9 @@ export class SettingsService {
       storeAddress: settings?.sellerAddress ?? null,
       storeState: settings?.sellerState ?? null,
       contactEmail: settings?.contactEmail ?? null,
-      contactPhone: settings?.contactPhone ?? null
+      contactPhone: settings?.contactPhone ?? null,
+      facebookUrl: settings?.facebookUrl ?? null,
+      instagramUrl: settings?.instagramUrl ?? null
     };
   }
 }

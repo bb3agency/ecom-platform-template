@@ -85,7 +85,10 @@ export function MobileNav({ minOrderValuePaise = 0 }: MobileNavProps) {
   useEffect(() => {
     if (mobileMenuOpen) {
       document.body.style.overflow = "hidden";
-      setTimeout(() => inputRef.current?.focus(), 50);
+      // Deliberately NOT focusing the search input here: on phones, focusing a
+      // text field pops the software keyboard over the menu the instant it
+      // opens — the user came to browse links, not necessarily to type. They
+      // can tap the field themselves when they want to search.
     } else {
       document.body.style.overflow = "";
       setSearchQuery("");

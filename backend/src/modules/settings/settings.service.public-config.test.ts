@@ -43,7 +43,9 @@ describe('SettingsService getPublicStoreConfig', () => {
         sellerAddress: '12 Market Rd, Hyderabad',
         sellerState: 'Telangana',
         contactEmail: 'hello@acme.test',
-        contactPhone: '+91 90000 00000'
+        contactPhone: '+91 90000 00000',
+        facebookUrl: 'https://facebook.com/acme',
+        instagramUrl: 'https://instagram.com/acme'
       });
     });
 
@@ -69,7 +71,10 @@ describe('SettingsService getPublicStoreConfig', () => {
       storeAddress: '12 Market Rd, Hyderabad',
       storeState: 'Telangana',
       contactEmail: 'hello@acme.test',
-      contactPhone: '+91 90000 00000'
+      contactPhone: '+91 90000 00000',
+      // merchant social links exposed for the storefront footer icons
+      facebookUrl: 'https://facebook.com/acme',
+      instagramUrl: 'https://instagram.com/acme'
     });
   });
 

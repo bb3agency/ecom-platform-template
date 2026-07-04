@@ -12,6 +12,30 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.33] — 2026-07-04
+
+### Added
+- **Footer social icons are now real, merchant-managed links.** The F/I/T placeholder circles are replaced with official Facebook / Instagram / WhatsApp brand glyphs from `react-icons` (new pinned dependency 5.5.0 — the sanctioned exception to the Lucide-only rule, used ONLY for brand logos; imports are tree-shaken). Facebook/Instagram URLs come from the new Admin → Settings → Store fields (via `GET /store/config`); the WhatsApp icon opens `wa.me/<contactPhone>` using the same number shown in the footer (bare 10-digit numbers get +91). Icons render only when configured — no dead links.
+- **Admin → Settings → Store: "Facebook Link" and "Instagram Link" fields** (blank clears the link and hides the icon; helper text explains WhatsApp needs no link).
+- **Category image upload in the admin category editor.** Single optional image with instant preview: edit mode uploads immediately to `POST /admin/categories/:id/image/upload` (same CDN pipeline as product images); create mode holds the file and uploads right after the category is created (an upload failure surfaces a toast but never rolls back the category). Storefront category cards now show the merchant image when set and the neutral product placeholder when not — the hardcoded Unsplash stock-photo fallbacks in `lib/categories.ts` are gone.
+
+### Changed
+- **"Resend notification" resends the order's CURRENT status** — the button no longer hardcodes `OrderConfirmed`; the backend derives the template from the live order status (backend-core 0.1.51). Tooltip updated accordingly.
+- **Admin API client retries idempotent GETs once after a 429** (1.2s delay). Combined with the backend admin rate-limit raise (backend-core 0.1.51), rapidly switching admin sections no longer flashes "Something went wrong" across panels. (The dashboard/analytics panels were always wired to real endpoints — the rate-limit bursts were killing their calls.)
+
+### Fixed
+- **Admin coupons page looked completely broken — active coupons (e.g. FREEDELIVERY) missing.** The page's date range (default: last 7 days) was passed into the coupon LIST, the Total/Active/Expired KPI counts, and the CSV export — and the backend's `from/to` filters coupons by `createdAt`, so every coupon created before the window silently vanished while still being active. The list and export now always show ALL coupons; Total/Active/Expired KPIs are point-in-time; only usage analytics (Total Uses / Total Discounts) stay range-scoped.
+- **Coupons no longer stick across checkout visits.** The backend keeps `couponId` on the cart until an order is created, so a coupon applied in an abandoned checkout silently carried over to the next visit/order. Checkout now clears any leftover coupon once on mount (idempotent; guests get their reserved usage released), guards against clobbering a coupon applied during the visit, and re-syncs the cart after the reset to close the stale-fetch race.
+- **Add to cart / Buy now buttons look right.** `AddToCartButton` wrapped its `<button>` in a stray `grid` div, so `flex-1`/`shrink-0` on the button never reached the flex row (unequal widths), and the default icon rendered with no gap beside the label. The button is now the root element; PDP CTAs got `gap-2 px-6 shadow-sm` + disabled styling, and Buy now uses a lightning icon instead of a second cart icon.
+- **Mobile menu no longer pops the keyboard.** Opening the storefront mobile menu auto-focused the search field, which immediately raised the software keyboard over the menu. The autofocus is removed — tap the field to search.
+- **Product detail "Additional Information": Origin row removed** (Category / Certification / Storage remain).
+
+**Propagation:**
+- Severity: NORMAL · Layers: frontend (storefront + admin components, `lib/storefront-settings.ts`, `lib/admin-api.ts`)
+- Migration: NO · Flag: none · Design impact: none (brand glyphs inherit the token palette) · Breaking: NO
+- Rollback: revert the listed files
+- Pairs with backend-core 0.1.51 (StoreSettings social-link columns + /store/config exposure).
+
 ## [0.1.32] — 2026-07-04
 
 ### Added

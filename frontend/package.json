@@ -1,6 +1,6 @@
 {
   "name": "frontend",
-  "version": "0.1.32",
+  "version": "0.1.33",
   "private": true,
   "scripts": {
     "predev": "node scripts/ensure-backend-dev.mjs",
@@ -27,6 +27,7 @@
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "react-hook-form": "^7.76.0",
+    "react-icons": "5.5.0",
     "react-leaflet": "^5.0.0",
     "recharts": "^3.8.1",
     "shadcn": "^4.7.0",

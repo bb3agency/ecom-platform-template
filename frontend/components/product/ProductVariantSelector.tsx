@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ShoppingCart, Zap } from "lucide-react";
 import { AddToCartButton } from "@/components/cart/AddToCartButton";
 import { PriceDisplay } from "@/components/shared/PriceDisplay";
 import type { Product, ProductVariant } from "@/types/product";
@@ -88,13 +89,15 @@ export function ProductVariantSelector({
         <div id="pdp-atc-anchor" className="flex flex-col gap-3 pt-2 sm:flex-row sm:gap-4">
           <AddToCartButton
             variantId={selectedVariant.id}
-            className="flex h-12 flex-1 items-center justify-center rounded-full bg-[#eff5ee] text-sm font-bold text-[#23403d] transition-colors hover:bg-[#c5dac2] sm:h-14"
+            className="flex h-12 flex-1 items-center justify-center gap-2 rounded-full bg-[#eff5ee] px-6 text-sm font-bold text-[#23403d] shadow-sm transition-colors hover:bg-[#c5dac2] disabled:opacity-60 sm:h-14"
             label="Add to cart"
+            icon={<ShoppingCart className="size-4 shrink-0" aria-hidden />}
           />
           <AddToCartButton
             variantId={selectedVariant.id}
-            className="flex h-12 flex-1 items-center justify-center rounded-full bg-[#23403d] text-sm font-bold text-white transition-colors hover:bg-[#ec6e55] sm:h-14"
+            className="flex h-12 flex-1 items-center justify-center gap-2 rounded-full bg-[#23403d] px-6 text-sm font-bold text-white shadow-sm transition-colors hover:bg-[#ec6e55] disabled:opacity-60 sm:h-14"
             label="Buy now"
+            icon={<Zap className="size-4 shrink-0" aria-hidden />}
             redirectTo="/checkout"
           />
         </div>

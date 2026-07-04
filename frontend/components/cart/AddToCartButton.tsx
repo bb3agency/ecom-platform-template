@@ -59,20 +59,21 @@ export function AddToCartButton({
     }
   };
 
+  // No wrapper element: callers place this button inside flex rows and rely on
+  // flex-1/shrink-0 on the button itself — a wrapper div swallowed those classes
+  // (unequal CTA widths on the PDP) and broke the card layouts.
   return (
-    <div className="grid gap-2">
-      <button
-        type="button"
-        disabled={isSubmitting}
-        onClick={handleClick}
-        className={
-          className ??
-          "inline-flex h-10 items-center justify-center gap-2 rounded-md bg-primary text-sm font-medium text-primary-foreground disabled:opacity-60"
-        }
-      >
-        {icon ?? <ShoppingCart className="size-4" aria-hidden />}
-        {isSubmitting ? "Adding..." : label}
-      </button>
-    </div>
+    <button
+      type="button"
+      disabled={isSubmitting}
+      onClick={handleClick}
+      className={
+        className ??
+        "inline-flex h-10 items-center justify-center gap-2 rounded-md bg-primary px-6 text-sm font-medium text-primary-foreground disabled:opacity-60"
+      }
+    >
+      {icon ?? <ShoppingCart className="size-4 shrink-0" aria-hidden />}
+      {isSubmitting ? "Adding…" : label}
+    </button>
   );
 }

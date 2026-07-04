@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Package, Tag } from "lucide-react";
-import { PRODUCT_ORIGIN_DEFAULT, PRODUCT_CERTIFICATION_DEFAULT } from "@/lib/content";
+import { PRODUCT_CERTIFICATION_DEFAULT } from "@/lib/content";
 import { cn } from "@/lib/utils";
 
 interface ProductDetailTabsProps {
@@ -151,13 +151,6 @@ export function ProductDetailTabs({
                   </dd>
                 </div>
               )}
-
-              <div className="flex items-start gap-6 py-3">
-                <dt className="w-36 shrink-0 text-xs font-bold uppercase tracking-wider text-[#999]">
-                  Origin
-                </dt>
-                <dd className="text-sm text-[#555]">{PRODUCT_ORIGIN_DEFAULT}</dd>
-              </div>
 
               <div className="flex items-start gap-6 py-3">
                 <dt className="w-36 shrink-0 text-xs font-bold uppercase tracking-wider text-[#999]">

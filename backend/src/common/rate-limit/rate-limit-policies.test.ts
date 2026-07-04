@@ -153,7 +153,8 @@ describe('rate-limit policies', () => {
     const adminMax = await resolveRateLimitMax(adminRequest as never);
     const checkoutMax = await resolveRateLimitMax(checkoutRequest as never);
 
-    expect(adminMax).toBe(18);
+    // 30% of the admin class limit (180/min since the console-starvation fix).
+    expect(adminMax).toBe(54);
     expect(checkoutMax).toBe(30);
   });
 });

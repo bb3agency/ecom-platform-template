@@ -10,14 +10,17 @@ export interface AuthenticatedApiDeps {
 
 type AuthenticatedOptions = ApiClientOptions & {
   _retryAfterRefresh?: boolean;
+  _retriedAfterRateLimit?: boolean;
 };
+
+const RATE_LIMIT_RETRY_DELAY_MS = 1200;
 
 export function createAuthenticatedApiClient(deps: AuthenticatedApiDeps) {
   return async function authenticatedApiClient<T>(
     endpoint: string,
     options: AuthenticatedOptions = {},
   ): Promise<T> {
-    const { _retryAfterRefresh, accessToken, ...rest } = options;
+    const { _retryAfterRefresh, _retriedAfterRateLimit, accessToken, ...rest } = options;
     const token = accessToken ?? deps.getAccessToken();
 
     try {
@@ -46,6 +49,19 @@ export function createAuthenticatedApiClient(deps: AuthenticatedApiDeps) {
           deps.onAuthFailure();
           throw error;
         }
+      }
+
+      // Rapidly switching admin sections can burst past the per-minute rate
+      // limit; a single delayed retry for idempotent GETs turns those panels'
+      // "Something went wrong" flashes into a barely-noticeable pause.
+      const isGet = !rest.method || rest.method.toUpperCase() === "GET";
+      if (error.status === 429 && isGet && !_retriedAfterRateLimit) {
+        await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_RETRY_DELAY_MS));
+        return authenticatedApiClient<T>(endpoint, {
+          ...rest,
+          ...(token ? { accessToken: token } : {}),
+          _retriedAfterRateLimit: true,
+        });
       }
 
       if (shouldForceLogin(error) || (error.status === 401 && _retryAfterRefresh)) {

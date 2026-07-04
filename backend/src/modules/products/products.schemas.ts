@@ -793,6 +793,21 @@ export const adminUpdateCategorySchema = {
   }
 } as const;
 
+export const adminUploadCategoryImageSchema = {
+  params: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['id'],
+    properties: { id: { type: 'string', maxLength: 64 } }
+  },
+  querystring: emptyQuerystringSchema,
+  // multipart/form-data — body validated in the handler, not by JSON schema.
+  response: {
+    200: categorySchema,
+    ...standardAdminErrorResponses
+  }
+} as const;
+
 export const adminHardDeleteCategorySchema = {
   params: {
     type: 'object',

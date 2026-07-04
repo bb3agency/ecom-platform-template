@@ -135,7 +135,8 @@ export type AdminPaymentListQuery = {
 };
 
 export type AdminRetriggerNotificationInput = {
-  template: 'OrderConfirmed' | 'PaymentFailed' | 'OrderShipped' | 'OutForDelivery' | 'OrderDelivered' | 'OrderCancelled';
+  /** Omitted → derived from the order's current status at send time. */
+  template?: 'OrderConfirmed' | 'PaymentFailed' | 'OrderShipped' | 'OutForDelivery' | 'OrderDelivered' | 'OrderCancelled';
   channels?: Array<'EMAIL' | 'SMS' | 'WHATSAPP'>;
 };
 

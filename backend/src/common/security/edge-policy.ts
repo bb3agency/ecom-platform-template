@@ -25,7 +25,11 @@ export const edgePolicyRules: Record<EdgeRouteClass, EdgePolicyRule> = {
     }
   },
   checkout: { className: 'checkout', appLimitPerMinute: 30, edgeRatePerMinute: 35, edgeBurst: 12, action: 'allow' },
-  admin: { className: 'admin', appLimitPerMinute: 60, edgeRatePerMinute: 60, edgeBurst: 15, action: 'challenge' },
+  // 60/min starved the admin console: analytics/dashboard pages fire 8–12 API
+  // calls each, so an admin switching sections quickly hit 429s that surfaced
+  // as "Something went wrong" on every panel. 180/min still throttles abuse
+  // (adminWrite derives 0.67×, opsRead 0.5×, opsCritical 0.1× — all OTP/permission-gated).
+  admin: { className: 'admin', appLimitPerMinute: 180, edgeRatePerMinute: 180, edgeBurst: 40, action: 'challenge' },
   catalog: { className: 'catalog', appLimitPerMinute: 300, edgeRatePerMinute: 240, edgeBurst: 40, action: 'allow' },
   webhook: { className: 'webhook', appLimitPerMinute: 400, edgeRatePerMinute: 300, edgeBurst: 30, action: 'allow' },
   cart: { className: 'cart', appLimitPerMinute: 90, edgeRatePerMinute: 90, edgeBurst: 20, action: 'allow' },

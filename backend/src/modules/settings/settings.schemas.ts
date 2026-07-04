@@ -47,7 +47,9 @@ const storeProfileSchema = {
     fssaiNumber: { anyOf: [{ type: 'string', maxLength: 30 }, { type: 'null' }] },
     sellerLegalName: { anyOf: [{ type: 'string', maxLength: 200 }, { type: 'null' }] },
     sellerAddress: { anyOf: [{ type: 'string', maxLength: 500 }, { type: 'null' }] },
-    sellerState: { anyOf: [{ type: 'string', maxLength: 100 }, { type: 'null' }] }
+    sellerState: { anyOf: [{ type: 'string', maxLength: 100 }, { type: 'null' }] },
+    facebookUrl: { anyOf: [{ type: 'string', maxLength: 1000 }, { type: 'null' }] },
+    instagramUrl: { anyOf: [{ type: 'string', maxLength: 1000 }, { type: 'null' }] }
   }
 } as const;
 
@@ -165,7 +167,9 @@ export const updateStoreProfileSchema = {
       fssaiNumber: { type: 'string', maxLength: 30 },
       sellerLegalName: { type: 'string', maxLength: 200 },
       sellerAddress: { type: 'string', maxLength: 500 },
-      sellerState: { anyOf: [{ type: 'string', maxLength: 100 }, { type: 'null' }] }
+      sellerState: { anyOf: [{ type: 'string', maxLength: 100 }, { type: 'null' }] },
+      facebookUrl: { anyOf: [{ type: 'string', maxLength: 1000 }, { type: 'null' }] },
+      instagramUrl: { anyOf: [{ type: 'string', maxLength: 1000 }, { type: 'null' }] }
     }
   },
   response: {
@@ -394,7 +398,9 @@ export const getPublicStoreConfigSchema = {
         storeAddress: { type: ['string', 'null'] },
         storeState: { type: ['string', 'null'] },
         contactEmail: { type: ['string', 'null'] },
-        contactPhone: { type: ['string', 'null'] }
+        contactPhone: { type: ['string', 'null'] },
+        facebookUrl: { type: ['string', 'null'] },
+        instagramUrl: { type: ['string', 'null'] }
       }
     }
   }

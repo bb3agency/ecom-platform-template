@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -79,7 +79,11 @@ export function CheckoutForm() {
   const [couponLoading, setCouponLoading] = useState(false);
   const [couponError, setCouponError] = useState<string | null>(null);
   const { couponsEnabled, isCodEnabled, minOrderValuePaise, configAvailable } = useStoreConfig();
-  useCartSync({ resyncKey: couponsEnabled });
+  // Bumped after the mount-time coupon reset so the cart re-syncs from the
+  // server AFTER the removal — otherwise an in-flight initial getCart could
+  // resolve later and restore the stale coupon it fetched pre-removal.
+  const [couponResetDone, setCouponResetDone] = useState(false);
+  useCartSync({ resyncKey: `${couponsEnabled}-${couponResetDone}` });
   const api = useAuthenticatedApi();
   const accessToken = useAuthStore((s) => s.accessToken);
   const storefrontSessionStatus = useAuthStore((s) => s.storefrontSessionStatus);
@@ -88,6 +92,33 @@ export function CheckoutForm() {
   const setCart = useCartStore((s) => s.setCart);
   const clearCart = useCartStore((s) => s.clearCart);
   const clearPendingMerge = useCartStore((s) => s.clearPendingMerge);
+
+  // Each checkout visit starts WITHOUT a coupon. The backend keeps couponId on
+  // the cart until an order is created, so a coupon applied in an abandoned
+  // checkout silently carried over to the next visit (and looked "stuck" even
+  // across completed orders when the local store held a stale cart). Clear any
+  // leftover coupon once on mount — removeCartCoupon is an idempotent no-op
+  // when none is applied. A coupon the user applies DURING this visit is kept.
+  const userAppliedCouponRef = useRef(false);
+  useEffect(() => {
+    let cancelled = false;
+    void removeCartCoupon(accessToken)
+      .then((next) => {
+        // Don't clobber a coupon the user applied while this request was in flight.
+        if (!cancelled && !userAppliedCouponRef.current) setCart(next);
+      })
+      .catch(() => {
+        // Non-fatal — the cart sync above still renders the current server state.
+      })
+      .finally(() => {
+        if (!cancelled) setCouponResetDone(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // Mount-only: rerunning on token changes mid-checkout would wipe an applied coupon.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const form = useForm<CheckoutValues>({
     resolver: zodResolver(schema),
@@ -219,6 +250,7 @@ export function CheckoutForm() {
     }
     setCouponLoading(true);
     setCouponError(null);
+    userAppliedCouponRef.current = true;
     try {
       const next = await applyCartCoupon(couponCode, accessToken);
       setCart(next);

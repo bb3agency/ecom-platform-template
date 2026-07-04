@@ -200,11 +200,15 @@ export default class DelhiveryAdapter implements ShippingProviderAdapter {
     );
 
     const shipmentData = this.pickUnknown(payload, ['ShipmentData', 0, 'Shipment']);
-    // Prefer StatusType (authoritative short code e.g. "DL", "OFD") over Status (human-readable)
+    // Prefer the human-readable Status ("Manifested", "In Transit", "Delivered",
+    // "Undelivered", "Cancelled") over StatusType: StatusType is a coarse
+    // journey bucket — "UD" covers everything from Manifested to Dispatched, so
+    // leading with it collapsed every forward state into one (and previously
+    // mismapped fresh AWBs as failed deliveries). StatusType stays as fallback.
     const status =
       this.pickString(payload, [
-        ['ShipmentData', 0, 'Shipment', 'Status', 'StatusType'],
-        ['ShipmentData', 0, 'Shipment', 'Status', 'Status']
+        ['ShipmentData', 0, 'Shipment', 'Status', 'Status'],
+        ['ShipmentData', 0, 'Shipment', 'Status', 'StatusType']
       ]) ?? 'UNKNOWN';
 
     const events: TrackShipmentResult['events'] = [];
@@ -244,11 +248,12 @@ export default class DelhiveryAdapter implements ShippingProviderAdapter {
   }
 
   async cancelShipment(awbNumber: string): Promise<{ cancelled: boolean; providerPayload: Record<string, unknown> }> {
-    // Delhivery's Cancel/Edit API (POST /api/p/edit) expects a RAW JSON body with
-    // `cancellation` as the STRING "true" — NOT the `format=json&data=` form
-    // wrapper used by create.json, and NOT a boolean. Sending the wrong shape is
-    // silently ignored by Delhivery, so the order never cancels in their dashboard.
-    const payload = await this.request('/api/p/edit/', {
+    // Delhivery's Cancel/Edit API (POST /api/p/edit — NO trailing slash; the
+    // slashed path can 301 and fetch converts the redirected POST into a
+    // body-less GET, silently ignoring the cancellation) expects a RAW JSON
+    // body with `cancellation` as the STRING "true" — NOT the
+    // `format=json&data=` form wrapper used by create.json, and NOT a boolean.
+    const payload = await this.request('/api/p/edit', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ waybill: awbNumber, cancellation: 'true' })

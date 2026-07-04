@@ -79,6 +79,7 @@ export const ADMIN_ENDPOINT_POLICY_REGISTRY: readonly EndpointPolicy[] = [
   { method: 'GET', path: '/api/v1/admin/categories/:id', permission: 'categories:read', layer: 'A' },
   { method: 'POST', path: '/api/v1/admin/categories', permission: 'categories:write', layer: 'A' },
   { method: 'PATCH', path: '/api/v1/admin/categories/:id', permission: 'categories:write', layer: 'A' },
+  { method: 'POST', path: '/api/v1/admin/categories/:id/image/upload', permission: 'categories:write', layer: 'A' },
   { method: 'DELETE', path: '/api/v1/admin/categories/:id', permission: 'categories:write', layer: 'A' },
   { method: 'DELETE', path: '/api/v1/admin/categories/:id/permanent', permission: 'categories:write', layer: 'A' },
   { method: 'GET', path: '/api/v1/ops/queues', permission: 'ops:read', layer: 'C' },

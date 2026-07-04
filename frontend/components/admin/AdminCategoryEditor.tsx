@@ -23,6 +23,8 @@ import { useAdminDataRefreshEffect } from "@/hooks/use-admin-data-refresh-effect
 import { AdminFormField } from "@/components/admin/AdminFormField";
 import { useAdminFormValidation } from "@/hooks/use-admin-form-validation";
 import { resolveProductImageUrl } from "@/lib/media-url";
+import { uploadAdminCategoryImage } from "@/lib/admin-product-media";
+import { useAuthStore } from "@/stores/auth";
 
 const inputClass =
   "h-10 w-full rounded-md border border-border bg-background px-3 text-sm focus:border-zinc-900 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60";
@@ -77,6 +79,42 @@ export function AdminCategoryEditor({ categoryId }: AdminCategoryEditorProps) {
   const [parentId, setParentId] = useState("");
   const [imageUrl, setImageUrl] = useState("");
   const [isActive, setIsActive] = useState(true);
+  // Direct file upload (single optional image, stored via the same provider as
+  // product images — local disk or Cloudflare R2). In edit mode the file
+  // uploads immediately; in create mode it is held and uploaded right after
+  // the category is created (no id exists before that).
+  const [pendingImageFile, setPendingImageFile] = useState<File | null>(null);
+  const [pendingPreviewUrl, setPendingPreviewUrl] = useState<string | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const accessToken = useAuthStore((s) => s.accessToken);
+
+  async function handleImageFileSelected(file: File | null) {
+    if (!file) return;
+    if (isCreate || !categoryId) {
+      setPendingImageFile(file);
+      setPendingPreviewUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return URL.createObjectURL(file);
+      });
+      return;
+    }
+    if (!accessToken) {
+      setError("Session expired — sign in again to upload images.");
+      return;
+    }
+    setUploadingImage(true);
+    setError(null);
+    try {
+      const uploadedUrl = await uploadAdminCategoryImage(accessToken, categoryId, file);
+      setImageUrl(uploadedUrl);
+      setSuccess("Category image uploaded.");
+      notifyAdminDataChanged(["categories", "products", "dashboard"]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Image upload failed");
+    } finally {
+      setUploadingImage(false);
+    }
+  }
 
   const loadCategories = useCallback(async () => {
     try {
@@ -192,11 +230,24 @@ export function AdminCategoryEditor({ categoryId }: AdminCategoryEditorProps) {
           ...(parentId.trim() ? { parentId: parentId.trim() } : {}),
           ...(imageUrl.trim() ? { imageUrl: imageUrl.trim() } : {}),
         };
-        await api("/admin/categories", {
+        const created = await api<AdminCategoryListItem>("/admin/categories", {
           method: "POST",
           idempotencyKey: createIdempotencyKey(),
           body: JSON.stringify(payload),
         });
+        // Upload the held image file now that the category has an id. A failed
+        // upload must not roll back the created category — surface it instead.
+        if (pendingImageFile && created?.id && accessToken) {
+          try {
+            await uploadAdminCategoryImage(accessToken, created.id, pendingImageFile);
+          } catch (uploadErr) {
+            toast.error(
+              uploadErr instanceof Error
+                ? `Category created, but the image upload failed: ${uploadErr.message}`
+                : "Category created, but the image upload failed.",
+            );
+          }
+        }
         notifyAdminDataChanged(["categories", "products", "dashboard"]);
         router.push("/admin/categories");
       } else if (categoryId) {
@@ -397,18 +448,37 @@ export function AdminCategoryEditor({ categoryId }: AdminCategoryEditorProps) {
             />
           </AdminFormField>
 
-          {imageUrl.trim() ? (
+          <div className="sm:col-span-2 grid min-w-0 gap-1.5">
+            <span className="text-sm font-medium">Or upload an image</span>
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/avif"
+              disabled={inputsDisabled || uploadingImage}
+              className="block w-full text-sm text-muted-foreground file:mr-3 file:rounded-md file:border-0 file:bg-muted file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-foreground hover:file:bg-muted/70 disabled:opacity-60"
+              aria-label="Upload category image"
+              onChange={(e) => {
+                void handleImageFileSelected(e.target.files?.[0] ?? null);
+                e.target.value = "";
+              }}
+            />
+            <span className="text-xs text-muted-foreground">
+              Optional — single image, stored on the CDN like product images.
+              {isCreate ? " Uploads after the category is created." : uploadingImage ? " Uploading…" : ""}
+            </span>
+          </div>
+
+          {pendingPreviewUrl || imageUrl.trim() ? (
             <div className="sm:col-span-2">
               <p className="mb-2 text-xs font-semibold text-muted-foreground">
-                Image preview (saved to CDN after submit)
+                {pendingPreviewUrl ? "Image preview (uploads on save)" : "Image preview (saved to CDN after submit)"}
               </p>
               <div className="relative h-24 w-24 overflow-hidden rounded-lg border border-border/50">
                 <Image
-                  src={resolveProductImageUrl(imageUrl.trim())}
+                  src={pendingPreviewUrl ?? resolveProductImageUrl(imageUrl.trim())}
                   alt={name || "Category image preview"}
                   fill
                   className="object-cover"
-                  unoptimized={imageUrl.trim().startsWith("blob:")}
+                  unoptimized={Boolean(pendingPreviewUrl) || imageUrl.trim().startsWith("blob:")}
                 />
               </div>
             </div>

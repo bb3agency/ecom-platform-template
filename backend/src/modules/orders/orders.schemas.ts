@@ -1478,7 +1478,9 @@ export const adminRetriggerNotificationSchema = {
   body: {
     type: 'object',
     additionalProperties: false,
-    required: ['template'],
+    // `template` optional: when omitted, the backend derives it from the
+    // order's CURRENT status so "Resend notification" always reflects the
+    // exact state of the order at that moment.
     properties: {
       template: {
         type: 'string',

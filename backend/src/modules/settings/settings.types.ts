@@ -27,6 +27,8 @@ export type StoreProfileResponse = {
   sellerLegalName: string | null;
   sellerAddress: string | null;
   sellerState: string | null;
+  facebookUrl: string | null;
+  instagramUrl: string | null;
 };
 
 export type UpdateStoreProfileInput = {
@@ -40,6 +42,8 @@ export type UpdateStoreProfileInput = {
   sellerLegalName?: string;
   sellerAddress?: string;
   sellerState?: string | null;
+  facebookUrl?: string | null;
+  instagramUrl?: string | null;
 };
 
 /**
