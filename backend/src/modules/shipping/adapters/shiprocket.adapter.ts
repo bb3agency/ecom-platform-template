@@ -94,10 +94,23 @@ type ShiprocketTrackResponse = {
   };
 };
 
+// Shiprocket's /courier/generate/pickup nests the useful fields under `response`
+// and reports success as top-level `pickup_status` (1 = scheduled), e.g.:
+//   { "pickup_status": 1,
+//     "response": { "pickup_scheduled_date": "2026-05-06 11:59:17",
+//                   "pickup_token_number": "Reafdc4536063", "status": 1 } }
+// Older/edge responses expose the same fields at the top level, so we read both.
 type ShiprocketPickupResponse = {
+  pickup_status?: number;
   pickup_scheduled_date?: string;
   pickup_token_number?: string | number;
   status?: number;
+  response?: {
+    pickup_scheduled_date?: string;
+    pickup_token_number?: string | number;
+    status?: number;
+    data?: unknown;
+  };
 };
 
 type ShiprocketLabelResponse = {
@@ -582,20 +595,33 @@ export default class ShiprocketAdapter implements ShippingProviderAdapter {
       throw err;
     }
 
+    // Fields live under `response` in the current API; fall back to the top level
+    // for older/edge shapes so we never lose the scheduled date or token.
+    const rawScheduledDate = payload.response?.pickup_scheduled_date ?? payload.pickup_scheduled_date;
+    const scheduledDate = rawScheduledDate ? this.normalizeShiprocketDate(rawScheduledDate) : undefined;
+    const tokenNumber = payload.response?.pickup_token_number ?? payload.pickup_token_number;
+    // Success is signalled by top-level `pickup_status`, nested `response.status`,
+    // or simply the presence of a returned pickup slot/token.
+    const scheduled =
+      (payload.pickup_status ?? payload.response?.status ?? payload.status ?? 0) === 1 ||
+      scheduledDate != null ||
+      tokenNumber != null;
+
     // Shiprocket can also report an existing pickup as HTTP 200 with a message.
     if (payloadIndicatesExistingPickup(payload as Record<string, unknown>)) {
       return {
         scheduled: true,
         alreadyScheduled: true,
-        ...(payload.pickup_scheduled_date != null ? { pickupScheduledDate: payload.pickup_scheduled_date } : {}),
+        ...(scheduledDate != null ? { pickupScheduledDate: scheduledDate } : {}),
+        ...(tokenNumber != null ? { pickupTokenNumber: String(tokenNumber) } : {}),
         providerPayload: payload as Record<string, unknown>
       };
     }
 
     return {
-      scheduled: (payload.status ?? 0) === 1,
-      ...(payload.pickup_scheduled_date != null ? { pickupScheduledDate: payload.pickup_scheduled_date } : {}),
-      ...(payload.pickup_token_number != null ? { pickupTokenNumber: String(payload.pickup_token_number) } : {}),
+      scheduled,
+      ...(scheduledDate != null ? { pickupScheduledDate: scheduledDate } : {}),
+      ...(tokenNumber != null ? { pickupTokenNumber: String(tokenNumber) } : {}),
       providerPayload: payload as Record<string, unknown>
     };
   }

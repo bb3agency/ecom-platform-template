@@ -544,7 +544,40 @@ describe('ShiprocketAdapter', () => {
     ).rejects.toMatchObject({ code: 'PINCODE_NOT_SERVICEABLE' });
   });
 
-  it('schedules pickup successfully', async () => {
+  it('schedules pickup successfully (nested `response` shape)', async () => {
+    // Shiprocket's real /courier/generate/pickup response nests the date/token
+    // under `response` and reports success via top-level `pickup_status`.
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ token: 'sr-token-123' })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({
+          pickup_status: 1,
+          response: {
+            pickup_scheduled_date: '2026-05-06 11:59:17',
+            pickup_token_number: 'Reafdc4536063',
+            status: 1
+          }
+        })
+      });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const adapter = new ShiprocketAdapter({ email: 'test@example.com', password: 'secret' });
+    const result = await adapter.schedulePickup('SHIP202');
+
+    expect(result.scheduled).toBe(true);
+    // IST "YYYY-MM-DD HH:MM:SS" is normalized to a UTC ISO timestamp.
+    expect(result.pickupScheduledDate).toBe('2026-05-06T06:29:17.000Z');
+    expect(result.pickupTokenNumber).toBe('Reafdc4536063');
+    expect(result.alreadyScheduled).toBeUndefined();
+  });
+
+  it('schedules pickup successfully (legacy top-level shape)', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce({
         ok: true,
@@ -556,7 +589,7 @@ describe('ShiprocketAdapter', () => {
         status: 200,
         text: async () => JSON.stringify({
           status: 1,
-          pickup_scheduled_date: '2026-05-06',
+          pickup_scheduled_date: '2026-05-06 09:00:00',
           pickup_token_number: 'PKP123'
         })
       });
@@ -566,7 +599,7 @@ describe('ShiprocketAdapter', () => {
     const result = await adapter.schedulePickup('SHIP202');
 
     expect(result.scheduled).toBe(true);
-    expect(result.pickupScheduledDate).toBe('2026-05-06');
+    expect(result.pickupScheduledDate).toBe('2026-05-06T03:30:00.000Z');
     expect(result.pickupTokenNumber).toBe('PKP123');
     expect(result.alreadyScheduled).toBeUndefined();
   });

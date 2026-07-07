@@ -315,6 +315,8 @@ Receive real-time shipment status updates without polling.
    - `shipment_status` — tracking updates (IN_TRANSIT, OUT_FOR_DELIVERY, DELIVERED)
    - `order_status` — order lifecycle events
 
+   The backend maps the webhook's `current_status` **text** (authoritative — always present) to internal `ShipmentStatus`, covering the full Shiprocket status master: pre-collection states (`AWB Assigned`, `Label Generated`, `Pickup Scheduled/Generated/Queued`, `Out For Pickup`, `Pickup Rescheduled`) → `BOOKED`; only a real `Picked Up` scan → `PICKED_UP`; `In Transit`/`Misrouted`/`Delayed` → `IN_TRANSIT`; `Delivered`/`Partial Delivered` → `DELIVERED`; `Lost`/`Damaged`/`Destroyed` → `FAILED_DELIVERY`; `RTO *` → `RTO_INITIATED`/`RTO_DELIVERED`; cancellations → `CANCELLED`. Numeric `current_status_id` codes are intentionally not used (public docs conflict on their meaning). See `src/common/orders/webhook-status-mappers.ts`.
+
 3. **Security:**
    - Set a webhook secret/token in Shiprocket dashboard
    - Store it as `SHIPROCKET_WEBHOOK_TOKEN` in your environment

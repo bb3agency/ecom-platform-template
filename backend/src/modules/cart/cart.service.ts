@@ -6,7 +6,7 @@ import { ERROR_CODES } from '@common/errors/error-codes';
 import { recordFlashSaleAdmission, recordFlashSaleShardContention } from '@common/observability/metrics';
 import { redactSensitiveData } from '@common/security/redaction';
 import { ShippingProviderAdapter } from '@common/interfaces/shipping-provider.interface';
-import type { DeliveryRateResult } from '@common/interfaces/shipping-provider.interface';
+import type { DeliveryRateResult, ServiceabilityResult } from '@common/interfaces/shipping-provider.interface';
 import { resolvePickupPincode } from '@common/shipping/resolve-pickup-pincode';
 import { assertCouponWithinUsageLimits } from '@common/coupons/coupon-usage';
 import {
@@ -20,6 +20,22 @@ import { applyShippingNotificationSurcharge } from '@common/shipping/notificatio
 import { parseBoxPresets, type BoxPreset } from '@common/shipping/select-box-preset';
 import { sendTechnicalFailureAlert } from '@modules/notifications/notification-failure-alert';
 import { AddCartItemInput, ApplyCouponInput, UpdateCartItemInput } from './cart.types';
+
+/**
+ * A rejected serviceability/rate call is only a definitive "this provider cannot ship
+ * here" when it is NOT a config-readiness failure. `CONFIG_NOT_READY` means the provider
+ * is unavailable/unconfigured (e.g. Shiprocket with no pickup pincode) — it tells us
+ * nothing about the pincode, so that provider is excluded from the decision entirely.
+ * Any other rejection (timeout, 5xx, circuit-open) is "unknown", not a "no": it must
+ * never let the OTHER provider's explicit "no" block a pincode this provider might serve.
+ */
+function isConfigNotReadyRejection(result: PromiseSettledResult<unknown>): boolean {
+  return (
+    result.status === 'rejected' &&
+    result.reason instanceof AppError &&
+    result.reason.code === ERROR_CODES.CONFIG_NOT_READY
+  );
+}
 
 const GUEST_CART_TTL_DAYS = 30;
 const GUEST_COUPON_USAGE_TTL_SECONDS = 365 * 24 * 60 * 60;
@@ -550,7 +566,10 @@ export class CartService {
       return { pincode, serviceable: result.serviceable };
     }
 
-    // Multi-provider mode: serviceable if ANY configured provider can service the pincode
+    // Multi-provider mode: query every configured provider and treat the pincode as
+    // deliverable if ANY provider can serve it. Only report "not deliverable" when every
+    // provider that could answer EXPLICITLY said no — a provider that errors (timeout/5xx)
+    // has not said "no", so its silence must never block a pincode the other provider serves.
     const adapters = [runtime.delhivery?.adapter, runtime.shiprocket?.adapter].filter(
       (a): a is ShippingProviderAdapter => a != null
     );
@@ -558,15 +577,21 @@ export class CartService {
       const results = await Promise.allSettled(
         adapters.map((a) => a.checkServiceability(pincode, originPincode))
       );
-      if (results.every((r) => r.status === 'rejected')) {
-        throw (results[0] as PromiseRejectedResult).reason;
+      const responded = results.filter(
+        (r): r is PromiseFulfilledResult<ServiceabilityResult> => r.status === 'fulfilled'
+      );
+      // No provider could answer at all — surface the first error (config/transient) as 503
+      // rather than silently reporting the pincode as not deliverable.
+      if (responded.length === 0) {
+        throw (results.find((r) => r.status === 'rejected') as PromiseRejectedResult).reason;
       }
-      return {
-        pincode,
-        serviceable: results.some(
-          (r) => r.status === 'fulfilled' && r.value.serviceable
-        )
-      };
+      const anyServiceable = responded.some((r) => r.value.serviceable);
+      // A transient provider failure (not a config problem) is "unknown", not a "no" —
+      // stay optimistic so one provider's outage never falsely blocks the pincode.
+      const anyTransientError = results.some(
+        (r) => r.status === 'rejected' && !isConfigNotReadyRejection(r)
+      );
+      return { pincode, serviceable: anyServiceable || anyTransientError };
     } catch (error) {
       if (error instanceof AppError && error.code === ERROR_CODES.CONFIG_NOT_READY) {
         throw error;
@@ -694,14 +719,23 @@ export class CartService {
       activeAdapters.map(({ adapter }) => adapter.checkServiceability(input.pincode, input.pickupPincode))
     );
 
-    const serviceableAdapters = activeAdapters.filter(
-      (_, i) => serviceabilityResults[i]?.status === 'fulfilled' &&
-        (serviceabilityResults[i] as PromiseFulfilledResult<{ serviceable: boolean }>).value.serviceable
-    );
+    // Quote from every provider that either explicitly reported serviceable, OR failed
+    // transiently (timeout/5xx) — a transient failure is "unknown", not a "no", so we
+    // still attempt its rate. Providers that explicitly said not-serviceable, or that
+    // are unavailable via CONFIG_NOT_READY, are excluded. This mirrors the standalone
+    // pincode check: "not deliverable" fires ONLY when every provider that could answer
+    // explicitly said no.
+    const adaptersToQuote = activeAdapters.filter((_, i) => {
+      const result = serviceabilityResults[i];
+      if (!result) return false;
+      if (result.status === 'fulfilled') return result.value.serviceable;
+      return !isConfigNotReadyRejection(result);
+    });
 
-    if (serviceableAdapters.length === 0) {
+    if (adaptersToQuote.length === 0) {
       throw new AppError(ERROR_CODES.PINCODE_NOT_SERVICEABLE, 'Delivery is unavailable for this pincode', 422);
     }
+    const serviceableAdapters = adaptersToQuote;
 
     const couponsEnabled = await isStorefrontCouponsEnabled(this.fastify.prisma);
     const isFreeShipping = couponsEnabled && input.cart.coupon?.type === CouponType.FREE_SHIPPING;

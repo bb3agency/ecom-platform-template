@@ -680,12 +680,15 @@ describe('CartService dual-provider delivery rates', () => {
       }
       if (typeof url === 'string' && url.includes('shiprocket')) {
         if (url.includes('auth')) {
-          return Promise.resolve({ ok: true, status: 200, json: async () => ({ token: 'sr-token' }) });
+          // The Shiprocket adapter reads the body via res.text() (parseJson), so the
+          // mock must expose `text`, not `json` — otherwise the adapter throws and the
+          // provider is treated as errored rather than a clean "not serviceable".
+          return Promise.resolve({ ok: true, status: 200, text: async () => JSON.stringify({ token: 'sr-token' }) });
         }
         if (url.includes('serviceability')) {
           return Promise.resolve({
             ok: true, status: 200,
-            json: async () => ({ status: 200, data: { available_courier_companies: [] } })
+            text: async () => JSON.stringify({ status: 200, data: { available_courier_companies: [] } })
           });
         }
       }
@@ -712,6 +715,66 @@ describe('CartService dual-provider delivery rates', () => {
     await expect(service.getDeliveryRates('user_1', undefined, '999999')).rejects.toMatchObject({
       code: 'PINCODE_NOT_SERVICEABLE',
       statusCode: 422
+    });
+  });
+
+  it('stays serviceable when one provider says no but the other only errors transiently', async () => {
+    // Delhivery explicitly reports the pincode as not serviceable; Shiprocket's
+    // serviceability endpoint 500s. A transient error is NOT a "no" — the pincode must
+    // stay deliverable so a single provider's outage never falsely blocks checkout.
+    vi.stubEnv('DELHIVERY_API_KEY', 'delhivery_key');
+    vi.stubEnv('DELHIVERY_BASE_URL', DELHIVERY_TEST_BASE_URL);
+    vi.stubEnv('DELHIVERY_PICKUP_PINCODE', '110001');
+    vi.stubEnv('SHIPROCKET_EMAIL', 'sr@example.com');
+    vi.stubEnv('SHIPROCKET_PASSWORD', 'srpass');
+
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (typeof url === 'string' && url.includes('delhivery') && url.includes('pin-codes')) {
+        return Promise.resolve({ ok: true, status: 200, text: async () => JSON.stringify({ delivery_codes: [] }) });
+      }
+      if (typeof url === 'string' && url.includes('shiprocket')) {
+        if (url.includes('auth')) {
+          return Promise.resolve({ ok: true, status: 200, text: async () => JSON.stringify({ token: 'sr-token' }) });
+        }
+        if (url.includes('serviceability')) {
+          return Promise.resolve({ ok: false, status: 500, text: async () => '' });
+        }
+      }
+      return Promise.resolve({ ok: false, status: 404, text: async () => '' });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const service = new CartService(createFastifyStub({ log: { warn: vi.fn() } }));
+    await expect(service.checkPincodeServiceability('500001')).resolves.toEqual({
+      pincode: '500001',
+      serviceable: true
+    });
+  });
+
+  it('reports not deliverable when one provider says no and the other is unavailable (config not ready)', async () => {
+    // Delhivery explicitly says no; Shiprocket has no pickup pincode configured, so it
+    // throws CONFIG_NOT_READY (provider unavailable — not a transient blip). An unavailable
+    // provider grants no serviceability, so with the only responder saying no the pincode
+    // is correctly reported as not deliverable.
+    vi.stubEnv('DELHIVERY_API_KEY', 'delhivery_key');
+    vi.stubEnv('DELHIVERY_BASE_URL', DELHIVERY_TEST_BASE_URL);
+    vi.stubEnv('SHIPROCKET_EMAIL', 'sr@example.com');
+    vi.stubEnv('SHIPROCKET_PASSWORD', 'srpass');
+    // No pickup pincode anywhere (no DELHIVERY_PICKUP_PINCODE / SHIPROCKET_PICKUP_PINCODE
+    // env, storeSettings returns null) → Shiprocket serviceability throws CONFIG_NOT_READY.
+
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (typeof url === 'string' && url.includes('delhivery') && url.includes('pin-codes')) {
+        return Promise.resolve({ ok: true, status: 200, text: async () => JSON.stringify({ delivery_codes: [] }) });
+      }
+      return Promise.resolve({ ok: false, status: 404, text: async () => '' });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const service = new CartService(createFastifyStub({ log: { warn: vi.fn() } }));
+    await expect(service.checkPincodeServiceability('500001')).resolves.toEqual({
+      pincode: '500001',
+      serviceable: false
     });
   });
 });

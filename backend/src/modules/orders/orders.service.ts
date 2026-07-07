@@ -2974,11 +2974,22 @@ export class OrdersService {
       result = await provider.schedulePickup(shiprocketShipmentId);
     }
 
-    if (result.pickupScheduledDate) {
+    // Persist pickup state whenever the provider confirms the shipment is covered
+    // — including the "already in pickup queue" case, where no new slot time is
+    // returned. Without this, `pickupScheduledDate` stays null and the admin UI
+    // re-shows the "Schedule pickup" button on every refresh (Shiprocket often
+    // returns no date; Delhivery always does, which is why it appeared to work).
+    // Fall back to the action timestamp so the record reflects that pickup was
+    // arranged even when the provider omits the slot time.
+    if (result.scheduled || result.alreadyScheduled) {
+      const scheduledDate = result.pickupScheduledDate
+        ? new Date(result.pickupScheduledDate)
+        : new Date();
+      const persistedDate = Number.isNaN(scheduledDate.getTime()) ? new Date() : scheduledDate;
       await this.fastify.prisma.shipment.update({
         where: { id: shipment.id },
         data: {
-          pickupScheduledDate: new Date(result.pickupScheduledDate)
+          pickupScheduledDate: persistedDate
         } as Record<string, unknown>
       });
     }

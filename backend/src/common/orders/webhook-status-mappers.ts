@@ -107,28 +107,74 @@ export function mapShipmentWebhookStatus(status: string): ShipmentStatus | null 
   // Delhivery + Shiprocket shared human-readable mappings
   // "Not Picked" is Delhivery's manifested-but-awaiting-pickup state (AWB
   // booked, courier hasn't collected) — same bucket as Manifested.
+  //
+  // Shiprocket status master (current_status text) up to the collection scan
+  // all mean "booked, not yet collected": the courier prints a label, the
+  // pickup request is queued/generated, a manifest is generated — none of these
+  // is a physical pickup. Shiprocket only reports collection as "Picked Up"
+  // (status id 42). Mapping "AWB Assigned"/"Pickup Scheduled" to PICKED_UP
+  // overstated fulfilment progress on every fresh Shiprocket shipment.
   if (
     normalized === 'BOOKED' ||
     normalized === 'MANIFESTED' ||
     normalized === 'MANIFEST_GENERATED' ||
-    normalized === 'NOT_PICKED'
+    normalized === 'NOT_PICKED' ||
+    normalized === 'AWB_ASSIGNED' ||
+    normalized === 'LABEL_GENERATED' ||
+    normalized === 'PICKUP_SCHEDULED' ||
+    normalized === 'PICKUP_GENERATED' ||
+    normalized === 'PICKUP_QUEUED' ||
+    normalized === 'PICKUP_BOOKED' ||
+    normalized === 'PICKUP_RESCHEDULED' ||
+    normalized === 'PICKUP_EXCEPTION' ||
+    normalized === 'OUT_FOR_PICKUP'
   ) {
     return SHIPMENT_STATUS.BOOKED;
   }
   if (normalized === 'SHIPPED' || normalized === 'DISPATCHED' || normalized === 'SHIPMENT_DISPATCHED') return SHIPMENT_STATUS.IN_TRANSIT;
   if (
     normalized === 'PICKED_UP' ||
-    normalized === 'PICKUP_SCHEDULED' ||
-    normalized === 'PICKUP_GENERATED' ||
-    normalized === 'PICKUP_QUEUED' ||
     normalized === 'PICKUP_COMPLETE'
   ) return SHIPMENT_STATUS.PICKED_UP;
-  if (normalized === 'IN_TRANSIT' || normalized === 'REACHED_AT_DESTINATION_HUB') return SHIPMENT_STATUS.IN_TRANSIT;
+  if (
+    normalized === 'IN_TRANSIT' ||
+    normalized === 'REACHED_AT_DESTINATION_HUB' ||
+    normalized === 'REACHED_AT_ORIGIN_HUB' ||
+    normalized === 'REACHED_WAREHOUSE' ||
+    normalized === 'MISROUTED' ||
+    normalized === 'DELAYED'
+  ) return SHIPMENT_STATUS.IN_TRANSIT;
   if (normalized === 'OUT_FOR_DELIVERY') return SHIPMENT_STATUS.OUT_FOR_DELIVERY;
-  if (normalized === 'DELIVERED' || normalized === 'SHIPMENT_DELIVERED') return SHIPMENT_STATUS.DELIVERED;
-  if (normalized === 'FAILED_DELIVERY' || normalized === 'UNDELIVERED' || normalized === 'DELIVERY_FAILED') return SHIPMENT_STATUS.FAILED_DELIVERY;
-  if (normalized === 'RTO_INITIATED' || normalized === 'RTO-INITIATED' || normalized === 'RETURN_INITIATED' || normalized === 'RTO_IN_TRANSIT') return SHIPMENT_STATUS.RTO_INITIATED;
-  if (normalized === 'RTO_DELIVERED' || normalized === 'RTO-DELIVERED' || normalized === 'RETURN_DELIVERED') return SHIPMENT_STATUS.RTO_DELIVERED;
+  if (
+    normalized === 'DELIVERED' ||
+    normalized === 'SHIPMENT_DELIVERED' ||
+    normalized === 'PARTIAL_DELIVERED' ||
+    normalized === 'PARTIALLY_DELIVERED'
+  ) return SHIPMENT_STATUS.DELIVERED;
+  if (
+    normalized === 'FAILED_DELIVERY' ||
+    normalized === 'UNDELIVERED' ||
+    normalized === 'DELIVERY_FAILED' ||
+    normalized === 'LOST' ||
+    normalized === 'DAMAGED' ||
+    normalized === 'DESTROYED' ||
+    normalized === 'DISPOSED_OFF'
+  ) return SHIPMENT_STATUS.FAILED_DELIVERY;
+  if (
+    normalized === 'RTO_INITIATED' ||
+    normalized === 'RTO-INITIATED' ||
+    normalized === 'RETURN_INITIATED' ||
+    normalized === 'RTO_IN_TRANSIT' ||
+    normalized === 'RTO_NDR' ||
+    normalized === 'RTO_OFD' ||
+    normalized === 'RTO_OUT_FOR_DELIVERY'
+  ) return SHIPMENT_STATUS.RTO_INITIATED;
+  if (
+    normalized === 'RTO_DELIVERED' ||
+    normalized === 'RTO-DELIVERED' ||
+    normalized === 'RETURN_DELIVERED' ||
+    normalized === 'RTO_ACKNOWLEDGED'
+  ) return SHIPMENT_STATUS.RTO_DELIVERED;
   if (
     normalized === 'CANCELLED' ||
     normalized === 'CANCELED' ||
@@ -136,6 +182,7 @@ export function mapShipmentWebhookStatus(status: string): ShipmentStatus | null 
     normalized === 'AWB_CANCELLATION_REQUESTED' ||
     normalized === 'SHIPMENT_CANCELLED' ||
     normalized === 'SHIPMENT_CANCELED' ||
+    normalized === 'CANCELLED_BEFORE_DISPATCHED' ||
     normalized === 'CANCEL' ||
     normalized === 'PICKUP_CANCELLED' ||
     normalized === 'PICKUP_CANCELED' ||

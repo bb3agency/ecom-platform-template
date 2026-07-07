@@ -12,6 +12,19 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.60] — 2026-07-07
+
+### Fixed
+- **Shiprocket "Schedule pickup" was not persisting.** The adapter read `status`/`pickup_scheduled_date` from the top level, but Shiprocket's `/courier/generate/pickup` nests them under `response` and signals success with top-level `pickup_status`. The result was `scheduled:false` with no date, so `adminSchedulePickup` never wrote `pickupScheduledDate` — the admin UI re-showed the "Schedule pickup" button on every refresh (Delhivery always returns a date, so it appeared to work). The adapter now reads both the nested and top-level shapes, IST-normalizes the returned slot time, and treats a returned token/date as success. `adminSchedulePickup` now persists `pickupScheduledDate` whenever the provider confirms the shipment is covered — including the "Already in Pickup Queue" case with no slot time (falls back to the action timestamp), which also resolves the "Scheduled (date not returned)" display.
+- **Shiprocket "AWB Assigned" (and the rest of the pre-collection status master) was unmapped.** `mapShipmentWebhookStatus` returned `null` for `AWB Assigned`, `Label Generated`, `Pickup Scheduled/Generated/Queued`, `Out For Pickup`, `Pickup Rescheduled/Exception` — so those webhook scans produced no status update. All now map to `BOOKED` (booked, not yet collected). `Pickup Scheduled/Generated/Queued` were previously mis-mapped to `PICKED_UP`, overstating fulfilment on fresh shipments — corrected to `BOOKED`; only a real `Picked Up` scan (Shiprocket status 42) is `PICKED_UP`. Added `Misrouted`/`Delayed` → `IN_TRANSIT`, `Partial Delivered` → `DELIVERED`, `Lost`/`Damaged`/`Destroyed`/`Disposed Off` → `FAILED_DELIVERY`, `RTO NDR`/`RTO OFD` → `RTO_INITIATED`, `RTO Acknowledged` → `RTO_DELIVERED`, `Cancelled Before Dispatched` → `CANCELLED`. Numeric `current_status_id` codes are intentionally NOT hardcoded (public docs conflict — e.g. `20` is documented as both "In Transit" and "Pickup Exception"); Shiprocket webhooks always include the `current_status` text, which is authoritative.
+- **Pincode serviceability no longer lets one provider's outage falsely block a deliverable pincode.** The dual-provider check (`checkPincodeServiceability` and `getDeliveryRatesMultiProvider`) already reported "not deliverable" only when every provider failed — but a provider that *errored* (timeout/5xx) was counted the same as one that explicitly said "no". Now an error is treated as "unknown": "not deliverable" (and `PINCODE_NOT_SERVICEABLE`) fires ONLY when every provider that could answer *explicitly* returned not-serviceable. Transient errors keep the pincode deliverable (and the rate path still attempts the errored provider's quote); a `CONFIG_NOT_READY` failure means that provider is unavailable and is excluded from the decision entirely (so it can't grant serviceability either). When no provider can answer at all, the check surfaces a 503 rather than silently reporting the pincode as undeliverable.
+
+**Propagation:**
+- Severity: NORMAL · Layers: backend (`modules/shipping/adapters/shiprocket.adapter.ts`, `modules/orders/orders.service.ts`, `common/orders/webhook-status-mappers.ts`, `modules/cart/cart.service.ts` + their tests)
+- Migration: NO · Flag: none · Design impact: none · Breaking: NO
+- Rollback: revert the four source files + their test files
+- Operator note: no dashboard/webhook config change required — the Shiprocket tracking webhook already posts `current_status`; this only corrects how those values are parsed and persisted. The pincode change is a no-config behaviour improvement; to actually widen coverage, ensure BOTH Delhivery and Shiprocket credentials are set in Ops config so both providers participate in the serviceability decision.
+
 ## [0.1.59] — 2026-07-04
 
 ### Docs

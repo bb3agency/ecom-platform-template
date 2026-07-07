@@ -72,6 +72,40 @@ describe('OrdersService adminSchedulePickup', () => {
     );
   });
 
+  it('persists pickup when Shiprocket reports it is already in the pickup queue (no date returned)', async () => {
+    // Regression: a warehouse pickup already arranged returns HTTP 400 "Already in
+    // Pickup Queue" with no slot date. The shipment is covered, so we must still
+    // record pickupScheduledDate — otherwise the admin UI re-shows the button on
+    // every refresh. Fall back to the action timestamp when no date is returned.
+    vi.stubEnv('SHIPROCKET_EMAIL', 'test@example.com');
+    vi.stubEnv('SHIPROCKET_PASSWORD', 'secret');
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ token: 'sr-token-123' })
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        text: async () => JSON.stringify({ message: 'Already in Pickup Queue.' })
+      }));
+
+    const fastify = buildFastify();
+    const service = new OrdersService(fastify);
+
+    const result = await service.adminSchedulePickup('order_1');
+
+    expect(result.alreadyScheduled).toBe(true);
+    expect(fastify.prisma.shipment.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          pickupScheduledDate: expect.any(Date)
+        })
+      })
+    );
+  });
+
   it('throws 404 when shipment not found', async () => {
     const fastify = buildFastify();
     (fastify.prisma.shipment.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);

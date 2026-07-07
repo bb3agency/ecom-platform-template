@@ -50,6 +50,29 @@ describe('webhook status mappers', () => {
     expect(mapShipmentWebhookStatus('Pickup Error')).toBe('CANCELLED');
   });
 
+  it('maps Shiprocket status-master text to internal shipment statuses', () => {
+    // Pre-collection Shiprocket states all mean "booked, not yet picked up".
+    expect(mapShipmentWebhookStatus('AWB Assigned')).toBe('BOOKED');
+    expect(mapShipmentWebhookStatus('Label Generated')).toBe('BOOKED');
+    expect(mapShipmentWebhookStatus('Pickup Scheduled')).toBe('BOOKED');
+    expect(mapShipmentWebhookStatus('Pickup Generated')).toBe('BOOKED');
+    expect(mapShipmentWebhookStatus('Pickup Queued')).toBe('BOOKED');
+    expect(mapShipmentWebhookStatus('Out For Pickup')).toBe('BOOKED');
+    expect(mapShipmentWebhookStatus('Pickup Rescheduled')).toBe('BOOKED');
+    // Only a real collection scan is PICKED_UP.
+    expect(mapShipmentWebhookStatus('Picked Up')).toBe('PICKED_UP');
+    // Transit / delivery / RTO / failure buckets.
+    expect(mapShipmentWebhookStatus('In Transit')).toBe('IN_TRANSIT');
+    expect(mapShipmentWebhookStatus('Misrouted')).toBe('IN_TRANSIT');
+    expect(mapShipmentWebhookStatus('Delayed')).toBe('IN_TRANSIT');
+    expect(mapShipmentWebhookStatus('Partial Delivered')).toBe('DELIVERED');
+    expect(mapShipmentWebhookStatus('Lost')).toBe('FAILED_DELIVERY');
+    expect(mapShipmentWebhookStatus('Damaged')).toBe('FAILED_DELIVERY');
+    expect(mapShipmentWebhookStatus('RTO NDR')).toBe('RTO_INITIATED');
+    expect(mapShipmentWebhookStatus('RTO Acknowledged')).toBe('RTO_DELIVERED');
+    expect(mapShipmentWebhookStatus('Cancelled Before Dispatched')).toBe('CANCELLED');
+  });
+
   it('maps Delhivery StatusType short codes', () => {
     expect(mapShipmentWebhookStatus('BO')).toBe('BOOKED');
     expect(mapShipmentWebhookStatus('PU')).toBe('PICKED_UP');
