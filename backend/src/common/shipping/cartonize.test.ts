@@ -14,7 +14,9 @@ describe('cartonize', () => {
     expect(r.lengthCm).toBe(42);
     expect(r.widthCm).toBe(36);
     expect(r.heightCm).toBe(9);
-    expect(r.weightGrams).toBe(1000);
+    // weightGrams = items + packaging (carton/tape/void fill).
+    expect(r.packagingWeightGrams).toBeGreaterThan(0);
+    expect(r.weightGrams).toBe(1000 + r.packagingWeightGrams);
     expect(r.source).toBe('single-item');
   });
 
@@ -28,7 +30,7 @@ describe('cartonize', () => {
     expect(r.lengthCm).toBe(38);
     expect(r.widthCm).toBe(25);
     expect(r.heightCm).toBe(15);
-    expect(r.weightGrams).toBe(3000);
+    expect(r.weightGrams).toBe(3000 + r.packagingWeightGrams);
     expect(r.source).toBe('computed');
   });
 
@@ -83,7 +85,7 @@ describe('cartonize', () => {
 
     const combinedItemVolume = 41 * 35 * 8 + 20 * 15 * 10;
     expect(volume(r)).toBeGreaterThanOrEqual(combinedItemVolume); // never undersized
-    expect(r.weightGrams).toBe(1700);
+    expect(r.weightGrams).toBe(1700 + r.packagingWeightGrams);
     expect(r.source).toBe('computed');
   });
 
@@ -119,7 +121,7 @@ describe('cartonize', () => {
     expect(r.lengthCm).toBeGreaterThan(0);
     expect(r.widthCm).toBeGreaterThan(0);
     expect(r.heightCm).toBeGreaterThan(0);
-    expect(r.weightGrams).toBe(500); // default unit weight
+    expect(r.weightGrams).toBe(500 + r.packagingWeightGrams); // default unit weight + packaging
   });
 
   it('respects custom padding', () => {

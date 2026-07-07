@@ -465,25 +465,41 @@ export class SettingsService {
   async getBoxPresets(): Promise<BoxPresetsResponse> {
     const settings = await this.fastify.prisma.storeSettings.findUnique({
       where: { singletonKey: SettingsService.singletonKey },
-      select: { boxPresets: true }
+      select: { boxPresets: true, packagingWeightGrams: true }
     });
-    return { presets: parseBoxPresets(settings?.boxPresets) };
+    return {
+      presets: parseBoxPresets(settings?.boxPresets),
+      packagingWeightGrams: settings?.packagingWeightGrams ?? null
+    };
   }
 
-  async updateBoxPresets(input: { presets: BoxPreset[] }): Promise<BoxPresetsResponse> {
+  async updateBoxPresets(input: {
+    presets: BoxPreset[];
+    packagingWeightGrams?: number | null;
+  }): Promise<BoxPresetsResponse> {
     const defaultPickupPincode = await this.resolveDefaultPickupPincodeForCreate();
+    // Only touch packagingWeightGrams when the client sent the field (undefined = leave as-is;
+    // explicit null = clear back to automatic surface-area estimation).
+    const packagingUpdate =
+      input.packagingWeightGrams !== undefined
+        ? { packagingWeightGrams: input.packagingWeightGrams }
+        : {};
     const updated = await this.fastify.prisma.storeSettings.upsert({
       where: { singletonKey: SettingsService.singletonKey },
-      update: { boxPresets: input.presets },
+      update: { boxPresets: input.presets, ...packagingUpdate },
       create: {
         singletonKey: SettingsService.singletonKey,
         pickupPincode: defaultPickupPincode,
         defaultLowStockThreshold: 5,
-        boxPresets: input.presets
+        boxPresets: input.presets,
+        ...packagingUpdate
       },
-      select: { boxPresets: true }
+      select: { boxPresets: true, packagingWeightGrams: true }
     });
-    return { presets: parseBoxPresets(updated.boxPresets) };
+    return {
+      presets: parseBoxPresets(updated.boxPresets),
+      packagingWeightGrams: updated.packagingWeightGrams ?? null
+    };
   }
 
   async resolveDefaultLowStockThreshold(): Promise<number> {

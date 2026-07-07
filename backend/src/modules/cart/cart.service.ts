@@ -698,9 +698,10 @@ export class CartService {
     // weight of the box). Quoting on dead weight alone underprices bulky parcels: the quote looks
     // cheap, but Shiprocket later bills on the volumetric weight derived from the box dimensions
     // the AWB sends, charging far more than was shown.
-    const boxPresets = await this.loadBoxPresets();
+    const { presets: boxPresets, packagingWeightGramsOverride } = await this.loadBoxPresets();
     const totalWeightGrams = computeChargeableWeightGrams({
       boxPresets,
+      packagingWeightGramsOverride,
       items: input.cart.items.map((item) => ({
         quantity: item.quantity,
         weightGrams: item.variant.weight ?? null,
@@ -815,16 +816,23 @@ export class CartService {
    * what the courier bills at AWB. Returns [] on any error — chargeable weight then falls back to
    * the adapter's default box, which is still correct.
    */
-  private async loadBoxPresets(): Promise<BoxPreset[]> {
+  private async loadBoxPresets(): Promise<{
+    presets: BoxPreset[];
+    packagingWeightGramsOverride: number | null;
+  }> {
     try {
       const settings = await this.fastify.prisma.storeSettings.findUnique({
         where: { singletonKey: 'default' },
-        select: { boxPresets: true }
+        select: { boxPresets: true, packagingWeightGrams: true }
       });
-      return parseBoxPresets((settings as { boxPresets?: unknown } | null)?.boxPresets);
+      const record = settings as { boxPresets?: unknown; packagingWeightGrams?: number | null } | null;
+      return {
+        presets: parseBoxPresets(record?.boxPresets),
+        packagingWeightGramsOverride: record?.packagingWeightGrams ?? null
+      };
     } catch (error) {
       this.fastify.log?.warn({ err: error }, 'loadBoxPresets: failed to load box presets — using default box');
-      return [];
+      return { presets: [], packagingWeightGramsOverride: null };
     }
   }
 
@@ -994,9 +1002,12 @@ export class CartService {
 
     // Charge on the courier's chargeable weight (max of dead and volumetric) so the quoted rate
     // matches what the provider bills at AWB. See computeChargeableWeightGrams.
-    const boxPresets = usingNoop ? [] : await this.loadBoxPresets();
+    const { presets: boxPresets, packagingWeightGramsOverride } = usingNoop
+      ? { presets: [] as BoxPreset[], packagingWeightGramsOverride: null }
+      : await this.loadBoxPresets();
     const totalWeightGrams = computeChargeableWeightGrams({
       boxPresets,
+      packagingWeightGramsOverride,
       items: input.cart.items.map((item) => ({
         quantity: item.quantity,
         weightGrams: item.variant.weight ?? null,

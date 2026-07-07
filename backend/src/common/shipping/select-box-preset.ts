@@ -3,16 +3,19 @@ export type BoxPreset = {
   lengthCm: number;
   widthCm: number;
   heightCm: number;
+  /** Weight of the empty carton + packing material (grams), weighed by the merchant. */
+  boxWeightGrams?: number;
 };
 
 /**
  * Parses and validates a raw JSON value from the database into a typed BoxPreset array.
- * Invalid or missing entries are silently dropped.
+ * Invalid or missing entries are silently dropped. An invalid `boxWeightGrams` is
+ * dropped from the preset (falls back to estimate) rather than dropping the preset.
  */
 export function parseBoxPresets(raw: unknown): BoxPreset[] {
   if (!Array.isArray(raw)) return [];
-  return raw.filter(
-    (item): item is BoxPreset =>
+  const valid = raw.filter(
+    (item): item is Record<string, unknown> =>
       typeof item === 'object' &&
       item !== null &&
       typeof (item as Record<string, unknown>).name === 'string' &&
@@ -23,6 +26,18 @@ export function parseBoxPresets(raw: unknown): BoxPreset[] {
       typeof (item as Record<string, unknown>).heightCm === 'number' &&
       ((item as Record<string, unknown>).heightCm as number) > 0
   );
+  return valid.map((item) => {
+    const boxWeightGrams = item.boxWeightGrams;
+    return {
+      name: item.name as string,
+      lengthCm: item.lengthCm as number,
+      widthCm: item.widthCm as number,
+      heightCm: item.heightCm as number,
+      ...(typeof boxWeightGrams === 'number' && Number.isFinite(boxWeightGrams) && boxWeightGrams > 0
+        ? { boxWeightGrams: Math.round(boxWeightGrams) }
+        : {})
+    };
+  });
 }
 
 // NOTE: the old volume-only `selectBestFitBox` was removed in backend-core 0.1.11 —

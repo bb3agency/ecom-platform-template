@@ -39,7 +39,10 @@ export function BoxPresetsPanel({ canWrite }: BoxPresetsPanelProps) {
     lengthCm: undefined,
     widthCm: undefined,
     heightCm: undefined,
+    boxWeightGrams: undefined,
   });
+  // Store-level flat packaging weight override (grams). Empty = automatic estimate.
+  const [packagingWeightInput, setPackagingWeightInput] = useState<string>("");
 
   const loadPresets = useCallback(async () => {
     try {
@@ -48,6 +51,9 @@ export function BoxPresetsPanel({ canWrite }: BoxPresetsPanelProps) {
         "/admin/settings/box-presets"
       );
       setPresets(result.presets || []);
+      setPackagingWeightInput(
+        result.packagingWeightGrams != null ? String(result.packagingWeightGrams) : "",
+      );
       setError(null);
     } catch (err) {
       setError(getApiErrorMessage(err));
@@ -61,18 +67,25 @@ export function BoxPresetsPanel({ canWrite }: BoxPresetsPanelProps) {
   }, [loadPresets]);
 
   const savePresets = useCallback(
-    async (updatedPresets: BoxPreset[]) => {
+    async (updatedPresets: BoxPreset[], packagingWeightGrams?: number | null) => {
       try {
         setSaving(true);
         setError(null);
         setSuccess(null);
-        await api("/admin/settings/box-presets", {
+        const result = await api<AdminBoxPresetsSettings>("/admin/settings/box-presets", {
           method: "PATCH",
           idempotencyKey: createIdempotencyKey(),
-          body: JSON.stringify({ presets: updatedPresets }),
+          body: JSON.stringify({
+            presets: updatedPresets,
+            // Omit the field entirely to leave the override unchanged; null clears it.
+            ...(packagingWeightGrams !== undefined ? { packagingWeightGrams } : {}),
+          }),
         });
-        setPresets(updatedPresets);
-        setSuccess("Box presets updated successfully.");
+        setPresets(result.presets || updatedPresets);
+        setPackagingWeightInput(
+          result.packagingWeightGrams != null ? String(result.packagingWeightGrams) : "",
+        );
+        setSuccess("Packing settings updated successfully.");
       } catch (err) {
         setError(getApiErrorMessage(err));
       } finally {
@@ -89,7 +102,7 @@ export function BoxPresetsPanel({ canWrite }: BoxPresetsPanelProps) {
       !newPreset.widthCm ||
       !newPreset.heightCm
     ) {
-      setError("All fields are required for a new preset.");
+      setError("Name and dimensions are required for a new preset.");
       return;
     }
 
@@ -100,6 +113,9 @@ export function BoxPresetsPanel({ canWrite }: BoxPresetsPanelProps) {
         lengthCm: Math.floor(newPreset.lengthCm),
         widthCm: Math.floor(newPreset.widthCm),
         heightCm: Math.floor(newPreset.heightCm),
+        ...(newPreset.boxWeightGrams && newPreset.boxWeightGrams > 0
+          ? { boxWeightGrams: Math.floor(newPreset.boxWeightGrams) }
+          : {}),
       },
     ];
 
@@ -110,8 +126,23 @@ export function BoxPresetsPanel({ canWrite }: BoxPresetsPanelProps) {
         lengthCm: undefined,
         widthCm: undefined,
         heightCm: undefined,
+        boxWeightGrams: undefined,
       });
     }
+  };
+
+  const savePackagingWeight = async () => {
+    const trimmed = packagingWeightInput.trim();
+    if (trimmed === "") {
+      await savePresets(presets, null);
+      return;
+    }
+    const parsed = Number(trimmed);
+    if (!Number.isFinite(parsed) || parsed < 1) {
+      setError("Packaging weight must be a positive number of grams (or empty for automatic).");
+      return;
+    }
+    await savePresets(presets, Math.floor(parsed));
   };
 
   const removePreset = async (index: number) => {
@@ -158,6 +189,9 @@ export function BoxPresetsPanel({ canWrite }: BoxPresetsPanelProps) {
                 <th className="px-4 py-2 text-left font-semibold text-muted-foreground">
                   Volume (cm³)
                 </th>
+                <th className="px-4 py-2 text-left font-semibold text-muted-foreground">
+                  Box weight (g)
+                </th>
                 <th className="px-4 py-2 text-center font-semibold text-muted-foreground">
                   Action
                 </th>
@@ -179,6 +213,9 @@ export function BoxPresetsPanel({ canWrite }: BoxPresetsPanelProps) {
                     </td>
                     <td className="px-4 py-3 text-muted-foreground font-mono text-xs">
                       {volume.toLocaleString()}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground font-mono text-xs">
+                      {preset.boxWeightGrams != null ? preset.boxWeightGrams : "auto"}
                     </td>
                     <td className="px-4 py-3 text-center">
                       <button
@@ -208,7 +245,7 @@ export function BoxPresetsPanel({ canWrite }: BoxPresetsPanelProps) {
           <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
             Add New Box Preset
           </p>
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-6">
             <input
               className={inputClass}
               type="text"
@@ -261,6 +298,21 @@ export function BoxPresetsPanel({ canWrite }: BoxPresetsPanelProps) {
               }
               disabled={saving}
             />
+            <input
+              className={inputClass}
+              type="number"
+              min="1"
+              placeholder="Box weight (g)"
+              aria-label="Empty box weight in grams (optional)"
+              value={newPreset.boxWeightGrams || ""}
+              onChange={(e) =>
+                setNewPreset({
+                  ...newPreset,
+                  boxWeightGrams: e.target.value ? Number(e.target.value) : undefined,
+                })
+              }
+              disabled={saving}
+            />
             <button
               onClick={() => void addPreset()}
               disabled={saving}
@@ -270,8 +322,48 @@ export function BoxPresetsPanel({ canWrite }: BoxPresetsPanelProps) {
               Add
             </button>
           </div>
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            <strong>Box weight (g)</strong> is the weight of the empty carton plus tape and
+            void fill — weigh a packed-but-empty box once and enter it here. It is optional:
+            when blank, the system estimates it from the box&apos;s surface area.
+          </p>
         </div>
       )}
+
+      {/* Packaging weight override */}
+      <div className="pt-4 border-t border-border/20 flex flex-col gap-3">
+        <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+          Packaging Weight
+        </p>
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          Couriers weigh the <strong>sealed parcel</strong> — products plus carton, tape and
+          void fill. This packaging weight is included in every rate quote and shipment
+          booking. By default it is <strong>estimated automatically</strong> from the shipping
+          box&apos;s surface area; set a flat gram value here to override the estimate for all
+          boxes without their own box weight. Leave empty for automatic.
+        </p>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <input
+            className={cn(inputClass, "sm:max-w-56")}
+            type="number"
+            min="1"
+            placeholder="Automatic (estimated)"
+            aria-label="Flat packaging weight override in grams"
+            value={packagingWeightInput}
+            onChange={(e) => setPackagingWeightInput(e.target.value)}
+            disabled={saving || !canWrite}
+          />
+          {canWrite && (
+            <button
+              onClick={() => void savePackagingWeight()}
+              disabled={saving}
+              className="h-10 rounded-md bg-zinc-900 px-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-zinc-800 disabled:opacity-60"
+            >
+              Save packaging weight
+            </button>
+          )}
+        </div>
+      </div>
 
       {presets.length === 0 && !canWrite && (
         <p className="text-sm text-muted-foreground">No box presets configured.</p>

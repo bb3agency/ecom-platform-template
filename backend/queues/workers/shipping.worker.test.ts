@@ -222,6 +222,11 @@ describe('shipping worker error and retry behavior', () => {
       where: { id: 'order_1' },
       data: { status: 'SHIPPED' }
     });
+    // The booked weight must be the FULL sealed-parcel weight: items (2×300g) PLUS
+    // the packaging (carton/tape/void-fill) weight. Booking items-only weight (600g
+    // exactly) under-declares and gets re-billed a higher slab at the courier hub.
+    const bookedInput = state.createShipment.mock.calls[0]?.[0] as { totalWeightGrams: number };
+    expect(bookedInput.totalWeightGrams).toBeGreaterThan(600);
   });
 
   it('uses default shipping HSN when product attributes omit hsnCode and GST invoicing is disabled', async () => {

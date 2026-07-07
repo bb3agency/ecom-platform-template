@@ -37,10 +37,22 @@ export type BoxDimensions = {
   heightCm: number;
 };
 
-export type CartonBoxPreset = BoxDimensions & { name: string; maxWeightGrams?: number };
+export type CartonBoxPreset = BoxDimensions & {
+  name: string;
+  maxWeightGrams?: number;
+  /**
+   * Weight of the EMPTY carton + its packing material (grams), as weighed by the
+   * merchant. When set, it is used verbatim instead of the surface-area estimate —
+   * the most accurate way to make quoted weight match the courier's scale.
+   */
+  boxWeightGrams?: number;
+};
 
 export type CartonResult = BoxDimensions & {
+  /** TOTAL parcel weight (grams): item dead weight + packaging weight. */
   weightGrams: number;
+  /** The packaging (carton + tape + void fill) portion of weightGrams. */
+  packagingWeightGrams: number;
   /** How the box was decided — for diagnostics/audit. */
   source: 'catalog' | 'computed' | 'single-item' | 'default-fallback';
   boxName?: string;
@@ -52,6 +64,29 @@ export const DEFAULT_UNIT_BOX: BoxDimensions = { lengthCm: 15, widthCm: 12, heig
 export const DEFAULT_UNIT_WEIGHT_GRAMS = 500;
 /** Default safety padding added to EACH dimension of the final box (cm). */
 export const DEFAULT_PACKING_PADDING_CM = 1;
+
+/**
+ * Corrugated-board areal density used to estimate an empty carton's weight from its
+ * surface area (g/cm²). 3-ply corrugated board runs ~400–600 g/m² (0.04–0.06 g/cm²);
+ * 0.055 sits at the realistic upper-middle so the estimate errs slightly heavy —
+ * an underestimate is what gets the merchant re-billed a higher slab at the hub.
+ */
+export const CARTON_BOARD_G_PER_CM2 = 0.055;
+/** Flat allowance for tape, label pouch and void-fill material (grams). */
+export const PACKING_MATERIAL_ALLOWANCE_GRAMS = 40;
+
+/**
+ * Estimates the packaging weight (empty carton + tape/void fill) for a box from its
+ * outer surface area: 2(LW + LH + WH) × board density + a flat material allowance.
+ * Calibration: a 24×21×9 cm carton → 1818 cm² → ~100 g board + 40 g allowance = 140 g,
+ * matching hub-captured weight deltas observed in production. Used whenever neither a
+ * per-preset `boxWeightGrams` nor a merchant packaging-weight override is configured.
+ */
+export function estimatePackagingWeightGrams(box: BoxDimensions): number {
+  const surfaceAreaCm2 =
+    2 * (box.lengthCm * box.widthCm + box.lengthCm * box.heightCm + box.widthCm * box.heightCm);
+  return Math.max(1, Math.round(surfaceAreaCm2 * CARTON_BOARD_G_PER_CM2 + PACKING_MATERIAL_ALLOWANCE_GRAMS));
+}
 
 type Unit = { l: number; w: number; h: number; keepUpright?: boolean };
 type Placed = { x: number; y: number; z: number; l: number; w: number; h: number };
@@ -276,21 +311,48 @@ function pad(box: BoxDimensions, paddingCm: number): BoxDimensions {
 /**
  * Main entry: compute the shipping box (dimensions + total weight) for an order.
  *
- * @param items       line items with per-unit dimensions/weight + quantity
- * @param boxPresets  optional catalog of real carton sizes (Ops config)
- * @param paddingCm   safety padding per dimension (default +1 cm)
+ * The returned `weightGrams` is the FULL parcel weight — item dead weight PLUS
+ * packaging weight (carton + tape + void fill). Couriers weigh the sealed parcel at
+ * the hub, so quoting/booking on item weight alone under-declares by the packaging
+ * weight and gets re-billed a higher slab whenever the parcel sits near a boundary.
+ * Packaging weight resolution order:
+ *   1. the chosen catalog preset's `boxWeightGrams` (merchant weighed the carton),
+ *   2. `packagingWeightGramsOverride` (flat store-level merchant override),
+ *   3. surface-area estimate (`estimatePackagingWeightGrams`).
+ *
+ * @param items                         line items with per-unit dimensions/weight + quantity
+ * @param boxPresets                    optional catalog of real carton sizes (Ops config)
+ * @param paddingCm                     safety padding per dimension (default +1 cm)
+ * @param packagingWeightGramsOverride  flat packaging weight from store settings (grams)
  */
 export function cartonize(input: {
   items: CartonItem[];
   boxPresets?: CartonBoxPreset[];
   paddingCm?: number;
+  packagingWeightGramsOverride?: number | null;
 }): CartonResult {
   const padding = input.paddingCm ?? DEFAULT_PACKING_PADDING_CM;
-  const weightGrams = Math.max(1, totalWeightGrams(input.items));
+  const itemsWeightGrams = Math.max(1, totalWeightGrams(input.items));
+  const override =
+    input.packagingWeightGramsOverride != null && input.packagingWeightGramsOverride > 0
+      ? Math.round(input.packagingWeightGramsOverride)
+      : null;
+  const resolvePackaging = (box: BoxDimensions, presetBoxWeightGrams?: number): number => {
+    if (presetBoxWeightGrams != null && presetBoxWeightGrams > 0) return Math.round(presetBoxWeightGrams);
+    if (override != null) return override;
+    return estimatePackagingWeightGrams(box);
+  };
   const units = toUnits(input.items);
 
   if (units.length === 0) {
-    return { ...pad(DEFAULT_UNIT_BOX, padding), weightGrams, source: 'default-fallback' };
+    const box = pad(DEFAULT_UNIT_BOX, padding);
+    const packagingWeightGrams = resolvePackaging(box);
+    return {
+      ...box,
+      weightGrams: itemsWeightGrams + packagingWeightGrams,
+      packagingWeightGrams,
+      source: 'default-fallback'
+    };
   }
 
   const presets = (input.boxPresets ?? []).filter(
@@ -303,7 +365,8 @@ export function cartonize(input: {
       (a, b) => a.lengthCm * a.widthCm * a.heightCm - b.lengthCm * b.widthCm * b.heightCm
     );
     for (const box of sorted) {
-      if (box.maxWeightGrams && box.maxWeightGrams > 0 && weightGrams > box.maxWeightGrams) continue;
+      // maxWeightGrams is the carton's rated CONTENT capacity — compare against items only.
+      if (box.maxWeightGrams && box.maxWeightGrams > 0 && itemsWeightGrams > box.maxWeightGrams) continue;
       // Inner usable space = box minus padding on each side; items must fit inside that.
       const inner = {
         L: box.lengthCm - padding,
@@ -312,11 +375,13 @@ export function cartonize(input: {
       };
       if (inner.L <= 0 || inner.W <= 0 || inner.H <= 0) continue;
       if (packInto(units, inner.L, inner.W, inner.H).fits) {
+        const packagingWeightGrams = resolvePackaging(box, box.boxWeightGrams);
         return {
           lengthCm: box.lengthCm,
           widthCm: box.widthCm,
           heightCm: box.heightCm,
-          weightGrams,
+          weightGrams: itemsWeightGrams + packagingWeightGrams,
+          packagingWeightGrams,
           source: 'catalog',
           boxName: box.name
         };
@@ -325,10 +390,12 @@ export function cartonize(input: {
     // No catalog box fits → fall through to a computed box (don't block the shipment).
   }
 
-  const bounding = computeBoundingBox(units);
+  const bounding = pad(computeBoundingBox(units), padding);
+  const packagingWeightGrams = resolvePackaging(bounding);
   return {
-    ...pad(bounding, padding),
-    weightGrams,
+    ...bounding,
+    weightGrams: itemsWeightGrams + packagingWeightGrams,
+    packagingWeightGrams,
     source: units.length === 1 ? 'single-item' : 'computed'
   };
 }

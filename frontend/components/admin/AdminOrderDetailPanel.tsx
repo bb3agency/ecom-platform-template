@@ -219,10 +219,15 @@ export function AdminOrderDetailPanel({ orderId }: AdminOrderDetailPanelProps) {
                 label="Weight"
                 value={`${(order.packingBox.weightGrams / 1000).toFixed(2)} kg`}
               />
+              <Row
+                label="Incl. packaging"
+                value={`${order.packingBox.packagingWeightGrams} g`}
+              />
               <Row label="Box" value={packingBoxSourceLabel(order.packingBox)} />
               <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-                Recommended carton — the same dimensions used to rate this order with the
-                courier (incl. packing allowance). Pack into a box at least this size.
+                Recommended carton — the same dimensions and sealed-parcel weight (products +
+                carton/tape/void fill) declared to the courier for this order. Pack into a box
+                at least this size.
               </p>
             </div>
           ) : (

@@ -2541,13 +2541,17 @@ export class OrdersService {
     const variantById = new Map(variants.map((v) => [v.id, v]));
     const settings = await this.fastify.prisma.storeSettings.findUnique({
       where: { singletonKey: 'default' },
-      select: { boxPresets: true }
+      select: { boxPresets: true, packagingWeightGrams: true }
     });
-    const boxPresets = parseBoxPresets(settings?.boxPresets).map((b) => ({
+    const settingsRecord = settings as
+      | { boxPresets?: unknown; packagingWeightGrams?: number | null }
+      | null;
+    const boxPresets = parseBoxPresets(settingsRecord?.boxPresets).map((b) => ({
       name: b.name,
       lengthCm: b.lengthCm,
       widthCm: b.widthCm,
-      heightCm: b.heightCm
+      heightCm: b.heightCm,
+      ...(b.boxWeightGrams != null ? { boxWeightGrams: b.boxWeightGrams } : {})
     }));
     const cartonItems = items.map((it) => {
       const v = variantById.get(it.variantId);
@@ -2560,12 +2564,19 @@ export class OrdersService {
         keepUpright: v?.keepUpright ?? false
       };
     });
-    const carton = cartonize({ items: cartonItems, boxPresets });
+    const carton = cartonize({
+      items: cartonItems,
+      boxPresets,
+      packagingWeightGramsOverride: settingsRecord?.packagingWeightGrams ?? null
+    });
     return {
       lengthCm: carton.lengthCm,
       widthCm: carton.widthCm,
       heightCm: carton.heightCm,
+      // Full sealed-parcel weight (items + packaging) — matches what is declared to
+      // the courier and captured at the hub scale.
       weightGrams: carton.weightGrams,
+      packagingWeightGrams: carton.packagingWeightGrams,
       source: carton.source,
       boxName: carton.boxName ?? null
     };

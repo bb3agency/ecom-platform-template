@@ -73,7 +73,9 @@ describe('DelhiveryAdapter', () => {
       pin: '560001',
       origin_pin: '110001',
       payment_mode: 'Pre-paid',
-      weight: 1.2,
+      // Delhivery manifest weight is in GRAMS (matches the rate API's `cgm` unit).
+      // Sending kg here (1.2) declared parcels at ~0 gm and triggered re-weigh billing.
+      weight: 1200,
       seller_gst_tin: '29ABCDE1234F1Z5',
       hsn_code: '1001'
     });

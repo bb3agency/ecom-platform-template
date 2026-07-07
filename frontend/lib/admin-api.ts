@@ -333,7 +333,10 @@ export interface AdminOrderDetailFull {
     lengthCm: number;
     widthCm: number;
     heightCm: number;
+    /** Full sealed-parcel weight (grams): items + packaging. */
     weightGrams: number;
+    /** The packaging (carton + tape + void fill) portion of weightGrams. */
+    packagingWeightGrams: number;
     source: "catalog" | "computed" | "single-item" | "default-fallback";
     boxName: string | null;
   } | null;
@@ -953,10 +956,14 @@ export interface BoxPreset {
   lengthCm: number;
   widthCm: number;
   heightCm: number;
+  /** Weight of the empty carton + packing material (grams), weighed by the merchant. */
+  boxWeightGrams?: number;
 }
 
 export interface AdminBoxPresetsSettings {
   presets: BoxPreset[];
+  /** Flat packaging-weight override (grams). Null = automatic surface-area estimate. */
+  packagingWeightGrams: number | null;
 }
 
 export function buildAdminQuery(

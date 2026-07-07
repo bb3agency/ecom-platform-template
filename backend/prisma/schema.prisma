@@ -1030,6 +1030,8 @@ model StoreSettings {
   smsTemplates              Json?
   defaultLowStockThreshold  Int      @default(5)
   boxPresets                Json?
+  /// Flat packaging (carton + tape + void fill) weight override in grams. Null = surface-area estimate.
+  packagingWeightGrams      Int?
   sellerLegalName           String?
   sellerAddress             String?
   sellerState               String?

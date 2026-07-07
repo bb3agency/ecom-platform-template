@@ -74,7 +74,11 @@ export default class DelhiveryAdapter implements ShippingProviderAdapter {
   }
 
   async createShipment(input: CreateShipmentInput): Promise<CreateShipmentResult> {
-    const weightKg = Number((input.totalWeightGrams / 1000).toFixed(3));
+    // Delhivery's manifest API reads `weight` in GRAMS (same unit as the rate API's
+    // `cgm` param). Sending kilograms here declared a 2 kg parcel as "2 gm" — Delhivery
+    // manifested it at ~0 gm, then re-weighed at the hub and re-billed the captured
+    // weight as a "weight mismatch" adjustment on every single shipment.
+    const weightGrams = Math.max(1, Math.round(input.totalWeightGrams));
     const isCod = input.paymentMode === 'COD';
     const returnPin = this.pickupPincode || input.originPincode;
     if (!returnPin) {
@@ -117,7 +121,7 @@ export default class DelhiveryAdapter implements ShippingProviderAdapter {
       hsn_code: resolveShippingHsnCode({ variantHsnCode: input.hsnCode }),
       order_date: orderDate,
       quantity: String(totalQty),
-      weight: weightKg,
+      weight: weightGrams,
       origin_pin: input.originPincode,
       seller_gst_tin: input.sellerGstTin,
       seller_name: this.sellerName,

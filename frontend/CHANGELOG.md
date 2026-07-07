@@ -12,6 +12,17 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.37] — 2026-07-07
+
+### Added
+- **Packing weights in the admin (pairs with backend-core 0.1.61).** `BoxPresetsPanel`: each carton preset can now carry an optional **Box weight (g)** — weigh one packed-but-empty carton and enter it; a new **Packaging Weight** section sets the store-level flat override (empty = automatic surface-area estimate). Panel copy explains that couriers weigh the sealed parcel and that this weight is included in every quote/booking. `AdminBoxPresetsSettings`/`BoxPreset` types extended (`boxWeightGrams`, `packagingWeightGrams`).
+- **"Packing box" card shows the declared parcel weight split.** Order detail now renders `packagingWeightGrams` ("Incl. packaging: X g") alongside the total sealed-parcel weight, so the merchant sees exactly what was declared to the courier.
+
+**Propagation:**
+- Severity: NORMAL · Layers: frontend (`components/admin/BoxPresetsPanel.tsx`, `components/admin/AdminOrderDetailPanel.tsx`, `lib/admin-api.ts`)
+- Migration: NO · Flag: none · Design impact: none (token-styled) · Breaking: NO — requires backend-core 0.1.61 for the new fields (older backends simply omit them)
+- Rollback: revert the three files
+
 ## [0.1.36] — 2026-07-04
 
 ### Fixed

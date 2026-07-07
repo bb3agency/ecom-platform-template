@@ -12,6 +12,21 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.61] — 2026-07-07
+
+### Fixed
+- **Delhivery manifest declared every parcel at ~0 gm (weight-unit bug, direct merchant loss).** `cmu/create.json` reads `weight` in **grams** (the same unit as the rate API's `cgm`), but the adapter sent **kilograms** — a 2 kg parcel was declared as "2 gm", Delhivery billed the manifest on flyer volumetric, then re-weighed at the hub and re-billed the captured weight as a "weight mismatch" adjustment on every single shipment. The manifest now sends grams. Shiprocket verified unaffected (its API takes kg and receives kg).
+
+### Added
+- **Packaging (tare) weight in every quote and booking.** Couriers weigh the SEALED parcel; quoting/booking item weight alone under-declared by the carton + tape + void fill (~140 g observed), pushing slab-edge parcels into a higher 0.5 kg slab at re-weigh (production incident: 2000 g quoted ₹131.88, 2140 g captured ₹174.49). `cartonize()` now returns full parcel weight (`weightGrams` = items + `packagingWeightGrams`) with resolution: per-preset `boxWeightGrams` (merchant weighs the carton) → store-level flat override (new `StoreSettings.packagingWeightGrams`, additive migration `20260707100000`) → automatic surface-area estimate (`2(LW+LH+WH) × 0.055 g/cm² + 40 g`; calibrates to the observed 140 g for a 24×21×9 carton). Flows to cart quotes (`computeChargeableWeightGrams`), the AWB worker (books `carton.weightGrams` — both providers), and admin `packingBox` (new `packagingWeightGrams` field, schema updated). `GET/PATCH /admin/settings/box-presets` now carries optional per-preset `boxWeightGrams` + top-level `packagingWeightGrams` (omit = unchanged, null = clear to automatic).
+- **Slab-edge guard on quotes.** Delhivery and Shiprocket both bill in 0.5 kg slabs. When the computed chargeable weight is within 50 g below — or exactly on — a 500 g boundary, the QUOTE weight is bumped just past it (`applySlabEdgeGuard`), so a hub re-weigh can no longer bill a higher slab than was quoted. Manifests still declare the true computed weight.
+
+**Propagation:**
+- Severity: HIGH (direct merchant money loss on every Delhivery shipment) · Layers: backend (`modules/shipping/adapters/delhivery.adapter.ts`, `common/shipping/{cartonize,chargeable-weight,select-box-preset}.ts`, `modules/cart/cart.service.ts`, `modules/settings/*`, `modules/orders/orders.{service,schemas}.ts`, `queues/workers/shipping.worker.ts`, `prisma/schema.prisma`) — pairs with frontend-core 0.1.37 (Box Presets panel weights UI + packing-box card)
+- Migration: YES (additive — `StoreSettings.packagingWeightGrams INTEGER NULL`, `prisma migrate deploy`, no backfill) · Flag: none (accuracy fix; packaging estimate applies automatically) · Design impact: none · Breaking: NO
+- Rollback: revert files + drop the column
+- Operator note: no config required — the surface-area estimate applies immediately. For maximum accuracy, weigh one packed-but-empty carton per box preset and enter it in Admin → Settings → Shipping → Packing Box Presets (or set the flat packaging-weight override there). Expect customer-facing shipping quotes to rise slightly (they now reflect the real billed weight instead of the merchant eating the difference).
+
 ## [0.1.60] — 2026-07-07
 
 ### Fixed

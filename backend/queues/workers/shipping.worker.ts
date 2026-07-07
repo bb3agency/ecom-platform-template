@@ -283,7 +283,7 @@ export function createShippingWorker(
 
         const settings = await prisma.storeSettings.findUnique({
           where: { singletonKey: 'default' },
-          select: { gstin: true, contactEmail: true, boxPresets: true }
+          select: { gstin: true, contactEmail: true, boxPresets: true, packagingWeightGrams: true }
         });
 
         const shippingAddress = (order.shippingAddress ?? {}) as {
@@ -356,11 +356,6 @@ export function createShippingWorker(
             throw new Error(`Missing or invalid variant weight for variant ${item.variantId}`);
           }
         }
-        const totalWeightGrams = order.items.reduce(
-          (sum, item) => sum + (variantWeights.get(item.variantId) ?? 0) * item.quantity,
-          0
-        );
-
         // Resolve the provider for this specific order: prefer order.selectedShippingProvider,
         // fall back to the globally configured SHIPPING_PROVIDER env var.
         const orderSelectedProvider = (order as Record<string, unknown>)['selectedShippingProvider'] as string | null | undefined;
@@ -446,7 +441,14 @@ export function createShippingWorker(
         const boxPresets = parseBoxPresets(settings?.boxPresets);
         const carton = cartonize({
           items: cartonItems,
-          boxPresets: boxPresets.map((b) => ({ name: b.name, lengthCm: b.lengthCm, widthCm: b.widthCm, heightCm: b.heightCm }))
+          boxPresets: boxPresets.map((b) => ({
+            name: b.name,
+            lengthCm: b.lengthCm,
+            widthCm: b.widthCm,
+            heightCm: b.heightCm,
+            ...(b.boxWeightGrams != null ? { boxWeightGrams: b.boxWeightGrams } : {})
+          })),
+          packagingWeightGramsOverride: settings?.packagingWeightGrams ?? null
         });
 
         const shipmentInput = {
@@ -457,7 +459,10 @@ export function createShippingWorker(
           discountRupees: orderDiscountPaise / 100,
           destinationPincode: shippingAddress.pincode,
           originPincode: pickupPincode,
-          totalWeightGrams,
+          // Declare the FULL sealed-parcel weight (items + packaging) — this is what the
+          // courier's hub scale captures. Declaring item weight alone triggers a weight-
+          // mismatch re-bill on every parcel. See cartonize.ts packaging weight.
+          totalWeightGrams: carton.weightGrams,
           paymentMode,
           sellerGstTin: sellerGstTin || 'NA',
           hsnCode: primaryHsnCode,

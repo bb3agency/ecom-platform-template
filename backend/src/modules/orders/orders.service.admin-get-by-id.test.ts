@@ -139,19 +139,21 @@ describe('OrdersService admin get order by id', () => {
           ])
         },
         storeSettings: {
-          findUnique: vi.fn().mockResolvedValue({ boxPresets: null })
+          findUnique: vi.fn().mockResolvedValue({ boxPresets: null, packagingWeightGrams: null })
         }
       }
     } as unknown as FastifyInstance;
 
     const service = new OrdersService(fastify);
     const result = await service.adminGetOrderById('order_3');
-    // Raw bounding box 15×10×6, +1cm padding → 16×11×7. Weight 1000 + 2×200 = 1400.
+    // Raw bounding box 15×10×6, +1cm padding → 16×11×7. Items 1000 + 2×200 = 1400g,
+    // plus estimated packaging for a 16×11×7 carton (80g) = 1480g total parcel weight.
     expect(result.packingBox).toEqual({
       lengthCm: 16,
       widthCm: 11,
       heightCm: 7,
-      weightGrams: 1400,
+      weightGrams: 1480,
+      packagingWeightGrams: 80,
       source: 'computed',
       boxName: null
     });

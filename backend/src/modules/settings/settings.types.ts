@@ -102,8 +102,15 @@ export type BoxPreset = {
   lengthCm: number;
   widthCm: number;
   heightCm: number;
+  /** Weight of the empty carton + packing material (grams), weighed by the merchant. */
+  boxWeightGrams?: number;
 };
 
 export type BoxPresetsResponse = {
   presets: BoxPreset[];
+  /**
+   * Flat packaging-weight override in grams applied when the selected box has no
+   * `boxWeightGrams`. Null = automatic surface-area estimate.
+   */
+  packagingWeightGrams: number | null;
 };

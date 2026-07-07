@@ -625,12 +625,15 @@ const adminOrderDetailSchema = {
         {
           type: 'object',
           additionalProperties: false,
-          required: ['lengthCm', 'widthCm', 'heightCm', 'weightGrams', 'source', 'boxName'],
+          required: ['lengthCm', 'widthCm', 'heightCm', 'weightGrams', 'packagingWeightGrams', 'source', 'boxName'],
           properties: {
             lengthCm: { type: 'integer', minimum: 1, maximum: 100000 },
             widthCm: { type: 'integer', minimum: 1, maximum: 100000 },
             heightCm: { type: 'integer', minimum: 1, maximum: 100000 },
+            // Full sealed-parcel weight = items + packaging (matches courier declaration).
             weightGrams: { type: 'integer', minimum: 1, maximum: 100000000 },
+            // The packaging (carton + tape + void fill) portion of weightGrams.
+            packagingWeightGrams: { type: 'integer', minimum: 0, maximum: 1000000 },
             source: {
               type: 'string',
               enum: ['catalog', 'computed', 'single-item', 'default-fallback'],

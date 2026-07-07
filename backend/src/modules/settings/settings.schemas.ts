@@ -307,20 +307,25 @@ const boxPresetItemSchema = {
     name: { type: 'string', minLength: 1, maxLength: 80 },
     lengthCm: { type: 'integer', minimum: 1, maximum: 10000 },
     widthCm: { type: 'integer', minimum: 1, maximum: 10000 },
-    heightCm: { type: 'integer', minimum: 1, maximum: 10000 }
+    heightCm: { type: 'integer', minimum: 1, maximum: 10000 },
+    // Weight of the EMPTY carton + packing material (grams). Optional — when absent,
+    // packaging weight falls back to the store override or the surface-area estimate.
+    boxWeightGrams: { type: 'integer', minimum: 1, maximum: 100000 }
   }
 } as const;
 
 const boxPresetsResponseSchema = {
   type: 'object',
   additionalProperties: false,
-  required: ['presets'],
+  required: ['presets', 'packagingWeightGrams'],
   properties: {
     presets: {
       type: 'array',
       items: boxPresetItemSchema,
       maxItems: 20
-    }
+    },
+    // Flat packaging-weight override (grams). Null = automatic surface-area estimate.
+    packagingWeightGrams: { anyOf: [{ type: 'integer', minimum: 1, maximum: 100000 }, { type: 'null' }] }
   }
 } as const;
 
@@ -345,7 +350,9 @@ export const updateBoxPresetsSchema = {
         type: 'array',
         items: boxPresetItemSchema,
         maxItems: 20
-      }
+      },
+      // Omit to leave unchanged; send null to clear back to automatic estimation.
+      packagingWeightGrams: { anyOf: [{ type: 'integer', minimum: 1, maximum: 100000 }, { type: 'null' }] }
     }
   },
   response: {
