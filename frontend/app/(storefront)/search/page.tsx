@@ -88,8 +88,8 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
               Start Searching
             </h2>
             <p className="mb-8 text-sm font-medium text-[#767676] max-w-md">
-              Search by product name, SKU, or category to find farm-fresh
-              chemical free and natural products.
+              Search by product name, SKU, or category to find farm-fresh,
+              naturally grown and natural products.
             </p>
           </div>
         ) : !hasResults ? (

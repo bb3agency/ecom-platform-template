@@ -1223,7 +1223,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                     data-admin-field="name"
                     aria-invalid={Boolean(getFieldError("name"))}
                     className={fieldClassName("name", inputClass)}
-                    placeholder="e.g. Chemical Free Bananas"
+                    placeholder="e.g. Naturally Grown Bananas"
                     value={name}
                     onChange={(event) => {
                       clearFieldError("name");
@@ -1327,7 +1327,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                     data-admin-field="slug"
                     aria-invalid={Boolean(getFieldError("slug"))}
                     className={cn(fieldClassName("slug", inputClass), "font-mono")}
-                    placeholder="e.g. chemical-free-bananas"
+                    placeholder="e.g. naturally-grown-bananas"
                     value={slug}
                     onChange={(event) => {
                       clearFieldError("slug");

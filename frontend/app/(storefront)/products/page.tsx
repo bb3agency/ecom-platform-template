@@ -20,9 +20,9 @@ interface ProductsPageProps {
 }
 
 export const metadata = {
-  title: "Shop Chemical Free & Natural Products",
+  title: "Shop Naturally Grown & Natural Products",
   description:
-    "Browse our full range of chemical free and natural produce, staples, and everyday essentials.",
+    "Browse our full range of naturally grown produce, staples, and everyday essentials.",
 };
 
 const VALID_SORTS = new Set<StorefrontProductSort>([
@@ -99,7 +99,7 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
             <div className="flex items-center gap-6 sm:gap-10">
               {[
                 { value: `${totalProducts}+`, label: "Products" },
-                { value: "100%", label: "Chemical Free" },
+                { value: "100%", label: "Naturally Grown" },
                 { value: "Farm", label: "Direct" },
               ].map(({ value, label }) => (
                 <div key={label} className="text-center">

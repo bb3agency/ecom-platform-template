@@ -79,7 +79,7 @@ export function SearchInput({ defaultValue = "", className }: SearchInputProps) 
               setPanelOpen(false);
             }
           }}
-          placeholder="Search for chemical free vegetables, fruits..."
+          placeholder="Search for naturally grown vegetables, fruits..."
           className="h-11 w-full rounded-full border border-[#efe8e4] bg-[#faf3ef] pl-11 pr-24 text-sm font-medium text-[#23403d] placeholder:text-[#767676] focus:border-[#23403d] focus:outline-none focus:ring-1 focus:ring-[#23403d]"
           aria-label="Search products and categories"
           aria-autocomplete="list"

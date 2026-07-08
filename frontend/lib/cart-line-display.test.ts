@@ -17,7 +17,7 @@ const baseItem: CartLineItem = {
   product: {
     name: "Organic Tomatoes",
     slug: "organic-tomatoes",
-    metaDescription: "Farm-fresh chemical-free tomatoes.",
+    metaDescription: "Farm-fresh, naturally grown tomatoes.",
     imageUrl: "/api/v1/media/products/p1/hero.webp",
     imageAlt: "Organic tomatoes",
   },
@@ -35,7 +35,7 @@ describe("cart line display helpers", () => {
   });
 
   it("returns short description from product metaDescription", () => {
-    expect(getCartLineShortDescription(baseItem)).toBe("Farm-fresh chemical-free tomatoes.");
+    expect(getCartLineShortDescription(baseItem)).toBe("Farm-fresh, naturally grown tomatoes.");
   });
 
   it("shows variant label when it differs from product name", () => {

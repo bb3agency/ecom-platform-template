@@ -12,6 +12,17 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.38] — 2026-07-08
+
+### Changed
+- **Removed the legally-risky "Chemical Free" claim from shared core copy.** The template was seeded from a produce client and carried absolute "Chemical Free" / "100% Chemical Free" claims in core (synced) surfaces — inaccurate/legally-risky and imposed on every client. Neutralised to accurate, premium wording: `app/layout.tsx` (root SEO → "Premium naturally grown, lab-tested products"), `products/page.tsx` (title "Shop Naturally Grown & Natural Products", meta, "100% / Naturally Grown" stat), `categories/[slug]/page.tsx` (title + "Naturally Grown Category"), `search/page.tsx`, `products/[slug]/page.tsx` (trust badge → "Naturally Grown"), `components/cart/CartWorkspace.tsx` (trust badge), `components/shared/SearchInput.tsx` (placeholder), `components/admin/AdminProductEditor.tsx` (name/slug placeholders), `components/admin/AdminProductsList.tsx` (filter label — `value="organic"` enum unchanged), and `lib/cart-line-display.test.ts` (fixtures). Per-client storefront copy (home/about/legal/footer) lives in the design layer and is each client's own — not touched by this core change.
+
+**Propagation:**
+- Severity: NORMAL (copy only; removes a risky marketing claim) · Layers: frontend (the core files listed above)
+- Migration: NO · Flag: none · Design impact: none (token-styled; wording only) · Breaking: NO
+- Rollback: revert the listed files
+- Note: existing clients that want brand-specific wording should override in their design layer (`lib/content.ts`); this only changes the shared default. Template seed copy in the design-layer files (home/about/legal) still references the old phrasing and is a separate hygiene item for future clones.
+
 ## [0.1.37] — 2026-07-07
 
 ### Added

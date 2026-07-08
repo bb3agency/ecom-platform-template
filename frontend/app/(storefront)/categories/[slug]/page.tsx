@@ -27,7 +27,7 @@ function formatCategoryName(slug: string): string {
 export async function generateMetadata({ params }: CategoryProductsPageProps) {
   const { slug } = await params;
   const name = formatCategoryName(slug);
-  return { title: `${name} — Chemical Free Products` };
+  return { title: `${name} — Naturally Grown Products` };
 }
 
 export default async function CategoryProductsPage({
@@ -71,7 +71,7 @@ export default async function CategoryProductsPage({
             <span className="text-[#ec6e55]">{categoryName}</span>
           </nav>
           <p className="text-xs font-bold uppercase tracking-widest text-[#ec6e55]">
-            Chemical Free Category
+            Naturally Grown Category
           </p>
           <h1 className="mt-1 font-heading text-3xl font-bold text-[#23403d] sm:text-4xl">
             {categoryName}

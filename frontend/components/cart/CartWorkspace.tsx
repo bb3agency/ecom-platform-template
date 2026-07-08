@@ -341,7 +341,7 @@ export function CartWorkspace() {
         {/* Trust badges */}
         <div className="grid grid-cols-3 gap-2">
           {[
-            { emoji: "🌿", label: "Chemical Free" },
+            { emoji: "🌿", label: "Naturally Grown" },
             { emoji: "🚚", label: "Fast Delivery" },
             { emoji: "↩️", label: "Easy Returns" },
           ].map(({ emoji, label }) => (

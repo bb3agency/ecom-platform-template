@@ -371,7 +371,7 @@ export function AdminProductsList() {
               <option value="">All Tags</option>
               <option value="new">New</option>
               <option value="sale">Sale</option>
-              <option value="organic">Chemical Free</option>
+              <option value="organic">Naturally Grown</option>
             </select>
             <Button variant="outline" className="h-9 w-full gap-2 font-medium sm:w-auto">
               <Filter className="h-4 w-4" /> More Filters

@@ -190,7 +190,7 @@ export default async function ProductDetailPage({ params }: ProductDetailPagePro
             {/* Trust signals */}
             <div className="mt-2 grid grid-cols-2 gap-3 rounded-[20px] bg-[#faf3ef] p-4 sm:gap-4 sm:p-5">
               {[
-                { icon: Leaf, text: "100% Chemical Free" },
+                { icon: Leaf, text: "Naturally Grown" },
                 { icon: Truck, text: "Free Delivery" },
                 { icon: RotateCcw, text: "Easy Returns" },
                 { icon: ShieldCheck, text: "Secure Pay" },
