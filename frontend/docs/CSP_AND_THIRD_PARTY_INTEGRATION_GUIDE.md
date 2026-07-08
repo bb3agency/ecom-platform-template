@@ -68,7 +68,8 @@ function buildSecurityHeaders(): Array<{ key: string; value: string }> {
   const csp = [
     "default-src 'self'",
     `connect-src ${connectSrc}`,
-    "script-src 'self' 'unsafe-inline' https://checkout.razorpay.com https://cdn.razorpay.com https://static.cloudflareinsights.com https://challenges.cloudflare.com",
+    // 'unsafe-eval' is added in DEV ONLY (Next.js dev runtime / React Refresh); production omits it.
+    `script-src 'self' 'unsafe-inline'${isProd ? "" : " 'unsafe-eval'"} https://checkout.razorpay.com https://cdn.razorpay.com https://static.cloudflareinsights.com https://challenges.cloudflare.com`,
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' https: data: blob:",
     "font-src 'self' data:",
@@ -77,7 +78,8 @@ function buildSecurityHeaders(): Array<{ key: string; value: string }> {
     "manifest-src 'self'",
     "base-uri 'self'",
     "form-action 'self'",
-    "upgrade-insecure-requests",
+    // Emitted in PRODUCTION ONLY — localhost dev is http, so upgrading would break dev.
+    ...(isProd ? ["upgrade-insecure-requests"] : []),
   ].join("; ");
 
   return [
@@ -92,7 +94,7 @@ function buildSecurityHeaders(): Array<{ key: string; value: string }> {
 | Directive | Purpose | Current Value | Why |
 |-----------|---------|---------------|-----|
 | **`default-src`** | Fallback for all unspecified directives | `'self'` | Only trust same-origin by default |
-| **`script-src`** | Which scripts can execute | `'self' 'unsafe-inline' https://checkout.razorpay.com ...` | `'unsafe-inline'` required for Next.js RSC inline scripts; Razorpay/Cloudflare domains for payment + CAPTCHA |
+| **`script-src`** | Which scripts can execute | `'self' 'unsafe-inline' https://checkout.razorpay.com ...` (+ `'unsafe-eval'` in dev only) | `'unsafe-inline'` required for Next.js RSC inline scripts; Razorpay/Cloudflare domains for payment + CAPTCHA. `'unsafe-eval'` is added **only in development** for the Next.js dev runtime / React Refresh — never in production |
 | **`frame-src`** | Which iframes can load | `'self' https://checkout.razorpay.com https://api.razorpay.com https://challenges.cloudflare.com` | Razorpay payment modal + Turnstile CAPTCHA |
 | **`connect-src`** | Where fetch/WebSocket can go | `'self' https://api.razorpay.com https://lumberjack.razorpay.com https://cloudflareinsights.com` | Analytics + risk detection callbacks |
 | **`style-src`** | Where stylesheets come from | `'self' 'unsafe-inline'` | Tailwind runtime + component inline styles |
@@ -100,7 +102,7 @@ function buildSecurityHeaders(): Array<{ key: string; value: string }> {
 | **`font-src`** | Where fonts come from | `'self' data:` | Next.js self-hosts fonts; no external CDN |
 | **`worker-src`** | Web Workers, Service Workers | `'self' blob:` | Not currently used, but future-proofed |
 | **`form-action`** | Where forms submit | `'self'` | Only same-origin forms |
-| **`upgrade-insecure-requests`** | Auto-upgrade HTTP to HTTPS | Enabled | Browser tries HTTPS first on all requests |
+| **`upgrade-insecure-requests`** | Auto-upgrade HTTP to HTTPS | Enabled **in production only** | Browser tries HTTPS first on all requests. Omitted in dev because localhost is served over http |
 
 ---
 

@@ -12,6 +12,26 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.40] — 2026-07-08
+
+### Added
+- **`formatPrice` unit test** (`lib/format-price.test.ts`) — locks the 0.1.39 whole-rupee behaviour (no `.00` on whole amounts, two decimals on fractional, en-IN lakh grouping, explicit-currency path). Core test → syncs + drift-gated.
+- **`--success` registered in the design-token contract** (`design-tokens.contract.json` `requiredTokens`) — `check-token-contract.sh` now fails any client whose `globals.css` omits it, guaranteeing the 0.1.39 checkout/auth confirmation text themes correctly everywhere.
+
+### Changed
+- **`design-tokens.contract.json` is now a core-synced path** (added to `core-manifest.json` `frontendCore.include`). Token-contract changes propagate to every client automatically instead of being hand-copied; each client still supplies the token *value* in its own `globals.css`.
+
+### Docs
+- CSP references corrected across `CLAUDE.md`, `frontend/docs/CSP_QUICK_REFERENCE.md`, and `frontend/docs/CSP_AND_THIRD_PARTY_INTEGRATION_GUIDE.md` to match the 0.1.39 `next.config.ts`: `'unsafe-eval'` is **dev-only** (Next.js dev runtime / React Refresh) and `upgrade-insecure-requests` is **prod-only**. The "never use `unsafe-eval`" rule now reads "never in production."
+- `PLATFORM_VERSIONING_AND_SYNC_GUIDE.md` §5 documents the now-synced contract file and the `--success` token.
+
+**Propagation:**
+- Severity: LOW (test + contract + docs; no runtime behaviour change beyond what 0.1.39 shipped) · Layers: frontend (`lib/format-price.test.ts`, `design-tokens.contract.json`, `core-manifest.json`) + docs
+- Migration: NO · Flag: none · Breaking: NO
+- Design impact: none new — `--success` was already added in 0.1.39; this only enforces it via the contract
+- Note: the contract file was NOT previously synced, so the *first* sync that carries the new manifest can't also carry the contract (the delta is computed from the client's pre-sync manifest) — the `--success` contract line is hand-delivered on the 0.1.40 sync branch; from 0.1.41 on, contract changes sync automatically
+- Rollback: revert the listed files
+
 ## [0.1.39] — 2026-07-08
 
 ### Changed

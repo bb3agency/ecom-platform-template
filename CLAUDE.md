@@ -321,8 +321,10 @@ export default function ProductCard(props: any) { ... }
 **Current CSP Configuration (frontend/next.config.ts):**
 
 ```javascript
-// script-src: Controls which scripts can execute
-"script-src 'self' 'unsafe-inline' https://checkout.razorpay.com https://cdn.razorpay.com https://static.cloudflareinsights.com https://challenges.cloudflare.com"
+// script-src: Controls which scripts can execute.
+// NOTE: 'unsafe-eval' is added in DEVELOPMENT ONLY (Next.js dev runtime / React Refresh) — never in production.
+// upgrade-insecure-requests is emitted in PRODUCTION ONLY (localhost dev is http).
+`script-src 'self' 'unsafe-inline'${isProd ? "" : " 'unsafe-eval'"} https://checkout.razorpay.com https://cdn.razorpay.com https://static.cloudflareinsights.com https://challenges.cloudflare.com`
 
 // frame-src: Controls which iframes can load
 "frame-src 'self' https://checkout.razorpay.com https://api.razorpay.com https://challenges.cloudflare.com"
@@ -401,7 +403,7 @@ export default function ProductCard(props: any) { ... }
 Always check the **Network** tab (for failed resource loads) and **Console** tab (for CSP violation messages) when adding integrations.
 
 **Rules:**
-- ❌ Never use `unsafe-eval` (code injection risk)
+- ❌ Never use `unsafe-eval` **in production** (code injection risk) — it is enabled in **dev only** for the Next.js dev runtime / React Refresh
 - ❌ Never use wildcard `*` in production CSP
 - ✅ Keep domains specific and minimal
 - ✅ Always test locally AND on VPS before assuming "it works"

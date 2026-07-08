@@ -126,8 +126,8 @@ Before marking "done":
 Reference for comparison:
 
 ```typescript
-// script-src: scripts can execute from
-"script-src 'self' 'unsafe-inline' https://checkout.razorpay.com https://cdn.razorpay.com https://static.cloudflareinsights.com https://challenges.cloudflare.com"
+// script-src: scripts can execute from ('unsafe-eval' is added in DEV ONLY for the Next.js dev runtime; never in prod)
+`script-src 'self' 'unsafe-inline'${isProd ? "" : " 'unsafe-eval'"} https://checkout.razorpay.com https://cdn.razorpay.com https://static.cloudflareinsights.com https://challenges.cloudflare.com`
 
 // frame-src: iframes can load from
 "frame-src 'self' https://checkout.razorpay.com https://api.razorpay.com https://challenges.cloudflare.com"

@@ -105,6 +105,8 @@ Either way: new flags stay **OFF** (enable per client via Ops), and typecheck + 
 
 A core component only auto-adopts a client's look if that client defines every token the component uses. `frontend/design-tokens.contract.json` lists the **required token set**; `check-token-contract.sh` fails a client whose `globals.css` is missing any. When a core change introduces a **new** token, add it to the contract in the same release and call it out in the entry's *Design impact* field — every client adds it before merging. Result: "feature applied but looks broken in client X" cannot happen silently.
 
+Since `frontend-core 0.1.40` the contract file itself is a **core-synced** path (`frontendCore.include`), so a token added to the contract propagates to every client automatically (the client still supplies the token *value* in its own `globals.css`). Example: `frontend-core 0.1.39` de-hardcoded checkout/auth to tokens and introduced **`--success`** (confirmation text) — it is in `requiredTokens`; raghava sets it to `#00aa63`, sbgs to `var(--brand-green)`, the template default to a neutral green.
+
 ---
 
 ## 6. Feature flags & graduation (no flag debt)
