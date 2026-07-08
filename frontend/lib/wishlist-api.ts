@@ -4,6 +4,15 @@ import type { Product } from "@/types/product";
 export interface WishlistItem {
   id: string;
   createdAt: string;
+  // The list endpoint returns the full card-ready product (image, variants,
+  // rating, stock) so the /wishlist page can render the standard ProductCard.
+  product: Product;
+}
+
+/** add-to-wishlist returns only enough to confirm the toggle (id-driven client state). */
+export interface WishlistItemSummary {
+  id: string;
+  createdAt: string;
   product: Pick<Product, "id" | "name" | "slug" | "description" | "isFeatured">;
 }
 
@@ -34,8 +43,8 @@ export async function getWishlist(
 export async function addToWishlist(
   productId: string,
   accessToken: string,
-): Promise<WishlistItem> {
-  return apiClient<WishlistItem>("/wishlist/items", {
+): Promise<WishlistItemSummary> {
+  return apiClient<WishlistItemSummary>("/wishlist/items", {
     method: "POST",
     accessToken,
     body: JSON.stringify({ productId }),

@@ -19,31 +19,31 @@ export default async function CheckoutPage() {
   const storeConfig = await getPublicStoreConfig();
 
   return (
-    <div className="flex flex-col bg-[#f4f7f2] min-h-screen pb-16">
+    <div className="flex flex-col bg-muted min-h-screen pb-16">
       <Script
         src="https://checkout.razorpay.com/v1/checkout.js"
         strategy="lazyOnload"
       />
 
       {/* ── Page Header ──────────────────────────────────────────────────── */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-[#23403d] via-[#2d5450] to-[#1a2f2e] py-10 md:py-14">
-        <div className="absolute -top-16 right-16 size-56 rounded-full bg-[#ec6e55] opacity-10 blur-3xl" aria-hidden />
-        <div className="absolute -bottom-12 -left-12 size-48 rounded-full bg-[#c5dac2] opacity-10 blur-3xl" aria-hidden />
+      <section className="relative overflow-hidden bg-gradient-to-br from-primary via-primary to-primary py-10 md:py-14">
+        <div className="absolute -top-16 right-16 size-56 rounded-full bg-accent opacity-10 blur-3xl" aria-hidden />
+        <div className="absolute -bottom-12 -left-12 size-48 rounded-full bg-secondary opacity-10 blur-3xl" aria-hidden />
 
         <div className="relative mx-auto flex w-full max-w-[1440px] flex-col items-center justify-center px-4 text-center lg:px-8">
           {/* Lock icon */}
-          <div className="mb-3 flex size-12 items-center justify-center rounded-full bg-white/10 backdrop-blur-sm">
+          <div className="mb-3 flex size-12 items-center justify-center rounded-full bg-card/10 backdrop-blur-sm">
             <Lock className="size-5 text-white" aria-hidden />
           </div>
           <h1 className="mb-3 font-heading text-3xl font-bold text-white sm:text-4xl">
             Secure Checkout
           </h1>
           <nav className="mb-6 flex items-center gap-1.5 text-xs font-semibold text-white/60 sm:gap-2 sm:text-sm" aria-label="Breadcrumb">
-            <Link href="/" className="transition-colors hover:text-[#c5dac2]">Home</Link>
+            <Link href="/" className="transition-colors hover:text-secondary">Home</Link>
             <ChevronRight className="size-3" />
-            <Link href="/cart" className="transition-colors hover:text-[#c5dac2]">Cart</Link>
+            <Link href="/cart" className="transition-colors hover:text-secondary">Cart</Link>
             <ChevronRight className="size-3" />
-            <span className="text-[#c5dac2]">Checkout</span>
+            <span className="text-secondary">Checkout</span>
           </nav>
 
           {/* Progress steps */}
@@ -59,9 +59,9 @@ export default async function CheckoutPage() {
                   <div
                     className={`flex size-8 items-center justify-center rounded-full text-xs font-extrabold transition-all ${
                       done
-                        ? "bg-[#ec6e55] text-white"
+                        ? "bg-accent text-white"
                         : active
-                          ? "bg-white text-[#23403d] shadow-lg"
+                          ? "bg-card text-primary shadow-lg"
                           : "border-2 border-white/30 text-white/60"
                     }`}
                   >
@@ -73,7 +73,7 @@ export default async function CheckoutPage() {
                 </div>
                 {/* Narrow connectors on phones — 4 steps + labels must fit inside 375px. */}
                 {idx < 3 && (
-                  <div className="mx-1.5 mb-5 h-px w-4 bg-white/20 sm:mx-2 sm:w-16" aria-hidden />
+                  <div className="mx-1.5 mb-5 h-px w-4 bg-card/20 sm:mx-2 sm:w-16" aria-hidden />
                 )}
               </div>
             ))}
@@ -93,32 +93,32 @@ export default async function CheckoutPage() {
 
           {/* ── Info Sidebar ─────────────────────────────────────────────── */}
           <aside className="flex min-w-0 flex-col gap-4 lg:sticky lg:top-24">
-            <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-black/[0.04]">
-              <div className="border-b border-[#f0ece8] bg-gradient-to-r from-[#faf8f5] to-white px-5 py-4">
-                <h2 className="font-heading text-base font-bold text-[#23403d]">Payment Options</h2>
+            <div className="overflow-hidden rounded-2xl bg-card shadow-sm ring-1 ring-black/[0.04]">
+              <div className="border-b border-border bg-gradient-to-r from-muted to-white px-5 py-4">
+                <h2 className="font-heading text-base font-bold text-primary">Payment Options</h2>
               </div>
 
               <div className="flex flex-col gap-3 p-5">
                 {/* Pay online */}
-                <div className="flex items-start gap-3 rounded-xl border border-[#f0ece8] bg-[#faf8f5] p-3.5 transition-colors hover:border-[#c5dac2]">
-                  <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[#23403d]">
+                <div className="flex items-start gap-3 rounded-xl border border-border bg-muted p-3.5 transition-colors hover:border-secondary">
+                  <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary">
                     <CreditCard className="size-4 text-white" aria-hidden />
                   </div>
                   <div>
-                    <p className="text-sm font-bold text-[#23403d]">Pay Online</p>
-                    <p className="mt-0.5 text-xs text-[#999]">UPI, Cards, Wallets, Net Banking via Razorpay</p>
+                    <p className="text-sm font-bold text-primary">Pay Online</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">UPI, Cards, Wallets, Net Banking via Razorpay</p>
                   </div>
                 </div>
 
                 {/* COD */}
                 {storeConfig.isCodEnabled ? (
-                  <div className="flex items-start gap-3 rounded-xl border border-[#f0ece8] bg-[#faf8f5] p-3.5 transition-colors hover:border-[#c5dac2]">
-                    <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[#23403d]">
+                  <div className="flex items-start gap-3 rounded-xl border border-border bg-muted p-3.5 transition-colors hover:border-secondary">
+                    <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary">
                       <Banknote className="size-4 text-white" aria-hidden />
                     </div>
                     <div>
-                      <p className="text-sm font-bold text-[#23403d]">Cash on Delivery</p>
-                      <p className="mt-0.5 text-xs text-[#999]">Pay in cash when your order arrives</p>
+                      <p className="text-sm font-bold text-primary">Cash on Delivery</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">Pay in cash when your order arrives</p>
                     </div>
                   </div>
                 ) : (
@@ -129,25 +129,25 @@ export default async function CheckoutPage() {
                 )}
 
                 {/* Shipping */}
-                <div className="flex items-start gap-3 rounded-xl border border-[#f0ece8] bg-[#faf8f5] p-3.5">
-                  <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[#23403d]">
+                <div className="flex items-start gap-3 rounded-xl border border-border bg-muted p-3.5">
+                  <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary">
                     <Truck className="size-4 text-white" aria-hidden />
                   </div>
                   <div>
-                    <p className="text-sm font-bold text-[#23403d]">Live Shipping Estimate</p>
-                    <p className="mt-0.5 text-xs text-[#999]">Calculated in real-time based on your pincode</p>
+                    <p className="text-sm font-bold text-primary">Live Shipping Estimate</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">Calculated in real-time based on your pincode</p>
                   </div>
                 </div>
 
                 {/* Minimum order */}
                 {storeConfig.minOrderValuePaise > 0 && (
-                  <div className="flex items-start gap-3 rounded-xl border border-[#f0ece8] bg-[#faf8f5] p-3.5">
-                    <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[#23403d]">
+                  <div className="flex items-start gap-3 rounded-xl border border-border bg-muted p-3.5">
+                    <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary">
                       <ShieldCheck className="size-4 text-white" aria-hidden />
                     </div>
                     <div>
-                      <p className="text-sm font-bold text-[#23403d]">Minimum Order</p>
-                      <p className="mt-0.5 text-xs text-[#999]">
+                      <p className="text-sm font-bold text-primary">Minimum Order</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
                         {formatPrice(storeConfig.minOrderValuePaise)} minimum cart value required
                       </p>
                     </div>
@@ -157,14 +157,14 @@ export default async function CheckoutPage() {
             </div>
 
             {/* Security trust */}
-            <div className="rounded-2xl bg-white p-4 ring-1 ring-black/[0.04]">
-              <div className="flex items-center justify-center gap-2 text-xs font-bold text-[#767676]">
-                <Lock className="size-3.5 text-[#23403d]" aria-hidden />
+            <div className="rounded-2xl bg-card p-4 ring-1 ring-black/[0.04]">
+              <div className="flex items-center justify-center gap-2 text-xs font-bold text-muted-foreground">
+                <Lock className="size-3.5 text-primary" aria-hidden />
                 256-bit SSL encrypted checkout
               </div>
               <div className="mt-3 flex justify-center gap-4">
                 {["UPI", "Visa", "Mastercard", "RuPay"].map((brand) => (
-                  <span key={brand} className="rounded-md border border-[#f0ece8] bg-[#faf8f5] px-2 py-1 text-[10px] font-bold text-[#999]">
+                  <span key={brand} className="rounded-md border border-border bg-muted px-2 py-1 text-[10px] font-bold text-muted-foreground">
                     {brand}
                   </span>
                 ))}

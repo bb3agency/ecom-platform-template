@@ -239,23 +239,23 @@ function LoginPageContent() {
   // ─────────────────────────────────────────────────────────────────────────
 
   const inputCls =
-    "h-12 w-full rounded-full border border-[#efe8e4] bg-[#faf3ef] px-4 text-sm font-medium text-[#23403d] placeholder:text-[#767676] focus:border-[#23403d] focus:outline-none focus:ring-1 focus:ring-[#23403d]";
+    "h-12 w-full rounded-full border border-border bg-muted px-4 text-sm font-medium text-primary placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary";
   const primaryBtnCls =
-    "mt-2 h-12 w-full rounded-full bg-[#23403d] px-8 text-sm font-bold text-white transition-transform hover:-translate-y-1 hover:bg-[#ec6e55] hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0";
+    "mt-2 h-12 w-full rounded-full bg-primary px-8 text-sm font-bold text-white transition-transform hover:-translate-y-1 hover:bg-accent hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0";
 
   return (
     <div className="flex flex-col gap-6 p-5 sm:gap-8 sm:p-8 lg:p-12">
       {justReset && (
-        <p className="rounded-2xl border border-[#dbe8d8] bg-[#eff5ee] px-4 py-3 text-sm font-medium text-[#23403d]">
+        <p className="rounded-2xl border border-border bg-secondary px-4 py-3 text-sm font-medium text-primary">
           Password reset successful. Please sign in with your new password.
         </p>
       )}
 
       <div className="text-center">
-        <h1 className="font-heading text-2xl font-bold text-[#23403d] sm:text-3xl">
+        <h1 className="font-heading text-2xl font-bold text-primary sm:text-3xl">
           Welcome Back
         </h1>
-        <p className="mt-2 text-sm font-medium text-[#767676]">
+        <p className="mt-2 text-sm font-medium text-muted-foreground">
           Sign in to your {APP_NAME} account.
         </p>
       </div>
@@ -264,7 +264,7 @@ function LoginPageContent() {
       {step.kind === "identifier" && (
         <form onSubmit={handleContinue} className="grid gap-5">
           <div className="grid gap-1.5">
-            <label htmlFor="identifier" className="text-sm font-bold text-[#23403d]">
+            <label htmlFor="identifier" className="text-sm font-bold text-primary">
               Mobile or Email
             </label>
             <input
@@ -308,22 +308,22 @@ function LoginPageContent() {
       {step.kind === "otp" && (
         <form onSubmit={handleVerifyOtp} className="grid gap-5">
           {/* Summary row */}
-          <div className="flex items-center justify-between rounded-2xl border border-[#dbe8d8] bg-[#eff5ee] px-4 py-3">
+          <div className="flex items-center justify-between rounded-2xl border border-border bg-secondary px-4 py-3">
             <div>
-              <p className="text-xs font-medium text-[#767676]">OTP sent to</p>
-              <p className="text-sm font-bold text-[#23403d]">{step.phone}</p>
+              <p className="text-xs font-medium text-muted-foreground">OTP sent to</p>
+              <p className="text-sm font-bold text-primary">{step.phone}</p>
             </div>
-            <button type="button" onClick={goBack} className="ml-3 shrink-0 text-xs font-bold text-[#ec6e55] hover:text-[#23403d]">
+            <button type="button" onClick={goBack} className="ml-3 shrink-0 text-xs font-bold text-accent hover:text-primary">
               Change
             </button>
           </div>
 
           {info && (
-            <p className="text-xs font-bold text-[#00aa63]">{info}</p>
+            <p className="text-xs font-bold text-success">{info}</p>
           )}
 
           <div className="grid gap-1.5">
-            <label htmlFor="otp" className="text-sm font-bold text-[#23403d]">
+            <label htmlFor="otp" className="text-sm font-bold text-primary">
               Enter OTP
             </label>
             <input
@@ -333,7 +333,7 @@ function LoginPageContent() {
               autoComplete="one-time-code"
               maxLength={6}
               autoFocus
-              className="h-12 w-full rounded-full border border-[#efe8e4] bg-[#faf3ef] px-4 text-center text-lg font-bold tracking-[0.5em] text-[#23403d] focus:border-[#23403d] focus:outline-none focus:ring-1 focus:ring-[#23403d]"
+              className="h-12 w-full rounded-full border border-border bg-muted px-4 text-center text-lg font-bold tracking-[0.5em] text-primary focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
               {...otpForm.register("otp")}
             />
             {otpForm.formState.errors.otp && (
@@ -356,7 +356,7 @@ function LoginPageContent() {
               type="button"
               onClick={() => void handleResend()}
               disabled={resendCooldown > 0 || resending || (turnstileRequired && !turnstileReady)}
-              className="flex items-center gap-1.5 text-xs font-bold text-[#ec6e55] transition-colors hover:text-[#23403d] disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex items-center gap-1.5 text-xs font-bold text-accent transition-colors hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
             >
               <RefreshCw className="size-3" aria-hidden />
               {resending ? "Resending…" : resendCooldown > 0 ? `Resend in ${resendCooldown}s` : "Resend OTP"}
@@ -377,18 +377,18 @@ function LoginPageContent() {
       {step.kind === "password" && (
         <form onSubmit={handlePasswordLogin} className="grid gap-5">
           {/* Summary row */}
-          <div className="flex items-center justify-between rounded-2xl border border-[#dbe8d8] bg-[#eff5ee] px-4 py-3">
+          <div className="flex items-center justify-between rounded-2xl border border-border bg-secondary px-4 py-3">
             <div>
-              <p className="text-xs font-medium text-[#767676]">Signing in as</p>
-              <p className="text-sm font-bold text-[#23403d] break-all">{step.identifier}</p>
+              <p className="text-xs font-medium text-muted-foreground">Signing in as</p>
+              <p className="text-sm font-bold text-primary break-all">{step.identifier}</p>
             </div>
-            <button type="button" onClick={goBack} className="ml-3 shrink-0 text-xs font-bold text-[#ec6e55] hover:text-[#23403d]">
+            <button type="button" onClick={goBack} className="ml-3 shrink-0 text-xs font-bold text-accent hover:text-primary">
               Change
             </button>
           </div>
 
           <div className="grid gap-1.5">
-            <label htmlFor="password" className="text-sm font-bold text-[#23403d]">
+            <label htmlFor="password" className="text-sm font-bold text-primary">
               Password
             </label>
             <input
@@ -428,24 +428,24 @@ function LoginPageContent() {
       <div className="grid gap-4 text-center">
         <Link
           href={`/register${redirectTo !== "/dashboard" ? `?redirect=${encodeURIComponent(redirectTo)}` : ""}`}
-          className="text-sm font-bold text-[#ec6e55] transition-colors hover:text-[#23403d]"
+          className="text-sm font-bold text-accent transition-colors hover:text-primary"
         >
           New customer? Create an account
         </Link>
         {(step.kind === "identifier" || step.kind === "password") && (
           <Link
             href="/forgot-password"
-            className="text-sm font-bold text-[#767676] transition-colors hover:text-[#23403d]"
+            className="text-sm font-bold text-muted-foreground transition-colors hover:text-primary"
           >
             Forgot password?
           </Link>
         )}
       </div>
 
-      <div className="border-t border-[#efe8e4] pt-6">
+      <div className="border-t border-border pt-6">
         <Link
           href="/"
-          className="block text-center text-sm font-bold text-[#23403d] transition-colors hover:text-[#ec6e55]"
+          className="block text-center text-sm font-bold text-primary transition-colors hover:text-accent"
         >
           &larr; Back to store
         </Link>
@@ -459,7 +459,7 @@ export default function LoginPage() {
     <Suspense
       fallback={
         <div className="flex flex-col gap-6 p-5 sm:gap-8 sm:p-8 lg:p-12">
-          <p className="text-center text-sm text-[#767676]">Loading…</p>
+          <p className="text-center text-sm text-muted-foreground">Loading…</p>
         </div>
       }
     >

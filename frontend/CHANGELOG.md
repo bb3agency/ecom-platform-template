@@ -12,6 +12,27 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.39] — 2026-07-08
+
+### Changed
+- **De-hardcoded the shared checkout + auth engine to design tokens.** The template was seeded from a produce client and had that client's green palette baked as literal hex (`#23403d`, `#eff5ee`, `#767676`, `#ec6e55`, cream/border greys, `#00aa63`) directly in the shared (synced) checkout and auth surfaces — so a maroon/cream client's checkout/auth rendered green regardless of its theme. All ~190 hardcoded colour classes across `app/(auth)/{layout,login/page,register/page}.tsx`, `app/(storefront)/checkout/{page,payment/page,success/page}.tsx`, `components/checkout/CheckoutForm.tsx`, and `components/cart/CartLineProductDetails.tsx` are now semantic tokens: brand green → `primary`, coral hover → `accent`, greys → `muted-foreground`, panels → `secondary`, field/section fills → `muted`, borders → `border`, white surfaces → `card`, success green → the new `success` token. No logic/markup change — className-only. Each client's checkout/auth now auto-adopts its own theme (raghava stays green; sbgs renders maroon/cream).
+
+### Added
+- **New `success` design token.** `--success` / `--color-success` for confirmation text (OTP sent, password reset, order placed) that was previously the literal `#00aa63`. Added to the template default theme; each client sets its own value in `app/globals.css` (design layer).
+- **`ProductCategory.parentId`** (`types/product.ts`) — surfaces category hierarchy to the storefront/admin.
+
+### Fixed
+- **`formatPrice` renders whole-rupee amounts without `.00`** (`₹450`, not `₹450.00`); fractional amounts keep two decimals.
+- **Wishlist frontend contract now matches backend-core 0.1.63.** `WishlistItem.product` is the full card-ready `Product` (so `/wishlist` renders the standard `ProductCard`); add-to-wishlist returns the lighter `WishlistItemSummary` (`lib/wishlist-api.ts`).
+- **CSP dev ergonomics** (`next.config.ts`): `'unsafe-eval'` allowed in the script-src **only** in development (Next.js dev runtime / React Refresh); `upgrade-insecure-requests` emitted **only** in production (localhost dev is http). Production CSP is unchanged.
+
+**Propagation:**
+- Severity: NORMAL · Layers: frontend (the 8 engine files above + `types/product.ts`, `lib/format-price.ts`, `lib/wishlist-api.ts`, `next.config.ts`)
+- Migration: NO · Flag: none · Breaking: NO
+- Design impact: YES — adds one token, `--success`. The core-sync writes engine files that use `text-success`; each client must define `--success` in its `app/globals.css` (design layer). Template default + both existing clients (raghava `#00aa63`, sbgs `var(--brand-green)`) already carry it; new clones inherit it from the template default theme.
+- Rollback: revert the listed files (and drop the `--success` token if desired)
+- Note: the de-hardcode is what lets a non-green client's checkout/auth match its brand. Clients that had accepted the green hardcodes see no change if their `primary`/`accent`/etc. already equal the old hex (raghava does).
+
 ## [0.1.38] — 2026-07-08
 
 ### Changed
