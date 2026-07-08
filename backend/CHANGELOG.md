@@ -12,6 +12,18 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.62] — 2026-07-08
+
+### Changed
+- **Storefront + account moved OUT of core into the per-client theme (frontend engine/theme split — Phase 1: boundary).** The customer-facing storefront and account pages and their presentation are now each client's own, so a produce shop and a sweets shop can have entirely different layouts/copy — while the shared engine (behaviour) keeps syncing. `core-manifest.json` `frontendCore` now excludes: all storefront pages except checkout (`(storefront)/products|categories|search|cart|layout.tsx` + the already-excluded home/about/legal), all of `app/(account)/**`, and the presentation components `components/{product,layout,storefront,marketing}/**` + the cart-page components (`CartWorkspace`, `AddToCartButton`, `CartDropdown`). **Stays core (the engine):** `lib/stores/hooks/actions/types`, `components/ui`, **checkout + payment**, admin & ops consoles, auth, root `layout.tsx`/`middleware`/`next.config`, and the one shared cart display primitive the engine needs (`components/cart/CartLineProductDetails.tsx` — pure, used by checkout). No files move and no code changes — excluded paths simply stop syncing; each client already holds identical copies and now owns them.
+- **New boundary guard** (`frontend/scripts/check-theme-boundary.mjs`, wired into `ci:reliability-gates` as `check:theme-boundary`): manifest-driven check that fails if any engine file imports a per-client theme file (design-layer config imports like `lib/constants`/`content` are allowed). Verified clean across 372 files. Template-CI tool (package.json isn't synced, and clients can't edit engine files anyway).
+
+**Propagation:**
+- Severity: NORMAL (governance/boundary; zero runtime code change) · Layers: `core-manifest.json` (syncs to clients) + template-only tooling (`frontend/scripts/check-theme-boundary.mjs`, `backend/package.json`, `frontend/package.json`)
+- Migration: NO · Flag: none · Design impact: none yet (files unchanged) · Breaking: NO
+- Rollback: revert the manifest change
+- Operator note: after this syncs, each client fully owns its storefront + account theme (edits there no longer drift or get overwritten). Phase 2 will give raghava its produce theme and sbgs its sweets theme, and reset the template default to neutral. Pre-existing gap flagged separately: `components/ops` (both clients) and `components/auth` (sbgs) have drifted because they were never in the manifest — to be reconciled + added to core in a follow-up.
+
 ## [0.1.61] — 2026-07-07
 
 ### Fixed
