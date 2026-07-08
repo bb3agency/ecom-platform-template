@@ -69,6 +69,7 @@
       "frontend/app/(storefront)/terms/**",
       "frontend/app/(storefront)/returns/**",
       "frontend/app/(storefront)/shipping/**",
+      "frontend/app/(storefront)/gallery/**",
       "frontend/app/(account)/**",
       "frontend/components/client/**/*.test.ts",
       "frontend/components/client/**/*.test.tsx",

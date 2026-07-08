@@ -12,6 +12,16 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.42] — 2026-07-08
+
+### Fixed
+- **Exclude `app/(storefront)/gallery/**` from core** (`core-manifest.json`). The per-client storefront gallery PAGE (see frontend-core 0.1.41 — the page is theme, not core) was otherwise caught by the broad `app/**/page.tsx` core include, so a client that added its own `/gallery` page tripped `core-drift`. Now excluded like the other storefront theme pages; each client owns its gallery page freely.
+
+**Propagation:**
+- Severity: LOW (manifest-only; unblocks per-client gallery pages) · Layers: `core-manifest.json`
+- Migration: NO · Flag: none · Breaking: NO
+- Rollback: revert the manifest line
+
 ## [0.1.41] — 2026-07-08
 
 ### Added
