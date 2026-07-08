@@ -12,6 +12,16 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.65] — 2026-07-08
+
+### Fixed
+- **`core-manifest.json` excludes `frontend/app/(storefront)/gallery/**` from core** (carries the manifest change for frontend-core 0.1.42 — the manifest is a `backendCore` path, so it propagates on the backend layer). The per-client storefront gallery PAGE was otherwise caught by the broad `app/**/page.tsx` frontend-core include, tripping `core-drift` for any client that adds its own `/gallery` page.
+
+**Propagation:**
+- Severity: LOW (manifest-only) · Layers: `core-manifest.json`
+- Migration: NO · Flag: none · Breaking: NO
+- Rollback: revert the manifest line
+
 ## [0.1.64] — 2026-07-08
 
 ### Added
