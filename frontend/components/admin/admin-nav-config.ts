@@ -3,6 +3,7 @@ import {
   BarChart3,
   Box,
   ClipboardList,
+  Images,
   LayoutDashboard,
   Percent,
   RefreshCcw,
@@ -108,6 +109,13 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
     description: "Deep dive reporting",
     icon: BarChart3,
     routeKey: "dashboard", // Tied to dashboard for now
+  },
+  {
+    href: "/admin/gallery",
+    label: "Gallery",
+    description: "Brand and farm images",
+    icon: Images,
+    routeKey: "gallery",
   },
   {
     href: "/admin/settings",

@@ -63,6 +63,7 @@ describe('SettingsService getPublicStoreConfig', () => {
       mobileOtpSignupEnabled: true,
       couponsEnabled: true,
       reviewsEnabled: true,
+      galleryEnabled: false,
       returnsEnabled: true,
       wishlistEnabled: true,
       gstInvoicingEnabled: false,

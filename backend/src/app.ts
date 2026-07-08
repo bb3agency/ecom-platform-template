@@ -4,6 +4,7 @@ import { registerAuthRoutes } from './modules/auth/auth.routes';
 import { registerCartRoutes } from './modules/cart/cart.routes';
 import { registerCouponsRoutes } from './modules/coupons/coupons.routes';
 import { registerDashboardRoutes } from './modules/dashboard/dashboard.routes';
+import { registerGalleryRoutes } from './modules/gallery/gallery.routes';
 import { registerHealthRoutes } from './modules/health/health.routes';
 import { registerInventoryRoutes } from './modules/inventory/inventory.routes';
 import { registerMaintenanceRoutes } from './modules/maintenance/maintenance.routes';
@@ -33,6 +34,7 @@ export async function registerApp(fastify: FastifyInstance): Promise<void> {
   await registerProductsRoutes(fastify);
   await registerWishlistRoutes(fastify);
   await registerReviewsRoutes(fastify);
+  await registerGalleryRoutes(fastify);
   await registerInventoryRoutes(fastify);
   await registerNotificationsWebhookRoutes(fastify);
   await registerSettingsRoutes(fastify);

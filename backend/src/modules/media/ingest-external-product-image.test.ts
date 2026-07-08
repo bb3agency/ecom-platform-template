@@ -44,6 +44,7 @@ describe('ingest-external-product-image', () => {
         storageReference: 'client/products/prod_1/uuid.png'
       }),
       saveCategoryImage: vi.fn(),
+      saveGalleryImage: vi.fn(),
       deleteProductImage: vi.fn(),
       isManagedPublicUrl: vi.fn(),
       storageReferenceFromPublicUrl: vi.fn()

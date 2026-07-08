@@ -4,6 +4,7 @@ import { AppError } from '@common/errors/app-error';
 import { ERROR_CODES } from '@common/errors/error-codes';
 import {
   CATEGORY_IMAGE_MEDIA_PATH_PREFIX,
+  GALLERY_IMAGE_MEDIA_PATH_PREFIX,
   PRODUCT_IMAGE_MEDIA_PATH_PREFIX,
   PRODUCT_IMAGE_MIME_TO_EXT,
   type ProductImageMimeType
@@ -113,6 +114,19 @@ export function createLocalProductMediaStorage(
       return { publicUrl, storageReference, filename, mediaPath };
     },
 
+    async saveGalleryImage(input): Promise<SaveProductImageResult> {
+      const safeImageId = sanitizeSegment(input.imageId, 'imageId');
+      const ext = PRODUCT_IMAGE_MIME_TO_EXT[input.mime];
+      const filename = `${safeImageId}.${ext}`;
+      const storageReference = `${clientId}/gallery/${safeImageId}/${filename}`;
+      const absolutePath = resolveAbsolutePath(storageReference);
+      await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+      await fs.writeFile(absolutePath, input.content);
+      const mediaPath = `${GALLERY_IMAGE_MEDIA_PATH_PREFIX}${safeImageId}/${filename}`;
+      const publicUrl = publicBaseUrl ? `${publicBaseUrl}${mediaPath}` : mediaPath;
+      return { publicUrl, storageReference, filename, mediaPath };
+    },
+
     async readProductImage(storageReference: string) {
       const absolutePath = resolveAbsolutePath(storageReference);
       try {
@@ -155,7 +169,8 @@ export function createLocalProductMediaStorage(
       let mediaPath: string | null = null;
       if (
         trimmed.startsWith(PRODUCT_IMAGE_MEDIA_PATH_PREFIX) ||
-        trimmed.startsWith(CATEGORY_IMAGE_MEDIA_PATH_PREFIX)
+        trimmed.startsWith(CATEGORY_IMAGE_MEDIA_PATH_PREFIX) ||
+        trimmed.startsWith(GALLERY_IMAGE_MEDIA_PATH_PREFIX)
       ) {
         mediaPath = trimmed;
       } else if (publicBaseUrl && trimmed.startsWith(publicBaseUrl)) {
@@ -165,7 +180,8 @@ export function createLocalProductMediaStorage(
           const parsed = new URL(trimmed);
           if (
             parsed.pathname.startsWith(PRODUCT_IMAGE_MEDIA_PATH_PREFIX) ||
-            parsed.pathname.startsWith(CATEGORY_IMAGE_MEDIA_PATH_PREFIX)
+            parsed.pathname.startsWith(CATEGORY_IMAGE_MEDIA_PATH_PREFIX) ||
+            parsed.pathname.startsWith(GALLERY_IMAGE_MEDIA_PATH_PREFIX)
           ) {
             mediaPath = parsed.pathname;
           }
@@ -174,6 +190,18 @@ export function createLocalProductMediaStorage(
         }
       }
       if (!mediaPath) return null;
+
+      if (mediaPath.startsWith(GALLERY_IMAGE_MEDIA_PATH_PREFIX)) {
+        const remainder = mediaPath.slice(GALLERY_IMAGE_MEDIA_PATH_PREFIX.length);
+        const slash = remainder.indexOf('/');
+        if (slash <= 0) return null;
+        const imageId = remainder.slice(0, slash);
+        const filename = remainder.slice(slash + 1);
+        if (!SAFE_SEGMENT_REGEX.test(imageId) || !SAFE_FILENAME_REGEX.test(filename)) {
+          return null;
+        }
+        return `${clientId}/gallery/${imageId}/${filename}`;
+      }
 
       if (mediaPath.startsWith(CATEGORY_IMAGE_MEDIA_PATH_PREFIX)) {
         const remainder = mediaPath.slice(CATEGORY_IMAGE_MEDIA_PATH_PREFIX.length);

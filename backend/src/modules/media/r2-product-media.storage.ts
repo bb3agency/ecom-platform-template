@@ -106,7 +106,11 @@ export function createR2ProductMediaStorage(options: R2ProductMediaStorageOption
 
     if (!pathname.startsWith('/')) pathname = `/${pathname}`;
     const key = decodeURIComponent(pathname.replace(/^\//, ''));
-    if (!key.startsWith(`${clientId}/products/`) && !key.startsWith(`${clientId}/categories/`)) {
+    if (
+      !key.startsWith(`${clientId}/products/`) &&
+      !key.startsWith(`${clientId}/categories/`) &&
+      !key.startsWith(`${clientId}/gallery/`)
+    ) {
       return null;
     }
     return key;
@@ -140,6 +144,31 @@ export function createR2ProductMediaStorage(options: R2ProductMediaStorageOption
 
     async saveCategoryImage(input): Promise<SaveProductImageResult> {
       const storageReference = buildObjectKey('categories', input.categoryId, input.imageId, input.mime);
+      const filename = storageReference.split('/').pop() ?? storageReference;
+
+      await sendS3(
+        new PutObjectCommand({
+          Bucket: options.bucketName,
+          Key: storageReference,
+          Body: input.content,
+          ContentType: input.mime,
+          ContentLength: input.content.length,
+          CacheControl: 'public, max-age=31536000, immutable'
+        }),
+        'upload'
+      );
+
+      return {
+        publicUrl: buildPublicUrl(storageReference),
+        storageReference,
+        filename
+      };
+    },
+
+    async saveGalleryImage(input): Promise<SaveProductImageResult> {
+      const safeImageId = sanitizeSegment(input.imageId, 'imageId');
+      const ext = PRODUCT_IMAGE_MIME_TO_EXT[input.mime];
+      const storageReference = `${clientId}/gallery/${safeImageId}.${ext}`;
       const filename = storageReference.split('/').pop() ?? storageReference;
 
       await sendS3(

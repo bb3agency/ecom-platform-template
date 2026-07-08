@@ -22,3 +22,4 @@ export const PRODUCT_IMAGE_MIME_TO_EXT: Record<ProductImageMimeType, string> = {
 
 export const PRODUCT_IMAGE_MEDIA_PATH_PREFIX = '/api/v1/media/products/';
 export const CATEGORY_IMAGE_MEDIA_PATH_PREFIX = '/api/v1/media/categories/';
+export const GALLERY_IMAGE_MEDIA_PATH_PREFIX = '/api/v1/media/gallery/';

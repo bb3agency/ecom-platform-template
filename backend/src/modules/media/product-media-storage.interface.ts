@@ -27,6 +27,13 @@ export interface ProductMediaStorage {
     content: Buffer;
   }): Promise<SaveProductImageResult>;
 
+  /** Store-wide gallery images (opt-in per client). Keyed by imageId only — no parent entity. */
+  saveGalleryImage(input: {
+    imageId: string;
+    mime: ProductImageMimeType;
+    content: Buffer;
+  }): Promise<SaveProductImageResult>;
+
   deleteProductImage(storageReference: string): Promise<void>;
 
   /** Local filesystem only — used by GET /api/v1/media/... */

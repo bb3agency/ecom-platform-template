@@ -26,6 +26,8 @@ export interface PublicStoreConfig {
   /** Merchant toggle from Admin → Coupons (StoreSettings.couponsEnabled). */
   couponsEnabled: boolean;
   reviewsEnabled: boolean;
+  /** Merchant gallery toggle (Admin → Gallery) — gates the storefront /gallery route + nav link. */
+  galleryEnabled: boolean;
   /** Merchant returns toggle — gates the customer return-request flow. */
   returnsEnabled: boolean;
   wishlistEnabled: boolean;
@@ -50,6 +52,7 @@ const FAIL_CLOSED_CONFIG: PublicStoreConfig = {
   mobileOtpSignupEnabled: false,
   couponsEnabled: false,
   reviewsEnabled: false,
+  galleryEnabled: false,
   returnsEnabled: false,
   wishlistEnabled: false,
   gstInvoicingEnabled: false,
@@ -98,6 +101,10 @@ export function parsePublicStoreConfig(body: unknown): PublicStoreConfig {
       typeof record.reviewsEnabled === "boolean"
         ? record.reviewsEnabled
         : FAIL_CLOSED_CONFIG.reviewsEnabled,
+    galleryEnabled:
+      typeof record.galleryEnabled === "boolean"
+        ? record.galleryEnabled
+        : FAIL_CLOSED_CONFIG.galleryEnabled,
     returnsEnabled:
       typeof record.returnsEnabled === "boolean"
         ? record.returnsEnabled

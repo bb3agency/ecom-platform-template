@@ -12,6 +12,17 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.64] — 2026-07-08
+
+### Added
+- **Store-wide Gallery feature (opt-in per client).** New `GalleryImage` model + `StoreSettings.galleryEnabled` flag (migration `20260708120000_add_gallery`, additive, default off). New `modules/gallery`: public `GET /gallery` (returns `{ enabled, items }` — active images ordered, empty when disabled) and admin CRUD under **`settings:write`** (`GET /admin/gallery`, `POST /admin/gallery` multipart upload, `PATCH /admin/gallery/:id`, `PATCH /admin/gallery/reorder`, `DELETE /admin/gallery/:id`). Images upload to the existing product-media storage (**Cloudflare R2** in prod, local disk in dev) via a new `saveGalleryImage` on the storage interface + both providers, keyed `‹client›/gallery/‹imageId›`; delete/serve paths recognise the gallery prefix. `galleryEnabled` is exposed on `GET /store/config` and editable via the COD settings endpoint. Endpoint-policy registry + admin-layer-drift updated (135 mappings). Tests: `gallery.service.test.ts`.
+
+**Propagation:**
+- Severity: NORMAL · Layers: backend (`prisma`, `modules/gallery`, `modules/media`, `modules/settings`, `common/auth/admin-endpoint-policy-registry`) — pairs with frontend-core 0.1.41
+- Migration: YES (`20260708120000_add_gallery`, additive) · Flag: `StoreSettings.galleryEnabled` (default off) · Design impact: none · Breaking: NO
+- Rollback: revert the module + `DROP TABLE "GalleryImage"` + drop the `galleryEnabled` column
+- Operator: gallery images need R2 configured (same keys as product media). Merchant enables it from Admin → Gallery.
+
 ## [0.1.63] — 2026-07-08
 
 ### Changed

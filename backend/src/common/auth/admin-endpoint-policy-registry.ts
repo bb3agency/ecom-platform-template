@@ -100,6 +100,13 @@ export const ADMIN_ENDPOINT_POLICY_REGISTRY: readonly EndpointPolicy[] = [
   { method: 'PATCH', path: '/api/v1/admin/settings/cod', permission: 'settings:write', layer: 'A' },
   { method: 'GET', path: '/api/v1/admin/settings/box-presets', permission: 'settings:read', layer: 'A' },
   { method: 'PATCH', path: '/api/v1/admin/settings/box-presets', permission: 'settings:write', layer: 'A' },
+
+  // Gallery (store-wide brand/farm images; opt-in per client via StoreSettings.galleryEnabled)
+  { method: 'GET', path: '/api/v1/admin/gallery', permission: 'settings:read', layer: 'A' },
+  { method: 'POST', path: '/api/v1/admin/gallery', permission: 'settings:write', layer: 'A' },
+  { method: 'PATCH', path: '/api/v1/admin/gallery/reorder', permission: 'settings:write', layer: 'A' },
+  { method: 'PATCH', path: '/api/v1/admin/gallery/:id', permission: 'settings:write', layer: 'A' },
+  { method: 'DELETE', path: '/api/v1/admin/gallery/:id', permission: 'settings:write', layer: 'A' },
   { method: 'POST', path: '/api/v1/admin/inventory/bulk-update', permission: 'inventory:write', layer: 'A' },
   { method: 'DELETE', path: '/api/v1/admin/products/:id/variants/:variantId', permission: 'products:write', layer: 'A' },
   { method: 'GET', path: '/api/v1/admin/shipments', permission: 'shipments:read', layer: 'A' },

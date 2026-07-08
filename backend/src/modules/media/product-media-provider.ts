@@ -1,7 +1,7 @@
 import path from 'path';
 import { AppError } from '@common/errors/app-error';
 import { ERROR_CODES } from '@common/errors/error-codes';
-import { CATEGORY_IMAGE_MEDIA_PATH_PREFIX, PRODUCT_IMAGE_MEDIA_PATH_PREFIX } from './product-media.constants';
+import { CATEGORY_IMAGE_MEDIA_PATH_PREFIX, GALLERY_IMAGE_MEDIA_PATH_PREFIX, PRODUCT_IMAGE_MEDIA_PATH_PREFIX } from './product-media.constants';
 import { createLocalProductMediaStorage } from './local-product-media.storage';
 import { createR2ProductMediaStorage } from './r2-product-media.storage';
 import type { ProductMediaStorage } from './product-media-storage.interface';
@@ -105,6 +105,29 @@ function storageReferenceIndicatesProductPath(storageReference: string): boolean
 
 function storageReferenceIndicatesCategoryPath(storageReference: string): boolean {
   return storageReference.includes('/categories/');
+}
+
+function storageReferenceIndicatesGalleryPath(storageReference: string): boolean {
+  return storageReference.includes('/gallery/');
+}
+
+export function isHostedGalleryImageUrl(url: string): boolean {
+  const trimmed = url.trim();
+  if (trimmed.startsWith(GALLERY_IMAGE_MEDIA_PATH_PREFIX)) return true;
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.pathname.startsWith(GALLERY_IMAGE_MEDIA_PATH_PREFIX)) return true;
+  } catch {
+    // not an absolute URL — fall through to the storage check
+  }
+  try {
+    const storage = getProductMediaStorage();
+    if (!storage.isManagedPublicUrl(url)) return false;
+    const storageReference = storage.storageReferenceFromPublicUrl(url);
+    return storageReference !== null && storageReferenceIndicatesGalleryPath(storageReference);
+  } catch {
+    return false;
+  }
 }
 
 export function hostedCategoryMediaPathFromUrl(url: string): string | null {

@@ -12,6 +12,17 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.41] — 2026-07-08
+
+### Added
+- **Gallery admin console + client (pairs with backend-core 0.1.64).** New **Gallery** section in the admin sidebar (`components/admin/AdminGalleryManager.tsx` + `app/(admin)/admin/gallery/page.tsx`, gated by the new `gallery` route key → `settings:` permission): upload images (multipart → Cloudflare R2), edit caption + alt text inline, show/hide, reorder, delete, and a "Show gallery on storefront" toggle (writes `StoreSettings.galleryEnabled`). New `lib/gallery-api.ts` (public `fetchPublicGallery` + admin helpers). `PublicStoreConfig.galleryEnabled` added to `lib/storefront-settings.ts` so the storefront can gate the `/gallery` route + nav link. The storefront `/gallery` PAGE itself is **per-client theme** (each client builds its own layout) — not shipped in core.
+
+**Propagation:**
+- Severity: NORMAL · Layers: frontend (`lib/gallery-api.ts`, `lib/storefront-settings.ts`, `lib/permissions.ts`, `components/admin/{admin-nav-config,AdminGalleryManager}`, `app/(admin)/admin/gallery`) — requires backend-core 0.1.64
+- Migration: NO · Flag: `StoreSettings.galleryEnabled` (merchant toggle) · Design impact: none new (uses existing tokens) · Breaking: NO
+- Rollback: revert the listed files
+- Note: the customer-facing `/gallery` page + nav link live in each client's theme; a client opts in by adding the page (see raghava) and the merchant flipping the Admin → Gallery toggle.
+
 ## [0.1.40] — 2026-07-08
 
 ### Added

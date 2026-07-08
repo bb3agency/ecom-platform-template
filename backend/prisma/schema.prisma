@@ -1020,6 +1020,7 @@ model StoreSettings {
   isCodEnabled              Boolean  @default(false)
   couponsEnabled            Boolean  @default(false)
   reviewsEnabled            Boolean  @default(false)
+  galleryEnabled            Boolean  @default(false)
   returnsEnabled            Boolean  @default(true)
   mobileOtpSignupEnabled    Boolean  @default(false)
   cancellationWindowHours   Int      @default(24)
@@ -1039,4 +1040,18 @@ model StoreSettings {
   instagramUrl              String?
   createdAt                 DateTime @default(now())
   updatedAt                 DateTime @updatedAt
+}
+
+/// Store-wide brand/farm gallery images (opt-in per client via StoreSettings.galleryEnabled).
+model GalleryImage {
+  id        String   @id @default(uuid())
+  imageUrl  String
+  caption   String?
+  altText   String
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive, sortOrder])
 }

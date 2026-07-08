@@ -16,6 +16,22 @@ export const serveCategoryImageSchema = {
   }
 } as const;
 
+export const serveGalleryImageSchema = {
+  params: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['imageId', 'filename'],
+    properties: {
+      imageId: { type: 'string', maxLength: 64 },
+      filename: { type: 'string', maxLength: 128 }
+    }
+  },
+  response: {
+    200: { type: 'string', contentEncoding: 'binary', contentMediaType: 'image/*' },
+    ...standardErrorResponses
+  }
+} as const;
+
 export const serveProductImageSchema = {
   params: {
     type: 'object',

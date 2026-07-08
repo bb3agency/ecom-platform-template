@@ -90,6 +90,7 @@ export type AdminRouteKey =
   | "reviews"
   | "coupons"
   | "mutations"
+  | "gallery"
   | "settings";
 
 export function canViewAdminRoute(
@@ -130,6 +131,7 @@ export function canViewAdminRoute(
       return hasPermissionPrefix(user, "inventory:");
     case "customers":
       return hasPermissionPrefix(user, "users:");
+    case "gallery":
     case "settings":
       return hasPermissionPrefix(user, "settings:");
     default:
@@ -173,6 +175,9 @@ export function resolveAdminRouteFromPathname(pathname: string): AdminRouteKey |
   }
   if (pathname.startsWith("/admin/mutations")) {
     return "mutations";
+  }
+  if (pathname.startsWith("/admin/gallery")) {
+    return "gallery";
   }
   if (pathname.startsWith("/admin/analytics")) {
     return "dashboard";
