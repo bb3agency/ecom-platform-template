@@ -31,6 +31,7 @@
     --color-destructive: var(--destructive);
     --color-accent-foreground: var(--accent-foreground);
     --color-accent: var(--accent);
+    --color-success: var(--success);
     --color-muted-foreground: var(--muted-foreground);
     --color-muted: var(--muted);
     --color-secondary-foreground: var(--secondary-foreground);
@@ -73,6 +74,8 @@
     /* Accent: peach/coral #ec6e55 */
     --accent: oklch(0.64 0.155 28);
     --accent-foreground: oklch(0.985 0 0);
+    /* Success: fresh green #00aa63 (order/OTP confirmation text) */
+    --success: oklch(0.63 0.17 158);
     --destructive: oklch(0.577 0.245 27.325);
     /* Borders: warm light #efe8e4 */
     --border: oklch(0.924 0.012 60);
@@ -112,6 +115,7 @@
     --muted-foreground: oklch(0.708 0 0);
     --accent: oklch(0.269 0 0);
     --accent-foreground: oklch(0.985 0 0);
+    --success: oklch(0.72 0.15 158);
     --destructive: oklch(0.704 0.191 22.216);
     --border: oklch(1 0 0 / 10%);
     --input: oklch(1 0 0 / 15%);

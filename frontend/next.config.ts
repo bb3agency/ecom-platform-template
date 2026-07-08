@@ -99,7 +99,9 @@ const apiPublicOrigin = process.env.NEXT_PUBLIC_API_BASE_URL
  * Security headers applied to every route in production.
  *
  * CSP policy:
- *  - No unsafe-eval (blocks code injection via eval)
+ *  - No unsafe-eval in production (blocks code injection via eval); dev only,
+ *    to support the Next.js dev runtime / React Refresh
+ *  - upgrade-insecure-requests only in production (localhost dev is http)
  *  - script-src: self + Razorpay checkout script
  *  - frame-src: self + Razorpay checkout iframe
  *  - connect-src: self + API origin + Razorpay
@@ -122,7 +124,7 @@ function buildSecurityHeaders(): Array<{ key: string; value: string }> {
   const csp = [
     "default-src 'self'",
     `connect-src ${connectSrc}`,
-    "script-src 'self' 'unsafe-inline' https://checkout.razorpay.com https://cdn.razorpay.com https://static.cloudflareinsights.com https://challenges.cloudflare.com",
+    `script-src 'self' 'unsafe-inline'${isProd ? "" : " 'unsafe-eval'"} https://checkout.razorpay.com https://cdn.razorpay.com https://static.cloudflareinsights.com https://challenges.cloudflare.com`,
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' https: data: blob:",
     "font-src 'self' data:",
@@ -131,7 +133,7 @@ function buildSecurityHeaders(): Array<{ key: string; value: string }> {
     "manifest-src 'self'",
     "base-uri 'self'",
     "form-action 'self'",
-    "upgrade-insecure-requests",
+    ...(isProd ? ["upgrade-insecure-requests"] : []),
   ].join("; ");
 
   return [
