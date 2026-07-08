@@ -12,6 +12,17 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.63] — 2026-07-08
+
+### Changed
+- **`GET /api/v1/wishlist` now returns card-ready products (MINOR).** The list response previously exposed only `id/name/slug/description/isFeatured` per product — not enough to render a product card, so a real wishlist page was impossible without an extra fetch per item. Each wishlist item's `product` is now the **same storefront product-list-item shape** used by `/products` (ordered `images`, active `variants` with price/compareAtPrice, `category`, derived `inStock`, and approved-review `rating`/`reviewCount` gated by the merchant reviews toggle). Per-variant inventory is stripped in the serializer so stock counts never leak. `POST /wishlist/items` is unchanged (still returns the minimal shape — the client only needs the id to toggle local state). Implemented by exporting the shared `productListItemSchema` from `products.schemas.ts` and reusing it as the wishlist list-item product schema.
+
+**Propagation:**
+- Severity: NORMAL · Layers: backend (`modules/wishlist/{wishlist.service.ts,wishlist.schemas.ts,wishlist.service.test.ts}`, `modules/products/products.schemas.ts` — `productListItemSchema` is now `export`ed) — the client-side `/wishlist` page + nav live in each client's theme layer (post-0.1.62 engine/theme split), so no frontend-core change is required
+- Migration: NO · Flag: none (gated by the existing `wishlistEnabled` StoreSettings toggle) · Design impact: none
+- Breaking: NO (additive to the response; existing `id/name/slug/description/isFeatured` fields remain) · Rollback: revert the three wishlist files and the `export` on `productListItemSchema`
+- Tests: `wishlist.service.test.ts` extended — asserts card-ready shape (image, priced variant, derived `inStock`, review aggregate), that inventory never leaks, and that no review query runs when reviews are disabled.
+
 ## [0.1.62] — 2026-07-08
 
 ### Changed

@@ -94,7 +94,7 @@ Identity boundary contract (critical):
 | GET | `/api/v1/users/me/orders` | Customer order history | Customer auth |
 | GET | `/api/v1/reviews/me` | Customer review history | Customer auth |
 | POST | `/api/v1/reviews` | Create product review | Customer auth |
-| GET | `/api/v1/wishlist` | Wishlist listing | Customer auth |
+| GET | `/api/v1/wishlist` | Wishlist listing — returns card-ready products (same shape as `/products` list item: images, variants, category, inStock, rating) | Customer auth |
 | POST | `/api/v1/wishlist/items` | Add wishlist item | Customer auth |
 | DELETE | `/api/v1/wishlist/items/:productId` | Remove wishlist item | Customer auth |
 
