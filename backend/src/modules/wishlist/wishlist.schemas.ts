@@ -1,5 +1,8 @@
 import { standardErrorResponses } from '@common/errors/error-response.schema';
+import { productListItemSchema } from '../products/products.schemas';
 
+// Minimal product shape returned by add-to-wishlist (the client only needs the id
+// to toggle local state). The list endpoint returns the richer card-ready shape below.
 const wishlistProductSchema = {
   type: 'object',
   additionalProperties: false,
@@ -10,6 +13,22 @@ const wishlistProductSchema = {
     slug: { type: 'string', maxLength: 200 },
     description: { type: 'string', maxLength: 5000 },
     isFeatured: { type: 'boolean' }
+  }
+} as const;
+
+// Card-ready product (same shape as the storefront product list item) so the
+// /wishlist page can render the standard ProductCard — image, price, variants,
+// rating and stock — without a second round-trip per item.
+const wishlistCardProductSchema = productListItemSchema;
+
+const wishlistListItemSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['id', 'createdAt', 'product'],
+  properties: {
+    id: { type: 'string', maxLength: 64 },
+    createdAt: { type: 'string', maxLength: 64 },
+    product: wishlistCardProductSchema
   }
 } as const;
 
@@ -52,7 +71,7 @@ export const listWishlistSchema = {
       additionalProperties: false,
       required: ['items', 'meta'],
       properties: {
-        items: { type: 'array', items: wishlistItemSchema },
+        items: { type: 'array', items: wishlistListItemSchema },
         meta: {
           type: 'object',
           additionalProperties: false,

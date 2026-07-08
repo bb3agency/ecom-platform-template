@@ -18,7 +18,7 @@ const productImageUrlProperty = {
   ]
 } as const;
 
-const productListItemSchema = {
+export const productListItemSchema = {
   type: 'object',
   additionalProperties: false,
   required: [
