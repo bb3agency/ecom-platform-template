@@ -22,7 +22,7 @@ vi.mock('@common/idempotency/idempotency', () => ({
 const serviceState = vi.hoisted(() => ({
   listPublic: vi.fn(async () => ({ enabled: true, items: [] })),
   adminList: vi.fn(async () => ({ items: [] })),
-  adminCreateFromUpload: vi.fn(async () => ({
+  adminCreateFromUpload: vi.fn(async (_input: { buffer: Buffer }) => ({
     id: 'img_1',
     imageUrl: 'https://cdn.example.com/client/gallery/img_1.png',
     caption: null,
@@ -94,8 +94,8 @@ describe('gallery routes', () => {
         mimeType: 'image/png'
       })
     );
-    const uploaded = serviceState.adminCreateFromUpload.mock.calls[0]![0] as { buffer: Buffer };
-    expect(Buffer.compare(uploaded.buffer, pngBytes)).toBe(0);
+    const uploaded = serviceState.adminCreateFromUpload.mock.calls[0]?.[0];
+    expect(uploaded && Buffer.compare(uploaded.buffer, pngBytes)).toBe(0);
 
     await app.close();
   });

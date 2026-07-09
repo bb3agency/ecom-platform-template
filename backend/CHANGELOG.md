@@ -12,6 +12,15 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.67] — 2026-07-09
+
+### Fixed
+- **`gallery.routes.test.ts` typecheck under client-strict settings** — the upload mock had no declared argument, so `mock.calls[0]` typed as an empty tuple and failed `tsc` on client repos (TS2493/TS2352). Test-only; no runtime change.
+
+**Propagation:**
+- Severity: LOW (test-only) · Layers: backend (`src/modules/gallery/gallery.routes.test.ts`)
+- Migration: NO · Flag: none · Breaking: NO · Rollback: revert the file
+
 ## [0.1.66] — 2026-07-09
 
 ### Fixed
