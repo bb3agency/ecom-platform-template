@@ -722,8 +722,17 @@ export function createShippingWorker(
         const TERMINAL = ['DELIVERED', 'CANCELLED', 'RTO_DELIVERED'] as const;
         const activeShipments = await prisma.shipment.findMany({
           where: {
-            status: { notIn: TERMINAL as unknown as ShipmentStatus[] },
-            awbNumber: { not: null }
+            awbNumber: { not: null },
+            OR: [
+              { status: { notIn: TERMINAL as unknown as ShipmentStatus[] } },
+              // Repair lane: shipment already DELIVERED but the order lags behind
+              // (e.g. the DELIVERED webhook landed while the order transition was
+              // blocked) — no provider call needed, just promote the order.
+              {
+                status: 'DELIVERED' as ShipmentStatus,
+                order: { status: { notIn: ['DELIVERED', 'CANCELLED', 'REFUNDED'] } }
+              }
+            ]
           },
           include: {
             order: { select: { id: true, orderNumber: true, status: true } }
@@ -734,6 +743,38 @@ export function createShippingWorker(
 
         for (const shipment of activeShipments) {
           if (!shipment.awbNumber) continue;
+
+          // Repair lane — shipment is terminally delivered; promote the lagging order
+          // from local state without hitting the provider.
+          if (shipment.status === 'DELIVERED') {
+            try {
+              const repairOrderStatus = mapShipmentStatusToOrderStatus(shipment.status);
+              if (
+                repairOrderStatus &&
+                shipment.order.status !== repairOrderStatus &&
+                canTransitionOrder(shipment.order.status, repairOrderStatus)
+              ) {
+                await prisma.$transaction(async (tx) => {
+                  await tx.order.update({
+                    where: { id: shipment.order.id },
+                    data: { status: repairOrderStatus }
+                  });
+                  await tx.orderStatusHistory.create({
+                    data: {
+                      orderId: shipment.order.id,
+                      fromStatus: shipment.order.status,
+                      toStatus: repairOrderStatus,
+                      triggeredBy: 'SHIPPING_WEBHOOK',
+                      note: 'Auto-poll repair: shipment already DELIVERED, order status lagged'
+                    }
+                  });
+                });
+              }
+            } catch {
+              // Swallow per-shipment errors — one bad row should not abort the rest.
+            }
+            continue;
+          }
           try {
             // In dual-shipping mode, shipments may belong to different providers.
             // Use the provider recorded on the shipment row, not the global env-based one.
@@ -754,15 +795,26 @@ export function createShippingWorker(
             const tracking = await pollAdapter.trackShipment(shipment.awbNumber);
             const nextShipmentStatus = mapShipmentWebhookStatus(tracking.status);
 
-            if (!nextShipmentStatus || nextShipmentStatus === shipment.status) continue;
+            if (!nextShipmentStatus) continue;
 
             const nextOrderStatus = mapShipmentStatusToOrderStatus(nextShipmentStatus);
+            const shipmentChanged = nextShipmentStatus !== shipment.status;
+            // Repair a lagging order even when the shipment status is already current
+            // (e.g. shipment DELIVERED landed while the order transition was blocked).
+            const orderLagging =
+              nextOrderStatus != null &&
+              shipment.order.status !== nextOrderStatus &&
+              canTransitionOrder(shipment.order.status, nextOrderStatus);
+
+            if (!shipmentChanged && !orderLagging) continue;
 
             await prisma.$transaction(async (tx) => {
-              await tx.shipment.update({
-                where: { id: shipment.id },
-                data: { status: nextShipmentStatus }
-              });
+              if (shipmentChanged) {
+                await tx.shipment.update({
+                  where: { id: shipment.id },
+                  data: { status: nextShipmentStatus }
+                });
+              }
 
               if (tracking.events.length > 0) {
                 await tx.shipmentEvent.createMany({

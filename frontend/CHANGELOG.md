@@ -12,6 +12,16 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.43] — 2026-07-09
+
+### Fixed
+- **Admin fulfillment panel treats a delivered package as delivered** (`AdminOrderFulfillmentPanel`). Once the order **or the shipment** is DELIVERED: the Ship order / Schedule pickup / Print label step cards are replaced with a "package has been delivered" note, and **Cancel order** is no longer offered (previously a delivered package whose order status lagged at SHIPPED still showed all fulfilment steps + Cancel). The **Sync** action now stays available on a DELIVERED shipment while the order still lags — it is the manual repair path that promotes the order to DELIVERED (pairs with backend-core 0.1.66).
+
+**Propagation:**
+- Severity: NORMAL · Layers: frontend (`components/admin/AdminOrderFulfillmentPanel.tsx`) — pairs with backend-core 0.1.66
+- Migration: NO · Flag: none · Design impact: none · Breaking: NO
+- Rollback: revert the file
+
 ## [0.1.42] — 2026-07-08
 
 ### Fixed

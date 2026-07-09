@@ -12,6 +12,23 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.66] — 2026-07-09
+
+### Fixed
+- **Orders no longer get stuck at SHIPPED after the courier delivers.** Three compounding bugs:
+  1. The order state machine disallowed `SHIPPED → DELIVERED` — couriers frequently report delivery without an out-for-delivery scan ever reaching us (missed/skipped OFD webhook), so the DELIVERED webhook updated the **shipment** but `canTransitionOrder('SHIPPED','DELIVERED')` silently blocked the **order**, leaving admin + storefront showing SHIPPED forever. Now allowed (`order-state-machine.ts`).
+  2. **Manual "Sync" couldn't repair it**: `adminSyncShipment` early-returned "already up to date" whenever the shipment status was unchanged — even when the order lagged behind. It now repairs a lagging order (promotes it per `mapShipmentStatusToOrderStatus`) even with no shipment change, and reports "Order status repaired: X → Y".
+  3. **The 30-min auto-poll couldn't repair it either**: the poll query excluded terminal (DELIVERED) shipments entirely, and its loop skipped unchanged statuses. Added a repair lane — DELIVERED shipments whose order is not yet DELIVERED/CANCELLED/REFUNDED are selected and the order is promoted from local state (no provider call), with an `orderStatusHistory` entry (`Auto-poll repair`). Existing stuck orders in production self-heal within one poll cycle after deploy.
+
+- **Category + gallery image uploads no longer die at the nginx edge.** The dedicated streaming upload `location` (skips the maintenance `auth_request` which forces full body buffering — nginx returned a raw 500 for larger bodies and the POST never reached the backend) only matched `.../images/upload` (products). Category upload lives at `.../image/upload` (singular) and gallery upload at `POST /admin/gallery` — both fell into the generic admin location and failed for any image big enough to matter, which is why "nothing uploads". The location regex is now `^/api/v1/admin/(.+/images?/upload|gallery)$` (`nginx/client.conf.template`). Verified against production: 3 MB body → products path 401 (reaches backend), category/gallery paths → raw nginx 500. Added `gallery.routes.test.ts` (real multipart injection through the actual multipart plugin + routes).
+
+**Propagation:**
+- Severity: HIGH (customer-visible wrong order status; blocks delivery notifications/returns eligibility; admin image uploads broken) · Layers: backend (`common/orders/order-state-machine.ts`, `modules/orders/orders.service.ts`, `queues/workers/shipping.worker.ts`, `nginx/client.conf.template`) — pairs with frontend-core 0.1.43
+- Migration: NO · Flag: none · Design impact: none · Breaking: NO
+- Rollback: revert the files
+- Note: stuck orders self-heal via the next `poll-shipment-statuses` run (≤30 min after workers restart) or a manual admin "Sync" click. **Operator action per VPS:** the deployed nginx conf is rendered at setup — re-render/patch the upload `location` regex from the updated template and `nginx -t && systemctl reload nginx`, or category/gallery uploads keep failing at the edge regardless of this code deploy.
+- Analytics note: no analytics code change needed — "Completed Orders" and revenue KPIs are status-driven (count DELIVERED), so they correct themselves as stuck orders are repaired.
+
 ## [0.1.65] — 2026-07-08
 
 ### Fixed

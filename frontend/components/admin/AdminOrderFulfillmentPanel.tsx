@@ -355,11 +355,16 @@ export function AdminOrderFulfillmentPanel({
   // ship/pickup/label/sync actions apply, even if an AWB was booked before cancellation.
   const orderTerminal = ["CANCELLED", "REFUNDED"].includes(detail?.status ?? "");
   const shipmentCancelled = shipment?.status === "CANCELLED";
-  const fulfilmentActive = Boolean(detail) && !orderTerminal && !shipmentCancelled;
+  // Delivered = the package physically reached the customer. Check the SHIPMENT status
+  // too, not just the order — the order can briefly lag behind the shipment (webhook
+  // ordering) and ship/pickup/label/cancel must not be offered on a delivered package.
+  const delivered = detail?.status === "DELIVERED" || shipment?.status === "DELIVERED";
+  const fulfilmentActive = Boolean(detail) && !orderTerminal && !shipmentCancelled && !delivered;
   // Admin can cancel up to and including SHIPPED (in transit). Once OUT_FOR_DELIVERY /
   // DELIVERED / terminal, cancellation is no longer possible — mirrors the backend guard.
   const cancellableStatuses = ["CONFIRMED", "PROCESSING", "SHIPPED"];
-  const canCancel = Boolean(detail) && cancellableStatuses.includes(detail?.status ?? "");
+  const canCancel =
+    Boolean(detail) && !delivered && cancellableStatuses.includes(detail?.status ?? "");
   const labelUrl = shipment?.shipmentLabelUrl ?? shipment?.labelUrl ?? null;
 
   // Pickup can be scheduled once an AWB is booked, regardless of provider.
@@ -373,9 +378,13 @@ export function AdminOrderFulfillmentPanel({
     !pickupWasScheduled &&
     detail?.status !== "DELIVERED";
   const canPrintLabel = fulfilmentActive && hasShipment;
-  const canShip = detail?.canShipNow === true;
+  const canShip = fulfilmentActive && detail?.canShipNow === true;
+  // Sync stays available on a DELIVERED shipment while the ORDER still lags behind —
+  // it is the manual repair path that promotes the order to DELIVERED.
   const canSync =
-    hasShipment && !["DELIVERED", "CANCELLED"].includes(detail?.shipment?.status ?? "");
+    hasShipment &&
+    detail?.shipment?.status !== "CANCELLED" &&
+    !(detail?.shipment?.status === "DELIVERED" && detail?.status === "DELIVERED");
 
   const runSyncStatus = async () => {
     if (!shipment?.id || busyAction) return;
@@ -636,8 +645,9 @@ export function AdminOrderFulfillmentPanel({
           </div>
         ) : (
           <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
-            This order is {(detail?.status ?? "cancelled").toLowerCase()}. Fulfilment actions
-            (ship, schedule pickup, print label) are no longer available.
+            {delivered
+              ? "This package has been delivered. Fulfilment actions (ship, schedule pickup, print label) are no longer needed."
+              : `This order is ${(detail?.status ?? "cancelled").toLowerCase()}. Fulfilment actions (ship, schedule pickup, print label) are no longer available.`}
           </div>
         )}
 

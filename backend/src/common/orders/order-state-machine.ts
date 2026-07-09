@@ -14,7 +14,10 @@ export const ORDER_STATUS_TRANSITIONS: Record<OrderStatus, ReadonlyArray<OrderSt
   PAYMENT_FAILED: ['PENDING_PAYMENT', 'CANCELLED'],
   CONFIRMED: ['PROCESSING', 'SHIPPED', 'CANCELLED', 'REFUNDED'],
   PROCESSING: ['SHIPPED', 'CANCELLED', 'REFUNDED'],
-  SHIPPED: ['OUT_FOR_DELIVERY', 'CANCELLED'],
+  // SHIPPED → DELIVERED directly: couriers frequently report delivery without an
+  // out-for-delivery scan ever reaching us (missed webhook, OFD not pushed). Requiring
+  // the intermediate hop left orders stuck at SHIPPED while the shipment was DELIVERED.
+  SHIPPED: ['OUT_FOR_DELIVERY', 'DELIVERED', 'CANCELLED'],
   OUT_FOR_DELIVERY: ['DELIVERED'],
   DELIVERED: ['REFUNDED'],
   CANCELLED: ['REFUNDED'],

@@ -4960,24 +4960,41 @@ export class OrdersService {
     const latestStatus = tracking.status;
     const nextShipmentStatus = mapShipmentWebhookStatus(latestStatus);
 
-    if (!nextShipmentStatus || nextShipmentStatus === shipment.status) {
+    if (!nextShipmentStatus) {
       return {
         synced: false,
-        message: nextShipmentStatus
-          ? `Status already up to date: ${shipment.status}`
-          : `Provider status "${latestStatus}" has no mapped internal status`,
+        message: `Provider status "${latestStatus}" has no mapped internal status`,
         shipmentStatus: shipment.status,
         orderStatus: shipment.order.status
       };
     }
 
     const nextOrderStatus = mapShipmentStatusToOrderStatus(nextShipmentStatus);
+    const shipmentChanged = nextShipmentStatus !== shipment.status;
+    // The order can lag behind the shipment (e.g. the DELIVERED webhook arrived while
+    // a direct transition was disallowed) — sync must repair that even when the
+    // shipment status itself is already up to date.
+    const orderLagging =
+      nextOrderStatus != null &&
+      shipment.order.status !== nextOrderStatus &&
+      canTransitionOrder(shipment.order.status, nextOrderStatus);
+
+    if (!shipmentChanged && !orderLagging) {
+      return {
+        synced: false,
+        message: `Status already up to date: ${shipment.status}`,
+        shipmentStatus: shipment.status,
+        orderStatus: shipment.order.status
+      };
+    }
 
     await this.fastify.prisma.$transaction(async (tx) => {
-      await tx.shipment.update({
-        where: { id: shipment.id },
-        data: { status: nextShipmentStatus }
-      });
+      if (shipmentChanged) {
+        await tx.shipment.update({
+          where: { id: shipment.id },
+          data: { status: nextShipmentStatus }
+        });
+      }
 
       if (tracking.events.length > 0) {
         await tx.shipmentEvent.createMany({
@@ -5020,9 +5037,11 @@ export class OrdersService {
 
     return {
       synced: true,
-      message: `Synced: ${shipment.status} → ${nextShipmentStatus}`,
+      message: shipmentChanged
+        ? `Synced: ${shipment.status} → ${nextShipmentStatus}`
+        : `Order status repaired: ${shipment.order.status} → ${nextOrderStatus}`,
       shipmentStatus: nextShipmentStatus,
-      orderStatus: nextOrderStatus ?? shipment.order.status
+      orderStatus: orderLagging ? (nextOrderStatus as string) : shipment.order.status
     };
   }
 
