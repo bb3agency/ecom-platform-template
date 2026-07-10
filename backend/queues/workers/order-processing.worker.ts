@@ -15,7 +15,6 @@ import {
   resolveInvoiceHsnCode,
   resolveLineItemGstRatePercent
 } from '@common/shipping/product-tax-fields';
-import { resolveExplicitShippingHsn } from '@common/shipping/resolve-shipping-hsn';
 
 type OrderStatus =
   | 'PENDING_PAYMENT'
@@ -1143,15 +1142,12 @@ async function generateInvoiceForOrder(prisma: RealPrismaClient, orderId: string
       return;
     }
 
-    for (const item of order.items) {
-      const explicitHsn = resolveExplicitShippingHsn({
-        variantHsnCode: item.variant?.hsnCode,
-        productAttributes: item.variant?.product?.attributes
-      });
-      if (!explicitHsn) {
-        throw new Error(`Missing product HSN code for GST invoice line item ${item.id}`);
-      }
-    }
+    // HSN is OPTIONAL per line item (2026-07-11): a missing code renders as "N/A" on the
+    // PDF instead of failing generation. The old hard throw here left orders permanently
+    // invoice-less (the job retried into dead-letter) whenever ANY item lacked an HSN.
+    // GST rules require HSN digits based on turnover — the merchant remains responsible
+    // for filling codes on products where applicable; the HSN autofill suggestions in the
+    // product editor make that easy.
 
     await tx.$executeRaw`CREATE SEQUENCE IF NOT EXISTS invoice_number_seq START 1`;
     const sequenceResult = await tx.$queryRaw<Array<{ nextval: bigint }>>`SELECT nextval('invoice_number_seq')`;
@@ -1403,7 +1399,9 @@ async function resolveSellerProfileOrThrow(prisma: RealPrismaClient): Promise<Se
     addressLine: addressLine || 'Address not configured',
     state: state || 'Unknown',
     gstin: gstin || 'GSTIN_NOT_CONFIGURED',
-    fssai: fssai || (requiresFssai ? 'FSSAI_REQUIRED' : 'FSSAI_NOT_CONFIGURED'),
+    // FSSAI is OPTIONAL (2026-07-11) — empty means the PDF simply omits the FSSAI line
+    // instead of printing a placeholder. STORE_REQUIRES_FSSAI still hard-enforces above.
+    fssai: fssai || '',
     storeName: (settings?.storeName ?? '').trim() || legalName || 'Ecom Store Pvt Ltd',
     logoUrl: ((settings as { logoUrl?: string | null } | null)?.logoUrl ?? '').trim() || null
   };

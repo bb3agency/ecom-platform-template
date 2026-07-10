@@ -12,6 +12,20 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.47] — 2026-07-11
+
+### Added
+- **HSN autofill in the product editor** (`AdminProductEditor`): a "Suggest HSN from product name" action under the (now explicitly optional) HSN field queries `GET /admin/products/hsn-suggestions` and renders click-to-fill code+description chips. Typing digits first suggests by code prefix instead.
+
+### Changed
+- **FSSAI marked optional** across Admin → Settings → Store (`StoreSettingsPanel`): field label/help text, the missing-fields warning no longer counts FSSAI, and the GST-toggle description reads "Requires GSTIN and full seller details (FSSAI optional)".
+- Fulfillment panel invoice tooltip updated — HSN/FSSAI never block generation; the only stall cause left is an incomplete store GST profile (pairs with backend-core 0.1.71's optional-HSN + self-heal fixes).
+
+**Propagation:**
+- Severity: NORMAL · Layers: frontend (`components/admin/{AdminProductEditor,StoreSettingsPanel,AdminOrderFulfillmentPanel}.tsx`) — pairs with backend-core 0.1.71
+- Migration: NO · Flag: none · Design impact: none · Breaking: NO
+- Rollback: revert the files
+
 ## [0.1.46] — 2026-07-11
 
 ### Added

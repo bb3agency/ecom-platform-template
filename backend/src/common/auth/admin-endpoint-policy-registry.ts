@@ -62,6 +62,7 @@ export const ADMIN_ENDPOINT_POLICY_REGISTRY: readonly EndpointPolicy[] = [
   { method: 'GET', path: '/api/v1/admin/return-requests/:id', permission: 'orders:read', layer: 'A' },
   { method: 'PATCH', path: '/api/v1/admin/return-requests/:id', permission: 'orders:write', layer: 'A' },
   { method: 'GET', path: '/api/v1/admin/products', permission: 'products:read', layer: 'A' },
+  { method: 'GET', path: '/api/v1/admin/products/hsn-suggestions', permission: 'products:read', layer: 'A' },
   { method: 'GET', path: '/api/v1/admin/products/:id', permission: 'products:read', layer: 'A' },
   { method: 'POST', path: '/api/v1/admin/products/import-csv', permission: 'products:write', layer: 'A' },
   { method: 'POST', path: '/api/v1/admin/products', permission: 'products:write', layer: 'A' },

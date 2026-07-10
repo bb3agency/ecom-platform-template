@@ -164,8 +164,10 @@ export function AdminOrderFulfillmentPanel({
   // confirmed/paid). Without this, the panel showed a permanently-disabled
   // "Print invoice" button reading "still being generated" until the admin manually
   // refreshed. Poll a handful of times so the button self-enables the moment the PDF
-  // lands. Stops as soon as the invoice appears, or after ~1 minute (a stuck invoice
-  // usually means missing product HSN codes or an incomplete store GST profile).
+  // lands. Each detail fetch also triggers the backend's invoice self-heal re-enqueue,
+  // so orders whose generation job previously failed regenerate automatically. A stuck
+  // invoice after that means the store GST profile (name, address, state, GSTIN) is
+  // incomplete — HSN/FSSAI are optional and never block generation.
   useEffect(() => {
     if (!detail || detail.id !== selectedOrderId) return;
     if (detail.invoice?.hasPdf) return;
@@ -740,7 +742,7 @@ export function AdminOrderFulfillmentPanel({
                 title={
                   detail.invoice?.hasPdf
                     ? "Opens the GST invoice PDF in a new tab, ready to print and pack with the order"
-                    : "Generating the invoice… this enables automatically in a few seconds. If it never enables, check that every product has an HSN code and the store GST profile (name, address, state, GSTIN) is complete."
+                    : "Generating the invoice… this enables automatically in a few seconds. If it never enables, complete the store GST profile (legal name, address, state, GSTIN) in Admin → Settings → Store. HSN and FSSAI are optional."
                 }
                 primary
               />

@@ -12,6 +12,24 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.71] — 2026-07-11
+
+### Fixed
+- **Invoices no longer get stuck at "still being generated".** Root cause: `generateInvoiceForOrder` hard-threw when ANY order item lacked an explicit HSN code, so the generate-invoice job retried into dead-letter and the order stayed invoice-less forever (the reported ORD-TDY7-BF28 symptom). Three-part fix:
+  1. **HSN is now OPTIONAL per product** — invoice lines render `N/A` when missing (the merchant remains responsible for codes where GST rules require them); courier shipment booking also no longer rejects missing HSN (carrier payloads already fall back to `DEFAULT_SHIPPING_HSN`, generic food preparation 2106).
+  2. **FSSAI is now OPTIONAL** — the invoice/credit-note PDF omits the FSSAI segment instead of printing `FSSAI_NOT_CONFIGURED`; `STORE_REQUIRES_FSSAI` env still hard-enforces for clients that need it.
+  3. **Self-heal re-enqueue**: `adminGetOrder` re-enqueues invoice generation for eligible orders with no invoice (Redis NX-throttled 5 min, no fixed BullMQ jobId so failed-job dedup can't swallow it). Combined with the admin panel's 5s poll, previously-stuck orders regenerate the moment the admin opens them.
+  - Shipping worker's seller-GSTIN booking gate now uses the live `resolveGstInvoicingEnabled` (merchant toggle) instead of the boot-time env flag.
+
+### Added
+- **HSN autofill suggestions** — `GET /admin/products/hsn-suggestions?q=` (`products:read`, registry now 138 mappings): in-memory keyword search over a vendored WCO Harmonized System dataset (6,842 heading/subheading entries, openly licensed ODC-PDDL, github.com/datasets/harmonized-system) with an Indian-trade-terms alias layer (ghee→0405, jaggery→1701, kaaram/chilli→0904, namkeen/mithai→2106, …) and pack-size/generic-word stripping, so real product names ("Dried Whole Red Chilli 250gms") resolve to the right codes. No external API — works offline for every client. Tests: `hsn-suggest.test.ts`.
+
+**Propagation:**
+- Severity: HIGH (invoice generation broken for any order containing an HSN-less product) · Layers: backend (`queues/workers/{order-processing,shipping}.worker.ts`, `modules/orders/orders.service.ts`, `modules/invoices/invoice-pdf.ts`, `modules/products/{hsn-dataset,hsn-suggest}.ts` + routes/schemas, `common/auth/admin-endpoint-policy-registry.ts`) — pairs with frontend-core 0.1.47
+- Migration: NO · Flag: none · Design impact: none · Breaking: NO
+- Rollback: revert the files
+- Note: stuck orders self-heal on the next admin order-detail view (self-heal enqueue + idempotent worker).
+
 ## [0.1.70] — 2026-07-11
 
 ### Added

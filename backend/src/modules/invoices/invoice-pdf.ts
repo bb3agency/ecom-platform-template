@@ -206,7 +206,14 @@ export async function renderInvoicePdfBuffer(payload: InvoicePdfPayload): Promis
           createElement(Text, { style: styles.sellerMeta }, payload.seller.legalName),
           createElement(Text, { style: styles.sellerMeta }, payload.seller.addressLine),
           createElement(Text, { style: styles.sellerMeta }, `State: ${payload.seller.state}`),
-          createElement(Text, { style: styles.sellerMeta }, `GSTIN: ${payload.seller.gstin}   FSSAI: ${payload.seller.fssai}`)
+          // FSSAI is optional — omit the segment entirely when not configured.
+          createElement(
+            Text,
+            { style: styles.sellerMeta },
+            payload.seller.fssai.trim()
+              ? `GSTIN: ${payload.seller.gstin}   FSSAI: ${payload.seller.fssai}`
+              : `GSTIN: ${payload.seller.gstin}`
+          )
         ),
         createElement(
           View,
@@ -327,7 +334,13 @@ export async function renderCreditNotePdfBuffer(payload: CreditNotePdfPayload): 
           View,
           { style: { width: '55%' } },
           createElement(Text, { style: styles.storeName }, payload.seller.legalName),
-          createElement(Text, { style: styles.sellerMeta }, `GSTIN: ${payload.seller.gstin}   FSSAI: ${payload.seller.fssai}`)
+          createElement(
+            Text,
+            { style: styles.sellerMeta },
+            payload.seller.fssai.trim()
+              ? `GSTIN: ${payload.seller.gstin}   FSSAI: ${payload.seller.fssai}`
+              : `GSTIN: ${payload.seller.gstin}`
+          )
         ),
         createElement(
           View,

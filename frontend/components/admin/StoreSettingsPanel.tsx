@@ -381,7 +381,7 @@ export function StoreSettingsPanel() {
               <span className="block text-sm font-medium text-foreground">GST invoicing</span>
               <span className="block text-xs text-muted-foreground">
                 When on, a GST tax invoice PDF is generated for every new order and offered to
-                the customer and admin. Requires GSTIN, FSSAI, and full seller details below.
+                the customer and admin. Requires GSTIN and full seller details below (FSSAI optional).
                 Takes effect immediately — no restart.
               </span>
             </span>
@@ -401,14 +401,15 @@ export function StoreSettingsPanel() {
         {/* ------------------------------------------------------------------ */}
         {gstInvoicingEnabled ? (
           <>
-        {/* Fail-case warning when GST invoicing is on but IDs are missing */}
-        {loaded && (!gstin.trim() || !fssaiNumber.trim() || missingSellerDetails) && (
+        {/* Fail-case warning when GST invoicing is on but required fields are missing.
+            FSSAI is OPTIONAL — it prints on invoices when provided but never blocks them. */}
+        {loaded && (!gstin.trim() || missingSellerDetails) && (
           <div className="flex min-w-0 items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3.5 text-xs text-amber-800 overflow-hidden">
             <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-amber-600" aria-hidden />
             <span>
               <strong>GST invoicing is enabled</strong> but required invoice fields are missing.
-              Invoice PDF generation will fail until GSTIN, FSSAI, seller legal name, address, and
-              operating state are filled in.
+              Invoice PDF generation will fail until GSTIN, seller legal name, address, and
+              operating state are filled in. (FSSAI is optional.)
             </span>
           </div>
         )}
@@ -447,7 +448,7 @@ export function StoreSettingsPanel() {
               </label>
 
               <label className="grid min-w-0 grid-cols-1 gap-1.5 text-sm font-medium text-foreground">
-                FSSAI License Number
+                FSSAI License Number (optional)
                 <input
                   type="text"
                   placeholder="14-digit number"
@@ -460,8 +461,8 @@ export function StoreSettingsPanel() {
                   disabled={!canWrite}
                 />
                 <span className="text-xs text-muted-foreground/80">
-                  Food Safety and Standards Authority of India license. Mandatory for food
-                  businesses under FSSAI regulations.
+                  Food Safety and Standards Authority of India license. Optional — printed on
+                  invoices when provided; leaving it blank never blocks invoice generation.
                 </span>
               </label>
             </div>

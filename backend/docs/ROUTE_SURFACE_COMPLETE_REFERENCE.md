@@ -556,6 +556,17 @@ Inventory defaults: low-stock threshold, out-of-stock behaviour (block checkout 
 ### `GET /PATCH /api/v1/admin/settings/cod`
 Merchant store toggles: COD enable/disable, customer cancellation window in hours, seller state (used for tax calculations), and the on/off flags for reviews, gallery, returns, mobile-OTP signup, and **GST invoicing** (`gstInvoicingEnabled`, added 2026-07-11). `gstInvoicingEnabled` is nullable in the DB — when unset the endpoint returns the effective value inherited from the `FEATURE_GST_INVOICING_ENABLED` env default; once the merchant sets it, the stored value is authoritative and takes effect **live (no restart)**, gating invoice + credit-note generation and the invoice-PDF download routes.
 
+### `GET /api/v1/admin/products/hsn-suggestions`
+**HSN autofill for the product editor (2026-07-11).** `products:read`. Query `q` = product
+name (or partial HSN digits). Pure in-memory keyword search over the vendored WCO
+Harmonized System dataset (`src/modules/products/hsn-dataset.ts`, openly licensed
+ODC-PDDL from github.com/datasets/harmonized-system) with an Indian-trade-terms alias
+layer (ghee/jaggery/namkeen/kaaram → HS prefixes). Returns up to 10 `{code, description}`
+suggestions; digits queries match codes by prefix. No external API — works offline for
+every client. Note: product HSN and store FSSAI are **optional** — invoices render "N/A"
+for missing HSN and omit the FSSAI line; courier bookings fall back to
+`DEFAULT_SHIPPING_HSN` (2106).
+
 ### `GET /PATCH /api/v1/admin/settings/local-delivery`
 **Merchant-fulfilled local delivery (2026-07-10).** `settings:read` / `settings:write`. Controls
 `StoreSettings.localDelivery*`: master toggle, whitelisted pincode list (each entry may carry its

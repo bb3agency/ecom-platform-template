@@ -762,9 +762,12 @@ describe('order-processing worker error and retry behavior', () => {
     );
   });
 
-  it('throws when generate-invoice job runs for order items missing explicit HSN', async () => {
+  it('generates the invoice with fallback HSN when items omit an explicit code (HSN optional)', async () => {
     const invoiceStorageAdapter = {
-      uploadInvoicePdf: vi.fn(),
+      uploadInvoicePdf: vi.fn().mockResolvedValue({
+        storageReference: 'client/invoices/order_missing_hsn/invoice.pdf',
+        providerPayload: {}
+      }),
       readInvoicePdf: vi.fn()
     };
     boot(invoiceStorageAdapter);
@@ -802,13 +805,15 @@ describe('order-processing worker error and retry behavior', () => {
       ]
     });
 
+    // A missing HSN must NEVER block invoice generation (the old hard throw left
+    // orders permanently invoice-less) — the line renders with the "N/A" label instead.
     await expect(
       state.processor?.({
         name: 'generate-invoice',
         data: { orderId: 'order_missing_hsn' }
       })
-    ).rejects.toThrow('Missing product HSN code for GST invoice line item item_missing_hsn');
-    expect(invoiceStorageAdapter.uploadInvoicePdf).not.toHaveBeenCalled();
+    ).resolves.toBeUndefined();
+    expect(invoiceStorageAdapter.uploadInvoicePdf).toHaveBeenCalledTimes(1);
   });
 
   it('does not regenerate invoice after worker restart when invoice already exists', async () => {

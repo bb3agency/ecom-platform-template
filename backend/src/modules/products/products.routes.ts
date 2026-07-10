@@ -26,11 +26,13 @@ import {
   adminReorderProductVariantsSchema,
   adminReorderProductImagesSchema,
   adminDeleteProductImageSchema,
+  adminHsnSuggestionsSchema,
   getProductBySlugSchema,
   listCategoriesSchema,
   listProductsByCategorySchema,
   listProductsSchema
 } from './products.schemas';
+import { suggestHsnCodes } from './hsn-suggest';
 import { ProductsService } from './products.service';
 import { AppError } from '@common/errors/app-error';
 import { ERROR_CODES } from '@common/errors/error-codes';
@@ -401,6 +403,23 @@ export async function registerProductsRoutes(fastify: FastifyInstance): Promise<
     async (request) => {
       const params = request.params as { id: string };
       return productsService.adminHardDeleteProduct(params.id);
+    }
+  );
+
+  // HSN autofill suggestions for the product editor — pure in-memory lookup over the
+  // vendored WCO Harmonized System dataset (no external API, works offline).
+  fastify.get(
+    '/api/v1/admin/products/hsn-suggestions',
+    {
+      schema: adminHsnSuggestionsSchema,
+      preHandler: [...adminGuard, adminPermissionGuard('products:read')],
+      config: {
+        rateLimit: routeRateLimitProfiles.adminRead
+      }
+    },
+    async (request) => {
+      const { q } = request.query as { q: string };
+      return { items: suggestHsnCodes(q) };
     }
   );
 

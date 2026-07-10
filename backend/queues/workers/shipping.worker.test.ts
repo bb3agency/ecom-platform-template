@@ -311,7 +311,7 @@ describe('shipping worker error and retry behavior', () => {
     expect(state.createShipment).not.toHaveBeenCalled();
   });
 
-  it('throws when GST invoicing is enabled and products omit explicit HSN codes', async () => {
+  it('books the shipment with the default fallback HSN when products omit explicit codes (HSN optional)', async () => {
     boot();
     state.tx.order.findUnique.mockResolvedValue({
       id: 'order_no_hsn_gst',
@@ -333,14 +333,27 @@ describe('shipping worker error and retry behavior', () => {
     state.tx.productVariant.findMany.mockResolvedValue([
       { id: 'variant_1', weight: 300, hsnCode: null, product: { attributes: {} } }
     ]);
+    state.createShipment.mockResolvedValue({
+      awbNumber: 'AWB2106',
+      trackingUrl: 'https://track.example/AWB2106',
+      providerPayload: { ok: true }
+    });
+    state.tx.shipment.create.mockResolvedValue(undefined);
+    state.tx.order.update.mockResolvedValue(undefined);
+    state.tx.orderStatusHistory.create.mockResolvedValue(undefined);
 
-    await expect(
-      state.processor?.({
-        name: 'create-shipment',
-        data: { orderId: 'order_no_hsn_gst' }
+    // A missing product HSN must never block courier booking — the carrier payload
+    // falls back to DEFAULT_SHIPPING_HSN (generic food preparation, 2106).
+    await state.processor?.({
+      name: 'create-shipment',
+      data: { orderId: 'order_no_hsn_gst' }
+    });
+
+    expect(state.createShipment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        items: [expect.objectContaining({ hsnCode: '2106' })]
       })
-    ).rejects.toThrow('Missing product HSN code(s) for shipment booking');
-    expect(state.createShipment).not.toHaveBeenCalled();
+    );
   });
 
   it('prefers variant hsnCode over product attributes when building shipment items', async () => {

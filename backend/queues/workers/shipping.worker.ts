@@ -6,11 +6,10 @@ import {
   createShippingProvider,
   createShippingAdapterForProvider
 } from '@modules/shipping/shipping-provider';
-import { featureFlags } from '@config/feature-flags';
+import { resolveGstInvoicingEnabled } from '@common/invoicing/gst-invoicing-flag';
 import { resolvePickupPincode } from '@common/shipping/resolve-pickup-pincode';
 import {
   resolveDefaultShippingHsn,
-  resolveExplicitShippingHsn,
   resolveShippingHsnCode
 } from '@common/shipping/resolve-shipping-hsn';
 import {
@@ -339,24 +338,14 @@ export function createShippingWorker(
         const variantById = new Map(variants.map((variant) => [variant.id, variant]));
         const variantWeights = new Map(variants.map((variant) => [variant.id, variant.weight ?? 0]));
         const defaultShippingHsn = resolveDefaultShippingHsn();
-        const explicitHsnCodes = new Set<string>();
-        for (const variant of variants) {
-          const explicitHsn = resolveExplicitShippingHsn({
-            variantHsnCode: variant.hsnCode,
-            productAttributes: variant.product.attributes
-          });
-          if (explicitHsn) {
-            explicitHsnCodes.add(explicitHsn);
-          }
-        }
         const sellerGstTin = (settings?.gstin ?? '').trim();
-        if (featureFlags.gstInvoicing) {
-          if (!sellerGstTin) {
-            throw new Error('Missing seller GSTIN for shipment booking');
-          }
-          if (explicitHsnCodes.size === 0) {
-            throw new Error('Missing product HSN code(s) for shipment booking');
-          }
+        // HSN is OPTIONAL per product (2026-07-11): carrier payloads fall back to the
+        // configurable DEFAULT_SHIPPING_HSN (generic food preparation, 2106) via
+        // resolveShippingHsnCode — a missing product code must never block booking.
+        // Seller GSTIN remains required when GST invoicing is enabled (merchant-level,
+        // one-time setup in Admin → Settings → Store).
+        if ((await resolveGstInvoicingEnabled(prisma)) && !sellerGstTin) {
+          throw new Error('Missing seller GSTIN for shipment booking');
         }
         for (const item of order.items) {
           const unitWeight = variantWeights.get(item.variantId) ?? 0;

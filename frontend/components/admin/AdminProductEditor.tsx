@@ -22,6 +22,7 @@ import {
   Check,
   HelpCircle,
   GripVertical,
+  Sparkles,
 } from "lucide-react";
 import { AdminRowActionsMenu } from "@/components/admin/AdminRowActionsMenu";
 import { useCallback, useEffect, useState } from "react";
@@ -195,6 +196,11 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
   const [isFeatured, setIsFeatured] = useState(false);
   const [gstRate, setGstRate] = useState("12");
   const [hsnCode, setHsnCode] = useState("");
+  // HSN autofill: suggestions from the backend's vendored WCO Harmonized System
+  // dataset, queried with the product name (or typed digits). Click-to-fill.
+  const [hsnSuggestions, setHsnSuggestions] = useState<Array<{ code: string; description: string }>>([]);
+  const [hsnSuggestLoading, setHsnSuggestLoading] = useState(false);
+  const [hsnSuggestQueried, setHsnSuggestQueried] = useState(false);
 
   const [createVariants, setCreateVariants] = useState<VariantDraft[]>([
     emptyVariant(),
@@ -1391,28 +1397,83 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                 </div>
               ) : null}
 
-              <label
+              <div
                 data-admin-field-label="hsnCode"
                 className={cn(
-                  "grid gap-1.5 text-xs font-bold text-muted-foreground uppercase tracking-wider",
+                  "grid gap-1.5",
                   getFieldError("hsnCode") && "rounded-md ring-2 ring-destructive/20",
                 )}
               >
-                HSN Code
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  maxLength={15}
-                  placeholder="e.g. 0910 (required for Shiprocket)"
-                  className={inputClass}
-                  value={hsnCode}
-                  onChange={(event) =>
-                    setHsnCode(event.target.value.replace(/\D/g, ""))
-                  }
-                  disabled={!canWrite}
-                />
-              </label>
+                <label className="grid gap-1.5 text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                  HSN Code (optional)
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={15}
+                    placeholder="e.g. 0910 — leave blank if unsure"
+                    className={inputClass}
+                    value={hsnCode}
+                    onChange={(event) =>
+                      setHsnCode(event.target.value.replace(/\D/g, ""))
+                    }
+                    disabled={!canWrite}
+                  />
+                </label>
+                {canWrite ? (
+                  <div className="grid gap-1.5">
+                    <button
+                      type="button"
+                      disabled={hsnSuggestLoading || (!name.trim() && hsnCode.trim().length < 2)}
+                      onClick={() => {
+                        const query = hsnCode.trim().length >= 2 ? hsnCode.trim() : name.trim();
+                        if (query.length < 2) return;
+                        setHsnSuggestLoading(true);
+                        setHsnSuggestQueried(true);
+                        void api<{ items: Array<{ code: string; description: string }> }>(
+                          `/admin/products/hsn-suggestions?q=${encodeURIComponent(query.slice(0, 160))}`,
+                        )
+                          .then((res) => setHsnSuggestions(res.items))
+                          .catch(() => setHsnSuggestions([]))
+                          .finally(() => setHsnSuggestLoading(false));
+                      }}
+                      className="flex w-fit items-center gap-1.5 rounded-md border border-dashed border-border px-2.5 py-1 text-[11px] font-semibold text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground disabled:opacity-50 cursor-pointer"
+                      title="Suggests HSN codes from the product name (or the digits typed above) using the Harmonized System nomenclature"
+                    >
+                      <Sparkles className="h-3 w-3" />
+                      {hsnSuggestLoading ? "Finding HSN codes…" : "Suggest HSN from product name"}
+                    </button>
+                    {hsnSuggestQueried && !hsnSuggestLoading && hsnSuggestions.length === 0 ? (
+                      <p className="text-[11px] normal-case font-normal text-muted-foreground">
+                        No matches — try typing a more generic product word (e.g. “spice”, “sweets”)
+                        or the first digits of a code.
+                      </p>
+                    ) : null}
+                    {hsnSuggestions.length > 0 ? (
+                      <div className="grid gap-1">
+                        {hsnSuggestions.map((s) => (
+                          <button
+                            key={s.code}
+                            type="button"
+                            onClick={() => {
+                              setHsnCode(s.code);
+                              setHsnSuggestions([]);
+                              setHsnSuggestQueried(false);
+                            }}
+                            className="flex items-start gap-2 rounded-md border border-border bg-muted/20 px-2.5 py-1.5 text-left transition-colors hover:border-primary/50 hover:bg-muted/40 cursor-pointer"
+                            title="Click to fill the HSN field"
+                          >
+                            <span className="shrink-0 font-mono text-xs font-bold text-primary">{s.code}</span>
+                            <span className="min-w-0 text-[11px] normal-case font-normal leading-snug text-muted-foreground">
+                              {s.description}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
 
               <label
                 data-admin-field-label="description"

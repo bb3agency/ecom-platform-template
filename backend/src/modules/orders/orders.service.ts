@@ -2573,6 +2573,35 @@ export class OrdersService {
       throw new AppError(ERROR_CODES.NOT_FOUND, 'Order not found', 404);
     }
 
+    // Self-heal missing invoices: if invoicing is enabled and this paid/confirmed order
+    // has no invoice (e.g. the generation job dead-lettered under the old strict
+    // missing-HSN rule), re-enqueue generation. The worker is idempotent (skips when an
+    // invoice row exists) and the admin panel polls this endpoint, so a stuck order
+    // fixes itself the moment the admin opens it. Redis NX throttles the enqueue so
+    // polling can't spam the queue; no fixed jobId (a failed BullMQ job with the same
+    // id would silently swallow retries).
+    const invoiceEligibleStatuses: OrderStatus[] = [
+      OrderStatus.CONFIRMED,
+      OrderStatus.PROCESSING,
+      OrderStatus.SHIPPED,
+      OrderStatus.OUT_FOR_DELIVERY,
+      OrderStatus.DELIVERED
+    ];
+    if (
+      !order.invoice &&
+      invoiceEligibleStatuses.includes(order.status) &&
+      (await resolveGstInvoicingEnabled(this.fastify.prisma))
+    ) {
+      try {
+        const claimed = await this.fastify.redis.set(`invoice:requeue:${order.id}`, '1', 'EX', 300, 'NX');
+        if (claimed === 'OK') {
+          await this.enqueueOutboxMessage('orderProcessing', 'generate-invoice', { orderId: order.id });
+        }
+      } catch (error) {
+        this.fastify.log?.warn({ err: error, orderId: order.id }, 'invoice self-heal enqueue failed');
+      }
+    }
+
     // Local delivery orders skip cartonization entirely — no courier box dimensions or
     // packaging weight are needed when the merchant delivers directly.
     const isLocalDeliveryOrder =

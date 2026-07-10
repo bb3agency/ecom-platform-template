@@ -848,6 +848,42 @@ export const adminDeleteCategorySchema = {
   }
 } as const;
 
+export const adminHsnSuggestionsSchema = {
+  params: emptyParamsSchema,
+  querystring: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['q'],
+    properties: {
+      // Product name (or partial HSN digits) to suggest codes for.
+      q: { type: 'string', minLength: 2, maxLength: 160 }
+    }
+  },
+  response: {
+    200: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['items'],
+      properties: {
+        items: {
+          type: 'array',
+          maxItems: 10,
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['code', 'description'],
+            properties: {
+              code: { type: 'string', minLength: 4, maxLength: 8 },
+              description: { type: 'string', maxLength: 500 }
+            }
+          }
+        }
+      }
+    },
+    ...standardAdminErrorResponses
+  }
+} as const;
+
 export const adminListCategoriesSchema = {
   params: emptyParamsSchema,
   querystring: {
