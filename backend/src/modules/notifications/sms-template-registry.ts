@@ -35,6 +35,8 @@ export class SmsTemplateRegistry {
         '{{storeName}}: Update on your return for order {{orderId}}: {{returnStatusLine}}. See your account orders page for details.',
       AdminNewOrder:
         '{{storeName}} Admin: New order {{orderId}} placed by {{customerName}} for {{amount}} ({{paymentMode}}). Open the admin panel to process it.',
+      AdminLocalOrder:
+        '{{storeName}} Admin: LOCAL delivery order {{orderId}} by {{customerName}} for {{amount}} ({{paymentMode}}). Deliver to: {{deliveryAddress}}. Ph: {{customerPhone}}.',
       PaymentFailed:
         '{{storeName}} Payment Alert: Payment for order {{orderId}} could not be processed. Please retry payment from your order page to avoid cancellation.',
       FailedDelivery:

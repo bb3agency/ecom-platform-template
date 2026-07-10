@@ -761,3 +761,42 @@ export function AdminNewOrderEmail(input: {
     )
   );
 }
+
+/**
+ * Sent to opted-in admins when a LOCAL DELIVERY order is placed (whitelisted pincode —
+ * the merchant delivers it himself; no courier is booked). Includes the full delivery
+ * address + phone because the admin is the courier for this order.
+ */
+export function AdminLocalOrderEmail(input: {
+  orderRef: string;
+  customerName: string;
+  amount: string;
+  paymentMode: string;
+  deliveryAddress: string;
+  customerPhone: string;
+}): ReactElement {
+  return Wrapper(
+    StatusBadge('Local Delivery Order', B.successGreen, B.successBg),
+    Heading('New local delivery order — you deliver this one!'),
+    Body(
+      `${input.customerName} placed order ${input.orderRef} from a whitelisted local pincode. ` +
+        'No courier will be booked — deliver it directly and update the order status from the admin panel.'
+    ),
+    InfoBox(
+      el('table', { width: '100%', cellPadding: 0, cellSpacing: 0 },
+        el('tbody', null,
+          InfoRow('Order ID', input.orderRef),
+          InfoRow('Customer', input.customerName),
+          InfoRow('Phone', input.customerPhone || 'n/a'),
+          InfoRow('Deliver to', input.deliveryAddress || 'see admin panel'),
+          InfoRow('Amount', input.amount),
+          InfoRow('Payment', input.paymentMode)
+        )
+      ),
+      B.successBg, B.successBorder
+    ),
+    el('p', { style: { fontSize: '13px', color: B.textMuted, margin: '24px 0 0', lineHeight: '1.6' } },
+      'You are receiving this because you enabled new-order notifications in Admin → Settings → Notifications. You can opt out there at any time.'
+    )
+  );
+}

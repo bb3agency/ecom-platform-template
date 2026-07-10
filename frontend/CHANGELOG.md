@@ -12,6 +12,24 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.44] — 2026-07-10
+
+### Added
+- **Local Delivery admin + storefront surfaces** (pairs with backend-core 0.1.68):
+  - **Admin → Settings → Local Delivery** (`app/(admin)/admin/settings/local-delivery/page.tsx`, `components/admin/LocalDeliverySettingsPanel.tsx`, settings layout nav entry): master toggle, pincode rows each with an optional per-pincode fee (blank = default fee, ₹20 default), default fee, free-above threshold, estimated days. `settings:read/write`.
+  - **Fulfillment panel local branch** (`AdminOrderFulfillmentPanel`): LOCAL orders show a "Local delivery" badge, the delivery address + phone prominently, a **Print invoice** primary action (opens the GST PDF print-ready; download fallback when popups are blocked), local COD copy ("captured when you mark DELIVERED"), and hide Ship / Schedule pickup / Print label / Sync / AWB / shipment chips entirely. Status is advanced via the existing "Update order status" dropdown — each change fires customer notifications server-side.
+  - **Order detail panels**: Shipment card reads "Local delivery — no courier shipment"; Packing box card reads "no courier dimensions needed" (backend skips cartonization for LOCAL orders).
+  - **Orders list + board**: LOCAL badge in the shipment column / "Local delivery — fulfil directly" card chip.
+  - **Checkout** (`CheckoutForm`): green "Local delivery — delivered directly by the store" note when the quote provider is LOCAL; provider type unions widened (`DeliveryRates`, order/prepare inputs, `AdminOrderDetail`, `OrderSummary.isLocalDelivery`).
+  - **Account order detail (default theme)**: "Delivery" card for local orders explaining no courier tracking number exists.
+- **`ShippingProviderEnum` cleanup**: `SELF` (never used) removed from all frontend type unions + labels; `LOCAL` → "Local delivery" label added.
+
+**Propagation:**
+- Severity: NORMAL (dormant until the merchant whitelists pincodes) · Layers: frontend (`lib/admin-api.ts`, `lib/orders-api.ts`, `lib/shipping-provider-labels.ts`, `types/{cart,admin-order}.ts`, `components/admin/{LocalDeliverySettingsPanel,AdminOrderFulfillmentPanel,AdminOrderDetailPanel,AdminOrdersList,AdminOrderBoard}.tsx`, `components/checkout/CheckoutForm.tsx`, `app/(admin)/admin/settings/**`) — pairs with backend-core 0.1.68
+- Migration: NO · Flag: merchant DB toggle (Admin → Settings → Local Delivery) · Design impact: none (token-styled) · Breaking: NO
+- Rollback: revert the files
+- Theme note: the account order-detail "Delivery" card lives in the per-client theme (`app/(account)/orders/[id]/page.tsx`) — hand-carry the equivalent edit to each client's theme copy.
+
 ## [0.1.43] — 2026-07-09
 
 ### Fixed

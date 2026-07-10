@@ -97,6 +97,28 @@ export type UpdateInventorySettingsInput = {
   defaultLowStockThreshold: number;
 };
 
+export type LocalDeliveryPincodeEntry = {
+  pincode: string;
+  /** Per-pincode fee in paise; null = store default fee applies. */
+  feePaise: number | null;
+};
+
+export type LocalDeliverySettingsResponse = {
+  enabled: boolean;
+  pincodes: LocalDeliveryPincodeEntry[];
+  defaultFeePaise: number;
+  freeAbovePaise: number | null;
+  estimatedDays: number;
+};
+
+export type UpdateLocalDeliverySettingsInput = {
+  enabled?: boolean;
+  pincodes?: Array<{ pincode: string; feePaise?: number | null }>;
+  defaultFeePaise?: number;
+  freeAbovePaise?: number | null;
+  estimatedDays?: number;
+};
+
 export type BoxPreset = {
   name: string;
   lengthCm: number;

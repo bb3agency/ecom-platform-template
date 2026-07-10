@@ -72,7 +72,7 @@ export function CheckoutForm() {
   const [submitting, setSubmitting] = useState(false);
   const [savedAddresses, setSavedAddresses] = useState<UserAddress[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
-  const [shippingQuote, setShippingQuote] = useState<{ shippingCharge: number; estimatedDays: number; selectedShippingProvider?: "DELHIVERY" | "SHIPROCKET"; courierCompanyId?: number } | null>(null);
+  const [shippingQuote, setShippingQuote] = useState<{ shippingCharge: number; estimatedDays: number; selectedShippingProvider?: "DELHIVERY" | "SHIPROCKET" | "LOCAL"; courierCompanyId?: number } | null>(null);
   const [shippingQuoteLoading, setShippingQuoteLoading] = useState(false);
   const [shippingQuoteError, setShippingQuoteError] = useState<string | null>(null);
   const [couponCode, setCouponCode] = useState("");
@@ -848,6 +848,11 @@ export function CheckoutForm() {
           </div>
           {shippingQuoteError && (
             <p className="rounded-xl bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">{shippingQuoteError}</p>
+          )}
+          {shippingQuote?.selectedShippingProvider === "LOCAL" && (
+            <p className="rounded-xl bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700">
+              Local delivery — this order is delivered directly by the store.
+            </p>
           )}
           {shippingQuote && shippingQuote.estimatedDays > 0 && (
             <p className="text-xs text-muted-foreground">

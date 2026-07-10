@@ -125,6 +125,14 @@ export class WhatsappTemplateRegistry {
         language: 'en',
         params: ['storeName', 'orderId', 'customerName', 'orderAmountLine']
       },
+      // Merchant/admin alert for LOCAL DELIVERY orders (whitelisted pincode — the merchant
+      // delivers it himself, no courier is booked). Includes the delivery address + phone
+      // line ({{5}}) because the admin is the courier for this order.
+      AdminLocalOrder: {
+        metaName: 'admin_local_order',
+        language: 'en',
+        params: ['storeName', 'orderId', 'customerName', 'orderAmountLine', 'deliveryAddressLine']
+      },
       // Return-request decision updates (approved / declined / picked up / refunded).
       // {{3}} is a full human-readable status line composed by the service so the SAME
       // approved Utility template covers every lifecycle stage.
@@ -152,8 +160,18 @@ export class WhatsappTemplateRegistry {
       orderId: WhatsappTemplateRegistry.resolveOrderRef(input),
       trackingInfo: trackingUrl.length > 0 ? trackingUrl : 'your account orders page',
       // AdminNewOrder {{4}}: 'Rs 1,234.00 - PREPAID' (Meta rejects empty params).
-      orderAmountLine: WhatsappTemplateRegistry.composeOrderAmountLine(input)
+      orderAmountLine: WhatsappTemplateRegistry.composeOrderAmountLine(input),
+      // AdminLocalOrder {{5}}: 'address, Ph: phone' (Meta rejects empty params).
+      deliveryAddressLine: WhatsappTemplateRegistry.composeDeliveryAddressLine(input)
     };
+  }
+
+  /** 'address — Ph: phone' line for the admin local-order template; never empty. */
+  static composeDeliveryAddressLine(input: TemplateData): string {
+    const address = typeof input.deliveryAddress === 'string' ? input.deliveryAddress.trim() : '';
+    const phone = typeof input.customerPhone === 'string' ? input.customerPhone.trim() : '';
+    const line = [address, phone ? `Ph: ${phone}` : ''].filter(Boolean).join(' — ');
+    return line.length > 0 ? line : 'see admin panel';
   }
 
   /** 'amount - paymentMode' line for the admin new-order template; never empty. */

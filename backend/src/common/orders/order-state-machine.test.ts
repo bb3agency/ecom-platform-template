@@ -29,6 +29,9 @@ describe('order state machine', () => {
     expect(canTransitionOrder('SHIPPED', 'CANCELLED')).toBe(true);
     // Couriers often report delivery without an out-for-delivery scan reaching us
     expect(canTransitionOrder('SHIPPED', 'DELIVERED')).toBe(true);
+    // Merchant-fulfilled local delivery orders skip the courier SHIPPED hop
+    expect(canTransitionOrder('CONFIRMED', 'OUT_FOR_DELIVERY')).toBe(true);
+    expect(canTransitionOrder('PROCESSING', 'OUT_FOR_DELIVERY')).toBe(true);
     expect(canTransitionOrder('OUT_FOR_DELIVERY', 'DELIVERED')).toBe(true);
     expect(canTransitionOrder('DELIVERED', 'REFUNDED')).toBe(true);
   });

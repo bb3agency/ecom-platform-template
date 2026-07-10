@@ -331,6 +331,60 @@ const boxPresetsResponseSchema = {
   }
 } as const;
 
+const localDeliveryPincodeEntrySchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['pincode'],
+  properties: {
+    pincode: { type: 'string', minLength: 6, maxLength: 6, pattern: '^[1-9][0-9]{5}$' },
+    // Per-pincode fee in paise; null/absent → store default fee applies.
+    feePaise: { anyOf: [{ type: 'integer', minimum: 0, maximum: 10000000 }, { type: 'null' }] }
+  }
+} as const;
+
+const localDeliverySettingsResponseSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['enabled', 'pincodes', 'defaultFeePaise', 'freeAbovePaise', 'estimatedDays'],
+  properties: {
+    enabled: { type: 'boolean' },
+    pincodes: { type: 'array', items: localDeliveryPincodeEntrySchema, maxItems: 500 },
+    defaultFeePaise: { type: 'integer', minimum: 0 },
+    freeAbovePaise: { anyOf: [{ type: 'integer', minimum: 1 }, { type: 'null' }] },
+    estimatedDays: { type: 'integer', minimum: 1, maximum: 7 }
+  }
+} as const;
+
+export const getLocalDeliverySettingsSchema = {
+  params: emptyParamsSchema,
+  querystring: emptyQuerystringSchema,
+  response: {
+    200: localDeliverySettingsResponseSchema,
+    ...standardAdminErrorResponses
+  }
+} as const;
+
+export const updateLocalDeliverySettingsSchema = {
+  params: emptyParamsSchema,
+  querystring: emptyQuerystringSchema,
+  body: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      enabled: { type: 'boolean' },
+      pincodes: { type: 'array', items: localDeliveryPincodeEntrySchema, maxItems: 500 },
+      defaultFeePaise: { type: 'integer', minimum: 0, maximum: 10000000 },
+      // Omit to leave unchanged; null to disable the free-above threshold.
+      freeAbovePaise: { anyOf: [{ type: 'integer', minimum: 1, maximum: 100000000 }, { type: 'null' }] },
+      estimatedDays: { type: 'integer', minimum: 1, maximum: 7 }
+    }
+  },
+  response: {
+    200: localDeliverySettingsResponseSchema,
+    ...standardAdminErrorResponses
+  }
+} as const;
+
 export const getBoxPresetsSchema = {
   params: emptyParamsSchema,
   querystring: emptyQuerystringSchema,

@@ -148,7 +148,14 @@ function OrderCard({ order }: { order: AdminBoardOrderItem }) {
       </p>
 
       {/* Ship status / action */}
-      {order.canShipNow ? (
+      {order.isLocalDelivery ? (
+        <div className="flex items-center gap-1 rounded-lg bg-emerald-50 border border-emerald-200 px-2 py-1">
+          <Truck className="h-3 w-3 text-emerald-600 shrink-0" />
+          <span className="text-[10px] font-semibold text-emerald-700">
+            Local delivery — fulfil directly
+          </span>
+        </div>
+      ) : order.canShipNow ? (
         <div className="flex items-center gap-1 rounded-lg bg-emerald-50 border border-emerald-200 px-2 py-1">
           <Zap className="h-3 w-3 text-emerald-600 shrink-0" />
           <span className="text-[10px] font-semibold text-emerald-700">

@@ -47,8 +47,8 @@ export interface DeliveryRates {
   pincode: string;
   shippingCharge: number;
   estimatedDays: number;
-  /** Backend-selected cheapest provider — passed to order creation. */
-  selectedShippingProvider?: "DELHIVERY" | "SHIPROCKET";
+  /** Backend-selected provider — LOCAL = merchant-fulfilled local delivery (whitelisted pincode). */
+  selectedShippingProvider?: "DELHIVERY" | "SHIPROCKET" | "LOCAL";
   /** Shiprocket courier company ID for the quoted rate — must be passed back to lock AWB to the same courier. */
   courierCompanyId?: number;
   availableCouriers?: Array<{

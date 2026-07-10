@@ -12,8 +12,11 @@ export type OrderStatus =
 export const ORDER_STATUS_TRANSITIONS: Record<OrderStatus, ReadonlyArray<OrderStatus>> = {
   PENDING_PAYMENT: ['PAYMENT_FAILED', 'CONFIRMED'],
   PAYMENT_FAILED: ['PENDING_PAYMENT', 'CANCELLED'],
-  CONFIRMED: ['PROCESSING', 'SHIPPED', 'CANCELLED', 'REFUNDED'],
-  PROCESSING: ['SHIPPED', 'CANCELLED', 'REFUNDED'],
+  // OUT_FOR_DELIVERY directly from CONFIRMED/PROCESSING: merchant-fulfilled local
+  // delivery orders (selectedShippingProvider = LOCAL) have no courier SHIPPED hop —
+  // the admin advances them manually (packing → out for delivery → delivered).
+  CONFIRMED: ['PROCESSING', 'SHIPPED', 'OUT_FOR_DELIVERY', 'CANCELLED', 'REFUNDED'],
+  PROCESSING: ['SHIPPED', 'OUT_FOR_DELIVERY', 'CANCELLED', 'REFUNDED'],
   // SHIPPED → DELIVERED directly: couriers frequently report delivery without an
   // out-for-delivery scan ever reaching us (missed webhook, OFD not pushed). Requiring
   // the intermediate hop left orders stuck at SHIPPED while the shipment was DELIVERED.

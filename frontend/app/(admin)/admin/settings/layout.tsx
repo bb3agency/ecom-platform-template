@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Store, Truck, ClipboardList, Wallet, Bell, ChevronRight } from "lucide-react";
+import { Store, Truck, Bike, ClipboardList, Wallet, Bell, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const SETTINGS_LINKS = [
@@ -17,6 +17,12 @@ const SETTINGS_LINKS = [
     label: "Shipping",
     description: "Pickup pincode and minimum order",
     icon: Truck,
+  },
+  {
+    href: "/admin/settings/local-delivery",
+    label: "Local Delivery",
+    description: "Whitelisted pincodes you deliver yourself",
+    icon: Bike,
   },
   {
     href: "/admin/settings/inventory",

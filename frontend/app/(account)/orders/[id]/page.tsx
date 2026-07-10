@@ -618,6 +618,17 @@ export default function AccountOrderDetailPage() {
         </form>
       )}
 
+      {/* ── Local delivery (no courier/AWB ever exists for these orders) ── */}
+      {order.isLocalDelivery && !order.shipment?.awb && (
+        <DetailCard icon={<Truck className="size-4" aria-hidden />} title="Delivery">
+          <p className="text-sm text-[#767676]">
+            This order is delivered directly by the store — no courier tracking number is
+            issued. You&apos;ll be notified as it moves through packing, out for delivery,
+            and delivered.
+          </p>
+        </DetailCard>
+      )}
+
       {/* ── Tracking ───────────────────────────────────────────────────── */}
       {order.shipment?.awb && (
         <DetailCard icon={<Truck className="size-4" aria-hidden />} title="Tracking">

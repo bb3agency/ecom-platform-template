@@ -100,6 +100,8 @@ export const ADMIN_ENDPOINT_POLICY_REGISTRY: readonly EndpointPolicy[] = [
   { method: 'PATCH', path: '/api/v1/admin/settings/cod', permission: 'settings:write', layer: 'A' },
   { method: 'GET', path: '/api/v1/admin/settings/box-presets', permission: 'settings:read', layer: 'A' },
   { method: 'PATCH', path: '/api/v1/admin/settings/box-presets', permission: 'settings:write', layer: 'A' },
+  { method: 'GET', path: '/api/v1/admin/settings/local-delivery', permission: 'settings:read', layer: 'A' },
+  { method: 'PATCH', path: '/api/v1/admin/settings/local-delivery', permission: 'settings:write', layer: 'A' },
 
   // Gallery (store-wide brand/farm images; opt-in per client via StoreSettings.galleryEnabled)
   { method: 'GET', path: '/api/v1/admin/gallery', permission: 'settings:read', layer: 'A' },

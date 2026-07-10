@@ -1,7 +1,7 @@
 export const SHIPPING_PROVIDER_LABELS: Record<string, string> = {
   DELHIVERY: "Delhivery",
   SHIPROCKET: "Shiprocket",
-  SELF: "Self",
+  LOCAL: "Local delivery",
 };
 
 export function shippingProviderLabel(provider: string | null | undefined): string {

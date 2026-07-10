@@ -12,6 +12,28 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.68] — 2026-07-10
+
+### Added
+- **Merchant-fulfilled Local Delivery (opt-in per client, data-driven — no flag needed).** When the checkout pincode is on the merchant's whitelist, **Delhivery/Shiprocket are never invoked** (no serviceability calls, no quotes, no booking, no webhooks) and the merchant delivers the order himself:
+  - **Schema** (migration `20260710090000_add_local_delivery`): `ShippingProvider` enum is **recreated** as `('DELHIVERY','SHIPROCKET','LOCAL')` — adds `LOCAL` and drops the never-used `SELF` in one step (Postgres has no `DROP VALUE`; both enum columns `Order.selectedShippingProvider` + `Shipment.provider` are re-typed with `USING` casts; `SELF` was never written by any code path, so the casts are safe on every existing row). `StoreSettings` gains `localDeliveryEnabled` (default off), `localDeliveryPincodes` (JSON `[{pincode, feePaise?}]`), `localDeliveryDefaultFeePaise` (default 2000 = ₹20), `localDeliveryFreeAbovePaise` (nullable), `localDeliveryEstimatedDays` (default 1).
+  - **Settings**: new `GET/PATCH /admin/settings/local-delivery` (`settings:read/write`; endpoint-policy registry now 139 mappings). Per-pincode fee; empty fee falls back to the default fee; one global free-above-subtotal threshold. No weight/box/packaging computation is involved — the fee is purely pincode-based (`common/shipping/local-delivery.ts`).
+  - **Quote/checkout**: `checkPincodeServiceability` + `getDeliveryRates` short-circuit before any courier resolution (quote persisted with `provider: LOCAL` so shown == charged); `createOrder` + `prepareCheckout` consume the local quote first (works even with zero couriers configured) and store `selectedShippingProvider = LOCAL`; stale cached LOCAL quotes are discarded when the pincode is de-whitelisted mid-checkout.
+  - **Fulfilment**: `canShipNow` is always false for LOCAL orders ("Local delivery order — fulfil directly…"); `POST /admin/orders/:id/ship` hard-rejects with 422; no Shipment row is ever created. Order state machine now allows `CONFIRMED/PROCESSING → OUT_FOR_DELIVERY` (local orders skip the courier SHIPPED hop; harmless for courier orders — transitions remain webhook/admin-driven).
+  - **Manual-status notifications**: `adminUpdateOrderStatus` on a LOCAL order fires the matching customer notification via `send-primary` (SHIPPED→OrderShipped, OUT_FOR_DELIVERY→OutForDelivery, DELIVERED→OrderDelivered, CANCELLED→OrderCancelled) — manual changes are the only status driver since no webhooks exist. Marking a local COD order DELIVERED **captures the payment** (cash collected at the doorstep) with an audit history row.
+  - **Admin alerts**: new `AdminLocalOrder` template (email + SMS + WhatsApp `admin_local_order`, 5 params incl. the delivery address + phone line) replaces `AdminNewOrder` for LOCAL orders in the order-processing worker — the admin IS the courier. Body in `docs/WHATSAPP_TEMPLATE_REGISTRY.md` (needs Meta approval per client).
+  - **Serialization**: `isLocalDelivery` on admin order detail/list/board + customer order detail (schemas updated); create-order schemas accept `selectedShippingProvider: LOCAL` (echoed quote — never trusted).
+- **Invoice PDF redesigned (modern/clean).** `invoice-pdf.ts` rebuilt: brand header (store display name + optional logo — fetched best-effort outside the DB transaction, PNG/JPG only), right-aligned invoice meta, billed-to/place-of-supply cards, striped items table, right-aligned totals with CGST/SGST vs IGST shown contextually, grand-total emphasis, amount-in-words, fixed footer with GSTIN + computer-generated note. Credit note restyled to match. `SellerProfile` now carries `storeName` + `logoUrl`.
+
+### Tests
+- `common/shipping/local-delivery.test.ts` (parser, quote resolution, free-above, coupon, fail-safe settings load) and `modules/cart/cart.service.local-delivery.test.ts` (serviceability + rate short-circuit proving the courier API is NEVER called, quote persistence with `provider: LOCAL`, default-fee fallback, checkout quote parity).
+
+**Propagation:**
+- Severity: NORMAL (dormant until the merchant whitelists pincodes — empty whitelist = exact current behaviour) · Layers: backend (`prisma`, `common/shipping/local-delivery.ts`, `common/orders/order-state-machine.ts`, `modules/cart`, `modules/orders`, `modules/settings`, `modules/notifications`, `modules/invoices/invoice-pdf.ts`, `queues/workers/order-processing.worker.ts`, `common/auth/admin-endpoint-policy-registry.ts`) — pairs with frontend-core 0.1.44
+- Migration: YES (`20260710090000_add_local_delivery`; enum recreate `DELHIVERY|SHIPROCKET|LOCAL` — drops unused `SELF` — plus additive StoreSettings columns) · Flag: `StoreSettings.localDeliveryEnabled` (DB, default off) · Design impact: none · Breaking: NO (`SELF` had zero rows and zero code references; pre-deploy check: `SELECT COUNT(*) FROM "Shipment" WHERE "provider"::text = 'SELF'` → 0)
+- Rollback: revert the module edits; new columns are additive and harmless if unused (enum rollback would need another recreate)
+- Operator: to use WhatsApp admin alerts for local orders, create + approve the `admin_local_order` template in WhatsApp Manager (body in `docs/WHATSAPP_TEMPLATE_REGISTRY.md`). Email/SMS work without any Meta step.
+
 ## [0.1.67] — 2026-07-09
 
 ### Fixed

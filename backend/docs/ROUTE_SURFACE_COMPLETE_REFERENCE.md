@@ -556,6 +556,20 @@ Inventory defaults: low-stock threshold, out-of-stock behaviour (block checkout 
 ### `GET /PATCH /api/v1/admin/settings/cod`
 COD enable/disable toggle, customer cancellation window in hours, seller state (used for tax calculations).
 
+### `GET /PATCH /api/v1/admin/settings/local-delivery`
+**Merchant-fulfilled local delivery (2026-07-10).** `settings:read` / `settings:write`. Controls
+`StoreSettings.localDelivery*`: master toggle, whitelisted pincode list (each entry may carry its
+own `feePaise`; null/absent → the store default fee, default ₹20/2000 paise), the default fee,
+an optional free-above-subtotal threshold, and the estimated-days figure shown at checkout.
+When a checkout destination pincode is on this whitelist, Delhivery/Shiprocket are **never
+invoked** (no serviceability, no quote, no booking, no webhooks): the order is created with
+`selectedShippingProvider = LOCAL`, `canShipNow` is always false with a local-delivery reason,
+`POST /admin/orders/:id/ship` hard-rejects (422), and the admin advances the order manually via
+`PATCH /admin/orders/:id/status` — each manual change (SHIPPED / OUT_FOR_DELIVERY / DELIVERED /
+CANCELLED) fires the matching customer notification through `send-primary`, and marking a local
+COD order DELIVERED captures the payment. Admin new-order alerts use the `AdminLocalOrder`
+template (includes address + phone) instead of `AdminNewOrder`.
+
 ---
 
 ## 17. Admin analytics and reliability routes

@@ -264,7 +264,8 @@ export const deliveryRatesSchema = {
         },
         selectedShippingProvider: {
           type: 'string',
-          enum: ['DELHIVERY', 'SHIPROCKET'],
+          // LOCAL = merchant-fulfilled local delivery (whitelisted pincode; no courier involved).
+          enum: ['DELHIVERY', 'SHIPROCKET', 'LOCAL'],
           maxLength: 20
         },
         courierCompanyId: { type: 'integer', minimum: 1 }

@@ -20,7 +20,7 @@ export interface CreateOrderInput {
   notes?: string;
   paymentMode?: CheckoutPaymentMode;
   /** Backend-selected cheapest shipping provider from delivery rates response. */
-  selectedShippingProvider?: "DELHIVERY" | "SHIPROCKET";
+  selectedShippingProvider?: "DELHIVERY" | "SHIPROCKET" | "LOCAL";
   /** Rate shown to the customer by getDeliveryRates (paise). Ensures customer is charged exactly what was shown. */
   shippingChargePaise?: number;
   /** Shiprocket courier company ID from the quoted rate — ensures AWB uses the same courier that was priced. */
@@ -55,7 +55,9 @@ export interface OrderSummary {
   /** Shipping rate quoted at checkout (paise). Immutable — preserved even if shippingCharge is later adjusted. */
   shippingChargeQuotedPaise?: number | null;
   /** Provider locked at checkout — used for AWB assignment enforcement. */
-  selectedShippingProvider?: "DELHIVERY" | "SHIPROCKET" | null;
+  selectedShippingProvider?: "DELHIVERY" | "SHIPROCKET" | "LOCAL" | null;
+  /** Merchant-fulfilled local delivery order — no courier or AWB will ever exist. */
+  isLocalDelivery?: boolean;
   discountAmount: number;
   couponCode?: string | null;
   total: number;
@@ -143,7 +145,7 @@ export interface PrepareCheckoutInput {
   addressId?: string;
   shippingAddress?: CheckoutShippingAddressInput;
   notes?: string;
-  selectedShippingProvider?: "DELHIVERY" | "SHIPROCKET";
+  selectedShippingProvider?: "DELHIVERY" | "SHIPROCKET" | "LOCAL";
   /** Rate shown to the customer by getDeliveryRates (paise). Ensures customer is charged exactly what was shown. */
   shippingChargePaise?: number;
   /** Shiprocket courier company ID from the quoted rate — ensures AWB uses the same courier that was priced. */

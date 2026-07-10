@@ -11,6 +11,7 @@ import {
   ReturnRequestUpdateEmail,
   OrderConfirmedEmail,
   AdminNewOrderEmail,
+  AdminLocalOrderEmail,
   OrderDeliveredEmail,
   OrderShippedEmail,
   OutForDeliveryEmail,
@@ -29,6 +30,7 @@ export const supportedEmailTemplates = [
   'OrderDelivered',
   'OrderCancelled',
   'AdminNewOrder',
+  'AdminLocalOrder',
   'ReturnRequestUpdate',
   'LowStockAlert',
   'OtpVerification',
@@ -94,6 +96,19 @@ export async function renderNotificationEmail(template: string, data: Record<str
       return {
         subject: 'New order ' + orderRef + ' — ' + (amount || 'review in admin panel'),
         html: await render(AdminNewOrderEmail({ orderRef, customerName, amount, paymentMode }))
+      };
+    }
+    case 'AdminLocalOrder': {
+      const customerName = typeof data.customerName === 'string' && data.customerName.trim() ? escapeHtml(data.customerName.trim()) : 'A customer';
+      const amount = typeof data.amount === 'string' ? escapeHtml(data.amount) : '';
+      const paymentMode = typeof data.paymentMode === 'string' ? escapeHtml(data.paymentMode) : '';
+      const deliveryAddress = typeof data.deliveryAddress === 'string' ? escapeHtml(data.deliveryAddress) : '';
+      const customerPhone = typeof data.customerPhone === 'string' ? escapeHtml(data.customerPhone) : '';
+      return {
+        subject: 'Local delivery order ' + orderRef + ' — ' + (amount || 'review in admin panel'),
+        html: await render(
+          AdminLocalOrderEmail({ orderRef, customerName, amount, paymentMode, deliveryAddress, customerPhone })
+        )
       };
     }
     case 'OutForDelivery':

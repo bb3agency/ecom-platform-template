@@ -159,7 +159,16 @@ export class OrdersService {
     hasCompleteShippingAddress?: boolean;
     hasItems?: boolean;
     pickupPincodeConfigured?: boolean;
+    selectedShippingProvider?: string | null;
   }): { canShipNow: boolean; shipBlockReason: string | null } {
+    // Merchant-fulfilled local delivery: no courier shipment is ever booked. The admin
+    // fulfils directly and advances the status manually from the order detail panel.
+    if (input.selectedShippingProvider === 'LOCAL') {
+      return {
+        canShipNow: false,
+        shipBlockReason: 'Local delivery order — fulfil directly and update the status manually.'
+      };
+    }
     if (input.status !== OrderStatus.CONFIRMED && input.status !== OrderStatus.PROCESSING) {
       // Give a status-specific reason so the admin sees an accurate state instead of a
       // generic "not shippable" message once the order has progressed past booking.
@@ -454,60 +463,82 @@ export class OrdersService {
       }
       const discountAmount = this.calculateOrderDiscount(subtotal, effectiveCoupon, cart.items);
       const requestedPaymentMode = input.paymentMode ?? 'PREPAID';
-      const usingNoop = cartService.usesNoopShipping();
-      const pickupPincode = await resolvePickupPincode(tx as unknown as PrismaClient, {
-        noopFallback: usingNoop ? '500001' : null
-      });
-      if (!pickupPincode) {
-        throw new AppError(ERROR_CODES.INTERNAL_ERROR, 'Shipping provider is not configured', 503);
-      }
-      const rawProviderKey = input.selectedShippingProvider?.toLowerCase();
-      const selectedProviderKey: 'delhivery' | 'shiprocket' | undefined =
-        rawProviderKey === 'delhivery' || rawProviderKey === 'shiprocket' ? rawProviderKey : undefined;
-      const providerOverride =
-        selectedProviderKey && !usingNoop
-          ? (createShippingAdapterForProvider(selectedProviderKey) ?? undefined)
-          : undefined;
       const paymentModeForQuote: 'COD' | 'PREPAID' = requestedPaymentMode === 'COD' ? 'COD' : 'PREPAID';
 
-      // Determine the authoritative shipping quote. The provider is ALWAYS chosen server-side as the
-      // cheapest serviceable option — never trusted from the client. Priority:
-      //   1. The exact quote the customer saw (cached at getDeliveryRates) → guarantees shown == charged.
-      //   2. A fresh cross-provider comparison (Delhivery vs Shiprocket on chargeable weight) → always
-      //      assigns the genuinely cheapest provider, even if the cache expired.
-      //   3. Noop/single-provider fallback for dev/unconfigured environments.
-      let authoritativeQuote = usingNoop
-        ? null
-        : await cartService.getStoredShippingQuote(userId, undefined, cart.id, shippingAddress.pincode, paymentModeForQuote);
-      if (!authoritativeQuote && !usingNoop) {
-        authoritativeQuote = await cartService.getCheapestProviderQuoteForCart({
-          cart,
-          destinationPincode: shippingAddress.pincode,
-          pickupPincode,
-          paymentMode: paymentModeForQuote
-        });
-      }
+      // Merchant-fulfilled local delivery: whitelisted pincodes NEVER touch the courier
+      // providers — the fee is purely pincode-based and the order is flagged LOCAL so the
+      // fulfilment surfaces skip booking entirely. Checked before any courier resolution
+      // so local checkout works even when no courier is configured.
+      const localQuote = await cartService.getLocalDeliveryQuoteForCheckout(
+        shippingAddress.pincode,
+        subtotal,
+        effectiveCoupon?.type === CouponType.FREE_SHIPPING
+      );
 
       let shippingCharge: number;
-      let lockedProvider: 'DELHIVERY' | 'SHIPROCKET' | undefined;
+      let lockedProvider: 'DELHIVERY' | 'SHIPROCKET' | 'LOCAL' | undefined;
       let lockedCourierCompanyId: number | undefined;
-      if (authoritativeQuote) {
-        shippingCharge = authoritativeQuote.shippingChargePaise;
-        lockedProvider = authoritativeQuote.provider;
-        lockedCourierCompanyId = authoritativeQuote.courierCompanyId;
+      if (localQuote) {
+        shippingCharge = localQuote.shippingChargePaise;
+        lockedProvider = 'LOCAL';
+        lockedCourierCompanyId = undefined;
       } else {
-        // Noop / single-provider mode: compute via the (possibly overridden) provider.
-        const noopQuote = await cartService.computeShippingChargeForCart({
-          cart,
-          destinationPincode: shippingAddress.pincode,
-          originPincode: pickupPincode,
-          usingNoop,
-          paymentMode: paymentModeForQuote,
-          ...(providerOverride ? { provider: providerOverride } : {})
+        const usingNoop = cartService.usesNoopShipping();
+        const pickupPincode = await resolvePickupPincode(tx as unknown as PrismaClient, {
+          noopFallback: usingNoop ? '500001' : null
         });
-        shippingCharge = noopQuote.shippingChargePaise;
-        lockedProvider = input.selectedShippingProvider;
-        lockedCourierCompanyId = input.courierCompanyId ?? noopQuote.courierCompanyId;
+        if (!pickupPincode) {
+          throw new AppError(ERROR_CODES.INTERNAL_ERROR, 'Shipping provider is not configured', 503);
+        }
+        const rawProviderKey = input.selectedShippingProvider?.toLowerCase();
+        const selectedProviderKey: 'delhivery' | 'shiprocket' | undefined =
+          rawProviderKey === 'delhivery' || rawProviderKey === 'shiprocket' ? rawProviderKey : undefined;
+        const providerOverride =
+          selectedProviderKey && !usingNoop
+            ? (createShippingAdapterForProvider(selectedProviderKey) ?? undefined)
+            : undefined;
+
+        // Determine the authoritative shipping quote. The provider is ALWAYS chosen server-side as the
+        // cheapest serviceable option — never trusted from the client. Priority:
+        //   1. The exact quote the customer saw (cached at getDeliveryRates) → guarantees shown == charged.
+        //   2. A fresh cross-provider comparison (Delhivery vs Shiprocket on chargeable weight) → always
+        //      assigns the genuinely cheapest provider, even if the cache expired.
+        //   3. Noop/single-provider fallback for dev/unconfigured environments.
+        let authoritativeQuote = usingNoop
+          ? null
+          : await cartService.getStoredShippingQuote(userId, undefined, cart.id, shippingAddress.pincode, paymentModeForQuote);
+        if (authoritativeQuote?.provider === 'LOCAL') {
+          // Stale LOCAL quote (pincode was de-whitelisted between quote and checkout) —
+          // discard and fall through to a fresh courier comparison.
+          authoritativeQuote = null;
+        }
+        if (!authoritativeQuote && !usingNoop) {
+          authoritativeQuote = await cartService.getCheapestProviderQuoteForCart({
+            cart,
+            destinationPincode: shippingAddress.pincode,
+            pickupPincode,
+            paymentMode: paymentModeForQuote
+          });
+        }
+
+        if (authoritativeQuote && authoritativeQuote.provider !== 'LOCAL') {
+          shippingCharge = authoritativeQuote.shippingChargePaise;
+          lockedProvider = authoritativeQuote.provider;
+          lockedCourierCompanyId = authoritativeQuote.courierCompanyId;
+        } else {
+          // Noop / single-provider mode: compute via the (possibly overridden) provider.
+          const noopQuote = await cartService.computeShippingChargeForCart({
+            cart,
+            destinationPincode: shippingAddress.pincode,
+            originPincode: pickupPincode,
+            usingNoop,
+            paymentMode: paymentModeForQuote,
+            ...(providerOverride ? { provider: providerOverride } : {})
+          });
+          shippingCharge = noopQuote.shippingChargePaise;
+          lockedProvider = input.selectedShippingProvider;
+          lockedCourierCompanyId = input.courierCompanyId ?? noopQuote.courierCompanyId;
+        }
       }
 
       const total = Math.max(subtotal + shippingCharge - discountAmount, 0);
@@ -1240,59 +1271,78 @@ export class OrdersService {
     }
     const discountAmount = this.calculateOrderDiscount(subtotal, effectiveCoupon, cart.items);
 
-    const usingNoop = cartService.usesNoopShipping();
-    const pickupPincode = await resolvePickupPincode(this.fastify.prisma, { noopFallback: usingNoop ? '500001' : null });
-    if (!pickupPincode) {
-      throw new AppError(ERROR_CODES.INTERNAL_ERROR, 'Shipping provider is not configured', 503);
-    }
-
-    const rawProviderKeyForCheckout = input.selectedShippingProvider?.toLowerCase();
-    const selectedProviderKeyForCheckout: 'delhivery' | 'shiprocket' | undefined =
-      rawProviderKeyForCheckout === 'delhivery' || rawProviderKeyForCheckout === 'shiprocket'
-        ? rawProviderKeyForCheckout
-        : undefined;
-    const providerOverrideForCheckout =
-      selectedProviderKeyForCheckout && !usingNoop
-        ? (createShippingAdapterForProvider(selectedProviderKeyForCheckout) ?? undefined)
-        : undefined;
-
-    // Determine the authoritative shipping quote. The provider is ALWAYS chosen server-side as the
-    // cheapest serviceable option — never trusted from the client. Priority:
-    //   1. The exact quote the customer saw (cached at getDeliveryRates) → guarantees shown == charged.
-    //   2. A fresh cross-provider comparison (Delhivery vs Shiprocket on chargeable weight) → always
-    //      assigns the genuinely cheapest provider, even if the cache expired.
-    //   3. Noop/single-provider fallback for dev/unconfigured environments.
-    let authoritativeQuote = usingNoop
-      ? null
-      : await cartService.getStoredShippingQuote(userId, undefined, cart.id, shippingAddress.pincode, 'PREPAID');
-    if (!authoritativeQuote && !usingNoop) {
-      authoritativeQuote = await cartService.getCheapestProviderQuoteForCart({
-        cart,
-        destinationPincode: shippingAddress.pincode,
-        pickupPincode,
-        paymentMode: 'PREPAID'
-      });
-    }
+    // Merchant-fulfilled local delivery: whitelisted pincodes NEVER touch the courier
+    // providers. Checked before courier resolution so local prepaid checkout works even
+    // when no courier is configured.
+    const localQuote = await cartService.getLocalDeliveryQuoteForCheckout(
+      shippingAddress.pincode,
+      subtotal,
+      effectiveCoupon?.type === CouponType.FREE_SHIPPING
+    );
 
     let shippingCharge: number;
-    let lockedProvider: 'DELHIVERY' | 'SHIPROCKET' | null;
+    let lockedProvider: 'DELHIVERY' | 'SHIPROCKET' | 'LOCAL' | null;
     let lockedCourierCompanyId: number | null;
-    if (authoritativeQuote) {
-      shippingCharge = authoritativeQuote.shippingChargePaise;
-      lockedProvider = authoritativeQuote.provider;
-      lockedCourierCompanyId = authoritativeQuote.courierCompanyId ?? null;
+    if (localQuote) {
+      shippingCharge = localQuote.shippingChargePaise;
+      lockedProvider = 'LOCAL';
+      lockedCourierCompanyId = null;
     } else {
-      const noopQuote = await cartService.computeShippingChargeForCart({
-        cart,
-        destinationPincode: shippingAddress.pincode,
-        originPincode: pickupPincode,
-        usingNoop,
-        paymentMode: 'PREPAID',
-        ...(providerOverrideForCheckout ? { provider: providerOverrideForCheckout } : {})
-      });
-      shippingCharge = noopQuote.shippingChargePaise;
-      lockedProvider = input.selectedShippingProvider ?? null;
-      lockedCourierCompanyId = input.courierCompanyId ?? noopQuote.courierCompanyId ?? null;
+      const usingNoop = cartService.usesNoopShipping();
+      const pickupPincode = await resolvePickupPincode(this.fastify.prisma, { noopFallback: usingNoop ? '500001' : null });
+      if (!pickupPincode) {
+        throw new AppError(ERROR_CODES.INTERNAL_ERROR, 'Shipping provider is not configured', 503);
+      }
+
+      const rawProviderKeyForCheckout = input.selectedShippingProvider?.toLowerCase();
+      const selectedProviderKeyForCheckout: 'delhivery' | 'shiprocket' | undefined =
+        rawProviderKeyForCheckout === 'delhivery' || rawProviderKeyForCheckout === 'shiprocket'
+          ? rawProviderKeyForCheckout
+          : undefined;
+      const providerOverrideForCheckout =
+        selectedProviderKeyForCheckout && !usingNoop
+          ? (createShippingAdapterForProvider(selectedProviderKeyForCheckout) ?? undefined)
+          : undefined;
+
+      // Determine the authoritative shipping quote. The provider is ALWAYS chosen server-side as the
+      // cheapest serviceable option — never trusted from the client. Priority:
+      //   1. The exact quote the customer saw (cached at getDeliveryRates) → guarantees shown == charged.
+      //   2. A fresh cross-provider comparison (Delhivery vs Shiprocket on chargeable weight) → always
+      //      assigns the genuinely cheapest provider, even if the cache expired.
+      //   3. Noop/single-provider fallback for dev/unconfigured environments.
+      let authoritativeQuote = usingNoop
+        ? null
+        : await cartService.getStoredShippingQuote(userId, undefined, cart.id, shippingAddress.pincode, 'PREPAID');
+      if (authoritativeQuote?.provider === 'LOCAL') {
+        // Stale LOCAL quote (pincode de-whitelisted between quote and checkout) — discard.
+        authoritativeQuote = null;
+      }
+      if (!authoritativeQuote && !usingNoop) {
+        authoritativeQuote = await cartService.getCheapestProviderQuoteForCart({
+          cart,
+          destinationPincode: shippingAddress.pincode,
+          pickupPincode,
+          paymentMode: 'PREPAID'
+        });
+      }
+
+      if (authoritativeQuote && authoritativeQuote.provider !== 'LOCAL') {
+        shippingCharge = authoritativeQuote.shippingChargePaise;
+        lockedProvider = authoritativeQuote.provider;
+        lockedCourierCompanyId = authoritativeQuote.courierCompanyId ?? null;
+      } else {
+        const noopQuote = await cartService.computeShippingChargeForCart({
+          cart,
+          destinationPincode: shippingAddress.pincode,
+          originPincode: pickupPincode,
+          usingNoop,
+          paymentMode: 'PREPAID',
+          ...(providerOverrideForCheckout ? { provider: providerOverrideForCheckout } : {})
+        });
+        shippingCharge = noopQuote.shippingChargePaise;
+        lockedProvider = input.selectedShippingProvider ?? null;
+        lockedCourierCompanyId = input.courierCompanyId ?? noopQuote.courierCompanyId ?? null;
+      }
     }
 
     const total = Math.max(subtotal + shippingCharge - discountAmount, 0);
@@ -2184,6 +2234,7 @@ export class OrdersService {
           userId: true,
           status: true,
           paymentMode: true,
+          selectedShippingProvider: true,
           subtotal: true,
           shippingCharge: true,
           discountAmount: true,
@@ -2223,8 +2274,12 @@ export class OrdersService {
             ((item as Record<string, unknown>)['paymentMode'] as string | undefined) ?? 'PREPAID',
           paymentStatus: item.payment?.status ?? null,
           shipmentStatus: item.shipment?.status ?? null,
-          awbNumber: item.shipment?.awbNumber ?? null
+          awbNumber: item.shipment?.awbNumber ?? null,
+          selectedShippingProvider:
+            ((item as Record<string, unknown>)['selectedShippingProvider'] as string | null) ?? null
         }),
+        isLocalDelivery:
+          (((item as Record<string, unknown>)['selectedShippingProvider'] as string | null) ?? null) === 'LOCAL',
         shippingMode: 'MANUAL',
         id: item.id,
         orderNumber: item.orderNumber,
@@ -2273,6 +2328,7 @@ export class OrdersService {
         orderNumber: true,
         status: true,
         paymentMode: true,
+        selectedShippingProvider: true,
         total: true,
         createdAt: true,
         user: {
@@ -2300,6 +2356,7 @@ export class OrdersService {
     type BoardItem = {
       canShipNow: boolean;
       shipBlockReason: string | null;
+      isLocalDelivery: boolean;
       shippingMode: 'AUTO' | 'MANUAL';
       id: string;
       orderNumber: string;
@@ -2342,8 +2399,12 @@ export class OrdersService {
             ((order as Record<string, unknown>)['paymentMode'] as string | undefined) ?? 'PREPAID',
           paymentStatus: order.payment?.status ?? null,
           shipmentStatus: order.shipment?.status ?? null,
-          awbNumber: order.shipment?.awbNumber ?? null
+          awbNumber: order.shipment?.awbNumber ?? null,
+          selectedShippingProvider:
+            ((order as Record<string, unknown>)['selectedShippingProvider'] as string | null) ?? null
         }),
+        isLocalDelivery:
+          (((order as Record<string, unknown>)['selectedShippingProvider'] as string | null) ?? null) === 'LOCAL',
         shippingMode: 'MANUAL',
         id: order.id,
         orderNumber: order.orderNumber,
@@ -2512,7 +2573,11 @@ export class OrdersService {
       throw new AppError(ERROR_CODES.NOT_FOUND, 'Order not found', 404);
     }
 
-    const packingBox = await this.computeOrderPackingBox(order.items);
+    // Local delivery orders skip cartonization entirely — no courier box dimensions or
+    // packaging weight are needed when the merchant delivers directly.
+    const isLocalDeliveryOrder =
+      ((order as Record<string, unknown>)['selectedShippingProvider'] as string | null) === 'LOCAL';
+    const packingBox = isLocalDeliveryOrder ? null : await this.computeOrderPackingBox(order.items);
     return { ...this.serializeOrder(order), packingBox };
   }
 
@@ -2612,6 +2677,10 @@ export class OrdersService {
     let refundReason = '';
     let refundOrderId: string | null = null;
     let refundSourceStatus: OrderStatus | null = null;
+    // Merchant-fulfilled local delivery: manual status changes are the ONLY status driver
+    // (no courier webhooks exist), so they must fire the customer notifications the
+    // shipping worker would otherwise send.
+    let localStatusNotificationTemplate: string | null = null;
     const updatedOrder = await this.fastify.prisma.$transaction(async (tx) => {
       const existing = await tx.order.findUnique({
         where: { id: orderId },
@@ -2739,6 +2808,41 @@ export class OrdersService {
         }
       });
 
+      const isLocalDeliveryOrder =
+        ((existing as Record<string, unknown>)['selectedShippingProvider'] as string | null) === 'LOCAL';
+      if (isLocalDeliveryOrder) {
+        const localTemplateByStatus: Partial<Record<OrderStatus, string>> = {
+          [OrderStatus.SHIPPED]: 'OrderShipped',
+          [OrderStatus.OUT_FOR_DELIVERY]: 'OutForDelivery',
+          [OrderStatus.DELIVERED]: 'OrderDelivered',
+          [OrderStatus.CANCELLED]: 'OrderCancelled'
+        };
+        localStatusNotificationTemplate = localTemplateByStatus[input.status] ?? null;
+
+        // Local COD marked DELIVERED = cash collected at the doorstep — capture the payment
+        // (courier orders get this from the shipping webhook; local orders have no webhook).
+        if (
+          input.status === OrderStatus.DELIVERED &&
+          existing.paymentMode === 'COD' &&
+          existing.payment &&
+          existing.payment.status !== PaymentStatus.CAPTURED
+        ) {
+          await tx.payment.update({
+            where: { orderId: existing.id },
+            data: { status: PaymentStatus.CAPTURED, capturedAt: new Date() }
+          });
+          await tx.orderStatusHistory.create({
+            data: {
+              orderId: existing.id,
+              fromStatus: OrderStatus.DELIVERED,
+              toStatus: OrderStatus.DELIVERED,
+              triggeredBy: 'ADMIN',
+              note: 'COD payment marked as collected on local delivery'
+            }
+          });
+        }
+      }
+
       if (
         input.status === OrderStatus.CANCELLED &&
         (existing.status === OrderStatus.CONFIRMED || existing.status === OrderStatus.PROCESSING)
@@ -2842,6 +2946,42 @@ export class OrdersService {
       await this.enqueueShipmentCancellation(updatedOrder.id, updatedOrder.shipment);
     }
 
+    if (localStatusNotificationTemplate && updatedOrder.status === input.status) {
+      try {
+        const contact = await this.fastify.prisma.order.findUnique({
+          where: { id: orderId },
+          select: { orderNumber: true, user: { select: { email: true, phone: true } } }
+        });
+        const email = contact?.user?.email ?? null;
+        const phone = contact?.user?.phone ?? null;
+        if (email || phone) {
+          // send-primary honours the merchant's per-template channel map (email/SMS/WhatsApp).
+          await this.enqueueOutboxMessage(
+            'notifications',
+            'send-primary',
+            {
+              ...(email ? { email } : {}),
+              ...(phone ? { phone } : {}),
+              template: localStatusNotificationTemplate,
+              data: {
+                orderId,
+                orderNumber: contact?.orderNumber ?? '',
+                // Local delivery has no AWB/tracking link — the registry falls back to
+                // "your account orders page" for the OrderShipped tracking parameter.
+                trackingUrl: ''
+              }
+            },
+            `local-status-${orderId}-${input.status}`
+          );
+        }
+      } catch (error) {
+        this.fastify.log?.error(
+          { err: error, orderId, template: localStatusNotificationTemplate },
+          'Failed to enqueue local delivery status notification'
+        );
+      }
+    }
+
     return this.serializeOrder(updatedOrder);
   }
 
@@ -2876,6 +3016,18 @@ export class OrdersService {
     });
     if (!existing) {
       throw new AppError(ERROR_CODES.NOT_FOUND, 'Order not found', 404);
+    }
+
+    // Defense in depth: local delivery orders never book a courier shipment, even if a
+    // client bypasses the disabled UI action.
+    if (
+      ((existing as Record<string, unknown>)['selectedShippingProvider'] as string | null) === 'LOCAL'
+    ) {
+      throw new AppError(
+        ERROR_CODES.VALIDATION_ERROR,
+        'This is a local delivery order — no courier shipment is booked. Fulfil it directly and update the status manually.',
+        422
+      );
     }
 
     if (!canTransitionOrder(existing.status, OrderStatus.SHIPPED)) {
@@ -4304,6 +4456,8 @@ export class OrdersService {
   ) {
     const exposeProviderReferences = options?.exposeProviderReferences ?? true;
     const exposeInternalReferences = options?.exposeInternalReferences ?? true;
+    const selectedShippingProviderValue =
+      ((order as Record<string, unknown>)['selectedShippingProvider'] as string | null | undefined) ?? null;
     const shipActionState = this.resolveShipActionState({
       status: order.status,
       paymentMode:
@@ -4312,10 +4466,13 @@ export class OrdersService {
       shipmentStatus: order.shipment?.status ?? null,
       awbNumber: order.shipment?.awbNumber ?? null,
       hasCompleteShippingAddress: this.hasCompleteShippingAddress(order.shippingAddress),
-      hasItems: order.items.length > 0
+      hasItems: order.items.length > 0,
+      selectedShippingProvider: selectedShippingProviderValue
     });
     return {
       ...shipActionState,
+      // Merchant-fulfilled local delivery flag — admin + storefront UIs branch on this.
+      isLocalDelivery: selectedShippingProviderValue === 'LOCAL',
       shippingMode: 'MANUAL',
       ...(exposeInternalReferences ? { userId: order.userId } : {}),
       id: order.id,

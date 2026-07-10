@@ -506,7 +506,11 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
                       )}
                     </td>
                     <td className="px-3 py-4 hidden md:table-cell">
-                      {order.shipmentStatus ? (
+                      {order.isLocalDelivery ? (
+                        <span className="inline-flex items-center gap-1 rounded-full border border-emerald-100 bg-emerald-50 px-2.5 py-0.5 text-[11px] font-medium text-emerald-700">
+                          LOCAL
+                        </span>
+                      ) : order.shipmentStatus ? (
                         <span
                           className={[
                             "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-medium",

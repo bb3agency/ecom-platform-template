@@ -203,6 +203,11 @@ export function AdminOrderDetailPanel({ orderId }: AdminOrderDetailPanelProps) {
                 </a>
               ) : null}
             </div>
+          ) : order.isLocalDelivery ? (
+            <p className="text-sm text-muted-foreground">
+              Local delivery — no courier shipment is booked. You deliver this order and
+              advance its status manually.
+            </p>
           ) : (
             <p className="text-sm text-muted-foreground">Not shipped yet</p>
           )}
@@ -230,6 +235,10 @@ export function AdminOrderDetailPanel({ orderId }: AdminOrderDetailPanelProps) {
                 at least this size.
               </p>
             </div>
+          ) : order.isLocalDelivery ? (
+            <p className="text-sm text-muted-foreground">
+              Local delivery — no courier dimensions needed. Pack in any suitable box.
+            </p>
           ) : (
             <p className="text-sm text-muted-foreground">No items to pack</p>
           )}

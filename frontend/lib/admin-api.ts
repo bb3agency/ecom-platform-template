@@ -1,6 +1,6 @@
 /** Admin API response shapes — aligned with backend route schemas. */
 
-export type ShippingProviderEnum = "DELHIVERY" | "SHIPROCKET" | "SELF";
+export type ShippingProviderEnum = "DELHIVERY" | "SHIPROCKET" | "LOCAL";
 
 export interface PaginationMeta {
   page: number;
@@ -143,6 +143,8 @@ export interface AdminOrderListItem {
   shipmentStatus: string | null;
   canShipNow: boolean;
   shipBlockReason: string | null;
+  /** Merchant-fulfilled local delivery order — no courier is ever booked. */
+  isLocalDelivery?: boolean;
   shippingMode: string;
 }
 
@@ -188,6 +190,8 @@ export interface AdminBoardOrderItem {
   shipmentStatus: string | null;
   canShipNow: boolean;
   shipBlockReason: string | null;
+  /** Merchant-fulfilled local delivery order — no courier is ever booked. */
+  isLocalDelivery?: boolean;
   shippingMode: string;
 }
 
@@ -284,6 +288,8 @@ export interface AdminOrderDetailFull {
   items: AdminOrderLineItem[];
   canShipNow: boolean;
   shipBlockReason: string | null;
+  /** Merchant-fulfilled local delivery order (selectedShippingProvider = LOCAL). */
+  isLocalDelivery?: boolean;
   shippingMode: string;
   customer: { name: string; email: string | null; phone: string | null };
   coupon: {
@@ -923,6 +929,20 @@ export interface ShippingProviderAvailability {
   delhiveryConfigured: boolean;
   shiprocketConfigured: boolean;
   hasAnyProvider: boolean;
+}
+
+export interface AdminLocalDeliveryPincode {
+  pincode: string;
+  /** Per-pincode fee in paise; null = store default fee applies. */
+  feePaise: number | null;
+}
+
+export interface AdminLocalDeliverySettings {
+  enabled: boolean;
+  pincodes: AdminLocalDeliveryPincode[];
+  defaultFeePaise: number;
+  freeAbovePaise: number | null;
+  estimatedDays: number;
 }
 
 export interface AdminShippingSettings {

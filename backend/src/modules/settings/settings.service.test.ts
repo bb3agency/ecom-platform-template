@@ -29,6 +29,48 @@ describe('SettingsService', () => {
     });
   });
 
+  it('normalizes and persists local delivery settings (dedupe + fee floor + rejects bad pincodes)', async () => {
+    const upsert = vi.fn().mockResolvedValue({
+      localDeliveryEnabled: true,
+      localDeliveryPincodes: [{ pincode: '500001', feePaise: 3000 }],
+      localDeliveryDefaultFeePaise: 2000,
+      localDeliveryFreeAbovePaise: null,
+      localDeliveryEstimatedDays: 1
+    });
+    const fastify = {
+      prisma: {
+        storeSettings: {
+          findUnique: vi.fn().mockResolvedValue({ pickupPincode: '500001' }),
+          upsert
+        }
+      }
+    } as unknown as FastifyInstance;
+    const service = new SettingsService(fastify);
+
+    await expect(
+      service.updateLocalDeliverySettings({
+        enabled: true,
+        pincodes: [{ pincode: ' 500001 ', feePaise: 3000.7 }],
+        defaultFeePaise: 2000,
+        estimatedDays: 1
+      })
+    ).resolves.toMatchObject({
+      enabled: true,
+      pincodes: [{ pincode: '500001', feePaise: 3000 }],
+      defaultFeePaise: 2000,
+      estimatedDays: 1
+    });
+    const written = upsert.mock.calls[0]?.[0] as { update: Record<string, unknown> };
+    expect(written.update['localDeliveryPincodes']).toEqual([{ pincode: '500001', feePaise: 3000 }]);
+
+    await expect(
+      service.updateLocalDeliverySettings({ pincodes: [{ pincode: '12' }] })
+    ).rejects.toMatchObject({ statusCode: 400 });
+    await expect(
+      service.updateLocalDeliverySettings({ pincodes: [{ pincode: '500001' }, { pincode: '500001' }] })
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
   it('returns template defaults when shipping is not configured yet', async () => {
     vi.stubEnv('SHIPROCKET_PICKUP_PINCODE', '');
     vi.stubEnv('DELHIVERY_PICKUP_PINCODE', '');

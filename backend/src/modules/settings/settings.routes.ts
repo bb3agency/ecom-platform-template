@@ -10,6 +10,7 @@ import {
   getCodSettingsSchema,
   getBoxPresetsSchema,
   getInventorySettingsSchema,
+  getLocalDeliverySettingsSchema,
   getNotificationSettingsSchema,
   getPublicStoreConfigSchema,
   getShippingSettingsSchema,
@@ -17,6 +18,7 @@ import {
   updateBoxPresetsSchema,
   updateCodSettingsSchema,
   updateInventorySettingsSchema,
+  updateLocalDeliverySettingsSchema,
   updateNotificationSettingsSchema,
   updateShippingSettingsSchema,
   updateStoreProfileSchema
@@ -158,6 +160,26 @@ export async function registerSettingsRoutes(fastify: FastifyInstance): Promise<
       config: { rateLimit: routeRateLimitProfiles.adminWrite }
     },
     async (request) => settingsService.updateCodSettings(request.body as never)
+  );
+
+  fastify.get(
+    '/api/v1/admin/settings/local-delivery',
+    {
+      schema: getLocalDeliverySettingsSchema,
+      preHandler: [...adminGuard, adminPermissionGuard('settings:read')],
+      config: { rateLimit: routeRateLimitProfiles.adminRead }
+    },
+    async () => settingsService.getLocalDeliverySettings()
+  );
+
+  fastify.patch(
+    '/api/v1/admin/settings/local-delivery',
+    {
+      schema: updateLocalDeliverySettingsSchema,
+      preHandler: [...adminGuard, adminPermissionGuard('settings:write'), loadShedGuard, idempotencyPreHandler],
+      config: { rateLimit: routeRateLimitProfiles.adminWrite }
+    },
+    async (request) => settingsService.updateLocalDeliverySettings(request.body as never)
   );
 
   fastify.get(

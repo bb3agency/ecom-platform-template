@@ -13,6 +13,8 @@ import {
   CheckCircle2,
   XCircle,
   Clock,
+  Bike,
+  MapPin,
 } from "lucide-react";
 import { useAuthenticatedApi } from "@/hooks/use-authenticated-api";
 import { getBrowserApiBaseUrl } from "@/lib/api-base";
@@ -42,9 +44,16 @@ function codCollectionCopy(
   paymentStatus: string | null | undefined,
   orderStatus: string,
   shippingProvider?: string | null,
+  isLocalDelivery?: boolean,
 ): string {
   if (paymentMode !== "COD") {
     return "Prepaid — captured via Razorpay.";
+  }
+  if (isLocalDelivery) {
+    if (paymentStatus === "CAPTURED") {
+      return "COD collected — captured when the order was marked DELIVERED.";
+    }
+    return "You collect cash on delivery — payment is captured automatically when you mark the order DELIVERED.";
   }
   const providerLabel = shippingProvider
     ? (shippingProviderLabel(shippingProvider) === "—" ? "the shipping provider" : shippingProviderLabel(shippingProvider))
@@ -348,7 +357,47 @@ export function AdminOrderFulfillmentPanel({
     }
   };
 
+  // Local delivery: open the GST invoice PDF in a new tab, print-ready — this is the
+  // bill packed with the order. Falls back to a download when the popup is blocked
+  // (common on mobile).
+  const printInvoice = async () => {
+    if (!selectedOrderId || !detail?.invoice?.hasPdf || !accessToken) return;
+    const url = `${getBrowserApiBaseUrl()}/admin/orders/${selectedOrderId}/invoice.pdf`;
+    setBusyAction("print-invoice");
+    setError(null);
+    try {
+      const response = await fetch(url, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        credentials: "include",
+      });
+      if (!response.ok) {
+        throw new ApiError("UNKNOWN_ERROR", "Unable to load invoice for printing.", response.status);
+      }
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(new Blob([blob], { type: "application/pdf" }));
+      const win = window.open(objectUrl, "_blank");
+      if (!win) {
+        const anchor = document.createElement("a");
+        anchor.href = objectUrl;
+        anchor.download = `${detail.invoice.invoiceNumber}.pdf`;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+      }
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+      setSuccess("Invoice ready to print.");
+    } catch (err) {
+      setError(getApiErrorMessageWithHint(err));
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
   const shipment = detail?.shipment;
+  // Merchant-fulfilled local delivery: no courier is ever booked for this order.
+  // Ship / schedule pickup / print label / sync do not apply — the admin delivers
+  // it directly, advances the status manually, and prints the invoice instead.
+  const isLocal = detail?.isLocalDelivery === true;
   const hasShipment = Boolean(shipment?.awb);
   const pickupScheduled = Boolean(shipment?.pickupScheduledDate);
   // A cancelled/refunded order (or a cancelled shipment) is terminal for fulfilment — no more
@@ -359,7 +408,8 @@ export function AdminOrderFulfillmentPanel({
   // too, not just the order — the order can briefly lag behind the shipment (webhook
   // ordering) and ship/pickup/label/cancel must not be offered on a delivered package.
   const delivered = detail?.status === "DELIVERED" || shipment?.status === "DELIVERED";
-  const fulfilmentActive = Boolean(detail) && !orderTerminal && !shipmentCancelled && !delivered;
+  const fulfilmentActive =
+    Boolean(detail) && !isLocal && !orderTerminal && !shipmentCancelled && !delivered;
   // Admin can cancel up to and including SHIPPED (in transit). Once OUT_FOR_DELIVERY /
   // DELIVERED / terminal, cancellation is no longer possible — mirrors the backend guard.
   const cancellableStatuses = ["CONFIRMED", "PROCESSING", "SHIPPED"];
@@ -415,7 +465,12 @@ export function AdminOrderFulfillmentPanel({
         <div className="flex items-center justify-between gap-2">
           <h2 className="font-heading text-sm font-semibold">
             Order fulfillment
-            {shipment?.provider ? (
+            {isLocal ? (
+              <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300">
+                <Bike className="h-3 w-3" aria-hidden />
+                Local delivery
+              </span>
+            ) : shipment?.provider ? (
               <span className="ml-2 text-xs font-normal text-muted-foreground">
                 via{" "}
                 {shippingProviderLabel(shipment.provider)}
@@ -432,8 +487,9 @@ export function AdminOrderFulfillmentPanel({
           ) : null}
         </div>
         <p className="mt-0.5 text-xs text-muted-foreground">
-          COD cash collection is synced automatically on delivery via the shipping provider
-          webhook — do not mark COD collected manually.
+          {isLocal
+            ? "This order is from a whitelisted local pincode — you deliver it yourself. No courier is booked; advance the status in “Update order status” and print the invoice below."
+            : "COD cash collection is synced automatically on delivery via the shipping provider webhook — do not mark COD collected manually."}
         </p>
       </header>
 
@@ -503,49 +559,78 @@ export function AdminOrderFulfillmentPanel({
                 detail.payment?.status,
                 detail.status,
                 detail.shipment?.provider,
+                isLocal,
               )}
             />
-            <InfoChip
-              label="Can ship now"
-              valueNode={
-                detail.canShipNow ? (
-                  <span className="flex items-center gap-1 text-emerald-600">
-                    <CheckCircle2 className="h-3.5 w-3.5" /> Yes
-                  </span>
-                ) : (
-                  <span className="flex items-center gap-1 text-muted-foreground">
-                    <XCircle className="h-3.5 w-3.5" />
-                    {detail.shipBlockReason ?? "Blocked"}
-                  </span>
-                )
-              }
-            />
-            {detail?.selectedShippingProvider ? (
-              <InfoChip
-                label="Provider (locked at checkout)"
-                valueNode={
-                  <span className="flex items-center gap-1.5">
-                    <span className="font-medium">{shippingProviderLabel(detail.selectedShippingProvider)}</span>
-                    {!shipment?.awb && (
-                      <span className="rounded-sm bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800">
-                        Awaiting AWB
+            {isLocal && detail.shippingAddress ? (
+              <div className="sm:col-span-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-900/50 dark:bg-emerald-950/20">
+                <p className="mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-emerald-800 dark:text-emerald-300">
+                  <MapPin className="h-3.5 w-3.5" aria-hidden />
+                  Deliver to
+                </p>
+                <p className="text-sm font-medium text-foreground">
+                  {detail.shippingAddress.fullName} · {detail.shippingAddress.phone}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {[
+                    detail.shippingAddress.line1,
+                    detail.shippingAddress.line2,
+                    detail.shippingAddress.city,
+                    detail.shippingAddress.state,
+                    detail.shippingAddress.pincode,
+                  ]
+                    .filter(Boolean)
+                    .join(", ")}
+                </p>
+              </div>
+            ) : null}
+            {!isLocal ? (
+              <>
+                <InfoChip
+                  label="Can ship now"
+                  valueNode={
+                    detail.canShipNow ? (
+                      <span className="flex items-center gap-1 text-emerald-600">
+                        <CheckCircle2 className="h-3.5 w-3.5" /> Yes
                       </span>
-                    )}
-                  </span>
-                }
-              />
-            ) : shipment?.provider ? (
-              <InfoChip
-                label="Shipping provider"
-                value={shippingProviderLabel(shipment.provider)}
-              />
+                    ) : (
+                      <span className="flex items-center gap-1 text-muted-foreground">
+                        <XCircle className="h-3.5 w-3.5" />
+                        {detail.shipBlockReason ?? "Blocked"}
+                      </span>
+                    )
+                  }
+                />
+                {detail?.selectedShippingProvider ? (
+                  <InfoChip
+                    label="Provider (locked at checkout)"
+                    valueNode={
+                      <span className="flex items-center gap-1.5">
+                        <span className="font-medium">{shippingProviderLabel(detail.selectedShippingProvider)}</span>
+                        {!shipment?.awb && (
+                          <span className="rounded-sm bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800">
+                            Awaiting AWB
+                          </span>
+                        )}
+                      </span>
+                    }
+                  />
+                ) : shipment?.provider ? (
+                  <InfoChip
+                    label="Shipping provider"
+                    value={shippingProviderLabel(shipment.provider)}
+                  />
+                ) : null}
+              </>
             ) : null}
             {detail?.shippingChargeQuotedPaise != null && (
               <InfoChip
-                label="Rate quoted at checkout"
+                label={isLocal ? "Local delivery fee quoted" : "Rate quoted at checkout"}
                 value={`₹${(detail.shippingChargeQuotedPaise / 100).toFixed(2)}`}
               />
             )}
+            {!isLocal ? (
+              <>
             <InfoChip label="AWB" value={shipment?.awb ?? "Not booked yet"} mono />
             <InfoChip
               label="Shipment status"
@@ -597,12 +682,45 @@ export function AdminOrderFulfillmentPanel({
                 </a>
               </div>
             ) : null}
+              </>
+            ) : null}
+          </div>
+        ) : null}
+
+        {/* Local delivery orders: no courier steps at all — print the invoice (the
+            packed bill) and advance the status manually from "Update order status". */}
+        {isLocal && detail ? (
+          <div className="grid min-w-0 grid-cols-1 gap-3">
+            <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-3">
+              <ActionButton
+                step={1}
+                label="Print invoice"
+                sublabel="GST bill, print-ready"
+                icon={<Printer className="h-4 w-4" />}
+                busy={busyAction === "print-invoice"}
+                disabled={!detail.invoice?.hasPdf || busyAction !== null}
+                onClick={() => void printInvoice()}
+                title={
+                  detail.invoice?.hasPdf
+                    ? "Opens the GST invoice PDF in a new tab, ready to print and pack with the order"
+                    : "Invoice is still being generated — refresh in a few seconds"
+                }
+                primary
+              />
+            </div>
+            <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
+              {delivered
+                ? "This local order has been delivered. Nothing more to do here."
+                : orderTerminal
+                  ? `This local order is ${(detail.status ?? "cancelled").toLowerCase()}.`
+                  : "Deliver the package yourself, then advance the status (Processing → Out for delivery → Delivered) in “Update order status” below — each change notifies the customer on your active channels."}
+            </div>
           </div>
         ) : null}
 
         {/* Primary action steps — hidden entirely once the order/shipment is terminal
             (cancelled/refunded): shipping, pickup and label no longer apply. */}
-        {fulfilmentActive ? (
+        {isLocal ? null : fulfilmentActive ? (
           <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-3">
             <ActionButton
               step={1}

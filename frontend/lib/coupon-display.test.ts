@@ -36,7 +36,8 @@ describe("coupon-display", () => {
         type: "FLAT_AMOUNT_OFF",
         value: 10000,
       }),
-    ).toBe("FLAT100 — ₹100.00 off");
+    // formatPrice drops the trailing .00 for whole-rupee amounts (frontend-core 0.1.39).
+    ).toBe("FLAT100 — ₹100 off");
   });
 
   it("formats buy X get Y coupons with a generic benefit label", () => {

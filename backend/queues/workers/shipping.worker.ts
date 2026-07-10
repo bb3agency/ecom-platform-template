@@ -259,6 +259,14 @@ export function createShippingWorker(
           return;
         }
 
+        // Defense in depth: merchant-fulfilled local delivery orders must NEVER book a
+        // courier — even a stray/replayed create-shipment job is dropped here.
+        if (
+          ((order as Record<string, unknown>)['selectedShippingProvider'] as string | null) === 'LOCAL'
+        ) {
+          return;
+        }
+
         if (order.status === OrderStatus.SHIPPED || order.status === OrderStatus.OUT_FOR_DELIVERY || order.status === OrderStatus.DELIVERED) {
           return;
         }

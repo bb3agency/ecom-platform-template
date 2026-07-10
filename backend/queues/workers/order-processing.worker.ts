@@ -189,6 +189,7 @@ async function enqueueAdminNewOrderNotifications(
       orderNumber: true,
       total: true,
       paymentMode: true,
+      selectedShippingProvider: true,
       shippingAddress: true,
       user: { select: { firstName: true, lastName: true, email: true } }
     }
@@ -212,12 +213,31 @@ async function enqueueAdminNewOrderNotifications(
     'Customer';
   const amount = `Rs ${(order.total / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+  // LOCAL delivery orders (whitelisted pincode; merchant delivers himself) get a distinct
+  // template carrying the full delivery address + phone — the admin IS the courier here.
+  const isLocalDelivery =
+    ((order as Record<string, unknown>)['selectedShippingProvider'] as string | null) === 'LOCAL';
+  const addressRecord =
+    order.shippingAddress && typeof order.shippingAddress === 'object' && !Array.isArray(order.shippingAddress)
+      ? (order.shippingAddress as Record<string, unknown>)
+      : null;
+  const deliveryAddress = addressRecord
+    ? [addressRecord.line1, addressRecord.line2, addressRecord.city, addressRecord.state, addressRecord.pincode]
+        .map((part) => (typeof part === 'string' ? part.trim() : ''))
+        .filter(Boolean)
+        .join(', ')
+    : '';
+  const customerPhone =
+    addressRecord && typeof addressRecord.phone === 'string' ? addressRecord.phone.trim() : '';
+
+  const template = isLocalDelivery ? 'AdminLocalOrder' : 'AdminNewOrder';
   const payload = {
     orderId: order.id,
     orderNumber: order.orderNumber,
     customerName,
     amount,
-    paymentMode: order.paymentMode
+    paymentMode: order.paymentMode,
+    ...(isLocalDelivery ? { deliveryAddress, customerPhone } : {})
   };
 
   for (const admin of admins) {
@@ -225,21 +245,21 @@ async function enqueueAdminNewOrderNotifications(
     if (channels.has('EMAIL') && admin.email?.trim()) {
       await enqueueOutboxOrQueue(prisma, 'notifications', 'send-email', {
         to: admin.email,
-        template: 'AdminNewOrder',
+        template,
         data: payload
       }, notificationsQueue, `admin-new-order-email-${order.id}-${admin.id}`);
     }
     if (channels.has('WHATSAPP') && admin.phone?.trim()) {
       await enqueueOutboxOrQueue(prisma, 'notifications', 'send-whatsapp', {
         phone: admin.phone,
-        template: 'AdminNewOrder',
+        template,
         data: payload
       }, notificationsQueue, `admin-new-order-whatsapp-${order.id}-${admin.id}`);
     }
     if (channels.has('SMS') && admin.phone?.trim()) {
       await enqueueOutboxOrQueue(prisma, 'notifications', 'send-sms', {
         phone: admin.phone,
-        template: 'AdminNewOrder',
+        template,
         data: payload
       }, notificationsQueue, `admin-new-order-sms-${order.id}-${admin.id}`);
     }
@@ -1085,6 +1105,8 @@ async function generateInvoiceForOrder(prisma: RealPrismaClient, orderId: string
   }
 
   const sellerProfile = await resolveSellerProfileOrThrow(prisma);
+  // Fetched OUTSIDE the transaction — a slow logo host must never hold a DB tx open.
+  const invoiceLogo = await fetchInvoiceLogo(sellerProfile.logoUrl);
 
   await prisma.$transaction(async (tx) => {
     const existingInvoice = await tx.invoice.findUnique({
@@ -1169,6 +1191,8 @@ async function generateInvoiceForOrder(prisma: RealPrismaClient, orderId: string
     const amountInWords = amountPaiseToIndianWords(order.total);
 
     const content = await renderInvoicePdfBuffer({
+      storeDisplayName: sellerProfile.storeName,
+      logo: invoiceLogo,
       invoiceNumber,
       orderNumber: order.orderNumber,
       issuedAtIso: new Date().toISOString(),
@@ -1290,7 +1314,39 @@ type SellerProfile = {
   state: string;
   gstin: string;
   fssai: string;
+  /** Customer-facing store/brand name for the invoice header (may equal legalName). */
+  storeName: string;
+  /** Store logo URL (StoreSettings.logoUrl); rendered on the invoice when fetchable PNG/JPG. */
+  logoUrl: string | null;
 };
+
+/**
+ * Best-effort fetch of the store logo for the invoice header. Any failure (timeout,
+ * non-image, unsupported format) returns null — the invoice renders text-only.
+ * react-pdf embeds only PNG/JPG, so other formats are skipped by magic-byte sniff.
+ */
+async function fetchInvoiceLogo(logoUrl: string | null): Promise<{ data: Buffer; format: 'png' | 'jpg' } | null> {
+  const url = (logoUrl ?? '').trim();
+  if (!/^https?:\/\//i.test(url)) return null;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
+    const response = await fetch(url, { signal: controller.signal });
+    clearTimeout(timer);
+    if (!response.ok) return null;
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (bytes.length < 8 || bytes.length > 2 * 1024 * 1024) return null;
+    if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) {
+      return { data: bytes, format: 'png' };
+    }
+    if (bytes[0] === 0xff && bytes[1] === 0xd8) {
+      return { data: bytes, format: 'jpg' };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 async function resolveSellerProfileOrThrow(prisma: RealPrismaClient): Promise<SellerProfile> {
   const storeSettingsDelegate = (prisma as unknown as { storeSettings?: RealPrismaClient['storeSettings'] }).storeSettings;
@@ -1299,6 +1355,7 @@ async function resolveSellerProfileOrThrow(prisma: RealPrismaClient): Promise<Se
         where: { singletonKey: 'default' },
         select: {
           storeName: true,
+          logoUrl: true,
           sellerLegalName: true,
           sellerAddress: true,
           sellerState: true,
@@ -1346,7 +1403,9 @@ async function resolveSellerProfileOrThrow(prisma: RealPrismaClient): Promise<Se
     addressLine: addressLine || 'Address not configured',
     state: state || 'Unknown',
     gstin: gstin || 'GSTIN_NOT_CONFIGURED',
-    fssai: fssai || (requiresFssai ? 'FSSAI_REQUIRED' : 'FSSAI_NOT_CONFIGURED')
+    fssai: fssai || (requiresFssai ? 'FSSAI_REQUIRED' : 'FSSAI_NOT_CONFIGURED'),
+    storeName: (settings?.storeName ?? '').trim() || legalName || 'Ecom Store Pvt Ltd',
+    logoUrl: ((settings as { logoUrl?: string | null } | null)?.logoUrl ?? '').trim() || null
   };
 }
 

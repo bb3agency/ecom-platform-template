@@ -373,6 +373,8 @@ const orderListItemSchema = {
     shipmentStatus: { anyOf: [{ type: 'string', maxLength: 40 }, { type: 'null' }] },
     canShipNow: { type: 'boolean' },
     shipBlockReason: { anyOf: [{ type: 'string', maxLength: 240 }, { type: 'null' }] },
+    // Merchant-fulfilled local delivery (selectedShippingProvider = LOCAL) — no courier involved.
+    isLocalDelivery: { type: 'boolean' },
     shippingMode: { type: 'string', enum: ['MANUAL'], maxLength: 10 }
   }
 } as const;
@@ -513,6 +515,8 @@ const adminOrderDetailSchema = {
     total: { type: 'integer', minimum: 0, maximum: 1000000000 },
     canShipNow: { type: 'boolean' },
     shipBlockReason: { anyOf: [{ type: 'string', maxLength: 240 }, { type: 'null' }] },
+    // Merchant-fulfilled local delivery (selectedShippingProvider = LOCAL) — no courier involved.
+    isLocalDelivery: { type: 'boolean' },
     shippingMode: { type: 'string', enum: ['MANUAL'], maxLength: 10 },
     notes: { anyOf: [{ type: 'string', maxLength: 2000 }, { type: 'null' }] },
     createdAt: { type: 'string', maxLength: 64 },
@@ -871,7 +875,9 @@ export const createOrderSchema = {
       },
       notes: { type: 'string', maxLength: 2000 },
       paymentMode: { type: 'string', enum: ['PREPAID', 'COD'], maxLength: 10 },
-      selectedShippingProvider: { type: 'string', enum: ['DELHIVERY', 'SHIPROCKET'], maxLength: 20 },
+      // 'LOCAL' is accepted (checkout echoes the quote back) but never trusted — the
+      // server re-derives the local-delivery decision from the whitelist.
+      selectedShippingProvider: { type: 'string', enum: ['DELHIVERY', 'SHIPROCKET', 'LOCAL'], maxLength: 20 },
       shippingChargePaise: { type: 'integer', minimum: 0, maximum: 10000000 },
       courierCompanyId: { type: 'integer', minimum: 1 }
     },
@@ -1018,7 +1024,9 @@ export const prepareCheckoutSchema = {
         }
       },
       notes: { type: 'string', maxLength: 2000 },
-      selectedShippingProvider: { type: 'string', enum: ['DELHIVERY', 'SHIPROCKET'], maxLength: 20 },
+      // 'LOCAL' is accepted (checkout echoes the quote back) but never trusted — the
+      // server re-derives the local-delivery decision from the whitelist.
+      selectedShippingProvider: { type: 'string', enum: ['DELHIVERY', 'SHIPROCKET', 'LOCAL'], maxLength: 20 },
       shippingChargePaise: { type: 'integer', minimum: 0, maximum: 10000000 },
       courierCompanyId: { type: 'integer', minimum: 1 }
     },
@@ -1288,6 +1296,8 @@ const boardOrderItemSchema = {
     shipmentStatus: { anyOf: [{ type: 'string', maxLength: 40 }, { type: 'null' }] },
     canShipNow: { type: 'boolean' },
     shipBlockReason: { anyOf: [{ type: 'string', maxLength: 240 }, { type: 'null' }] },
+    // Merchant-fulfilled local delivery (selectedShippingProvider = LOCAL) — no courier involved.
+    isLocalDelivery: { type: 'boolean' },
     shippingMode: { type: 'string', enum: ['MANUAL'], maxLength: 10 }
   }
 } as const;

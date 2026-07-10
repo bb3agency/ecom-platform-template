@@ -19,7 +19,7 @@ export interface AdminOrdersListResponse {
   };
 }
 
-export type ShippingProviderEnum = "DELHIVERY" | "SHIPROCKET" | "SELF";
+export type ShippingProviderEnum = "DELHIVERY" | "SHIPROCKET" | "LOCAL";
 
 export interface AdminOrderShipment {
   id: string;
@@ -46,6 +46,18 @@ export interface AdminOrderDetail {
   selectedShippingProvider: ShippingProviderEnum | null;
   /** Shipping rate quoted to customer at checkout (paise). Immutable after creation. */
   shippingChargeQuotedPaise: number | null;
+  /** Merchant-fulfilled local delivery order — no courier is ever booked. */
+  isLocalDelivery?: boolean;
+  /** Delivery address snapshot — shown prominently for local delivery orders. */
+  shippingAddress?: {
+    fullName: string;
+    phone: string;
+    line1: string;
+    line2?: string | null;
+    city: string;
+    state: string;
+    pincode: string;
+  };
   payment: {
     status: string;
     provider: string;

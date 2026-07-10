@@ -54,7 +54,8 @@ enum ReturnRequestStatus {
 enum ShippingProvider {
   DELHIVERY
   SHIPROCKET
-  SELF
+  /// Merchant-fulfilled local delivery (whitelisted pincodes) — no courier is ever invoked.
+  LOCAL
 }
 
 enum ShipmentStatus {
@@ -1033,6 +1034,16 @@ model StoreSettings {
   boxPresets                Json?
   /// Flat packaging (carton + tape + void fill) weight override in grams. Null = surface-area estimate.
   packagingWeightGrams      Int?
+  /// Merchant-fulfilled local delivery: master toggle.
+  localDeliveryEnabled      Boolean  @default(false)
+  /// Whitelisted local pincodes: [{ pincode: "500001", feePaise?: 3000 }, ...]. feePaise null/absent → default fee.
+  localDeliveryPincodes     Json?
+  /// Fallback per-order local delivery fee when a whitelisted pincode has no explicit fee (₹20).
+  localDeliveryDefaultFeePaise Int   @default(2000)
+  /// Order subtotal (paise) at/above which local delivery is free. Null = never free.
+  localDeliveryFreeAbovePaise  Int?
+  /// Estimated delivery days shown to the customer for local orders (1 = next day / same day).
+  localDeliveryEstimatedDays   Int   @default(1)
   sellerLegalName           String?
   sellerAddress             String?
   sellerState               String?

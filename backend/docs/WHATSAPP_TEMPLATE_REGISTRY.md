@@ -52,6 +52,7 @@ set its entry in the notifications `primaryChannels` config to `WHATSAPP`.
 | `PaymentFailed`      | `payment_failed`   | `{{1}}` storeName, `{{2}}` orderId |
 | `ReturnRequestUpdate` | `return_request_update` | `{{1}}` storeName, `{{2}}` orderId, `{{3}}` returnStatusLine |
 | `AdminNewOrder`      | `admin_new_order`  | `{{1}}` storeName, `{{2}}` orderId, `{{3}}` customerName, `{{4}}` orderAmountLine ("Rs 450.00 - PREPAID") |
+| `AdminLocalOrder`    | `admin_local_order` | `{{1}}` storeName, `{{2}}` orderId, `{{3}}` customerName, `{{4}}` orderAmountLine, `{{5}}` deliveryAddressLine ("addr — Ph: phone") |
 
 ### `admin_new_order`
 **Merchant-facing alert (2026-07-04):** sent ONLY to admin users who opted in via
@@ -61,6 +62,18 @@ selected channel. `{{4}}` is a composed "amount - payment mode" line (never empt
 falls back to "see admin panel"). Category: Utility. The old store-contact
 "order shipped" alert (`enqueueMerchantShipmentNotifications`) was removed in the
 same change.
+
+### `admin_local_order`
+**Merchant-facing alert (2026-07-10):** the LOCAL-DELIVERY variant of `admin_new_order`,
+sent instead of it when the order's pincode is on the merchant's local-delivery whitelist
+(Admin → Settings → Local Delivery). The merchant delivers these orders himself, so `{{5}}`
+carries the full delivery address + customer phone. Same audience rules as
+`admin_new_order` (opted-in admins only, per-admin channels). Category: Utility.
+**Body:**
+```
+{{1}} admin: local delivery order {{2}} from {{3}} for {{4}}. You deliver this one yourself — deliver to: {{5}}. No courier will be booked; update the order status from the admin panel.
+```
+**Sample values:** `{{1}}` = `Raghava Organics`, `{{2}}` = `ORD-10234`, `{{3}}` = `Sita Devi`, `{{4}}` = `Rs 850.00 - COD`, `{{5}}` = `12-3-45 Main Rd, Warangal, Telangana, 506001 — Ph: 9876543210`
 
 ### `otp_verify`
 **Category:** **Authentication** (Meta REJECTS verification-code content in Utility — the

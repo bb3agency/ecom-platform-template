@@ -18,6 +18,10 @@ import { resolveDualShippingRuntime } from '@modules/shipping/shipping-provider'
 import { computeChargeableWeightGrams } from '@common/shipping/chargeable-weight';
 import { applyShippingNotificationSurcharge } from '@common/shipping/notification-surcharge';
 import { parseBoxPresets, type BoxPreset } from '@common/shipping/select-box-preset';
+import {
+  resolveLocalDeliveryQuote,
+  resolveLocalDeliverySettings
+} from '@common/shipping/local-delivery';
 import { sendTechnicalFailureAlert } from '@modules/notifications/notification-failure-alert';
 import { AddCartItemInput, ApplyCouponInput, UpdateCartItemInput } from './cart.types';
 
@@ -554,6 +558,13 @@ export class CartService {
   }
 
   async checkPincodeServiceability(pincode: string) {
+    // Merchant-fulfilled local delivery: a whitelisted pincode is always serviceable and
+    // the courier providers are never consulted (no serviceability calls at all).
+    const localSettings = await resolveLocalDeliverySettings(this.fastify.prisma);
+    if (resolveLocalDeliveryQuote(localSettings, pincode)) {
+      return { pincode, serviceable: true };
+    }
+
     const runtime = resolveDualShippingRuntime();
     const usingNoop = !runtime.hasAny;
     const originPincode =
@@ -616,6 +627,33 @@ export class CartService {
     const cart = await this.getExistingCartWithItems(userId, sessionToken);
     if (!cart || cart.items.length === 0) {
       throw new AppError(ERROR_CODES.VALIDATION_ERROR, 'At least one cart item is required to calculate delivery rates', 400);
+    }
+
+    // Merchant-fulfilled local delivery short-circuit: whitelisted pincodes never touch the
+    // courier providers. The fee is purely pincode-based (per-pincode override or store
+    // default) — no weight, box-dimension, or packaging computation is involved.
+    const localSettings = await resolveLocalDeliverySettings(this.fastify.prisma);
+    if (localSettings.enabled) {
+      const subtotal = cart.items.reduce((sum, item) => sum + item.priceSnapshot * item.quantity, 0);
+      const couponsEnabledForLocal = await isStorefrontCouponsEnabled(this.fastify.prisma);
+      const localQuote = resolveLocalDeliveryQuote(localSettings, pincode, {
+        subtotalPaise: subtotal,
+        freeShippingCoupon: couponsEnabledForLocal && cart.coupon?.type === CouponType.FREE_SHIPPING
+      });
+      if (localQuote) {
+        // Persist so checkout consumes the exact same fee (shown rate == charged rate).
+        await this.persistShippingQuote(userId, sessionToken, cart.id, pincode, paymentMode, {
+          provider: 'LOCAL',
+          shippingChargePaise: localQuote.shippingChargePaise,
+          estimatedDays: localQuote.estimatedDays
+        });
+        return {
+          pincode,
+          shippingCharge: localQuote.shippingChargePaise,
+          estimatedDays: localQuote.estimatedDays,
+          selectedShippingProvider: 'LOCAL' as const
+        };
+      }
     }
 
     const usingNoop = this.isNoopMode();
@@ -854,7 +892,7 @@ export class CartService {
     pincode: string,
     paymentMode: 'COD' | 'PREPAID',
     quote: {
-      provider: 'DELHIVERY' | 'SHIPROCKET';
+      provider: 'DELHIVERY' | 'SHIPROCKET' | 'LOCAL';
       shippingChargePaise: number;
       estimatedDays: number;
       courierCompanyId?: number;
@@ -883,7 +921,7 @@ export class CartService {
     pincode: string,
     paymentMode: 'COD' | 'PREPAID'
   ): Promise<{
-    provider: 'DELHIVERY' | 'SHIPROCKET';
+    provider: 'DELHIVERY' | 'SHIPROCKET' | 'LOCAL';
     shippingChargePaise: number;
     estimatedDays: number;
     courierCompanyId?: number;
@@ -901,7 +939,7 @@ export class CartService {
     try {
       const parsed = JSON.parse(raw) as {
         cartId: string;
-        provider: 'DELHIVERY' | 'SHIPROCKET';
+        provider: 'DELHIVERY' | 'SHIPROCKET' | 'LOCAL';
         shippingChargePaise: number;
         estimatedDays: number;
         courierCompanyId?: number;
@@ -965,6 +1003,24 @@ export class CartService {
       estimatedDays: result.estimatedDays,
       ...(result.courierCompanyId != null ? { courierCompanyId: result.courierCompanyId } : {})
     };
+  }
+
+  /**
+   * Authoritative local-delivery quote for checkout. Mirrors the getDeliveryRates
+   * short-circuit so a whitelisted pincode ALWAYS checks out as a LOCAL order at the
+   * pincode-based fee, regardless of quote-cache state or courier configuration.
+   * Returns null when the pincode is not locally deliverable.
+   */
+  async getLocalDeliveryQuoteForCheckout(
+    destinationPincode: string,
+    subtotalPaise: number,
+    freeShippingCoupon: boolean
+  ): Promise<{ provider: 'LOCAL'; shippingChargePaise: number; estimatedDays: number } | null> {
+    const settings = await resolveLocalDeliverySettings(this.fastify.prisma);
+    return resolveLocalDeliveryQuote(settings, destinationPincode, {
+      subtotalPaise,
+      freeShippingCoupon
+    });
   }
 
   async computeShippingChargeForCart(input: {

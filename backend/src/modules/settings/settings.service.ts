@@ -10,6 +10,7 @@ import {
   BoxPreset,
   BoxPresetsResponse,
   InventorySettingsResponse,
+  LocalDeliverySettingsResponse,
   NotificationFlags,
   NotificationSettingsResponse,
   PrimaryNotificationChannel,
@@ -17,11 +18,21 @@ import {
   ShippingSettingsResponse,
   StoreProfileResponse,
   UpdateInventorySettingsInput,
+  UpdateLocalDeliverySettingsInput,
   UpdateNotificationSettingsInput,
   UpdateShippingSettingsInput,
   UpdateStoreProfileInput
 } from './settings.types';
 import { parseBoxPresets } from '@common/shipping/select-box-preset';
+import {
+  LOCAL_DELIVERY_DEFAULT_ESTIMATED_DAYS,
+  LOCAL_DELIVERY_DEFAULT_FEE_PAISE,
+  isValidLocalPincode,
+  parseLocalDeliveryPincodes,
+  resolveLocalDeliverySettings
+} from '@common/shipping/local-delivery';
+import { AppError } from '@common/errors/app-error';
+import { ERROR_CODES } from '@common/errors/error-codes';
 
 export class SettingsService {
   private static readonly singletonKey = 'default';
@@ -462,6 +473,89 @@ export class SettingsService {
       returnsEnabled: updated.returnsEnabled ?? true,
       cancellationWindowHours: updated.cancellationWindowHours ?? 24,
       sellerState: updated.sellerState ?? null
+    };
+  }
+
+  async getLocalDeliverySettings(): Promise<LocalDeliverySettingsResponse> {
+    const settings = await resolveLocalDeliverySettings(this.fastify.prisma);
+    return {
+      enabled: settings.enabled,
+      pincodes: settings.pincodes.map((entry) => ({ pincode: entry.pincode, feePaise: entry.feePaise ?? null })),
+      defaultFeePaise: settings.defaultFeePaise,
+      freeAbovePaise: settings.freeAbovePaise,
+      estimatedDays: settings.estimatedDays
+    };
+  }
+
+  async updateLocalDeliverySettings(
+    input: UpdateLocalDeliverySettingsInput
+  ): Promise<LocalDeliverySettingsResponse> {
+    const updateData: Record<string, unknown> = {};
+    if (input.enabled !== undefined) updateData['localDeliveryEnabled'] = input.enabled;
+    if (input.pincodes !== undefined) {
+      const seen = new Set<string>();
+      const normalized: Array<{ pincode: string; feePaise: number | null }> = [];
+      for (const entry of input.pincodes) {
+        const pincode = entry.pincode.trim();
+        if (!isValidLocalPincode(pincode)) {
+          throw new AppError(ERROR_CODES.VALIDATION_ERROR, `Invalid pincode: ${pincode || '(empty)'}`, 400);
+        }
+        if (seen.has(pincode)) {
+          throw new AppError(ERROR_CODES.VALIDATION_ERROR, `Duplicate pincode: ${pincode}`, 400);
+        }
+        seen.add(pincode);
+        const feePaise =
+          entry.feePaise != null && Number.isFinite(entry.feePaise) && entry.feePaise >= 0
+            ? Math.floor(entry.feePaise)
+            : null;
+        normalized.push({ pincode, feePaise });
+      }
+      updateData['localDeliveryPincodes'] = normalized;
+    }
+    if (input.defaultFeePaise !== undefined) {
+      updateData['localDeliveryDefaultFeePaise'] = Math.max(0, Math.floor(input.defaultFeePaise));
+    }
+    if (input.freeAbovePaise !== undefined) {
+      updateData['localDeliveryFreeAbovePaise'] =
+        input.freeAbovePaise != null && input.freeAbovePaise > 0 ? Math.floor(input.freeAbovePaise) : null;
+    }
+    if (input.estimatedDays !== undefined) {
+      updateData['localDeliveryEstimatedDays'] = Math.min(7, Math.max(1, Math.floor(input.estimatedDays)));
+    }
+
+    const defaultPickupPincode = await this.resolveDefaultPickupPincodeForCreate();
+    const updated = (await this.fastify.prisma.storeSettings.upsert({
+      where: { singletonKey: SettingsService.singletonKey },
+      update: updateData,
+      create: {
+        singletonKey: SettingsService.singletonKey,
+        pickupPincode: defaultPickupPincode,
+        defaultLowStockThreshold: 5,
+        ...updateData
+      },
+      select: {
+        localDeliveryEnabled: true,
+        localDeliveryPincodes: true,
+        localDeliveryDefaultFeePaise: true,
+        localDeliveryFreeAbovePaise: true,
+        localDeliveryEstimatedDays: true
+      }
+    })) as {
+      localDeliveryEnabled?: boolean;
+      localDeliveryPincodes?: unknown;
+      localDeliveryDefaultFeePaise?: number;
+      localDeliveryFreeAbovePaise?: number | null;
+      localDeliveryEstimatedDays?: number;
+    };
+    return {
+      enabled: updated.localDeliveryEnabled ?? false,
+      pincodes: parseLocalDeliveryPincodes(updated.localDeliveryPincodes).map((entry) => ({
+        pincode: entry.pincode,
+        feePaise: entry.feePaise ?? null
+      })),
+      defaultFeePaise: updated.localDeliveryDefaultFeePaise ?? LOCAL_DELIVERY_DEFAULT_FEE_PAISE,
+      freeAbovePaise: updated.localDeliveryFreeAbovePaise ?? null,
+      estimatedDays: updated.localDeliveryEstimatedDays ?? LOCAL_DELIVERY_DEFAULT_ESTIMATED_DAYS
     };
   }
 
