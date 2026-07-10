@@ -12,6 +12,18 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.45] — 2026-07-10
+
+### Fixed
+- **Admin Orders search no longer refetches (and blanks the table) on every keystroke.** `AdminOrdersList` bound the search box directly to the committed query, so each character triggered a fresh `/admin/orders` fetch + loading skeleton — which read as the whole page refreshing. Now decoupled into `searchInput` (live text) vs `search` (committed): the query runs on Enter or blur, matching the Shipments/Payments pattern. Typing is smooth; no mid-type refetch.
+- **"Print invoice" self-enables when the invoice lands.** `AdminOrderFulfillmentPanel` now polls the order (every 5s, up to ~1 min) while the invoice PDF is still generating, so the button enables automatically instead of staying disabled behind "still being generated" until a manual refresh. Tooltip updated to point at the real stall cause (missing product HSN codes / incomplete store GST profile) if it never enables.
+
+**Propagation:**
+- Severity: NORMAL · Layers: frontend (`components/admin/AdminOrdersList.tsx`, `components/admin/AdminOrderFulfillmentPanel.tsx`) — pairs with backend-core 0.1.69
+- Migration: NO · Flag: none · Design impact: none · Breaking: NO
+- Rollback: revert the files
+- Client theme note (raghava): the storefront `/gallery` page was made dynamic (`force-dynamic` / `cache: no-store`) so the Admin → Gallery toggle + newly uploaded images reflect immediately instead of being an hour stale (ISR `revalidate 3600`). That page is per-client theme — apply the same to any other client that ships a gallery page.
+
 ## [0.1.44] — 2026-07-10
 
 ### Added

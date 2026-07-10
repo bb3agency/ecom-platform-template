@@ -77,7 +77,11 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
 
   const [status, setStatus] = useState("");
 
+  // `searchInput` is the live text field; `search` is the committed query used by the
+  // fetch. Decoupling them means typing does NOT refetch on every keystroke (which blanked
+  // the table and read as a full-page refresh) — the search runs on submit, like Shipments.
   const [search, setSearch] = useState("");
+  const [searchInput, setSearchInput] = useState("");
 
   const [fromDate, setFromDate] = useState(from ?? "");
 
@@ -255,10 +259,20 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
               <input
                 className={`${inputClass} w-full pl-9 bg-muted/20 border-border/50`}
                 placeholder="Search orders by ID, customer..."
-                value={search}
-                onChange={(event) => {
-                  setSearch(event.target.value);
-                  setPage(1);
+                value={searchInput}
+                onChange={(event) => setSearchInput(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    setSearch(searchInput.trim());
+                    setPage(1);
+                  }
+                }}
+                onBlur={() => {
+                  if (searchInput.trim() !== search) {
+                    setSearch(searchInput.trim());
+                    setPage(1);
+                  }
                 }}
               />
             </div>

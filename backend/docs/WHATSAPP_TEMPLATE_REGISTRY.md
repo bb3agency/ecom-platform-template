@@ -47,6 +47,7 @@ set its entry in the notifications `primaryChannels` config to `WHATSAPP`.
 | `OrderConfirmed`     | `order_confirmed`  | `{{1}}` storeName, `{{2}}` orderId |
 | `OrderShipped`       | `order_shipped`    | `{{1}}` storeName, `{{2}}` orderId, `{{3}}` trackingInfo |
 | `OutForDelivery`     | `out_for_delivery` | `{{1}}` storeName, `{{2}}` orderId |
+| `LocalOrderOutForDelivery` | `local_out_for_delivery` | `{{1}}` storeName, `{{2}}` orderId |
 | `OrderDelivered`     | `order_delivered`  | `{{1}}` storeName, `{{2}}` orderId |
 | `OrderCancelled`     | `order_cancelled`  | `{{1}}` storeName, `{{2}}` orderId |
 | `PaymentFailed`      | `payment_failed`   | `{{1}}` storeName, `{{2}}` orderId |
@@ -63,17 +64,55 @@ falls back to "see admin panel"). Category: Utility. The old store-contact
 "order shipped" alert (`enqueueMerchantShipmentNotifications`) was removed in the
 same change.
 
+**Body (neat multi-line layout, 2026-07-10 — parameter count/order UNCHANGED, so no
+code change; just re-edit the template body in WhatsApp Manager and re-submit):**
+```
+🛒 *New Order Received!*
+
+A customer just placed an order on *{{1}}*.
+
+📦 Order: *{{2}}*
+👤 Customer: {{3}}
+💰 {{4}}
+
+Open your admin panel to review and process it.
+```
+**Sample values:** `{{1}}` = `Raghava Organics`, `{{2}}` = `ORD-2026-00051`, `{{3}}` = `Dhanush Ram`, `{{4}}` = `Rs 450.00 - PREPAID`
+
 ### `admin_local_order`
 **Merchant-facing alert (2026-07-10):** the LOCAL-DELIVERY variant of `admin_new_order`,
 sent instead of it when the order's pincode is on the merchant's local-delivery whitelist
 (Admin → Settings → Local Delivery). The merchant delivers these orders himself, so `{{5}}`
 carries the full delivery address + customer phone. Same audience rules as
 `admin_new_order` (opted-in admins only, per-admin channels). Category: Utility.
-**Body:**
+**Body (neat multi-line layout):**
 ```
-{{1}} admin: local delivery order {{2}} from {{3}} for {{4}}. You deliver this one yourself — deliver to: {{5}}. No courier will be booked; update the order status from the admin panel.
+🛵 *Local Delivery Order!*
+
+A local order just came in on *{{1}}* — you deliver this one yourself.
+
+📦 Order: *{{2}}*
+👤 Customer: {{3}}
+💰 {{4}}
+📍 Deliver to: {{5}}
+
+No courier is booked. Update the order status from your admin panel.
 ```
 **Sample values:** `{{1}}` = `Raghava Organics`, `{{2}}` = `ORD-10234`, `{{3}}` = `Sita Devi`, `{{4}}` = `Rs 850.00 - COD`, `{{5}}` = `12-3-45 Main Rd, Warangal, Telangana, 506001 — Ph: 9876543210`
+
+### `local_out_for_delivery`
+**Customer-facing (2026-07-10):** the local-delivery variant of `out_for_delivery` — the
+store's own team delivers, so no courier/tracking wording. Sent when the admin advances a
+LOCAL order to SHIPPED or OUT_FOR_DELIVERY. Category: Utility.
+**Body (neat multi-line layout):**
+```
+🛵 *Out for delivery!*
+
+Good news from *{{1}}* — your order *{{2}}* is out for delivery today.
+
+Our own delivery team is on the way to your address. Please keep your phone reachable.
+```
+**Sample values:** `{{1}}` = `Raghava Organics`, `{{2}}` = `ORD-10234`
 
 ### `otp_verify`
 **Category:** **Authentication** (Meta REJECTS verification-code content in Utility — the
@@ -119,6 +158,18 @@ Good news from {{1}} — your order {{2}} has been shipped! Track your delivery 
 **Body:**
 ```
 Hi! {{1}}: Your order {{2}} is out for delivery today! Please keep your phone reachable so our courier can reach you.
+```
+**Sample values:** `{{1}}` = `Raghava Organics`, `{{2}}` = `ORD-10234`
+
+### `local_out_for_delivery`
+**Local-delivery variant of `out_for_delivery` (2026-07-10):** used for orders with
+`selectedShippingProvider = LOCAL` (whitelisted pincode — the store's own team delivers),
+where the standard template's "our courier" wording is wrong. Sent when the admin marks a
+local order SHIPPED or OUT_FOR_DELIVERY, and by "Resend notification" on local orders in
+those states. Category: Utility. Only needed by clients that enable local delivery.
+**Body:**
+```
+Hi! {{1}}: Your order {{2}} is out for delivery today! Our own delivery team is on the way to your address. Please keep your phone reachable.
 ```
 **Sample values:** `{{1}}` = `Raghava Organics`, `{{2}}` = `ORD-10234`
 

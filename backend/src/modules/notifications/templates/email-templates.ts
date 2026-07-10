@@ -15,6 +15,7 @@ import {
   OrderDeliveredEmail,
   OrderShippedEmail,
   OutForDeliveryEmail,
+  LocalOrderOutForDeliveryEmail,
   PasswordResetEmail,
   PaymentFailedEmail,
   OpsInviteSetupEmail,
@@ -27,6 +28,7 @@ export const supportedEmailTemplates = [
   'PaymentFailed',
   'OrderShipped',
   'OutForDelivery',
+  'LocalOrderOutForDelivery',
   'OrderDelivered',
   'OrderCancelled',
   'AdminNewOrder',
@@ -115,6 +117,11 @@ export async function renderNotificationEmail(template: string, data: Record<str
       return {
         subject: `Your order ${orderRef} is out for delivery today`,
         html: await render(OutForDeliveryEmail(orderRef))
+      };
+    case 'LocalOrderOutForDelivery':
+      return {
+        subject: `Your order ${orderRef} is out for delivery today`,
+        html: await render(LocalOrderOutForDeliveryEmail(orderRef))
       };
     case 'OrderDelivered':
       return {

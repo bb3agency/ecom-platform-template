@@ -27,6 +27,8 @@ export class SmsTemplateRegistry {
         '{{storeName}}: Order {{orderId}} has been shipped! {{estimatedDeliveryText}}Track your shipment: {{trackingUrl}}',
       OutForDelivery:
         '{{storeName}}: Your order {{orderId}} is out for delivery today! Please keep your phone reachable. Our courier will attempt delivery at your registered address.',
+      LocalOrderOutForDelivery:
+        '{{storeName}}: Your order {{orderId}} is out for delivery today! Our own delivery team is on the way to your address. Please keep your phone reachable.',
       OrderDelivered:
         '{{storeName}}: Order {{orderId}} has been delivered. We hope you love your products! Share your feedback in the app.',
       OrderCancelled:

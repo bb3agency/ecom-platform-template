@@ -2811,9 +2811,11 @@ export class OrdersService {
       const isLocalDeliveryOrder =
         ((existing as Record<string, unknown>)['selectedShippingProvider'] as string | null) === 'LOCAL';
       if (isLocalDeliveryOrder) {
+        // SHIPPED + OUT_FOR_DELIVERY both use the local variant — the store's own team
+        // delivers, so the courier/tracking wording of OrderShipped/OutForDelivery is wrong.
         const localTemplateByStatus: Partial<Record<OrderStatus, string>> = {
-          [OrderStatus.SHIPPED]: 'OrderShipped',
-          [OrderStatus.OUT_FOR_DELIVERY]: 'OutForDelivery',
+          [OrderStatus.SHIPPED]: 'LocalOrderOutForDelivery',
+          [OrderStatus.OUT_FOR_DELIVERY]: 'LocalOrderOutForDelivery',
           [OrderStatus.DELIVERED]: 'OrderDelivered',
           [OrderStatus.CANCELLED]: 'OrderCancelled'
         };
@@ -3407,6 +3409,7 @@ export class OrdersService {
         id: true,
         orderNumber: true,
         status: true,
+        selectedShippingProvider: true,
         user: {
           select: {
             email: true,
@@ -3425,6 +3428,8 @@ export class OrdersService {
     if (!order) {
       throw new AppError(ERROR_CODES.NOT_FOUND, 'Order not found', 404);
     }
+    const isLocalDeliveryOrder =
+      ((order as Record<string, unknown>)['selectedShippingProvider'] as string | null) === 'LOCAL';
 
     // No explicit template → derive it from the order's CURRENT status, so
     // "Resend notification" always tells the customer where the order stands
@@ -3433,6 +3438,7 @@ export class OrdersService {
       PENDING_PAYMENT: 'OrderConfirmed',
       CONFIRMED: 'OrderConfirmed',
       PROCESSING: 'OrderConfirmed',
+      // Local orders swap to the courier-free variant below.
       SHIPPED: 'OrderShipped',
       OUT_FOR_DELIVERY: 'OutForDelivery',
       DELIVERED: 'OrderDelivered',
@@ -3440,7 +3446,12 @@ export class OrdersService {
       REFUNDED: 'OrderCancelled',
       PAYMENT_FAILED: 'PaymentFailed'
     };
-    const template = input.template ?? statusToTemplate[order.status] ?? 'OrderConfirmed';
+    let template = input.template ?? statusToTemplate[order.status] ?? 'OrderConfirmed';
+    if (isLocalDeliveryOrder && (template === 'OrderShipped' || template === 'OutForDelivery')) {
+      // Merchant-fulfilled local delivery: no courier, no AWB, no tracking link —
+      // use the local wording instead of the courier templates.
+      template = 'LocalOrderOutForDelivery';
+    }
 
     // Shipped/OFD templates render AWB + tracking link when available.
     const notificationData: Record<string, string> = {

@@ -6,7 +6,7 @@ function createAnalyticsServiceHarness() {
   const orderFindManyMock = vi.fn();
   const analyticsQueryRawMock = vi.fn();
   const inventoryFindManyMock = vi.fn();
-  const lowStockAlertEventFindManyMock = vi.fn();
+  const cartReservationGroupByMock = vi.fn().mockResolvedValue([]);
   const notificationGroupByMock = vi.fn();
 
   const fastify = {
@@ -19,8 +19,8 @@ function createAnalyticsServiceHarness() {
       inventory: {
         findMany: inventoryFindManyMock
       },
-      lowStockAlertEvent: {
-        findMany: lowStockAlertEventFindManyMock
+      cartReservation: {
+        groupBy: cartReservationGroupByMock
       },
       notificationLog: {
         groupBy: notificationGroupByMock
@@ -33,7 +33,7 @@ function createAnalyticsServiceHarness() {
     orderFindManyMock,
     analyticsQueryRawMock,
     inventoryFindManyMock,
-    lowStockAlertEventFindManyMock,
+    cartReservationGroupByMock,
     notificationGroupByMock
   };
 }
@@ -147,13 +147,59 @@ describe('AnalyticsService date-window and empty-data behavior', () => {
     }
   });
 
-  it('returns empty inventory alerts when all variants are above threshold', async () => {
-    const { service, lowStockAlertEventFindManyMock } = createAnalyticsServiceHarness();
-    lowStockAlertEventFindManyMock.mockResolvedValue([]);
+  it('reports only variants currently at/below threshold from live inventory (not the alert log)', async () => {
+    const { service, inventoryFindManyMock, cartReservationGroupByMock } = createAnalyticsServiceHarness();
+    // GK is restocked to 100 (must NOT appear); SK sits at 3 available (must appear).
+    inventoryFindManyMock.mockResolvedValue([
+      {
+        variantId: 'v_sk',
+        quantity: 3,
+        lowStockThreshold: 5,
+        updatedAt: new Date('2026-07-10T00:00:00.000Z'),
+        variant: { name: '250gms', sku: 'SK250', product: { name: 'Sambar Kaaram' } }
+      },
+      {
+        variantId: 'v_gk',
+        quantity: 100,
+        lowStockThreshold: 5,
+        updatedAt: new Date('2026-07-10T00:00:00.000Z'),
+        variant: { name: '250gms', sku: 'GK250', product: { name: 'Goddu Kaaram' } }
+      }
+    ]);
+    cartReservationGroupByMock.mockResolvedValue([]);
 
     const result = await service.getInventoryAlerts();
 
-    expect(result.items).toEqual([]);
+    expect(result.items).toEqual([
+      {
+        variantId: 'v_sk',
+        sku: 'SK250',
+        variantName: '250gms',
+        quantity: 3,
+        lowStockThreshold: 5,
+        productName: 'Sambar Kaaram',
+        occurredAt: '2026-07-10T00:00:00.000Z'
+      }
+    ]);
+  });
+
+  it('subtracts active reservations when deciding low-stock (available, not on-hand)', async () => {
+    const { service, inventoryFindManyMock, cartReservationGroupByMock } = createAnalyticsServiceHarness();
+    inventoryFindManyMock.mockResolvedValue([
+      {
+        variantId: 'v1',
+        quantity: 8,
+        lowStockThreshold: 5,
+        updatedAt: new Date('2026-07-10T00:00:00.000Z'),
+        variant: { name: 'Default', sku: 'SKU1', product: { name: 'Test' } }
+      }
+    ]);
+    cartReservationGroupByMock.mockResolvedValue([{ variantId: 'v1', _sum: { quantity: 5 } }]);
+
+    const result = await service.getInventoryAlerts();
+    // 8 on-hand − 5 reserved = 3 available ≤ 5 threshold → alert.
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]!.quantity).toBe(3);
   });
 
   it('returns empty channels when notification logs are absent', async () => {

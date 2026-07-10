@@ -103,6 +103,12 @@ export class WhatsappTemplateRegistry {
         language: 'en',
         params: ['storeName', 'orderId']
       },
+      // Local-delivery variant — the store's own team delivers, so no courier wording.
+      LocalOrderOutForDelivery: {
+        metaName: 'local_out_for_delivery',
+        language: 'en',
+        params: ['storeName', 'orderId']
+      },
       OrderDelivered: {
         metaName: 'order_delivered',
         language: 'en',

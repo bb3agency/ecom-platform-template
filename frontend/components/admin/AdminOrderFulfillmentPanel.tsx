@@ -160,6 +160,43 @@ export function AdminOrderFulfillmentPanel({
     return () => { cancelled = true; };
   }, [api, selectedOrderId]);
 
+  // The invoice is generated asynchronously (a few seconds after the order is
+  // confirmed/paid). Without this, the panel showed a permanently-disabled
+  // "Print invoice" button reading "still being generated" until the admin manually
+  // refreshed. Poll a handful of times so the button self-enables the moment the PDF
+  // lands. Stops as soon as the invoice appears, or after ~1 minute (a stuck invoice
+  // usually means missing product HSN codes or an incomplete store GST profile).
+  useEffect(() => {
+    if (!detail || detail.id !== selectedOrderId) return;
+    if (detail.invoice?.hasPdf) return;
+    // Only orders past payment can have an invoice; skip pre-payment states.
+    if (["PENDING_PAYMENT", "PAYMENT_FAILED", "CANCELLED"].includes(detail.status)) return;
+    let cancelled = false;
+    let attempts = 0;
+    const timer = setInterval(() => {
+      if (cancelled) return;
+      attempts += 1;
+      if (attempts > 12) {
+        clearInterval(timer);
+        return;
+      }
+      void (async () => {
+        try {
+          const fresh = await api<AdminOrderDetail>(`/admin/orders/${selectedOrderId}`);
+          if (cancelled) return;
+          setDetail(fresh);
+          if (fresh.invoice?.hasPdf) clearInterval(timer);
+        } catch {
+          /* transient — keep polling */
+        }
+      })();
+    }, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [api, selectedOrderId, detail?.id, detail?.invoice?.hasPdf, detail?.status]);
+
   const pollUntilShipped = useCallback(
     (orderId: string) => {
       let cancelled = false;
@@ -703,7 +740,7 @@ export function AdminOrderFulfillmentPanel({
                 title={
                   detail.invoice?.hasPdf
                     ? "Opens the GST invoice PDF in a new tab, ready to print and pack with the order"
-                    : "Invoice is still being generated — refresh in a few seconds"
+                    : "Generating the invoice… this enables automatically in a few seconds. If it never enables, check that every product has an HSN code and the store GST profile (name, address, state, GSTIN) is complete."
                 }
                 primary
               />

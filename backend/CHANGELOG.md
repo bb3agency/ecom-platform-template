@@ -12,6 +12,22 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.69] — 2026-07-10
+
+### Fixed
+- **Analytics "Inventory alerts" now reflects CURRENT stock, not the historical alert log.** `getInventoryAlerts()` read `lowStockAlertEvent` (a log of past alerts, showing the quantity captured *at alert time*), so a variant restocked back to 100 still showed as a qty-0 alert forever — directly contradicting the live Inventory list. It now computes from live `Inventory` (on-hand minus active cart reservations) and filters `available <= lowStockThreshold`, exactly like `inventory.listLowStock()`, so alerts appear/clear in lockstep with real stock. Reported `quantity` is now AVAILABLE stock (matches the storefront out-of-stock gate). This also resolves the "inventory quantity looks wrong" confusion — the DB decrement (atomic guarded `updateMany`) and admin adjust were already correct; only this panel was stale.
+
+### Added
+- **`LocalOrderOutForDelivery` notification template** (email + SMS + WhatsApp `local_out_for_delivery`) — the courier-free variant of OutForDelivery for merchant-fulfilled local orders (no "courier"/"track your shipment" wording). `adminUpdateOrderStatus` routes a LOCAL order's SHIPPED **and** OUT_FOR_DELIVERY changes to it; `adminRetriggerNotification` swaps OrderShipped/OutForDelivery → LocalOrderOutForDelivery for LOCAL orders. Registered in `AdminRetriggerNotificationInput` + retrigger schema enum.
+- **Neat multi-line WhatsApp bodies** for `admin_new_order`, `admin_local_order`, `local_out_for_delivery` (emoji + bold + line breaks, matching the merchant's requested format) — documented in `docs/WHATSAPP_TEMPLATE_REGISTRY.md`. Parameter count/order unchanged, so **no code change** — the operator just re-edits the body in WhatsApp Manager and re-submits.
+
+**Propagation:**
+- Severity: NORMAL · Layers: backend (`modules/analytics/analytics.service.ts` + test, `modules/orders/orders.service.ts` + `orders.types.ts` + `orders.schemas.ts`, `modules/notifications/sms-template-registry.ts` + `whatsapp-template-registry.ts`, `modules/notifications/templates/**` [per-client — hand-carry], `docs/WHATSAPP_TEMPLATE_REGISTRY.md`) — pairs with frontend-core 0.1.45
+- Migration: NO · Flag: none · Design impact: none · Breaking: NO
+- Rollback: revert the files
+- Operator: to use WhatsApp for the new local out-for-delivery message, create + approve `local_out_for_delivery` in WhatsApp Manager (body in the registry doc). Email/SMS work immediately. The neat `admin_new_order`/`admin_local_order` bodies are optional re-edits of already-approved/new templates.
+- Note: `notifications/templates/**` is per-client (excluded from sync) — the `LocalOrderOutForDeliveryEmail` component must be hand-carried to each client (verbatim for raghava; re-apply env-branding for sbgs).
+
 ## [0.1.68] — 2026-07-10
 
 ### Added

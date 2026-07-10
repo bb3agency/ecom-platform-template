@@ -1502,6 +1502,7 @@ export const adminRetriggerNotificationSchema = {
           'PaymentFailed',
           'OrderShipped',
           'OutForDelivery',
+          'LocalOrderOutForDelivery',
           'OrderDelivered',
           'OrderCancelled'
         ],

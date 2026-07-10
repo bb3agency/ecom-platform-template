@@ -149,48 +149,70 @@ export class AnalyticsService {
     };
   }
 
+  /**
+   * Variants CURRENTLY at or below their low-stock threshold — computed from live
+   * inventory (on-hand minus active cart reservations), NOT from the historical
+   * `lowStockAlertEvent` log. The log showed the quantity captured at alert time, so a
+   * variant restocked back to full still appeared as a qty-0 alert forever; this reflects
+   * the real current state and disappears the moment stock is replenished.
+   */
   async getInventoryAlerts() {
-    const from = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    let items: Array<{
+    let inventory: Array<{
       variantId: string;
-      sku: string;
-      variantName: string;
       quantity: number;
       lowStockThreshold: number;
-      productName: string;
-      createdAt: Date;
-    }> = [];
+      updatedAt: Date;
+      variant: { name: string; sku: string; product: { name: string } };
+    }>;
     try {
-      items = await this.fastify.prisma.lowStockAlertEvent.findMany({
-        where: {
-          createdAt: { gte: from }
-        },
-        orderBy: { createdAt: 'desc' }
+      inventory = await this.fastify.prisma.inventory.findMany({
+        orderBy: { quantity: 'asc' },
+        select: {
+          variantId: true,
+          quantity: true,
+          lowStockThreshold: true,
+          updatedAt: true,
+          variant: {
+            select: { name: true, sku: true, product: { select: { name: true } } }
+          }
+        }
       });
     } catch (error) {
       // Gracefully degrade to empty report when migration is not applied in local/dev DB.
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === 'P2021' &&
-        typeof error.meta?.table === 'string' &&
-        error.meta.table.includes('LowStockAlertEvent')
+        error.code === 'P2021'
       ) {
         return { items: [] };
       }
       throw error;
     }
 
-    return {
-      items: items.map((item) => ({
-        variantId: item.variantId,
-        sku: item.sku,
-        variantName: item.variantName,
-        quantity: item.quantity,
-        lowStockThreshold: item.lowStockThreshold,
-        productName: item.productName,
-        occurredAt: item.createdAt.toISOString()
-      }))
-    };
+    const reserved = await this.fastify.prisma.cartReservation.groupBy({
+      by: ['variantId'],
+      where: { expiresAt: { gt: new Date() } },
+      _sum: { quantity: true }
+    });
+    const reservedByVariant = new Map(reserved.map((r) => [r.variantId, r._sum.quantity ?? 0]));
+
+    const items = inventory
+      .map((item) => {
+        const available = Math.max(item.quantity - (reservedByVariant.get(item.variantId) ?? 0), 0);
+        return {
+          variantId: item.variantId,
+          sku: item.variant.sku,
+          variantName: item.variant.name,
+          // Report AVAILABLE stock (on-hand minus reservations) — the number that matters
+          // for "can I still sell this", matching the storefront out-of-stock gate.
+          quantity: available,
+          lowStockThreshold: item.lowStockThreshold,
+          productName: item.variant.product.name,
+          occurredAt: item.updatedAt.toISOString()
+        };
+      })
+      .filter((item) => item.quantity <= item.lowStockThreshold);
+
+    return { items };
   }
 
   async exportRevenueCsv(query: AnalyticsRevenueQuery) {

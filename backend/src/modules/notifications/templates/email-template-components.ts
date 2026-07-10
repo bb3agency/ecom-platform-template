@@ -373,6 +373,31 @@ export function OutForDeliveryEmail(orderId: string): ReactElement {
   );
 }
 
+/**
+ * Local-delivery variant of OutForDeliveryEmail — the STORE's own team delivers
+ * (no courier/delivery partner language, no tracking references).
+ */
+export function LocalOrderOutForDeliveryEmail(orderId: string): ReactElement {
+  return Wrapper(
+    StatusBadge('Out for Delivery', B.warningAmber, B.warningBg),
+    Heading('Your order is on its way!'),
+    Body(`Great news — your order ${orderId} is out for delivery today! Our own delivery team is bringing it to your address. Please keep your phone reachable.`),
+    InfoBox(
+      el('table', { width: '100%', cellPadding: 0, cellSpacing: 0 },
+        el('tbody', null,
+          InfoRow('Order ID', orderId),
+          InfoRow('Status', 'Out for delivery'),
+          InfoRow('Delivered by', 'Store delivery team (local delivery)')
+        )
+      ),
+      B.warningBg, B.warningBorder
+    ),
+    el('p', {
+      style: { fontSize: '13px', color: B.textMuted, margin: '24px 0 0', lineHeight: '1.6' }
+    }, 'If you\'re unavailable, our team will call you on your registered number to arrange the handover.')
+  );
+}
+
 export function OrderDeliveredEmail(orderId: string): ReactElement {
   return Wrapper(
     StatusBadge('Delivered', B.successGreen, B.successBg),
