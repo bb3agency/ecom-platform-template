@@ -34,7 +34,7 @@ import {
 } from '@modules/notifications/notification-failure-alert';
 import { CheckoutRiskService } from './checkout-risk.service';
 import { SettingsService } from '@modules/settings/settings.service';
-import { featureFlags } from '@config/feature-flags';
+import { resolveGstInvoicingEnabled } from '@common/invoicing/gst-invoicing-flag';
 import { recordCheckoutPath, recordWebhookEvent } from '@common/observability/metrics';
 import { isStorefrontCouponsEnabled } from '@common/coupons/coupons-feature';
 import { assertCouponWithinUsageLimits, finalizeCouponUsageForOrder, releaseCouponUsageForOrder, type CouponLimitClient } from '@common/coupons/coupon-usage';
@@ -799,7 +799,7 @@ export class OrdersService {
     userId: string,
     orderId: string
   ): Promise<{ invoiceNumber: string; content: Buffer }> {
-    if (!featureFlags.gstInvoicing) {
+    if (!(await resolveGstInvoicingEnabled(this.fastify.prisma))) {
       throw new AppError(ERROR_CODES.VALIDATION_ERROR, 'GST invoicing is disabled', 400);
     }
 
@@ -2648,7 +2648,7 @@ export class OrdersService {
   }
 
   async adminGetInvoicePdf(orderId: string): Promise<{ invoiceNumber: string; content: Buffer }> {
-    if (!featureFlags.gstInvoicing) {
+    if (!(await resolveGstInvoicingEnabled(this.fastify.prisma))) {
       throw new AppError(ERROR_CODES.VALIDATION_ERROR, 'GST invoicing is disabled', 400);
     }
 
@@ -4571,7 +4571,10 @@ export class OrdersService {
             refundedAmountPaise: order.payment.refundedAmountPaise
           }
         : null,
-      invoice: featureFlags.gstInvoicing && order.invoice
+      // The invoice CTA is gated on the invoice RECORD existing — a record is only ever
+      // created when invoicing was effectively enabled at generation time (worker gate),
+      // and existing invoices stay downloadable even if the merchant later toggles it off.
+      invoice: order.invoice
         ? {
             invoiceNumber: order.invoice.invoiceNumber,
             hasPdf: Boolean(order.invoice.pdfUrl),

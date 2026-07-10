@@ -9,7 +9,6 @@ import { createIdempotencyKey } from "@/lib/idempotency";
 import type { AdminStoreProfile } from "@/lib/admin-api";
 import { getApiErrorMessage } from "@/lib/error-messages";
 import { toast } from "@/lib/toast";
-import { fetchPublicStoreConfigClient } from "@/lib/storefront-settings";
 import {
   Store,
   FileText,
@@ -17,6 +16,7 @@ import {
   Info,
   Lock,
   Loader2,
+  ReceiptText,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
@@ -46,7 +46,11 @@ export function StoreSettingsPanel() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Merchant GST invoicing toggle (StoreSettings.gstInvoicingEnabled via the COD settings
+  // endpoint). Turning it on/off takes effect live — no backend restart.
   const [gstInvoicingEnabled, setGstInvoicingEnabled] = useState(false);
+  const [gstToggleLoaded, setGstToggleLoaded] = useState(false);
+  const [gstToggleSaving, setGstToggleSaving] = useState(false);
 
   // Surface transient error/success as global toast popups instead of large in-panel banners.
   useEffect(() => {
@@ -58,15 +62,44 @@ export function StoreSettingsPanel() {
 
   useEffect(() => {
     let cancelled = false;
-    void fetchPublicStoreConfigClient().then((config) => {
-      if (!cancelled) {
-        setGstInvoicingEnabled(config.gstInvoicingEnabled);
-      }
-    });
+    void api<{ gstInvoicingEnabled: boolean }>("/admin/settings/cod")
+      .then((config) => {
+        if (!cancelled) {
+          setGstInvoicingEnabled(config.gstInvoicingEnabled);
+          setGstToggleLoaded(true);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setGstToggleLoaded(true);
+      });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [api, refetchKey]);
+
+  async function onToggleGstInvoicing(next: boolean) {
+    if (!canWrite || gstToggleSaving) return;
+    setGstToggleSaving(true);
+    setError(null);
+    try {
+      const res = await api<{ gstInvoicingEnabled: boolean }>("/admin/settings/cod", {
+        method: "PATCH",
+        idempotencyKey: createIdempotencyKey(),
+        body: JSON.stringify({ gstInvoicingEnabled: next }),
+      });
+      setGstInvoicingEnabled(res.gstInvoicingEnabled);
+      setSuccess(
+        res.gstInvoicingEnabled
+          ? "GST invoicing enabled. Invoices will be generated for new orders."
+          : "GST invoicing disabled. New orders will not generate invoices.",
+      );
+      setTimeout(() => setSuccess(null), 4000);
+    } catch (err) {
+      setError(getApiErrorMessage(err));
+    } finally {
+      setGstToggleSaving(false);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -339,6 +372,31 @@ export function StoreSettingsPanel() {
         </div>
 
         {/* ------------------------------------------------------------------ */}
+        {/* GST invoicing master toggle — merchant-controlled, takes effect live */}
+        {/* ------------------------------------------------------------------ */}
+        <label className="flex min-h-11 cursor-pointer items-center justify-between gap-4 rounded-xl border border-border bg-muted/10 p-4">
+          <span className="flex items-start gap-3">
+            <ReceiptText className="mt-0.5 h-5 w-5 text-primary" aria-hidden />
+            <span>
+              <span className="block text-sm font-medium text-foreground">GST invoicing</span>
+              <span className="block text-xs text-muted-foreground">
+                When on, a GST tax invoice PDF is generated for every new order and offered to
+                the customer and admin. Requires GSTIN, FSSAI, and full seller details below.
+                Takes effect immediately — no restart.
+              </span>
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            className="h-5 w-5 accent-primary"
+            checked={gstInvoicingEnabled}
+            disabled={!canWrite || !gstToggleLoaded || gstToggleSaving}
+            onChange={(e) => void onToggleGstInvoicing(e.target.checked)}
+            aria-label="Enable GST invoicing"
+          />
+        </label>
+
+        {/* ------------------------------------------------------------------ */}
         {/* GST-only: Compliance IDs (GSTIN + FSSAI) — gated by invoicing flag  */}
         {/* ------------------------------------------------------------------ */}
         {gstInvoicingEnabled ? (
@@ -412,8 +470,9 @@ export function StoreSettingsPanel() {
           </>
         ) : (
           <p className="text-sm text-muted-foreground">
-            GSTIN &amp; FSSAI fields are hidden because GST invoicing is disabled in backend store
-            config. Your store address above is still saved and shown on the storefront.
+            GSTIN &amp; FSSAI fields are hidden because GST invoicing is turned off above. Turn it
+            on to enter your tax details and start generating invoices. Your store address is
+            still saved and shown on the storefront regardless.
           </p>
         )}
 

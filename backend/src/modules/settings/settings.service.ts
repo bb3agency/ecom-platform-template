@@ -427,29 +427,32 @@ export class SettingsService {
     };
   }
 
-  async getCodSettings(): Promise<{ isCodEnabled: boolean; mobileOtpSignupEnabled: boolean; reviewsEnabled: boolean; galleryEnabled: boolean; returnsEnabled: boolean; cancellationWindowHours: number; sellerState: string | null }> {
+  async getCodSettings(): Promise<{ isCodEnabled: boolean; mobileOtpSignupEnabled: boolean; reviewsEnabled: boolean; galleryEnabled: boolean; returnsEnabled: boolean; gstInvoicingEnabled: boolean; cancellationWindowHours: number; sellerState: string | null }> {
     const settings = await this.fastify.prisma.storeSettings.findUnique({
       where: { singletonKey: SettingsService.singletonKey },
-      select: { isCodEnabled: true, mobileOtpSignupEnabled: true, reviewsEnabled: true, galleryEnabled: true, returnsEnabled: true, cancellationWindowHours: true, sellerState: true }
-    }) as { isCodEnabled: boolean; mobileOtpSignupEnabled: boolean; reviewsEnabled: boolean; galleryEnabled: boolean; returnsEnabled: boolean; cancellationWindowHours: number; sellerState: string | null } | null;
+      select: { isCodEnabled: true, mobileOtpSignupEnabled: true, reviewsEnabled: true, galleryEnabled: true, returnsEnabled: true, gstInvoicingEnabled: true, cancellationWindowHours: true, sellerState: true }
+    }) as { isCodEnabled: boolean; mobileOtpSignupEnabled: boolean; reviewsEnabled: boolean; galleryEnabled: boolean; returnsEnabled: boolean; gstInvoicingEnabled: boolean | null; cancellationWindowHours: number; sellerState: string | null } | null;
     return {
       isCodEnabled: settings?.isCodEnabled ?? false,
       mobileOtpSignupEnabled: settings?.mobileOtpSignupEnabled ?? false,
       reviewsEnabled: settings?.reviewsEnabled ?? false,
       galleryEnabled: settings?.galleryEnabled ?? false,
       returnsEnabled: settings?.returnsEnabled ?? true,
+      // Effective value: merchant toggle wins once set, else the env default.
+      gstInvoicingEnabled: settings?.gstInvoicingEnabled ?? featureFlags.gstInvoicing,
       cancellationWindowHours: settings?.cancellationWindowHours ?? 24,
       sellerState: settings?.sellerState ?? null
     };
   }
 
-  async updateCodSettings(input: { isCodEnabled?: boolean; mobileOtpSignupEnabled?: boolean; reviewsEnabled?: boolean; galleryEnabled?: boolean; returnsEnabled?: boolean; cancellationWindowHours?: number; sellerState?: string | null }): Promise<{ isCodEnabled: boolean; mobileOtpSignupEnabled: boolean; reviewsEnabled: boolean; galleryEnabled: boolean; returnsEnabled: boolean; cancellationWindowHours: number; sellerState: string | null }> {
+  async updateCodSettings(input: { isCodEnabled?: boolean; mobileOtpSignupEnabled?: boolean; reviewsEnabled?: boolean; galleryEnabled?: boolean; returnsEnabled?: boolean; gstInvoicingEnabled?: boolean; cancellationWindowHours?: number; sellerState?: string | null }): Promise<{ isCodEnabled: boolean; mobileOtpSignupEnabled: boolean; reviewsEnabled: boolean; galleryEnabled: boolean; returnsEnabled: boolean; gstInvoicingEnabled: boolean; cancellationWindowHours: number; sellerState: string | null }> {
     const updateData: Record<string, unknown> = {};
     if (input.isCodEnabled !== undefined) updateData['isCodEnabled'] = input.isCodEnabled;
     if (input.mobileOtpSignupEnabled !== undefined) updateData['mobileOtpSignupEnabled'] = input.mobileOtpSignupEnabled;
     if (input.reviewsEnabled !== undefined) updateData['reviewsEnabled'] = input.reviewsEnabled;
     if (input.galleryEnabled !== undefined) updateData['galleryEnabled'] = input.galleryEnabled;
     if (input.returnsEnabled !== undefined) updateData['returnsEnabled'] = input.returnsEnabled;
+    if (input.gstInvoicingEnabled !== undefined) updateData['gstInvoicingEnabled'] = input.gstInvoicingEnabled;
     if (input.cancellationWindowHours !== undefined) updateData['cancellationWindowHours'] = Math.max(1, Math.floor(input.cancellationWindowHours));
     if (input.sellerState !== undefined) updateData['sellerState'] = input.sellerState;
     const defaultPickupPincode = await this.resolveDefaultPickupPincodeForCreate();
@@ -463,14 +466,15 @@ export class SettingsService {
         defaultLowStockThreshold: 5,
         ...updateData
       },
-      select: { isCodEnabled: true, mobileOtpSignupEnabled: true, reviewsEnabled: true, galleryEnabled: true, returnsEnabled: true, cancellationWindowHours: true, sellerState: true }
-    }) as { isCodEnabled: boolean; mobileOtpSignupEnabled: boolean; reviewsEnabled: boolean; galleryEnabled: boolean; returnsEnabled: boolean; cancellationWindowHours: number; sellerState: string | null };
+      select: { isCodEnabled: true, mobileOtpSignupEnabled: true, reviewsEnabled: true, galleryEnabled: true, returnsEnabled: true, gstInvoicingEnabled: true, cancellationWindowHours: true, sellerState: true }
+    }) as { isCodEnabled: boolean; mobileOtpSignupEnabled: boolean; reviewsEnabled: boolean; galleryEnabled: boolean; returnsEnabled: boolean; gstInvoicingEnabled: boolean | null; cancellationWindowHours: number; sellerState: string | null };
     return {
       isCodEnabled: updated.isCodEnabled ?? false,
       mobileOtpSignupEnabled: updated.mobileOtpSignupEnabled ?? false,
       reviewsEnabled: updated.reviewsEnabled ?? false,
       galleryEnabled: updated.galleryEnabled ?? false,
       returnsEnabled: updated.returnsEnabled ?? true,
+      gstInvoicingEnabled: updated.gstInvoicingEnabled ?? featureFlags.gstInvoicing,
       cancellationWindowHours: updated.cancellationWindowHours ?? 24,
       sellerState: updated.sellerState ?? null
     };
@@ -643,6 +647,8 @@ export class SettingsService {
           galleryEnabled: true,
           // Merchant returns toggle (Admin → Settings) — gates the whole return-request flow.
           returnsEnabled: true,
+          // Merchant GST invoicing toggle (Admin → Settings) — null inherits the env default.
+          gstInvoicingEnabled: true,
           // Public store identity/contact — merchant-editable in Admin → Settings → Store,
           // rendered in the storefront footer + contact surfaces.
           storeName: true,
@@ -665,7 +671,10 @@ export class SettingsService {
       galleryEnabled: settings?.galleryEnabled ?? false,
       returnsEnabled: settings?.returnsEnabled ?? true,
       wishlistEnabled: featureFlags.wishlist,
-      gstInvoicingEnabled: featureFlags.gstInvoicing,
+      // Merchant toggle (Admin → Settings) wins once set; else inherit the env default.
+      gstInvoicingEnabled:
+        ((settings as { gstInvoicingEnabled?: boolean | null } | null)?.gstInvoicingEnabled) ??
+        featureFlags.gstInvoicing,
       storeName: settings?.storeName ?? null,
       storeAddress: settings?.sellerAddress ?? null,
       storeState: settings?.sellerState ?? null,

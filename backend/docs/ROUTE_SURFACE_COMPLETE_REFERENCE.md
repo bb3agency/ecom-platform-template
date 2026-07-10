@@ -554,7 +554,7 @@ Does **not** control provider credentials — those are ops-only (`POST /ops/con
 Inventory defaults: low-stock threshold, out-of-stock behaviour (block checkout vs allow with backorder flag).
 
 ### `GET /PATCH /api/v1/admin/settings/cod`
-COD enable/disable toggle, customer cancellation window in hours, seller state (used for tax calculations).
+Merchant store toggles: COD enable/disable, customer cancellation window in hours, seller state (used for tax calculations), and the on/off flags for reviews, gallery, returns, mobile-OTP signup, and **GST invoicing** (`gstInvoicingEnabled`, added 2026-07-11). `gstInvoicingEnabled` is nullable in the DB — when unset the endpoint returns the effective value inherited from the `FEATURE_GST_INVOICING_ENABLED` env default; once the merchant sets it, the stored value is authoritative and takes effect **live (no restart)**, gating invoice + credit-note generation and the invoice-PDF download routes.
 
 ### `GET /PATCH /api/v1/admin/settings/local-delivery`
 **Merchant-fulfilled local delivery (2026-07-10).** `settings:read` / `settings:write`. Controls

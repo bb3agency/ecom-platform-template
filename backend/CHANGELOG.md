@@ -12,6 +12,17 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.70] — 2026-07-11
+
+### Added
+- **GST invoicing is now a merchant Admin toggle** (no longer .env-only / restart-only). New nullable `StoreSettings.gstInvoicingEnabled` (migration `20260711090000_add_gst_invoicing_toggle`). New resolver `resolveGstInvoicingEnabled(prisma)` = **stored value wins once set, else inherit `FEATURE_GST_INVOICING_ENABLED` env default** — so a merchant can turn invoicing ON from the UI even when the env flag is off (or off when it's on), effective immediately with no backend restart. Wired into every gate: invoice generation + credit-note generation + side-effect enqueue (order-processing worker), customer/admin invoice-PDF download (`getMyInvoicePdf`/`adminGetInvoicePdf`), `GET /store/config.gstInvoicingEnabled`, and the admin `GET/PATCH /admin/settings/cod` (now carries `gstInvoicingEnabled`, returning the effective value). `serializeOrder`'s invoice CTA now gates on the invoice RECORD existing (created only when invoicing was enabled) rather than the env flag, so existing invoices stay downloadable even if invoicing is later turned off. Tests: `common/invoicing/gst-invoicing-flag.test.ts`.
+
+**Propagation:**
+- Severity: NORMAL · Layers: backend (`prisma`, `common/invoicing/gst-invoicing-flag.ts`, `queues/workers/order-processing.worker.ts`, `modules/orders/orders.service.ts`, `modules/settings/settings.{service,schemas}.ts`) — pairs with frontend-core 0.1.46
+- Migration: YES (`20260711090000_add_gst_invoicing_toggle`, additive nullable column) · Flag: `StoreSettings.gstInvoicingEnabled` (null = inherit env `FEATURE_GST_INVOICING_ENABLED`) · Design impact: none · Breaking: NO
+- Rollback: revert the files + drop the column; behaviour reverts to the env flag
+- Operator: nothing required — existing deployments keep their current env-flag behaviour until a merchant flips the new toggle. Merchants enable it in Admin → Settings → Store.
+
 ## [0.1.69] — 2026-07-10
 
 ### Fixed

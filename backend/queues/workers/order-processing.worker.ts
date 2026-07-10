@@ -8,7 +8,7 @@ import { ERROR_CODES } from '@common/errors/error-codes';
 import { type InvoiceStorageAdapter } from '@common/interfaces/invoice-storage.interface';
 import { createInvoiceStorageProvider } from '@modules/invoices/invoice-storage-provider';
 import { renderCreditNotePdfBuffer, renderInvoicePdfBuffer, type InvoiceLineItem } from '@modules/invoices/invoice-renderer';
-import { featureFlags } from '@config/feature-flags';
+import { resolveGstInvoicingEnabled } from '@common/invoicing/gst-invoicing-flag';
 import { finalizeCouponUsageForOrder, releaseCouponUsageForOrder } from '@common/coupons/coupon-usage';
 import { releaseReservationsForOrder } from '@common/orders/release-reservations';
 import {
@@ -911,7 +911,7 @@ async function handleProcessOrderUpdate(
     });
   }
 
-  if (featureFlags.gstInvoicing) {
+  if (await resolveGstInvoicingEnabled(prisma)) {
     await enqueueOutboxOrQueue(prisma, 'orderProcessing', 'generate-invoice', {
       orderId: sideEffectsTarget.id
     }, orderProcessingQueue, `generate-invoice-${sideEffectsTarget.id}`);
@@ -1100,7 +1100,7 @@ async function handlePostCaptureRecovery(
 }
 
 async function generateInvoiceForOrder(prisma: RealPrismaClient, orderId: string, invoiceStorageAdapter: InvoiceStorageAdapter): Promise<void> {
-  if (!featureFlags.gstInvoicing) {
+  if (!(await resolveGstInvoicingEnabled(prisma))) {
     return;
   }
 
@@ -1241,7 +1241,7 @@ async function generateCreditNoteForOrder(
   data: GenerateCreditNoteJobData,
   invoiceStorageAdapter: InvoiceStorageAdapter
 ): Promise<void> {
-  if (!featureFlags.gstInvoicing) {
+  if (!(await resolveGstInvoicingEnabled(prisma))) {
     return;
   }
 

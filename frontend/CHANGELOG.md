@@ -12,6 +12,16 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.46] — 2026-07-11
+
+### Added
+- **GST invoicing toggle in Admin → Settings → Store** (`StoreSettingsPanel`). A switch (persisted via `PATCH /admin/settings/cod` `gstInvoicingEnabled`) that turns GST invoicing on/off live — no backend restart. When on, the GSTIN/FSSAI compliance fields appear and invoices generate for new orders; when off, they're hidden. Replaces the old read-only "GST invoicing is disabled in backend store config" message (which required editing `.env`). Loads the effective value from the COD-settings endpoint.
+
+**Propagation:**
+- Severity: NORMAL · Layers: frontend (`components/admin/StoreSettingsPanel.tsx`) — pairs with backend-core 0.1.70
+- Migration: NO · Flag: merchant DB toggle · Design impact: none · Breaking: NO
+- Rollback: revert the file
+
 ## [0.1.45] — 2026-07-10
 
 ### Fixed

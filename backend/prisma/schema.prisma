@@ -1023,6 +1023,9 @@ model StoreSettings {
   reviewsEnabled            Boolean  @default(false)
   galleryEnabled            Boolean  @default(false)
   returnsEnabled            Boolean  @default(true)
+  /// Merchant GST invoicing toggle. Null = inherit the FEATURE_GST_INVOICING_ENABLED env
+  /// default; once the merchant sets it, the DB value is authoritative (can enable without a restart).
+  gstInvoicingEnabled       Boolean?
   mobileOtpSignupEnabled    Boolean  @default(false)
   cancellationWindowHours   Int      @default(24)
   notifyEmailEnabled        Boolean  @default(true)
