@@ -38,8 +38,10 @@ describe('OrdersService admin retrigger notification', () => {
         template: 'OrderConfirmed',
         data: { orderId: 'order_1' }
       }),
+      // Resend appends a per-invocation token so it always delivers (never deduped
+      // against an earlier automatic send of the same status template).
       expect.objectContaining({
-        jobId: 'notifications-email-order_1-OrderConfirmed'
+        jobId: expect.stringMatching(/^notifications-email-order_1-OrderConfirmed-resend-/)
       })
     );
     expect(addNotification).toHaveBeenNthCalledWith(
@@ -51,7 +53,7 @@ describe('OrdersService admin retrigger notification', () => {
         data: { orderId: 'order_1' }
       }),
       expect.objectContaining({
-        jobId: 'notifications-sms-order_1-OrderConfirmed'
+        jobId: expect.stringMatching(/^notifications-sms-order_1-OrderConfirmed-resend-/)
       })
     );
     expect(result).toEqual({

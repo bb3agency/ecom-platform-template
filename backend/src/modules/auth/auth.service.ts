@@ -232,14 +232,21 @@ export class AuthService {
   }
 
   /**
-   * Binds refresh tokens to server-observable signals only (User-Agent + client IP).
-   * Client-supplied fingerprint headers are ignored for binding — they are optional abuse
-   * signals elsewhere, not a trust anchor (prevents spoofing to bypass stolen-cookie checks).
+   * Binds refresh tokens to the device's User-Agent only.
+   *
+   * Client IP is deliberately NOT part of this binding. Mobile carriers rotate the
+   * egress IP constantly (carrier-grade NAT, cell↔Wi-Fi handoff, VPN), and office
+   * networks load-balance across multiple egress IPs. Including the IP meant a mere
+   * network change between login and the next refresh produced a device mismatch,
+   * which revokes the WHOLE session (see `refresh`) — the exact "logged out on reload /
+   * works on desktop, drops on mobile" session-persistence failure. IP is still
+   * captured as a soft abuse/risk signal elsewhere; it is just not a hard trust anchor
+   * for session continuity. Client-supplied fingerprint headers remain ignored for
+   * binding (spoofable), so the bcrypt token hash stays the primary stolen-cookie defense.
    */
   private deriveDeviceKeyHash(context?: LoginContext): string {
     const userAgent = context?.risk?.userAgent?.trim() || 'unknown-agent';
-    const clientIp = context?.clientIp?.trim() || 'unknown-ip';
-    return stableHash(`${userAgent}|${clientIp}`);
+    return stableHash(`ua|${userAgent}`);
   }
 
   private deriveTokenIssueContext(context?: LoginContext): TokenIssueContext {

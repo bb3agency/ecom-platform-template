@@ -3495,6 +3495,13 @@ export class OrdersService {
     const email = order.user?.email ?? null;
     const phone = order.user?.phone ?? null;
     let queuedJobs = 0;
+    // "Resend" is an explicit, operator-initiated action that must ALWAYS deliver —
+    // even if the same status template already went out automatically. A status-scoped
+    // jobId (`notifications:email:<id>:<template>`) would be deduped by BullMQ against
+    // the earlier send and silently no-op. Append a per-invocation token so every
+    // resend is a fresh job. Accidental double-clicks are still absorbed upstream by
+    // the route's idempotency-key preHandler.
+    const resendToken = `resend-${Date.now().toString(36)}`;
 
     if (channels.includes('EMAIL')) {
       if (!email) {
@@ -3512,7 +3519,7 @@ export class OrdersService {
           template,
           data: notificationData
         },
-        `notifications:email:${order.id}:${template}`
+        `notifications:email:${order.id}:${template}:${resendToken}`
       );
       queuedJobs += 1;
     }
@@ -3533,7 +3540,7 @@ export class OrdersService {
           template,
           data: notificationData
         },
-        `notifications:sms:${order.id}:${template}`
+        `notifications:sms:${order.id}:${template}:${resendToken}`
       );
       queuedJobs += 1;
     }
@@ -3561,7 +3568,7 @@ export class OrdersService {
           template,
           data: notificationData
         },
-        `notifications:whatsapp:${order.id}:${template}`
+        `notifications:whatsapp:${order.id}:${template}:${resendToken}`
       );
       queuedJobs += 1;
     }

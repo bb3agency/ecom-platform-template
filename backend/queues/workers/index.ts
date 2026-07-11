@@ -499,14 +499,25 @@ async function bootstrapWorkers(): Promise<void> {
         });
       });
 
-    // Background shipment status polling: runs every 30 min to catch missed
-    // webhooks (e.g. cancellations triggered from Shiprocket's dashboard).
+    // Background shipment status polling: runs every 3 min so a status change made
+    // on the courier dashboard (e.g. a Shiprocket cancellation) — or a webhook that
+    // never arrived — propagates to the site, fires the customer notification, and
+    // triggers cancellation refunds almost immediately, not up to half an hour later.
+    const POLL_SHIPMENT_INTERVAL_MS = 3 * 60 * 1000;
+    // Remove the legacy 30-min repeatable so we don't run two overlapping schedules
+    // (BullMQ keys repeatables by their repeat options — changing `every` orphans the
+    // old one instead of replacing it).
+    void shiprocketRefreshQueue
+      .removeRepeatable('poll-shipment-statuses', { every: 30 * 60 * 1000 }, 'poll-shipment-statuses-repeatable')
+      .catch(() => {
+        // Best-effort cleanup — a missing legacy schedule is fine.
+      });
     shiprocketRefreshQueue
       .add(
         'poll-shipment-statuses',
         {},
         {
-          repeat: { every: 30 * 60 * 1000 },
+          repeat: { every: POLL_SHIPMENT_INTERVAL_MS },
           jobId: 'poll-shipment-statuses-repeatable'
         }
       )

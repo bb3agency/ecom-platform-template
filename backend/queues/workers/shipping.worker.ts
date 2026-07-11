@@ -7,6 +7,8 @@ import {
   createShippingAdapterForProvider
 } from '@modules/shipping/shipping-provider';
 import { resolveGstInvoicingEnabled } from '@common/invoicing/gst-invoicing-flag';
+import { restoreOrderInventoryOnCancel } from '@common/orders/restore-inventory-on-cancel';
+import { releaseCouponUsageForOrder } from '@common/coupons/coupon-usage';
 import { resolvePickupPincode } from '@common/shipping/resolve-pickup-pincode';
 import {
   resolveDefaultShippingHsn,
@@ -131,6 +133,186 @@ async function enqueueNotificationOutboxOrQueue(
     return;
   }
   await notificationsQueue.add(jobName, payload, safeJobId ? { jobId: safeJobId } : undefined);
+}
+
+/**
+ * Enqueue a job onto an arbitrary queue (used for refunds) via the transactional
+ * outbox when available, falling back to a direct add is NOT possible here because
+ * the worker only holds the notifications queue handle — so refund enqueues REQUIRE
+ * the outbox (always present with the real Prisma client in the worker runtime).
+ */
+async function enqueueOutboxJob(
+  tx: Prisma.TransactionClient,
+  queueName: 'refunds' | 'notifications',
+  jobName: string,
+  payload: Record<string, unknown>,
+  jobId?: string
+): Promise<void> {
+  const safeJobId = jobId ? jobId.replace(/:/g, '-') : undefined;
+  const outboxDelegate = (tx as unknown as { outboxMessage?: Prisma.TransactionClient['outboxMessage'] }).outboxMessage;
+  if (!outboxDelegate) {
+    return;
+  }
+  await outboxDelegate.create({
+    data: {
+      queueName,
+      jobName,
+      payload: payload as Prisma.InputJsonValue,
+      ...(safeJobId ? { jobId: safeJobId } : {})
+    }
+  });
+}
+
+type ShipmentNotificationOrderContext = {
+  id: string;
+  orderNumber: string | null;
+  email: string | null;
+  phone: string | null;
+  estimatedDelivery: Date | null;
+  trackingUrl: string | null;
+};
+
+/**
+ * Single source of truth for shipment-status-driven customer notifications.
+ * Used by BOTH the webhook path and the background poll path so that whichever
+ * detects the transition first fires the correct template — and the status-scoped
+ * dedup jobId (e.g. `shipping-primary-<id>-delivered`) means the other path is a
+ * no-op. Callers MUST only invoke this when the shipment status actually changed
+ * to `nextShipmentStatus` in the current transaction (durable dedup via the
+ * Shipment.status column), so a repeated poll never re-sends.
+ */
+async function emitShipmentStatusNotification(
+  tx: Prisma.TransactionClient,
+  notificationsQueue: NotificationsQueue,
+  order: ShipmentNotificationOrderContext,
+  nextShipmentStatus: ShipmentStatus,
+  resolvedAwb: string
+): Promise<void> {
+  const { id: orderId, email, phone } = order;
+  const contact = Boolean(email || phone);
+
+  if (nextShipmentStatus === 'IN_TRANSIT' && contact) {
+    const estimatedDaysFromDelivery = order.estimatedDelivery
+      ? Math.max(1, Math.round((order.estimatedDelivery.getTime() - Date.now()) / (24 * 60 * 60 * 1000)))
+      : undefined;
+    const estimatedDeliveryText =
+      estimatedDaysFromDelivery != null
+        ? `Estimated delivery in ${estimatedDaysFromDelivery} day${estimatedDaysFromDelivery === 1 ? '' : 's'}. `
+        : '';
+    await enqueueNotificationOutboxOrQueue(tx, notificationsQueue, 'send-primary', {
+      email,
+      phone,
+      template: 'OrderShipped',
+      data: {
+        orderId,
+        orderNumber: order.orderNumber ?? orderId,
+        awb: resolvedAwb,
+        trackingUrl: order.trackingUrl ?? '',
+        estimatedDeliveryText,
+        ...(estimatedDaysFromDelivery != null ? { estimatedDays: estimatedDaysFromDelivery } : {})
+      }
+    }, `shipping:primary:${orderId}:in-transit`);
+    return;
+  }
+
+  if (nextShipmentStatus === 'OUT_FOR_DELIVERY' && contact) {
+    await enqueueNotificationOutboxOrQueue(tx, notificationsQueue, 'send-primary', {
+      email,
+      phone,
+      template: 'OutForDelivery',
+      data: { orderId, orderNumber: order.orderNumber ?? orderId, awb: resolvedAwb }
+    }, `shipping:primary:${orderId}:out-for-delivery`);
+    return;
+  }
+
+  if (nextShipmentStatus === 'DELIVERED' && contact) {
+    await enqueueNotificationOutboxOrQueue(tx, notificationsQueue, 'send-primary', {
+      email,
+      phone,
+      template: 'OrderDelivered',
+      data: { orderId, orderNumber: order.orderNumber ?? orderId, awb: resolvedAwb }
+    }, `shipping:primary:${orderId}:delivered`);
+    return;
+  }
+
+  if (nextShipmentStatus === 'FAILED_DELIVERY' && contact) {
+    await enqueueNotificationOutboxOrQueue(tx, notificationsQueue, 'send-primary', {
+      email,
+      phone,
+      template: 'FailedDelivery',
+      data: { orderId, orderNumber: order.orderNumber ?? orderId, awb: resolvedAwb }
+    }, `shipping:primary:${orderId}:failed-delivery`);
+    return;
+  }
+
+  if (nextShipmentStatus === 'CANCELLED' && contact) {
+    await enqueueNotificationOutboxOrQueue(tx, notificationsQueue, 'send-primary', {
+      email,
+      phone,
+      template: 'OrderCancelled',
+      data: { orderId, orderNumber: order.orderNumber ?? orderId, awb: resolvedAwb }
+    }, `shipping:primary:${orderId}:cancelled-webhook`);
+  }
+}
+
+type ShipmentCancellationOrderContext = {
+  id: string;
+  paymentMode: string | null;
+  items: Array<{ variantId: string; quantity: number }>;
+  statusHistory: Array<{ triggeredBy: string | null }>;
+  payment: { status: string; providerPaymentId: string | null; amount: number } | null;
+};
+
+/**
+ * Full cancellation side-effects for a shipment-driven cancel (courier cancelled
+ * from their dashboard, or a cancel webhook/poll). Mirrors the admin-cancel path:
+ * restore inventory, release coupon usage, and enqueue a customer refund for
+ * captured prepaid payments. Idempotent: the refund outbox jobId is scoped per
+ * order+source so a re-run does not double-refund.
+ */
+async function runShipmentCancellationSideEffects(
+  tx: Prisma.TransactionClient,
+  order: ShipmentCancellationOrderContext,
+  priorStatus: OrderStatus
+): Promise<void> {
+  // Inventory was deducted at CONFIRMED (prepaid) / COD_ORDER_CREATED (COD).
+  // Restore whenever we are cancelling a still-fulfillable order.
+  if (
+    priorStatus === OrderStatus.CONFIRMED ||
+    priorStatus === OrderStatus.PROCESSING ||
+    priorStatus === OrderStatus.SHIPPED ||
+    priorStatus === OrderStatus.OUT_FOR_DELIVERY
+  ) {
+    await restoreOrderInventoryOnCancel(tx, {
+      id: order.id,
+      paymentMode: order.paymentMode,
+      items: order.items,
+      statusHistory: order.statusHistory
+    });
+    await releaseCouponUsageForOrder(tx, order.id);
+  }
+
+  // Refund the customer for captured prepaid payments (COD has nothing captured
+  // unless collected — but a cancelled COD is never delivered, so no capture).
+  const payment = order.payment;
+  const shouldRefund =
+    payment != null &&
+    (payment.status === 'CAPTURED' || payment.status === 'PARTIALLY_REFUNDED') &&
+    Boolean(payment.providerPaymentId);
+  if (shouldRefund) {
+    await enqueueOutboxJob(
+      tx,
+      'refunds',
+      'initiate-razorpay-refund',
+      {
+        orderId: order.id,
+        reason: 'Order cancelled by courier — automatic customer refund',
+        initiatedBy: 'SHIPPING_WEBHOOK',
+        sourceStatus: priorStatus
+      },
+      `initiate-razorpay-refund:${order.id}:full:courier-cancel`
+    );
+  }
 }
 
 async function upsertShipmentCompat(
@@ -732,7 +914,14 @@ export function createShippingWorker(
             ]
           },
           include: {
-            order: { select: { id: true, orderNumber: true, status: true } }
+            order: {
+              include: {
+                user: { select: { email: true, phone: true } },
+                payment: { select: { status: true, providerPaymentId: true, amount: true } },
+                items: { select: { variantId: true, quantity: true } },
+                statusHistory: { select: { triggeredBy: true } }
+              }
+            }
           },
           take: 50, // Process max 50 per run to avoid long-running jobs
           orderBy: { updatedAt: 'asc' } // Oldest first so stale ones are prioritised
@@ -765,6 +954,36 @@ export function createShippingWorker(
                       note: 'Auto-poll repair: shipment already DELIVERED, order status lagged'
                     }
                   });
+
+                  // COD collected at the doorstep — capture the payment (idempotent).
+                  if (
+                    shipment.order.paymentMode === 'COD' &&
+                    shipment.order.payment &&
+                    shipment.order.payment.status !== 'CAPTURED'
+                  ) {
+                    await tx.payment.updateMany({
+                      where: { orderId: shipment.order.id, status: { not: 'CAPTURED' } },
+                      data: { status: 'CAPTURED', capturedAt: new Date() }
+                    });
+                  }
+
+                  // Emit the "delivered" notification that was missed when the order
+                  // status lagged (root cause of the missing delivered notification).
+                  // Deduped by the shared `:delivered` jobId against any webhook send.
+                  await emitShipmentStatusNotification(
+                    tx,
+                    notificationsQueue,
+                    {
+                      id: shipment.order.id,
+                      orderNumber: shipment.order.orderNumber ?? null,
+                      email: shipment.order.user?.email ?? null,
+                      phone: shipment.order.user?.phone ?? null,
+                      estimatedDelivery: shipment.estimatedDelivery ?? null,
+                      trackingUrl: shipment.trackingUrl ?? null
+                    },
+                    'DELIVERED',
+                    shipment.awbNumber ?? ''
+                  );
                 });
               }
             } catch {
@@ -826,10 +1045,11 @@ export function createShippingWorker(
                 });
               }
 
+              const priorOrderStatus = shipment.order.status;
               if (
                 nextOrderStatus &&
-                shipment.order.status !== nextOrderStatus &&
-                canTransitionOrder(shipment.order.status, nextOrderStatus)
+                priorOrderStatus !== nextOrderStatus &&
+                canTransitionOrder(priorOrderStatus, nextOrderStatus)
               ) {
                 await tx.order.update({
                   where: { id: shipment.order.id },
@@ -838,12 +1058,65 @@ export function createShippingWorker(
                 await tx.orderStatusHistory.create({
                   data: {
                     orderId: shipment.order.id,
-                    fromStatus: shipment.order.status,
+                    fromStatus: priorOrderStatus,
                     toStatus: nextOrderStatus,
                     triggeredBy: 'SHIPPING_WEBHOOK',
                     note: `Auto-poll sync: provider reports ${tracking.status}`
                   }
                 });
+
+                // COD collected on delivery — capture the payment (idempotent).
+                if (
+                  nextOrderStatus === 'DELIVERED' &&
+                  shipment.order.paymentMode === 'COD' &&
+                  shipment.order.payment &&
+                  shipment.order.payment.status !== 'CAPTURED'
+                ) {
+                  await tx.payment.updateMany({
+                    where: { orderId: shipment.order.id, status: { not: 'CAPTURED' } },
+                    data: { status: 'CAPTURED', capturedAt: new Date() }
+                  });
+                }
+
+                // Courier-driven cancellation detected by the poll: same side-effects
+                // as an admin cancel (inventory restore, coupon release, prepaid refund).
+                if (nextOrderStatus === 'CANCELLED') {
+                  await runShipmentCancellationSideEffects(
+                    tx,
+                    {
+                      id: shipment.order.id,
+                      paymentMode: shipment.order.paymentMode ?? null,
+                      items: shipment.order.items,
+                      statusHistory: shipment.order.statusHistory,
+                      payment: shipment.order.payment
+                        ? {
+                            status: shipment.order.payment.status,
+                            providerPaymentId: shipment.order.payment.providerPaymentId ?? null,
+                            amount: shipment.order.payment.amount
+                          }
+                        : null
+                    },
+                    priorOrderStatus
+                  );
+                }
+              }
+
+              // Customer notification for the shipment transition (deduped on change).
+              if (shipmentChanged) {
+                await emitShipmentStatusNotification(
+                  tx,
+                  notificationsQueue,
+                  {
+                    id: shipment.order.id,
+                    orderNumber: shipment.order.orderNumber ?? null,
+                    email: shipment.order.user?.email ?? null,
+                    phone: shipment.order.user?.phone ?? null,
+                    estimatedDelivery: shipment.estimatedDelivery ?? null,
+                    trackingUrl: shipment.trackingUrl ?? null
+                  },
+                  nextShipmentStatus,
+                  shipment.awbNumber ?? ''
+                );
               }
             });
           } catch {
@@ -886,7 +1159,20 @@ export function createShippingWorker(
                 payment: {
                   select: {
                     status: true,
-                    capturedAt: true
+                    capturedAt: true,
+                    providerPaymentId: true,
+                    amount: true
+                  }
+                },
+                items: {
+                  select: {
+                    variantId: true,
+                    quantity: true
+                  }
+                },
+                statusHistory: {
+                  select: {
+                    triggeredBy: true
                   }
                 }
               }
@@ -898,6 +1184,12 @@ export function createShippingWorker(
         }
 
         const resolvedAwb = data.awb.trim() || shipment.awbNumber;
+        // Durable dedup: only emit customer notifications when the shipment status
+        // actually transitions in THIS transaction. Whichever path (webhook or the
+        // background poll) writes the new status first fires the notification; the
+        // other sees no change and is a silent no-op — no duplicate messages.
+        const previousShipmentStatus = shipment.status;
+        const shipmentDidChange = Boolean(nextShipmentStatus) && nextShipmentStatus !== previousShipmentStatus;
 
         if (nextShipmentStatus) {
           await tx.shipment.update({
@@ -926,14 +1218,23 @@ export function createShippingWorker(
           }
         });
 
-        const email = shipment.order.user?.email;
-        const phone = shipment.order.user?.phone;
+        const email = shipment.order.user?.email ?? null;
+        const phone = shipment.order.user?.phone ?? null;
+        const notificationContext: ShipmentNotificationOrderContext = {
+          id: shipment.order.id,
+          orderNumber: shipment.order.orderNumber ?? null,
+          email,
+          phone,
+          estimatedDelivery: shipment.estimatedDelivery ?? null,
+          trackingUrl: shipment.trackingUrl ?? null
+        };
 
         const nextOrderStatus = nextShipmentStatus ? mapShipmentStatusToOrderStatus(nextShipmentStatus) : null;
         if (nextOrderStatus && shipment.order.status !== nextOrderStatus && canTransitionOrder(shipment.order.status, nextOrderStatus)) {
+          const priorOrderStatus = shipment.order.status;
           const updated = await updateOrderStatusWithCasCompat(tx, {
             orderId: shipment.order.id,
-            fromStatus: shipment.order.status,
+            fromStatus: priorOrderStatus,
             toStatus: nextOrderStatus
           });
 
@@ -941,56 +1242,46 @@ export function createShippingWorker(
             await tx.orderStatusHistory.create({
               data: {
                 orderId: shipment.order.id,
-                fromStatus: shipment.order.status,
+                fromStatus: priorOrderStatus,
                 toStatus: nextOrderStatus,
                 triggeredBy: 'SHIPPING_WEBHOOK',
                 note: `Shipment status changed to ${data.status}`
               }
             });
 
-            if (nextOrderStatus === 'CANCELLED' && (email || phone)) {
-              await enqueueNotificationOutboxOrQueue(tx, notificationsQueue, 'send-primary', {
-                email,
-                phone,
-                template: 'OrderCancelled',
-                data: { orderId: shipment.order.id, awb: resolvedAwb }
-              }, `shipping:primary:${shipment.order.id}:cancelled-webhook`);
+            // Courier-driven cancellation: run the SAME side-effects as an admin
+            // cancel — restore inventory, release coupons, refund captured prepaid.
+            if (nextOrderStatus === 'CANCELLED') {
+              await runShipmentCancellationSideEffects(
+                tx,
+                {
+                  id: shipment.order.id,
+                  paymentMode: shipment.order.paymentMode ?? null,
+                  items: shipment.order.items,
+                  statusHistory: shipment.order.statusHistory,
+                  payment: shipment.order.payment
+                    ? {
+                        status: shipment.order.payment.status,
+                        providerPaymentId: shipment.order.payment.providerPaymentId ?? null,
+                        amount: shipment.order.payment.amount
+                      }
+                    : null
+                },
+                priorOrderStatus
+              );
             }
           }
         }
-        if (nextShipmentStatus === 'IN_TRANSIT' && (phone || email)) {
-          const estimatedDaysFromDelivery = shipment.estimatedDelivery
-            ? Math.max(1, Math.round((shipment.estimatedDelivery.getTime() - Date.now()) / (24 * 60 * 60 * 1000)))
-            : undefined;
-          const estimatedDeliveryText =
-            estimatedDaysFromDelivery != null
-              ? `Estimated delivery in ${estimatedDaysFromDelivery} day${estimatedDaysFromDelivery === 1 ? '' : 's'}. `
-              : '';
-          await enqueueNotificationOutboxOrQueue(tx, notificationsQueue, 'send-primary', {
-            email,
-            phone,
-            template: 'OrderShipped',
-            data: {
-              orderId: shipment.order.id,
-              awb: resolvedAwb,
-              trackingUrl: shipment.trackingUrl ?? '',
-              estimatedDeliveryText,
-              ...(estimatedDaysFromDelivery != null ? { estimatedDays: estimatedDaysFromDelivery } : {})
-            }
-          // Deduplication key differs from :shipped so this can fire even if booking notification ran.
-          }, `shipping:primary:${shipment.order.id}:in-transit`);
-        }
 
-        if (nextShipmentStatus === 'OUT_FOR_DELIVERY' && (phone || email)) {
-          await enqueueNotificationOutboxOrQueue(tx, notificationsQueue, 'send-primary', {
-            email,
-            phone,
-            template: 'OutForDelivery',
-            data: {
-              orderId: shipment.order.id,
-              awb: resolvedAwb
-            }
-          }, `shipping:primary:${shipment.order.id}:out-for-delivery`);
+        // Customer notification for the shipment transition (deduped on actual change).
+        if (shipmentDidChange && nextShipmentStatus) {
+          await emitShipmentStatusNotification(
+            tx,
+            notificationsQueue,
+            notificationContext,
+            nextShipmentStatus,
+            resolvedAwb ?? ''
+          );
         }
 
         if (nextShipmentStatus === 'DELIVERED') {
@@ -1039,29 +1330,8 @@ export function createShippingWorker(
               }
             }
           }
-          if (email || phone) {
-            await enqueueNotificationOutboxOrQueue(tx, notificationsQueue, 'send-primary', {
-              email,
-              phone,
-              template: 'OrderDelivered',
-              data: {
-                orderId: shipment.order.id,
-                awb: resolvedAwb
-              }
-            }, `shipping:primary:${shipment.order.id}:delivered`);
-          }
-        }
-
-        if (nextShipmentStatus === 'FAILED_DELIVERY' && (phone || email)) {
-          await enqueueNotificationOutboxOrQueue(tx, notificationsQueue, 'send-primary', {
-            email,
-            phone,
-            template: 'FailedDelivery',
-            data: {
-              orderId: shipment.order.id,
-              awb: resolvedAwb
-            }
-          }, `shipping:primary:${shipment.order.id}:failed-delivery`);
+          // Customer "delivered" notification is emitted by emitShipmentStatusNotification
+          // above (gated on the actual shipment-status change).
         }
 
         if (nextShipmentStatus === 'RTO_INITIATED') {

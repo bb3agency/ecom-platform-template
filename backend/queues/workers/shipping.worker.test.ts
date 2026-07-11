@@ -36,11 +36,20 @@ const state = {
       update: vi.fn()
     },
     orderStatusHistory: {
-      create: vi.fn()
+      create: vi.fn(),
+      findFirst: vi.fn()
     },
     payment: {
       findUnique: vi.fn(),
-      update: vi.fn()
+      update: vi.fn(),
+      updateMany: vi.fn()
+    },
+    inventory: {
+      updateMany: vi.fn()
+    },
+    couponUsage: {
+      findMany: vi.fn(),
+      delete: vi.fn()
     }
   }
 };
@@ -152,8 +161,15 @@ describe('shipping worker error and retry behavior', () => {
     state.tx.order.findUnique.mockReset();
     state.tx.order.update.mockReset();
     state.tx.orderStatusHistory.create.mockReset();
+    state.tx.orderStatusHistory.findFirst.mockReset();
+    state.tx.orderStatusHistory.findFirst.mockResolvedValue(null);
     state.tx.payment.findUnique.mockReset();
     state.tx.payment.update.mockReset();
+    state.tx.payment.updateMany.mockReset();
+    state.tx.inventory.updateMany.mockReset();
+    state.tx.couponUsage.findMany.mockReset();
+    state.tx.couponUsage.findMany.mockResolvedValue([]);
+    state.tx.couponUsage.delete.mockReset();
     state.notificationsAdd.mockReset();
     state.tx.storeSettings.findUnique.mockResolvedValue({
       pickupPincode: '500001',
@@ -967,6 +983,114 @@ describe('shipping worker error and retry behavior', () => {
       }),
       expect.objectContaining({
         jobId: expect.stringContaining('shipping-primary-order_1-rto-initiated')
+      })
+    );
+  });
+
+  it('fires the delivered notification from the background poll when a webhook was missed', async () => {
+    boot();
+    // Poll finds an active shipment; the provider now reports DELIVERED (the webhook
+    // never arrived). The order must advance AND the delivered notification must fire —
+    // the exact "everything worked but the delivered notification was never sent" bug.
+    state.shipment.findMany.mockResolvedValue([
+      {
+        id: 'shipment_1',
+        awbNumber: 'awb_poll',
+        status: 'IN_TRANSIT',
+        provider: 'DELHIVERY',
+        estimatedDelivery: null,
+        trackingUrl: null,
+        order: {
+          id: 'order_1',
+          orderNumber: 'ORD-POLL-1',
+          status: 'SHIPPED',
+          paymentMode: 'PREPAID',
+          user: { email: 'customer@example.com', phone: '9999999999' },
+          payment: { status: 'CAPTURED', providerPaymentId: 'pay_1', amount: 100000 },
+          items: [],
+          statusHistory: []
+        }
+      }
+    ]);
+    state.trackShipmentDelhivery.mockResolvedValue({ status: 'Delivered', events: [] });
+    state.tx.shipment.update.mockResolvedValue(undefined);
+    state.tx.order.update.mockResolvedValue(undefined);
+    state.tx.orderStatusHistory.create.mockResolvedValue(undefined);
+
+    await state.processor?.({ name: 'poll-shipment-statuses', data: {} });
+
+    expect(state.tx.order.update).toHaveBeenCalledWith({
+      where: { id: 'order_1' },
+      data: { status: 'DELIVERED' }
+    });
+    expect(state.notificationsAdd).toHaveBeenCalledWith(
+      'send-primary',
+      expect.objectContaining({
+        email: 'customer@example.com',
+        phone: '9999999999',
+        template: 'OrderDelivered'
+      }),
+      expect.objectContaining({
+        jobId: expect.stringContaining('shipping-primary-order_1-delivered')
+      })
+    );
+  });
+
+  it('runs cancellation side-effects when a courier reports the shipment CANCELLED', async () => {
+    boot();
+    // Courier-dashboard cancellation surfaced via webhook: order flips to CANCELLED,
+    // inventory is restored, coupon usage released, and the customer is notified.
+    state.tx.shipment.findFirst.mockResolvedValue({
+      id: 'shipment_1',
+      status: 'IN_TRANSIT',
+      estimatedDelivery: null,
+      trackingUrl: null,
+      order: {
+        id: 'order_1',
+        orderNumber: 'ORD-CANCEL-1',
+        status: 'SHIPPED',
+        paymentMode: 'COD',
+        user: { email: 'customer@example.com', phone: '9999999999' },
+        payment: { status: 'PENDING', providerPaymentId: null, amount: 0 },
+        items: [{ variantId: 'variant_1', quantity: 2 }],
+        statusHistory: [{ triggeredBy: 'COD_ORDER_CREATED' }]
+      }
+    });
+    state.tx.shipment.update.mockResolvedValue(undefined);
+    state.tx.shipmentEvent.create.mockResolvedValue(undefined);
+    state.tx.order.update.mockResolvedValue(undefined);
+    state.tx.orderStatusHistory.create.mockResolvedValue(undefined);
+
+    await state.processor?.({
+      name: 'update-shipment-status',
+      data: {
+        awb: 'awb_cancel',
+        status: 'Canceled',
+        description: 'Cancelled from courier dashboard',
+        location: 'Origin',
+        occurredAt: '2026-04-26T13:00:00.000Z',
+        payload: '{"awb":"awb_cancel"}'
+      }
+    });
+
+    expect(state.tx.order.update).toHaveBeenCalledWith({
+      where: { id: 'order_1' },
+      data: { status: 'CANCELLED' }
+    });
+    // Inventory restored + coupon usage released (side-effects mirror admin cancel).
+    expect(state.tx.inventory.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { variantId: 'variant_1' } })
+    );
+    expect(state.tx.couponUsage.findMany).toHaveBeenCalled();
+    expect(state.notificationsAdd).toHaveBeenCalledWith(
+      'send-primary',
+      expect.objectContaining({
+        email: 'customer@example.com',
+        phone: '9999999999',
+        template: 'OrderCancelled'
+      }),
+      expect.objectContaining({
+        jobId: expect.stringContaining('shipping-primary-order_1-cancelled-webhook')
       })
     );
   });

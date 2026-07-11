@@ -397,7 +397,7 @@ describe('AuthService.verifyAdminLoginOtp', () => {
     delete process.env.JWT_REFRESH_SECRET;
   });
 
-  it('issues refresh token that rotates on refresh with matching user-agent and IP', async () => {
+  it('issues refresh token bound to the User-Agent only and rotates it on refresh', async () => {
     const email = 'admin@example.com';
     const otp = '654321';
     const otpHash = crypto.createHash('sha256').update(otp).digest('hex');
@@ -426,7 +426,7 @@ describe('AuthService.verifyAdminLoginOtp', () => {
     expect(mocks.refreshCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          deviceKeyHash: crypto.createHash('sha256').update(`${userAgent}|${clientIp}`).digest('hex')
+          deviceKeyHash: crypto.createHash('sha256').update(`ua|${userAgent}`).digest('hex')
         })
       })
     );

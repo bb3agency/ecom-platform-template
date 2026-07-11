@@ -12,6 +12,23 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.72] — 2026-07-11
+
+### Fixed
+- **Shipment status changes now fire notifications AND run cancellation side-effects from EVERY path — webhook or background poll.** Two production incidents root-caused:
+  1. **Missing "Delivered" notification.** The `poll-shipment-statuses` job updated order/shipment status silently with **no customer notification**, so whenever the background poll (not a webhook) detected a terminal status, the shopper never got the "delivered" message even though confirm/shipped went out. Fixed by routing both the webhook and poll paths through one shared `emitShipmentStatusNotification`, plus a "repair lane" that emits the missed notification when the order lagged behind an already-DELIVERED shipment.
+  2. **Courier-dashboard cancellation didn't refund or notify.** When a courier (e.g. Shiprocket) cancelled a shipment, the order flipped to CANCELLED but the customer refund + inventory restore + coupon release were skipped (only the admin-cancel path ran them). New shared `runShipmentCancellationSideEffects` — wired into both webhook and poll paths — restores inventory, releases coupon usage, and enqueues a customer refund for captured prepaid payments (idempotent outbox jobId; refunds worker's atomic balance reservation prevents any double-refund). COD delivery capture also now fires from the poll/repair lanes.
+  - **No-repetition dedup**: notifications only fire when the `Shipment.status` column actually transitions in that transaction, so webhook + poll never double-send (durable DB guard, not a fragile job-retention window).
+- **Poll cadence 30 min → 3 min** so a courier-dashboard change (or a webhook that never arrived) propagates to the site, notifies the customer, and triggers refunds almost immediately. The stale 30-min repeatable is removed on boot so schedules don't overlap.
+- **"Resend notification" always delivers now.** It already derived the template from the order's CURRENT status, but the status-scoped outbox jobId meant BullMQ deduped it against the earlier automatic send and silently no-op'd. It now appends a per-invocation token so every resend fires (accidental double-clicks still absorbed by the route's idempotency-key preHandler).
+- **Admin/customer session no longer drops on network change ("logged out on reload", worst on mobile).** Refresh tokens were bound to `User-Agent | client IP` and any mismatch revoked the WHOLE session; mobile carrier NAT / Wi-Fi↔cellular handoff rotates the egress IP, so a reload hard-logged-out the user. Binding is now **User-Agent only** — IP stays a soft abuse signal, and the httpOnly single-use rotated token (with reuse-triggered revocation) remains the primary stolen-cookie defense.
+
+**Propagation:**
+- Severity: HIGH (delivered notifications silently missed; courier cancellations left customers un-refunded and un-notified; mobile users randomly logged out) · Layers: backend (`queues/workers/shipping.worker.ts` + test, `queues/workers/index.ts`, `modules/auth/auth.service.ts` + tests, `modules/orders/orders.service.ts` + retrigger test) — backend-only, no frontend-core bump (pairs with frontend-core 0.1.47)
+- Migration: NO · Flag: none · Design impact: none · Breaking: NO
+- Rollback: revert the files. One-time effect on deploy: existing refresh sessions (hashed with the old UA|IP binding) are invalidated once, so users log in again after the first deploy — expected, not a regression.
+- Operator: nothing required. The 3-min poll uses the existing shipping queue + provider credentials.
+
 ## [0.1.71] — 2026-07-11
 
 ### Fixed
