@@ -1859,37 +1859,52 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
               </p>
 
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
-                {/* Upload Box Component */}
-                <div className="relative flex flex-col items-center justify-center border-2 border-dashed border-border/60 hover:border-zinc-900/50 rounded-xl bg-muted/5 p-4 transition-colors cursor-pointer group text-center min-h-[120px]">
-                  <input
-                    type="file"
-                    accept={PRODUCT_IMAGE_ACCEPT}
-                    multiple
-                    className="absolute inset-0 opacity-0 cursor-pointer"
-                    disabled={saving || atImageLimit}
-                    onChange={(event) => {
-                      if (isCreate) {
-                        handleCreateImageUpload(event);
-                      } else {
-                        const selected = event.target.files
-                          ? Array.from(event.target.files)
-                          : [];
-                        if (selected.length > 0)
-                          void uploadImageFiles(selected);
-                      }
-                    }}
-                  />
-                  <UploadCloud className="h-6 w-6 text-muted-foreground group-hover:text-zinc-900 transition-colors mb-1.5" />
-                  <span className="text-[10px] font-bold text-muted-foreground group-hover:text-zinc-800">
-                    Drag & drop here
-                  </span>
-                  <span className="text-[9px] text-muted-foreground mt-0.5 font-medium">
-                    or{" "}
-                    <span className="text-zinc-900 underline font-semibold">
-                      Browse Files
+                {/* Upload Box Component — at the image limit the dropzone would
+                    render a "Browse Files" affordance whose <input> is disabled,
+                    so clicks silently do nothing. Show an explicit limit state
+                    instead so the dead click is never presented. */}
+                {atImageLimit ? (
+                  <div className="relative flex flex-col items-center justify-center border-2 border-dashed border-border/40 rounded-xl bg-muted/5 p-4 text-center min-h-[120px]">
+                    <UploadCloud className="h-6 w-6 text-muted-foreground/50 mb-1.5" />
+                    <span className="text-[10px] font-bold text-muted-foreground">
+                      Maximum {MAX_PRODUCT_IMAGES} images
                     </span>
-                  </span>
-                </div>
+                    <span className="text-[9px] text-muted-foreground mt-0.5 font-medium">
+                      Remove one to add more
+                    </span>
+                  </div>
+                ) : (
+                  <div className="relative flex flex-col items-center justify-center border-2 border-dashed border-border/60 hover:border-zinc-900/50 rounded-xl bg-muted/5 p-4 transition-colors cursor-pointer group text-center min-h-[120px]">
+                    <input
+                      type="file"
+                      accept={PRODUCT_IMAGE_ACCEPT}
+                      multiple
+                      className="absolute inset-0 opacity-0 cursor-pointer"
+                      disabled={saving}
+                      onChange={(event) => {
+                        if (isCreate) {
+                          handleCreateImageUpload(event);
+                        } else {
+                          const selected = event.target.files
+                            ? Array.from(event.target.files)
+                            : [];
+                          if (selected.length > 0)
+                            void uploadImageFiles(selected);
+                        }
+                      }}
+                    />
+                    <UploadCloud className="h-6 w-6 text-muted-foreground group-hover:text-zinc-900 transition-colors mb-1.5" />
+                    <span className="text-[10px] font-bold text-muted-foreground group-hover:text-zinc-800">
+                      Drag & drop here
+                    </span>
+                    <span className="text-[9px] text-muted-foreground mt-0.5 font-medium">
+                      or{" "}
+                      <span className="text-zinc-900 underline font-semibold">
+                        Browse Files
+                      </span>
+                    </span>
+                  </div>
+                )}
 
                 {/* Rendered Uploaded Images */}
                 {isCreate
@@ -1973,17 +1988,19 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                         </div>
                       ))}
 
-                {/* Add more placeholder dashed box */}
-                {(isCreate
-                  ? createImageFiles.length
-                  : product?.images?.length || 0) > 0 && (
+                {/* Add more placeholder dashed box — hidden at the image limit
+                    (its <input> would be disabled, i.e. a silent dead click). */}
+                {!atImageLimit &&
+                  (isCreate
+                    ? createImageFiles.length
+                    : product?.images?.length || 0) > 0 && (
                   <div className="relative flex flex-col items-center justify-center border border-dashed border-border/60 rounded-xl bg-muted/5 hover:bg-muted/10 transition-colors text-center aspect-square cursor-pointer">
                     <input
                       type="file"
                       accept={PRODUCT_IMAGE_ACCEPT}
                       multiple
                       className="absolute inset-0 opacity-0 cursor-pointer"
-                      disabled={saving || atImageLimit}
+                      disabled={saving}
                       onChange={(event) => {
                         if (isCreate) {
                           handleCreateImageUpload(event);
