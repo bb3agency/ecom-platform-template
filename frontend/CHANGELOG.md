@@ -12,6 +12,16 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.48] — 2026-07-12
+
+### Fixed
+- **Product image upload dead-click at the limit** (`AdminProductEditor`): when a product already held `MAX_PRODUCT_IMAGES` (8), the upload dropzone still rendered a "Browse Files" affordance whose `<input>` was `disabled`, so clicking it silently did nothing (no file dialog, no message — read as a broken upload button). At the limit the dropzone now renders an explicit "Maximum 8 images — remove one to add more" state and the "Add more" tile is hidden, so a disabled input is never presented as clickable. Below the limit, behaviour is unchanged.
+
+**Propagation:**
+- Severity: NORMAL · Layers: frontend (`components/admin/AdminProductEditor.tsx`)
+- Migration: NO · Flag: none · Design impact: none · Breaking: NO
+- Rollback: revert the file
+
 ## [0.1.47] — 2026-07-11
 
 ### Added
