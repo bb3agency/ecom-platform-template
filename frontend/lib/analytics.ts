@@ -3,11 +3,23 @@ import { STORAGE_PREFIX } from "@/lib/constants";
 
 const SESSION_KEY = `${STORAGE_PREFIX}_analytics_sid`;
 
+function generateUUID(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  // Fallback for insecure contexts (like mobile testing over local network HTTP)
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
 function getSessionId(): string {
   if (typeof window === "undefined") return "ssr";
   let sid = localStorage.getItem(SESSION_KEY);
   if (!sid) {
-    sid = crypto.randomUUID();
+    sid = generateUUID();
     localStorage.setItem(SESSION_KEY, sid);
   }
   return sid;

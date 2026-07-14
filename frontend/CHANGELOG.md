@@ -12,6 +12,16 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.49] — 2026-07-14
+
+### Fixed
+- **`crypto.randomUUID` crash in insecure contexts** (`lib/idempotency.ts`, `lib/analytics.ts`): `crypto.randomUUID` only exists in a secure context. `localhost` qualifies, but a LAN IP over plain HTTP (e.g. testing the dev server from a phone at `http://192.168.x.x:3102`) does not — so the call threw `crypto.randomUUID is not a function` and crashed the page. `idempotency.ts` now feature-tests with `typeof crypto.randomUUID === "function"`, and `analytics.ts` gained a matching RFC-4122 v4 fallback for its session id. Production (HTTPS) was never affected; this only bit non-secure dev/LAN testing.
+
+**Propagation:**
+- Severity: NORMAL · Layers: frontend (`lib/idempotency.ts`, `lib/analytics.ts`)
+- Migration: NO · Flag: none · Design impact: none · Breaking: NO
+- Rollback: revert the two files
+
 ## [0.1.48] — 2026-07-12
 
 ### Fixed
