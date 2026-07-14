@@ -1,5 +1,5 @@
 export function createIdempotencyKey(): string {
-  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
   }
   // RFC 4122 v4 UUID fallback for environments without crypto.randomUUID
