@@ -1376,9 +1376,23 @@ export class AuthService {
       tokenRecord.userId !== payload.sub ||
       tokenRecord.expiresAt <= new Date() ||
       tokenRecord.revokedAt !== null ||
-      tokenRecord.consumedAt !== null ||
       tokenRecord.sessionId !== payload.sid
     ) {
+      throw new AppError(ERROR_CODES.UNAUTHORISED, 'Invalid refresh token', 401);
+    }
+    // Concurrent-refresh grace: single-use rotation + a shared httpOnly cookie means
+    // parallel requests (multiple tabs, or an admin page bursting several 401'd GETs
+    // at token expiry) can all present the SAME refresh token — only the first CAS
+    // wins, and hard-rejecting the rest logged the whole session out ("randomly
+    // logged out on desktop"). Industry-standard fix (Auth0 "reuse interval"):
+    // a token consumed within the last 60s — same device, hash verified below —
+    // may still mint tokens WITHOUT consuming again. Replay outside the window
+    // still 401s, so stolen-cookie replay protection is intact beyond the grace.
+    const REFRESH_REUSE_GRACE_MS = 60_000;
+    const withinReuseGrace =
+      tokenRecord.consumedAt !== null &&
+      Date.now() - tokenRecord.consumedAt.getTime() <= REFRESH_REUSE_GRACE_MS;
+    if (tokenRecord.consumedAt !== null && !withinReuseGrace) {
       throw new AppError(ERROR_CODES.UNAUTHORISED, 'Invalid refresh token', 401);
     }
     const deviceContext = this.deriveTokenIssueContext(context);
@@ -1396,13 +1410,25 @@ export class AuthService {
       });
       throw new AppError(ERROR_CODES.UNAUTHORISED, 'Invalid refresh token', 401);
     }
-    // Atomic CAS: only consume if not already consumed (prevents races with concurrent refresh)
-    const consumeResult = await this.fastify.prisma.refreshToken.updateMany({
-      where: { id: tokenRecord.id, consumedAt: null },
-      data: { consumedAt: new Date() }
-    });
-    if (consumeResult.count === 0) {
-      throw new AppError(ERROR_CODES.UNAUTHORISED, 'Refresh token already consumed', 401);
+    if (!withinReuseGrace) {
+      // Atomic CAS: only consume if not already consumed. A race that loses the CAS
+      // falls into the grace path (someone else consumed it milliseconds ago).
+      const consumeResult = await this.fastify.prisma.refreshToken.updateMany({
+        where: { id: tokenRecord.id, consumedAt: null },
+        data: { consumedAt: new Date() }
+      });
+      if (consumeResult.count === 0) {
+        const fresh = await this.fastify.prisma.refreshToken.findUnique({
+          where: { id: tokenRecord.id },
+          select: { consumedAt: true }
+        });
+        const lostRaceWithinGrace =
+          fresh?.consumedAt != null &&
+          Date.now() - fresh.consumedAt.getTime() <= REFRESH_REUSE_GRACE_MS;
+        if (!lostRaceWithinGrace) {
+          throw new AppError(ERROR_CODES.UNAUTHORISED, 'Refresh token already consumed', 401);
+        }
+      }
     }
 
     const user = await this.fastify.prisma.user.findUnique({

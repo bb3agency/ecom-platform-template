@@ -1,5 +1,5 @@
 import { apiClient, ApiError, type ApiClientOptions } from "@/lib/api";
-import { refreshAccessToken } from "@/lib/auth-api";
+import { refreshAccessTokenOnce } from "@/lib/restore-auth-session";
 import { shouldAttemptTokenRefresh, shouldForceLogin } from "@/lib/error-messages";
 
 export interface AuthenticatedApiDeps {
@@ -38,7 +38,9 @@ export function createAuthenticatedApiClient(deps: AuthenticatedApiDeps) {
         !_retryAfterRefresh
       ) {
         try {
-          const refreshed = await refreshAccessToken();
+          // Single-flight: concurrent 401s (parallel admin GETs at token expiry)
+          // collapse into ONE /auth/refresh call — see refreshAccessTokenOnce.
+          const refreshed = await refreshAccessTokenOnce();
           deps.setAccessToken(refreshed.accessToken);
           return await authenticatedApiClient<T>(endpoint, {
             ...rest,

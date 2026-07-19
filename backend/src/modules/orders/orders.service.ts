@@ -5129,7 +5129,16 @@ export class OrdersService {
       where: { id: shipmentId },
       include: {
         order: {
-          select: { id: true, orderNumber: true, status: true }
+          select: {
+            id: true,
+            orderNumber: true,
+            status: true,
+            paymentMode: true,
+            user: { select: { email: true, phone: true } },
+            payment: { select: { status: true, providerPaymentId: true, amount: true } },
+            items: { select: { variantId: true, quantity: true } },
+            statusHistory: { select: { triggeredBy: true } }
+          }
         }
       }
     });
@@ -5239,8 +5248,131 @@ export class OrdersService {
             note: `Manual sync from ${shipment.provider}: provider reports ${latestStatus}`
           }
         });
+
+        // Courier-driven cancellation surfaced via manual sync: run the SAME
+        // side-effects as the webhook/poll paths — restore inventory, release
+        // coupon usage, refund captured prepaid. Without this, a sync-detected
+        // cancel flipped the order silently and stranded the customer's money.
+        if (nextOrderStatus === OrderStatus.CANCELLED) {
+          if (
+            shipment.order.status === OrderStatus.CONFIRMED ||
+            shipment.order.status === OrderStatus.PROCESSING ||
+            shipment.order.status === OrderStatus.SHIPPED ||
+            shipment.order.status === OrderStatus.OUT_FOR_DELIVERY
+          ) {
+            await restoreOrderInventoryOnCancel(tx, {
+              id: shipment.order.id,
+              paymentMode: shipment.order.paymentMode,
+              items: shipment.order.items,
+              statusHistory: shipment.order.statusHistory
+            });
+            await releaseCouponUsageForOrder(tx, shipment.order.id);
+          }
+        }
+
+        // COD collected on delivery — capture the payment (idempotent), matching
+        // the webhook/poll behaviour.
+        if (
+          nextOrderStatus === OrderStatus.DELIVERED &&
+          shipment.order.paymentMode === 'COD' &&
+          shipment.order.payment &&
+          shipment.order.payment.status !== PaymentStatus.CAPTURED
+        ) {
+          await tx.payment.updateMany({
+            where: { orderId: shipment.order.id, status: { not: PaymentStatus.CAPTURED } },
+            data: { status: PaymentStatus.CAPTURED, capturedAt: new Date() }
+          });
+        }
       }
     });
+
+    // Post-transaction side-effects for a sync-detected transition (mirrors the
+    // shipping worker; the outbox jobIds match the worker's so whichever path
+    // runs first wins and the other dedups — no double notification/refund).
+    if (orderLagging && nextOrderStatus === OrderStatus.CANCELLED) {
+      const cancelEmail = shipment.order.user?.email ?? null;
+      const cancelPhone = shipment.order.user?.phone ?? null;
+      if (cancelEmail || cancelPhone) {
+        try {
+          await this.enqueueOutboxMessage(
+            'notifications',
+            'send-primary',
+            {
+              email: cancelEmail,
+              phone: cancelPhone,
+              template: 'OrderCancelled',
+              data: {
+                orderId: shipment.order.id,
+                orderNumber: shipment.order.orderNumber ?? shipment.order.id,
+                awb: shipment.awbNumber ?? ''
+              }
+            },
+            // Same dedup key as the shipping worker's cancel notification so a
+            // near-simultaneous poll/webhook can never double-notify.
+            `shipping:primary:${shipment.order.id}:cancelled-webhook`
+          );
+        } catch (error) {
+          this.fastify.log?.error(
+            { orderId: shipment.order.id, err: error },
+            'Failed to enqueue cancellation notification from manual sync'
+          );
+        }
+      }
+      const payment = shipment.order.payment;
+      const shouldRefund =
+        payment != null &&
+        (payment.status === PaymentStatus.CAPTURED || payment.status === PaymentStatus.PARTIALLY_REFUNDED) &&
+        Boolean(payment.providerPaymentId);
+      if (shouldRefund) {
+        try {
+          await this.enqueueOutboxMessage(
+            'refunds',
+            'initiate-razorpay-refund',
+            {
+              orderId: shipment.order.id,
+              reason: 'Order cancelled by courier — automatic customer refund',
+              initiatedBy: 'SHIPPING_WEBHOOK',
+              sourceStatus: shipment.order.status
+            },
+            `initiate-razorpay-refund:${shipment.order.id}:full:courier-cancel`
+          );
+        } catch (error) {
+          this.fastify.log?.error(
+            { orderId: shipment.order.id, err: error },
+            'Failed to enqueue courier-cancel refund from manual sync'
+          );
+        }
+      }
+    }
+    if (orderLagging && nextOrderStatus === OrderStatus.DELIVERED) {
+      const email = shipment.order.user?.email ?? null;
+      const phone = shipment.order.user?.phone ?? null;
+      if (email || phone) {
+        try {
+          await this.enqueueOutboxMessage(
+            'notifications',
+            'send-primary',
+            {
+              email,
+              phone,
+              template: 'OrderDelivered',
+              data: {
+                orderId: shipment.order.id,
+                orderNumber: shipment.order.orderNumber ?? shipment.order.id,
+                awb: shipment.awbNumber ?? ''
+              }
+            },
+            // Same dedup key as the shipping worker's delivered notification.
+            `shipping:primary:${shipment.order.id}:delivered`
+          );
+        } catch (error) {
+          this.fastify.log?.error(
+            { orderId: shipment.order.id, err: error },
+            'Failed to enqueue delivered notification from manual sync'
+          );
+        }
+      }
+    }
 
     return {
       synced: true,

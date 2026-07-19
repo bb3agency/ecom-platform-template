@@ -398,6 +398,70 @@ describe('ShiprocketAdapter', () => {
     expect(result.events[0]?.location).toBe('Bengaluru');
   });
 
+  it('maps the "AWB has been cancelled" track error to a CANCELLED status', async () => {
+    // Shiprocket has NO trackable status for a cancelled AWB — the track endpoint
+    // fails with HTTP 500 "Ohh! This AWB has been cancelled." That error IS the
+    // status. It must surface as CANCELLED, not throw, or dashboard cancellations
+    // are never detected by the poll/sync pipeline.
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ token: 'sr-token-123' })
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        text: async () => JSON.stringify({ message: 'Ohh! This AWB has been cancelled.' })
+      });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const adapter = new ShiprocketAdapter({ email: 'test@example.com', password: 'secret' });
+    const result = await adapter.trackShipment('AWB123');
+
+    expect(result.status).toBe('CANCELLED');
+    expect(result.events[0]?.status).toBe('CANCELLED');
+  });
+
+  it('still throws for non-cancellation track errors', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ token: 'sr-token-123' })
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        text: async () => JSON.stringify({ message: 'Internal server error' })
+      });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const adapter = new ShiprocketAdapter({ email: 'test@example.com', password: 'secret' });
+    await expect(adapter.trackShipment('AWB123')).rejects.toThrow(/Shiprocket rejected/);
+  });
+
+  it('treats cancelling an already-cancelled order as success (idempotent cancel)', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ token: 'sr-token-123' })
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        text: async () => JSON.stringify({ message: 'Ohh! This AWB has been cancelled.' })
+      });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const adapter = new ShiprocketAdapter({ email: 'test@example.com', password: 'secret' });
+    const result = await adapter.cancelShipment('123456');
+
+    expect(result.cancelled).toBe(true);
+    expect(result.providerPayload).toMatchObject({ alreadyCancelled: true });
+  });
+
   it('checks serviceability and returns true when couriers exist', async () => {
     vi.stubEnv('SHIPROCKET_PICKUP_PINCODE', '110001');
     const fetchMock = vi.fn()

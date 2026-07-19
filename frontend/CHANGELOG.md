@@ -12,6 +12,17 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.50] — 2026-07-19
+
+### Fixed
+- **Single-flight token refresh in the authenticated API client** (`lib/authenticated-api.ts`, `lib/restore-auth-session.ts`): the 401-retry path called `refreshAccessToken()` raw, so several parallel 401'd requests (typical on any admin page when the access token expires) fired concurrent `/auth/refresh` calls with the SAME single-use cookie — the first rotated it, the rest got "already consumed" → `onAuthFailure()` → hard logout mid-session ("randomly logged out on desktop"). `refreshAccessTokenOnce` (in-flight promise + 3s result cache, previously private to session restore) is now exported and used by the API client, collapsing concurrent refreshes into one network call. Pairs with backend-core 0.1.73's 60s server-side reuse grace (covers multi-tab races the per-tab promise can't).
+
+**Propagation:**
+- Severity: HIGH (admin session drops mid-use) · Layers: frontend (`lib/authenticated-api.ts`, `lib/restore-auth-session.ts`) — pairs with backend-core 0.1.73
+- Migration: NO · Flag: none · Design impact: none · Breaking: NO
+- Rollback: revert the files
+
+
 ## [0.1.49] — 2026-07-14
 
 ### Fixed

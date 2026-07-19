@@ -510,9 +510,33 @@ export default class ShiprocketAdapter implements ShippingProviderAdapter {
   }
 
   async trackShipment(awbNumber: string): Promise<TrackShipmentResult> {
-    const payload = await this.request<ShiprocketTrackResponse>(
-      `/courier/track/awb/${encodeURIComponent(awbNumber)}`
-    );
+    let payload: ShiprocketTrackResponse;
+    try {
+      payload = await this.request<ShiprocketTrackResponse>(
+        `/courier/track/awb/${encodeURIComponent(awbNumber)}`
+      );
+    } catch (error) {
+      // Shiprocket does NOT return a trackable status for a cancelled AWB — the
+      // track endpoint fails with HTTP 500 "Ohh! This AWB has been cancelled."
+      // That error IS the status signal: translate it into a CANCELLED result so
+      // the poll/sync/webhook pipeline propagates the cancellation (order flip,
+      // customer notification, refund) instead of swallowing it as a provider
+      // outage forever. Matches "cancel"/"canceled"/"cancelled" case-insensitively.
+      const message = error instanceof Error ? error.message : '';
+      if (/cancel/i.test(message)) {
+        return {
+          status: 'CANCELLED',
+          events: [
+            {
+              status: 'CANCELLED',
+              description: 'Shipment cancelled at courier (reported by Shiprocket track API)'
+            }
+          ],
+          providerPayload: { trackErrorMessage: message.slice(0, 200) }
+        };
+      }
+      throw error;
+    }
 
     const trackingData = payload.tracking_data;
     const activities = trackingData?.shipment_track_activities ?? [];
@@ -550,13 +574,26 @@ export default class ShiprocketAdapter implements ShippingProviderAdapter {
     // Shiprocket order ids are numeric — send a number when possible so the
     // cancel reliably matches the order in their system.
     const cancelId = this.resolveShipmentIdPayload(orderId);
-    const payload = await this.request<Record<string, unknown>>(
-      '/orders/cancel',
-      {
-        method: 'POST',
-        body: JSON.stringify({ ids: [cancelId] })
+    let payload: Record<string, unknown>;
+    try {
+      payload = await this.request<Record<string, unknown>>(
+        '/orders/cancel',
+        {
+          method: 'POST',
+          body: JSON.stringify({ ids: [cancelId] })
+        }
+      );
+    } catch (error) {
+      // Idempotent cancel: Shiprocket rejects a cancel for an already-cancelled
+      // order/AWB with an HTTP error ("Ohh! This AWB has been cancelled." /
+      // "Order is already canceled"). The desired end-state is already true —
+      // treat it as success so compensating cancels and retries don't dead-letter.
+      const message = error instanceof Error ? error.message : '';
+      if (/cancel/i.test(message)) {
+        return { cancelled: true, providerPayload: { alreadyCancelled: true, message: message.slice(0, 200) } };
       }
-    );
+      throw error;
+    }
     const message = typeof payload.message === 'string' ? payload.message.toLowerCase() : '';
     const cancelled = message.includes('cancel') || message.includes('success');
     if (!cancelled) {

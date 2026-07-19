@@ -245,6 +245,80 @@ describe('AuthService refresh hardening + logout', () => {
     );
   });
 
+  it('allows a just-consumed refresh token within the 60s reuse grace (concurrent tabs/requests)', async () => {
+    // Single-use rotation + a shared httpOnly cookie: parallel requests present the
+    // SAME token; only the first CAS-consumes it. Hard-rejecting the rest logged
+    // the whole session out mid-use. A token consumed seconds ago (same device,
+    // hash verified) must still mint tokens.
+    const { fastify, mocks } = createFastifyMock();
+    const refreshToken = jwt.sign(
+      { sub: 'admin-1', role: Role.ADMIN, jti: 'jti-grace', sid: 'session-grace' },
+      process.env.JWT_REFRESH_SECRET as string,
+      { expiresIn: '7d' }
+    );
+    mocks.refreshFindUnique.mockResolvedValue({
+      id: 'rt-grace',
+      userId: 'admin-1',
+      jti: 'jti-grace',
+      sessionId: 'session-grace',
+      tokenHash: bcrypt.hashSync(refreshToken, 10),
+      deviceKeyHash: crypto.createHash('sha256').update('ua|ua-a').digest('hex'),
+      consumedAt: new Date(Date.now() - 5_000), // consumed 5s ago by a parallel request
+      revokedAt: null,
+      expiresAt: new Date(Date.now() + 60_000)
+    });
+    mocks.userFindUnique.mockResolvedValue({
+      id: 'admin-1',
+      email: 'admin@example.com',
+      phone: null,
+      passwordHash: bcrypt.hashSync('password-123', 10),
+      firstName: 'Admin',
+      lastName: 'User',
+      role: Role.ADMIN,
+      isVerified: true
+    });
+    const service = new AuthService(fastify);
+
+    const result = await service.refresh(refreshToken, {
+      clientIp: '127.0.0.1',
+      risk: { sessionId: 'session-grace', userAgent: 'ua-a' }
+    });
+
+    expect(result.accessToken).toBe('access-token');
+    // Grace path must NOT re-consume (no CAS on an already-consumed row).
+    expect(mocks.refreshUpdateMany).not.toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ id: 'rt-grace' }) })
+    );
+  });
+
+  it('rejects a refresh token consumed beyond the reuse grace window', async () => {
+    const { fastify, mocks } = createFastifyMock();
+    const refreshToken = jwt.sign(
+      { sub: 'admin-1', role: Role.ADMIN, jti: 'jti-stale', sid: 'session-stale' },
+      process.env.JWT_REFRESH_SECRET as string,
+      { expiresIn: '7d' }
+    );
+    mocks.refreshFindUnique.mockResolvedValue({
+      id: 'rt-stale',
+      userId: 'admin-1',
+      jti: 'jti-stale',
+      sessionId: 'session-stale',
+      tokenHash: bcrypt.hashSync(refreshToken, 10),
+      deviceKeyHash: crypto.createHash('sha256').update('ua|ua-a').digest('hex'),
+      consumedAt: new Date(Date.now() - 5 * 60_000), // consumed 5 minutes ago = replay
+      revokedAt: null,
+      expiresAt: new Date(Date.now() + 60_000)
+    });
+    const service = new AuthService(fastify);
+
+    await expect(
+      service.refresh(refreshToken, {
+        clientIp: '127.0.0.1',
+        risk: { sessionId: 'session-stale', userAgent: 'ua-a' }
+      })
+    ).rejects.toMatchObject({ statusCode: 401 });
+  });
+
   it('revokes all active sessions when logout is called without refresh token', async () => {
     const { fastify, mocks } = createFastifyMock();
     const service = new AuthService(fastify);

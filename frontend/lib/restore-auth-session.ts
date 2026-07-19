@@ -37,7 +37,17 @@ let recentRefresh: { accessToken: string; expiresAt: number } | null = null;
 
 const REFRESH_RESULT_CACHE_MS = 3_000;
 
-function refreshAccessTokenOnce(): Promise<{ accessToken: string }> {
+/**
+ * Single-flight token refresh — ALL refresh callers (session restore AND the
+ * authenticated API client's 401 retry) must funnel through this. Refresh tokens
+ * are single-use + rotated: two concurrent raw `refreshAccessToken()` calls send
+ * the SAME cookie, the first rotates it, and the second gets "already consumed"
+ * → hard logout. That was the "randomly logged out mid-session on desktop" bug
+ * (admin pages burst parallel GETs that all 401 together when the access token
+ * expires). The in-flight promise + 3s result cache collapse those into one
+ * network refresh.
+ */
+export function refreshAccessTokenOnce(): Promise<{ accessToken: string }> {
   const now = Date.now();
   if (recentRefresh && recentRefresh.expiresAt > now) {
     return Promise.resolve({ accessToken: recentRefresh.accessToken });

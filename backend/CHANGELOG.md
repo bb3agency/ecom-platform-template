@@ -12,6 +12,20 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.73] — 2026-07-19
+
+### Fixed
+- **Shiprocket dashboard cancellations are now detected and fully propagated.** Shiprocket has NO trackable status for a cancelled AWB — its track endpoint fails with HTTP 500 "Ohh! This AWB has been cancelled." Our adapter threw on that error, the 3-min poll's per-shipment catch swallowed it, and the admin Sync button surfaced it as a raw INTERNAL_ERROR — so a cancellation made in the Shiprocket dashboard NEVER reached the site (the reported ORD-QA62-TCCU symptom). `trackShipment` now translates any /cancel/i track error into a `CANCELLED` tracking result, which flows through the existing poll/sync/webhook pipeline (order flip + customer notification + prepaid refund + inventory restore). `cancelShipment` is now idempotent too: cancelling an already-cancelled order returns success instead of dead-lettering compensating cancels.
+- **Manual "Sync" now runs the same side-effects as the webhook/poll paths.** `adminSyncShipmentStatus` flipped the order status but skipped ALL side-effects. It now: runs cancellation side-effects (inventory restore + coupon release + captured-prepaid refund enqueue) when sync detects a courier cancel; captures COD payment on sync-detected delivery; and enqueues the delivered/cancelled customer notification. Outbox jobIds match the shipping worker's exactly, so whichever path runs first wins and the other dedups — no double notification/refund.
+- **Mid-session "randomly logged out" on desktop (refresh-token race).** Refresh tokens are single-use + rotated, and all tabs/requests share one httpOnly cookie. When the access token expired, an admin page burst several parallel 401'd GETs → each called /auth/refresh with the SAME cookie → the first consumed+rotated it and every other call got "already consumed" → hard logout. Backend now has a **60s reuse grace** (industry-standard rotation reuse-interval, e.g. Auth0): a token consumed <60s ago — same device binding, bcrypt hash verified — can still mint tokens without re-consuming; replay beyond the window still 401s, so stolen-cookie protection is intact. A lost CAS race re-checks and falls into the grace path instead of failing.
+
+**Propagation:**
+- Severity: HIGH (courier cancellations invisible to the site; customers un-refunded; admins randomly logged out) · Layers: backend (`modules/shipping/adapters/shiprocket.adapter.ts` + test, `modules/orders/orders.service.ts`, `modules/auth/auth.service.ts` + mfa-refresh tests) — pairs with frontend-core 0.1.50 (single-flight refresh)
+- Migration: NO · Flag: none · Design impact: none · Breaking: NO
+- Rollback: revert the files
+- Operator: nothing required. Already-cancelled-at-courier orders self-heal on the next poll tick (≤3 min) or the admin Sync button.
+
+
 ## [0.1.72] — 2026-07-11
 
 ### Fixed
