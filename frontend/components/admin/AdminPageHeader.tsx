@@ -50,67 +50,73 @@ export function AdminPageHeader({
   }
 
   return (
-    <header className={cn("flex flex-col gap-4", className)}>
+    <header className={cn("flex flex-col gap-3", className)}>
+      {/* Title block: page title above, breadcrumb below — identical on every page. */}
       <div className="flex flex-col gap-1">
-        {/* Sitemap / Breadcrumb */}
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <h1 className="font-heading text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
+          {title}
+        </h1>
+        {/* Breadcrumb: Home / Page, muted with the current page slightly darker. */}
+        <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
           {breadcrumb ? (
             breadcrumb
           ) : title !== "Dashboard" ? (
             <>
-              <Link href="/admin" className="hover:text-foreground transition-colors">
-                Dashboard
+              <Link href="/admin" className="transition-colors hover:text-foreground">
+                Home
               </Link>
-              <span className="text-muted-foreground/60">&gt;</span>
-              <span className="font-medium text-foreground">{title}</span>
+              <span className="text-muted-foreground/50">/</span>
+              <span className="font-medium text-foreground/80">{title}</span>
             </>
           ) : (
-            <span className="font-medium text-foreground">Dashboard</span>
+            <>
+              <span>Home</span>
+              <span className="text-muted-foreground/50">/</span>
+              <span className="font-medium text-foreground/80">Dashboard</span>
+            </>
           )}
         </div>
-
-        {/* Description */}
         {description ? (
           <p className="text-sm text-muted-foreground">{description}</p>
         ) : null}
       </div>
 
-      {/* Date picker + Export bar or extra actions */}
+      {/* Action bar: date range + Export on the left, page actions on the right.
+          Positions are fixed so controls never move between pages. */}
       {(range && onRangeChange) || actions ? (
-        <div className="flex flex-row flex-wrap items-center gap-3">
-          {range && onRangeChange ? (
-            <div className="flex flex-row items-center gap-2">
-              <div className="min-w-0">
-                <AdminDateRangePicker
-                  from={range.from}
-                  to={range.to}
-                  onChange={onRangeChange}
-                  menuAlign="start"
-                />
-              </div>
-              <button
-                type="button"
-                className="flex h-[38px] shrink-0 items-center gap-2 rounded-md border border-border/50 bg-card px-3 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-muted/50 disabled:opacity-50"
-                disabled={exporting}
-                onClick={() => void handleExport()}
-                aria-label={exporting ? "Exporting" : "Export data"}
-              >
-                {exporting ? (
-                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                ) : (
-                  <Download className="h-4 w-4 text-muted-foreground" />
-                )}
-                <span className="hidden sm:inline">{exporting ? "Exporting…" : "Export"}</span>
-                <span className="inline sm:hidden">{exporting ? "..." : "Export"}</span>
-              </button>
-            </div>
-          ) : null}
+        <div className="flex flex-row flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-row items-center gap-2">
+            {range && onRangeChange ? (
+              <>
+                <div className="min-w-0">
+                  <AdminDateRangePicker
+                    from={range.from}
+                    to={range.to}
+                    onChange={onRangeChange}
+                    menuAlign="start"
+                  />
+                </div>
+                <button
+                  type="button"
+                  className="flex h-[38px] shrink-0 items-center gap-2 rounded-lg border border-border bg-card px-3 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-muted/50 disabled:opacity-50"
+                  disabled={exporting}
+                  onClick={() => void handleExport()}
+                  aria-label={exporting ? "Exporting" : "Export data"}
+                >
+                  {exporting ? (
+                    <Loader2 className="size-4 animate-spin text-muted-foreground" />
+                  ) : (
+                    <Download className="size-4 text-muted-foreground" />
+                  )}
+                  <span className="hidden sm:inline">{exporting ? "Exporting…" : "Export"}</span>
+                  <span className="inline sm:hidden">{exporting ? "..." : "Export"}</span>
+                </button>
+              </>
+            ) : null}
+          </div>
 
-          {/* Extra actions row */}
           {actions ? (
-            <div className="flex flex-row items-center gap-2">
-              {actions}
-            </div>
+            <div className="flex flex-row items-center gap-2">{actions}</div>
           ) : null}
         </div>
       ) : null}

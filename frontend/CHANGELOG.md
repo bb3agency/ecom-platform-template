@@ -12,6 +12,22 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.52] — 2026-07-19
+
+### Changed
+- **Phase 1 of the admin design system — the application shell** (all tokens, per-client theming automatic):
+  - **Sidebar**: active item is now a filled primary pill with a left indicator bar and white icon/text; subtle hover; 20px Lucide icons; section separator between primary nav and System (Settings/Catalog write/Mutations). **Collapsible**: 260px ↔ 72px animated (200ms), state persisted per browser, collapsed rail shows full-label tooltips (never truncates), pending-orders dot on the icon.
+  - **Mobile navigation** rebuilt on the design-system `Sheet` (left slide-over, backdrop blur, Esc/outside dismiss, proper focus trap).
+  - **Sign-out flow**: profile row opens a confirmation dialog (no more instant logout on a stray click), with loading state and a "Signed out successfully." toast.
+  - **Session-expiry warning** restyled to the design system: centered card, amber icon circle, live countdown + progress bar, "Stay Signed In" primary / "Sign Out Now" outline, "Session extended." toast on refresh — and its hardcoded seed-client hex palette replaced with semantic tokens (engine-file cleanup).
+  - **Page header**: every page now leads with a proper `h1` title above a muted `Home / Page` breadcrumb; date-range + Export pinned left, page actions pinned right — positions never move between pages.
+
+**Propagation:**
+- Severity: NORMAL (UX only) · Layers: frontend (`components/admin/AdminConsoleShell.tsx`, `components/admin/AdminPageHeader.tsx`, `components/auth/AdminIdleTimeoutModal.tsx`)
+- Migration: NO · Flag: none · Design impact: none per-client (tokens; admin is engine) · Breaking: NO
+- Rollback: revert the files
+
+
 ## [0.1.51] — 2026-07-19
 
 ### Added

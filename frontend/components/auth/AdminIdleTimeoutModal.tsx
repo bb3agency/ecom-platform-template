@@ -7,6 +7,7 @@ import { logoutSession, refreshAccessToken } from "@/lib/auth-api";
 import { parseAccessTokenClaims } from "@/lib/jwt-utils";
 import { LogOut, RefreshCw, Timer } from "lucide-react";
 import { useIdleTimeout } from "@/hooks/use-idle-timeout";
+import { useToastStore } from "@/stores/toast";
 
 const WARNING_AFTER_MS = 25 * 60 * 1000; // 25 minutes
 const LOGOUT_AFTER_WARNING_MS = 5 * 60 * 1000; // 5 minutes
@@ -45,6 +46,7 @@ export function AdminIdleTimeoutModal() {
       if (claims?.role === "ADMIN") {
         setAccessToken(refreshed.accessToken);
         setVisible(false);
+        useToastStore.getState().push({ variant: "success", message: "Session extended." });
       } else {
         handleLogout();
       }
@@ -87,51 +89,55 @@ export function AdminIdleTimeoutModal() {
   const minutes = Math.floor(remainingSec / 60);
   const seconds = remainingSec % 60;
   const timeLabel = `${minutes}:${seconds.toString().padStart(2, "0")}`;
+  const progressPct = Math.max(0, Math.min(100, (remainingSec / LOGOUT_COUNTDOWN_SEC) * 100));
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-[#23403d]/60 backdrop-blur-sm"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-[2px] animate-in fade-in-0 duration-200"
       role="alertdialog"
       aria-modal="true"
       aria-labelledby="idle-title"
       aria-describedby="idle-desc"
     >
-      <div className="mx-4 w-full max-w-sm rounded-xl border border-[#efe8e4] bg-white p-6 shadow-2xl">
-        <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-full bg-amber-100">
-          <Timer className="h-5 w-5 text-amber-600" />
+      <div className="mx-4 w-full max-w-sm rounded-xl border border-border bg-card p-6 text-center shadow-lg animate-in fade-in-0 slide-in-from-bottom-2 duration-200">
+        <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-full bg-amber-500/10">
+          <Timer className="size-6 text-amber-600" />
         </div>
 
-        <h2
-          id="idle-title"
-          className="font-heading text-lg font-semibold text-[#23403d]"
-        >
-          Session timeout warning
+        <h2 id="idle-title" className="font-heading text-lg font-semibold text-foreground">
+          Session Expiring Soon
         </h2>
-        <p id="idle-desc" className="mt-2 text-sm text-[#769b97]">
-          You have been inactive for a while. Your admin session will expire
-          automatically in{" "}
-          <span className="font-semibold text-[#ec6e55]">{timeLabel}</span>.
+        <p id="idle-desc" className="mt-2 text-sm text-muted-foreground">
+          Your session will expire in{" "}
+          <span className="font-semibold tabular-nums text-foreground">{timeLabel}</span> due to
+          inactivity. You will be signed out automatically.
         </p>
 
-        <div className="mt-6 flex flex-col gap-2">
+        {/* Countdown progress bar. */}
+        <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+          <div
+            className="h-full rounded-full bg-amber-500 transition-[width] duration-1000 ease-linear"
+            style={{ width: `${progressPct}%` }}
+          />
+        </div>
+
+        <div className="mt-6 flex items-center justify-center gap-2">
           <button
             type="button"
             disabled={extending}
             onClick={() => void handleExtend()}
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-[#23403d] px-4 text-sm font-medium text-white transition-colors hover:bg-[#1a3330] disabled:opacity-60"
+            className="inline-flex h-10 min-w-32 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
           >
-            <RefreshCw
-              className={`h-4 w-4 ${extending ? "animate-spin" : ""}`}
-            />
-            {extending ? "Extending…" : "Stay signed in"}
+            <RefreshCw className={`size-4 ${extending ? "animate-spin" : ""}`} />
+            {extending ? "Extending…" : "Stay Signed In"}
           </button>
           <button
             type="button"
             onClick={handleLogout}
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-[#efe8e4] px-4 text-sm font-medium text-[#23403d] transition-colors hover:bg-[#faf3ef]"
+            className="inline-flex h-10 min-w-32 items-center justify-center gap-2 rounded-lg border border-border px-4 text-sm font-medium text-foreground transition-colors hover:bg-muted"
           >
-            <LogOut className="h-4 w-4" />
-            Sign out now
+            <LogOut className="size-4" />
+            Sign Out Now
           </button>
         </div>
       </div>

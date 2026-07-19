@@ -13,22 +13,32 @@ import Image from "next/image";
 import {
   LogOut,
   Menu,
-  X,
   Search,
   Bell,
   ChevronsUpDown,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from "lucide-react";
 import {
   getAdminNavItems,
   isAdminNavActive,
+  type AdminNavItem,
 } from "@/components/admin/admin-nav-config";
 import { AdminIdleTimeoutModal } from "@/components/auth/AdminIdleTimeoutModal";
 import { AdminSearchPanel } from "@/components/admin/AdminSearchPanel";
 import { AdminNotificationsPanel } from "@/components/admin/AdminNotificationsPanel";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import {
+  Sheet,
+  SheetContent,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { BRAND_LOGO_SRC } from "@/lib/constants";
 import { useAuthStore } from "@/stores/auth";
+import { useToastStore } from "@/stores/toast";
 import { canViewAdminRoute } from "@/lib/permissions";
 import { redirectToAdminLogin } from "@/lib/admin-auth-navigation";
 import { logoutSession } from "@/lib/auth-api";
@@ -43,6 +53,8 @@ import {
 interface AdminConsoleShellProps {
   children: ReactNode;
 }
+
+const SIDEBAR_COLLAPSED_KEY = "admin.sidebar.collapsed";
 
 /** Shell chrome only mounts after AdminAuthProvider has a valid session (avoids hook churn under the loading gate). */
 function AdminConsoleAuthenticated({ children }: AdminConsoleShellProps) {
@@ -67,18 +79,42 @@ function AdminConsoleFrame({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [signOutConfirmOpen, setSignOutConfirmOpen] = useState(false);
   const [pendingOrdersCount, setPendingOrdersCount] = useState<number | null>(null);
   const [bellOpen, setBellOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  // Collapsed state persists across visits; default expanded.
+  const [collapsed, setCollapsed] = useState(false);
 
   const bellRef = useRef<HTMLDivElement>(null);
 
   const { accessToken, adminUser } = useAdminAuth();
   const api = useAuthenticatedApi();
+  const pushToast = useToastStore((s) => s.push);
+
+  useEffect(() => {
+    try {
+      setCollapsed(window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1");
+    } catch {
+      // Storage unavailable — stay expanded.
+    }
+  }, []);
+
+  const toggleCollapsed = () => {
+    setCollapsed((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? "1" : "0");
+      } catch {
+        // Best-effort persistence only.
+      }
+      return next;
+    });
+  };
 
   // Pending-orders count for the sidebar badge + bell. Kept live without a refresh:
   //  - refetches whenever any admin surface mutates order data (notifyAdminDataChanged bus);
-  //  - background-polls every 60s so counts move even when the change happened elsewhere
+  //  - background-polls every 20s so counts move even when the change happened elsewhere
   //    (another admin, a customer checkout, a webhook) — skipped while the tab is hidden.
   const refreshPendingCount = useCallback(() => {
     void api<PaginatedResponse<AdminOrderListItem>>(
@@ -160,6 +196,7 @@ function AdminConsoleFrame({ children }: { children: ReactNode }) {
     try {
       await logoutSession(accessToken);
     } finally {
+      pushToast({ variant: "success", message: "Signed out successfully." });
       useAuthStore.getState().logoutLocalSession();
       redirectToAdminLogin();
     }
@@ -169,166 +206,216 @@ function AdminConsoleFrame({ children }: { children: ReactNode }) {
     canViewAdminRoute(adminUser, item.routeKey),
   );
 
-  const mainNavItems = permittedNavItems.filter(
-    (item) =>
-      ![
-        "/admin/settings",
-        "/admin/catalog-write",
-        "/admin/mutations",
-      ].includes(item.href),
-  );
+  const SYSTEM_HREFS = ["/admin/settings", "/admin/catalog-write", "/admin/mutations"];
+  const mainNavItems = permittedNavItems.filter((item) => !SYSTEM_HREFS.includes(item.href));
+  const secondaryNavItems = permittedNavItems.filter((item) => SYSTEM_HREFS.includes(item.href));
 
-  const secondaryNavItems = permittedNavItems.filter((item) =>
-    [
-      "/admin/settings",
-      "/admin/catalog-write",
-      "/admin/mutations",
-    ].includes(item.href),
-  );
+  const renderNavItem = (item: AdminNavItem, options?: { onNavigate?: () => void }) => {
+    const active = isAdminNavActive(pathname, item.href);
+    const showBadge =
+      item.href === "/admin/orders" && pendingOrdersCount !== null && pendingOrdersCount > 0;
+    const badge = showBadge ? (
+      <span
+        className={cn(
+          "flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold",
+          active ? "bg-primary-foreground/20 text-primary-foreground" : "bg-primary text-primary-foreground",
+        )}
+      >
+        {pendingOrdersCount > 99 ? "99+" : String(pendingOrdersCount)}
+      </span>
+    ) : null;
+
+    const link = (
+      <Link
+        key={item.href}
+        href={item.href}
+        onClick={options?.onNavigate}
+        aria-current={active ? "page" : undefined}
+        className={cn(
+          "group relative flex items-center rounded-lg text-sm font-medium transition-colors duration-150",
+          collapsed ? "justify-center px-0 py-2.5" : "justify-between px-3 py-2",
+          active
+            ? "bg-primary text-primary-foreground shadow-sm"
+            : "text-muted-foreground hover:bg-muted hover:text-foreground",
+        )}
+      >
+        {/* Left indicator bar for the active item. */}
+        {active && !collapsed && (
+          <span className="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-full bg-primary-foreground/70" />
+        )}
+        <span className={cn("flex items-center", collapsed ? "" : "gap-3")}>
+          <item.icon className="size-5 shrink-0" aria-hidden />
+          {!collapsed && <span>{item.label}</span>}
+        </span>
+        {!collapsed && badge}
+        {collapsed && showBadge && (
+          <span className="absolute -top-0.5 right-1 size-2 rounded-full bg-accent" aria-hidden />
+        )}
+      </Link>
+    );
+
+    // Collapsed rail: full label in a tooltip — never truncate.
+    if (collapsed && !options?.onNavigate) {
+      return (
+        <Tooltip key={item.href}>
+          <TooltipTrigger render={link} />
+          <TooltipContent side="right">{item.label}</TooltipContent>
+        </Tooltip>
+      );
+    }
+    return link;
+  };
 
   return (
-    <>
+    <TooltipProvider>
       <div className="admin-console flex h-screen overflow-hidden bg-background text-foreground font-sans">
-        {/* ── Sidebar ── */}
+        {/* ── Sidebar (desktop) ── */}
         <aside
-          className="hidden w-64 shrink-0 flex-col border-r border-border/40 bg-card lg:flex h-full"
+          className={cn(
+            "hidden shrink-0 flex-col border-r border-border bg-card lg:flex h-full transition-[width] duration-200 ease-out",
+            collapsed ? "w-[72px]" : "w-[260px]",
+          )}
           aria-label="Admin navigation"
         >
-          <AdminSidebarBrand />
-
-          <div className="px-4 py-2">
-            <button
-              type="button"
-              onClick={() => setSearchOpen(true)}
-              className="flex w-full items-center gap-2 rounded-md border border-border/50 bg-background/50 py-2 pl-3 pr-2 text-sm text-muted-foreground hover:border-border hover:bg-background transition-colors"
-            >
-              <Search className="h-4 w-4 shrink-0" aria-hidden />
-              <span className="flex-1 text-left">Search…</span>
-              <div className="flex items-center justify-center rounded border border-border/50 bg-muted/50 px-1.5 py-0.5 text-[10px] font-medium">
-                ⌘K
-              </div>
-            </button>
+          <div className={cn("flex items-center", collapsed ? "justify-center px-2 py-4" : "justify-between pr-3")}>
+            {collapsed ? <AdminBrandMark /> : <AdminSidebarBrand />}
+            {!collapsed && (
+              <button
+                type="button"
+                onClick={toggleCollapsed}
+                aria-label="Collapse sidebar"
+                className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              >
+                <PanelLeftClose className="size-4" />
+              </button>
+            )}
           </div>
+          {collapsed && (
+            <div className="flex justify-center pb-1">
+              <button
+                type="button"
+                onClick={toggleCollapsed}
+                aria-label="Expand sidebar"
+                className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              >
+                <PanelLeftOpen className="size-4" />
+              </button>
+            </div>
+          )}
 
-          <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-3 py-2 min-h-0">
-            {mainNavItems.map((item) => {
-              const active = isAdminNavActive(pathname, item.href);
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={cn(
-                    "group flex items-center justify-between rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                    active
-                      ? "bg-zinc-100 text-zinc-900 dark:bg-zinc-900/10 dark:text-zinc-900"
-                      : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
-                  )}
-                >
-                  <div className="flex items-center gap-3">
-                    <item.icon className="h-4 w-4 shrink-0" aria-hidden />
-                    <span>{item.label}</span>
-                  </div>
-                  {item.href === "/admin/orders" &&
-                  pendingOrdersCount !== null &&
-                  pendingOrdersCount > 0 ? (
-                    <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-zinc-900 px-1.5 text-[10px] font-bold text-white">
-                      {pendingOrdersCount > 99
-                        ? "99+"
-                        : String(pendingOrdersCount)}
-                    </span>
-                  ) : null}
-                </Link>
-              );
-            })}
+          {!collapsed && (
+            <div className="px-4 py-2">
+              <button
+                type="button"
+                onClick={() => setSearchOpen(true)}
+                className="flex w-full items-center gap-2 rounded-lg border border-border bg-background/60 py-2 pl-3 pr-2 text-sm text-muted-foreground transition-colors hover:border-border hover:bg-background"
+              >
+                <Search className="size-4 shrink-0" aria-hidden />
+                <span className="flex-1 text-left">Search…</span>
+                <kbd className="flex items-center justify-center rounded border border-border bg-muted/50 px-1.5 py-0.5 text-[10px] font-medium">
+                  ⌘K
+                </kbd>
+              </button>
+            </div>
+          )}
+          {collapsed && (
+            <div className="flex justify-center px-2 py-2">
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      type="button"
+                      onClick={() => setSearchOpen(true)}
+                      aria-label="Search"
+                      className="rounded-lg border border-border bg-background/60 p-2 text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
+                    >
+                      <Search className="size-5" aria-hidden />
+                    </button>
+                  }
+                />
+                <TooltipContent side="right">Search (⌘K)</TooltipContent>
+              </Tooltip>
+            </div>
+          )}
+
+          <nav
+            className={cn(
+              "flex flex-1 flex-col gap-0.5 overflow-y-auto py-2 min-h-0",
+              collapsed ? "px-3" : "px-3",
+            )}
+          >
+            {mainNavItems.map((item) => renderNavItem(item))}
 
             {secondaryNavItems.length > 0 && (
               <>
-                <div className="mx-3 my-2 border-t border-border/40" />
-                {secondaryNavItems.map((item) => {
-                  const active = isAdminNavActive(pathname, item.href);
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      className={cn(
-                        "group flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                        active
-                          ? "bg-zinc-100 text-zinc-900 dark:bg-zinc-900/10 dark:text-zinc-900"
-                          : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
-                      )}
-                    >
-                      <item.icon className="h-4 w-4 shrink-0" aria-hidden />
-                      <span>{item.label}</span>
-                    </Link>
-                  );
-                })}
+                <div className="mx-1 my-2 border-t border-border" />
+                {secondaryNavItems.map((item) => renderNavItem(item))}
               </>
             )}
           </nav>
 
-          <div className="border-t border-border/40 p-4">
+          {/* User profile → opens the sign-out confirmation. */}
+          <div className={cn("border-t border-border", collapsed ? "p-2" : "p-3")}>
             <button
               type="button"
-              className="group flex w-full items-center justify-between rounded-md p-2 transition-colors hover:bg-muted/50"
-              onClick={() => void handleLogout()}
+              className={cn(
+                "group flex w-full items-center rounded-lg transition-colors hover:bg-muted",
+                collapsed ? "justify-center p-2" : "justify-between p-2",
+              )}
+              onClick={() => setSignOutConfirmOpen(true)}
               disabled={loggingOut}
+              aria-label="Account and sign out"
             >
-              <div className="flex items-center gap-3">
-                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-muted font-semibold text-muted-foreground">
+              <span className={cn("flex items-center", collapsed ? "" : "gap-3")}>
+                <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/10 font-semibold text-primary">
                   {adminUser?.firstName?.charAt(0) || "A"}
-                </div>
-                <div className="text-left">
-                  <p className="text-sm font-medium leading-none text-foreground">
-                    {adminUser?.firstName} {adminUser?.lastName}
-                  </p>
-                  <p className="text-xs text-muted-foreground truncate">
-                    {loggingOut ? "Signing out..." : (adminUser?.email ?? "Admin")}
-                  </p>
-                </div>
-              </div>
-              <ChevronsUpDown className="h-4 w-4 text-muted-foreground group-hover:text-foreground" />
+                </span>
+                {!collapsed && (
+                  <span className="text-left">
+                    <span className="block text-sm font-medium leading-none text-foreground">
+                      {adminUser?.firstName} {adminUser?.lastName}
+                    </span>
+                    <span className="mt-0.5 block max-w-36 truncate text-xs text-muted-foreground">
+                      {loggingOut ? "Signing out…" : (adminUser?.email ?? "Admin")}
+                    </span>
+                  </span>
+                )}
+              </span>
+              {!collapsed && (
+                <ChevronsUpDown className="size-4 text-muted-foreground group-hover:text-foreground" />
+              )}
             </button>
           </div>
         </aside>
 
         {/* ── Main content ── */}
-        <div className="flex min-w-0 flex-1 flex-col bg-[#F9FAFB] dark:bg-background h-full overflow-hidden">
-          <header className="flex shrink-0 items-center justify-between gap-2 border-b border-border/40 bg-card px-3 py-2.5 sm:px-4 sm:py-3 lg:px-6">
+        <div className="flex min-w-0 flex-1 flex-col bg-background h-full overflow-hidden">
+          <header className="flex shrink-0 items-center justify-between gap-2 border-b border-border bg-card px-3 py-2.5 sm:px-4 sm:py-3 lg:px-6">
             <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
               <button
                 type="button"
-                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border lg:hidden"
+                className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-border lg:hidden"
                 onClick={() => setMobileNavOpen(true)}
                 aria-label="Open navigation menu"
               >
-                <Menu className="h-5 w-5" />
+                <Menu className="size-5" />
               </button>
 
-              {/* Mobile/tablet: show brand; desktop: show page title (sidebar has brand) */}
-              <div className="flex items-center gap-2.5 lg:hidden min-w-0">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white border border-zinc-200 overflow-hidden">
-                  <Image src={BRAND_LOGO_SRC} alt="Logo" width={36} height={36} className="object-contain" />
-                </div>
-                <div className="flex flex-col min-w-0">
-                  <span className="font-heading text-sm font-bold tracking-tight text-foreground leading-none truncate">
-                    {process.env.NEXT_PUBLIC_STORE_NAME ?? "Admin"}
-                  </span>
-                  <span className="text-[10px] font-medium text-muted-foreground mt-0.5">
-                    Admin Console
-                  </span>
-                </div>
+              {/* Mobile/tablet: show brand; desktop: sidebar carries the brand */}
+              <div className="lg:hidden min-w-0">
+                <AdminSidebarBrand compact />
               </div>
             </div>
 
             <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-              {/* ── Search ── */}
+              {/* ── Search (mobile) ── */}
               <button
                 type="button"
                 onClick={() => setSearchOpen(true)}
-                className="flex h-9 w-9 items-center justify-center rounded-md border border-border bg-background text-muted-foreground hover:text-foreground lg:hidden"
+                className="flex size-9 items-center justify-center rounded-lg border border-border bg-background text-muted-foreground hover:text-foreground lg:hidden"
                 aria-label="Search"
               >
-                <Search className="h-4 w-4" />
+                <Search className="size-4" />
               </button>
 
               {/* ── Bell ── */}
@@ -338,15 +425,13 @@ function AdminConsoleFrame({ children }: { children: ReactNode }) {
                   onClick={() => {
                     setBellOpen((v) => !v);
                   }}
-                  className="relative flex h-9 w-9 items-center justify-center rounded-md border border-border bg-background text-muted-foreground hover:text-foreground"
+                  className="relative flex size-9 items-center justify-center rounded-lg border border-border bg-background text-muted-foreground transition-colors hover:text-foreground"
                   aria-label="Pending orders"
                 >
-                  <Bell className="h-4 w-4" />
+                  <Bell className="size-4" />
                   {pendingOrdersCount !== null && pendingOrdersCount > 0 && (
                     <span className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[8px] font-bold text-white ring-2 ring-background">
-                      {pendingOrdersCount > 99
-                        ? "99+"
-                        : String(pendingOrdersCount)}
+                      {pendingOrdersCount > 99 ? "99+" : String(pendingOrdersCount)}
                     </span>
                   )}
                 </button>
@@ -355,7 +440,6 @@ function AdminConsoleFrame({ children }: { children: ReactNode }) {
                   <AdminNotificationsPanel onClose={() => setBellOpen(false)} />
                 )}
               </div>
-
             </div>
           </header>
 
@@ -364,93 +448,93 @@ function AdminConsoleFrame({ children }: { children: ReactNode }) {
           </main>
         </div>
 
-        {/* ── Mobile nav overlay ── */}
-        {mobileNavOpen ? (
-          <div
-            className="fixed inset-0 z-50 lg:hidden"
-            role="dialog"
-            aria-modal="true"
-          >
-            <button
-              type="button"
-              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-              aria-label="Close navigation menu"
-              onClick={closeMobileNav}
-            />
-            <aside className="absolute left-0 top-0 flex h-full w-[min(18rem,88vw)] max-w-[18rem] flex-col bg-card shadow-xl">
-              <div className="flex items-center justify-between border-b border-border/40 px-4 py-3">
-                <AdminSidebarBrand />
-                <button
-                  type="button"
-                  onClick={closeMobileNav}
-                  aria-label="Close menu"
-                  className="rounded-md p-1.5 hover:bg-muted text-muted-foreground"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-              <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 py-4">
-                {permittedNavItems.map((item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    onClick={closeMobileNav}
-                    className={cn(
-                      "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium",
-                      isAdminNavActive(pathname, item.href)
-                        ? "bg-zinc-100 text-zinc-900 dark:bg-zinc-900/10 dark:text-zinc-900"
-                        : "text-muted-foreground hover:bg-muted",
-                    )}
-                  >
-                    <item.icon className="h-4 w-4" />
-                    {item.label}
-                  </Link>
-                ))}
-              </nav>
-              {/* User profile card + sign out at bottom of mobile sidebar */}
-              <div className="border-t border-border/40 p-3 space-y-2">
-                <div className="flex items-center gap-3 rounded-lg border border-border/60 bg-muted/30 px-3 py-2.5">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-zinc-200 text-sm font-bold text-zinc-800">
-                    {adminUser?.firstName?.charAt(0) || "A"}
-                  </div>
-                  <div className="flex flex-col min-w-0">
-                    <span className="text-sm font-semibold text-foreground truncate leading-none">
-                      {adminUser?.firstName} {adminUser?.lastName}
-                    </span>
-                    <span className="text-[11px] text-muted-foreground mt-0.5 truncate">
-                      {adminUser?.email ?? "Admin"}
-                    </span>
-                  </div>
+        {/* ── Mobile nav drawer ── */}
+        <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
+          <SheetContent side="left" className="max-w-[min(18rem,88vw)] lg:hidden">
+            <div className="flex items-center border-b border-border px-4 py-3">
+              <SheetTitle className="p-0">
+                <AdminSidebarBrand compact />
+              </SheetTitle>
+            </div>
+            <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 py-4">
+              {mainNavItems.map((item) => renderNavItem(item, { onNavigate: closeMobileNav }))}
+              {secondaryNavItems.length > 0 && (
+                <>
+                  <div className="mx-1 my-2 border-t border-border" />
+                  {secondaryNavItems.map((item) =>
+                    renderNavItem(item, { onNavigate: closeMobileNav }),
+                  )}
+                </>
+              )}
+            </nav>
+            {/* User profile card + sign out at bottom of mobile drawer */}
+            <div className="border-t border-border p-3 space-y-2">
+              <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/30 px-3 py-2.5">
+                <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
+                  {adminUser?.firstName?.charAt(0) || "A"}
                 </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full gap-2 justify-start"
-                  disabled={loggingOut}
-                  onClick={() => void handleLogout()}
-                >
-                  <LogOut className="h-4 w-4" />
-                  {loggingOut ? "Signing out…" : "Sign out"}
-                </Button>
+                <div className="flex flex-col min-w-0">
+                  <span className="text-sm font-semibold text-foreground truncate leading-none">
+                    {adminUser?.firstName} {adminUser?.lastName}
+                  </span>
+                  <span className="text-[11px] text-muted-foreground mt-0.5 truncate">
+                    {adminUser?.email ?? "Admin"}
+                  </span>
+                </div>
               </div>
-            </aside>
-          </div>
-        ) : null}
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full gap-2 justify-start"
+                disabled={loggingOut}
+                onClick={() => {
+                  closeMobileNav();
+                  setSignOutConfirmOpen(true);
+                }}
+              >
+                <LogOut className="size-4" />
+                Sign out
+              </Button>
+            </div>
+          </SheetContent>
+        </Sheet>
       </div>
+
+      {/* Sign-out confirmation — never log out on a stray click. */}
+      <ConfirmDialog
+        open={signOutConfirmOpen}
+        onOpenChange={setSignOutConfirmOpen}
+        title="Sign Out"
+        description="Are you sure you want to sign out? You will need to sign in again to access the admin console."
+        confirmLabel="Sign Out"
+        icon={LogOut}
+        onConfirm={async () => {
+          await handleLogout();
+        }}
+      />
+
       <AdminIdleTimeoutModal />
       {searchOpen && <AdminSearchPanel onClose={() => setSearchOpen(false)} />}
-    </>
+    </TooltipProvider>
   );
 }
 
-function AdminSidebarBrand() {
+function AdminBrandMark() {
   return (
-    <div className="flex items-center gap-2.5 px-5 py-4">
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white border border-zinc-200 overflow-hidden">
+    <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-card">
+      <Image src={BRAND_LOGO_SRC} alt="Logo" width={36} height={36} className="object-contain" />
+    </div>
+  );
+}
+
+function AdminSidebarBrand({ compact = false }: { compact?: boolean }) {
+  return (
+    <div className={cn("flex items-center gap-2.5", compact ? "" : "px-5 py-4")}>
+      <div className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-card">
         <Image src={BRAND_LOGO_SRC} alt="Logo" width={36} height={36} className="object-contain" />
       </div>
       <div className="flex flex-col min-w-0">
-        <span className="font-heading text-[14px] font-bold tracking-tight text-foreground leading-none truncate">
+        <span className="font-heading text-sm font-bold tracking-tight text-foreground leading-none truncate">
           {process.env.NEXT_PUBLIC_STORE_NAME ?? "Admin"}
         </span>
         <span className="text-[10px] font-medium text-muted-foreground mt-0.5">
