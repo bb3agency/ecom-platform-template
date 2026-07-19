@@ -5,7 +5,10 @@ import { useCallback, useEffect, useState } from "react";
 import { AdminDetailDrawer } from "@/components/admin/AdminDetailDrawer";
 import { AdminPagination } from "@/components/admin/AdminPagination";
 import { AdminTableScroll } from "@/components/admin/AdminTableScroll";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   buildAdminQuery,
   SHIPMENT_FILTER_STATUSES,
@@ -308,7 +311,7 @@ export function AdminShipmentsList({
         <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-5">
           <div className="flex flex-col justify-center rounded-xl border border-border/40 bg-card p-4 sm:p-5 shadow-sm min-w-0">
             <div className="flex items-center gap-3 sm:gap-4">
-              <div className="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-50">
+              <div className="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10">
                 <Truck className="h-5 w-5 text-emerald-600" />
               </div>
               <div className="flex flex-col gap-0.5 sm:gap-1 min-w-0">
@@ -326,7 +329,7 @@ export function AdminShipmentsList({
               ) : kTotalTrend ? (
                 <span
                   className={
-                    kTotalTrend.up ? "text-emerald-600" : "text-rose-600"
+                    kTotalTrend.up ? "text-emerald-600" : "text-red-600"
                   }
                 >
                   {kTotalTrend.up ? "↑" : "↓"} {kTotalTrend.value}{" "}
@@ -340,8 +343,8 @@ export function AdminShipmentsList({
 
           <div className="flex flex-col justify-center rounded-xl border border-border/40 bg-card p-4 sm:p-5 shadow-sm min-w-0">
             <div className="flex items-center gap-3 sm:gap-4">
-              <div className="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl bg-blue-50">
-                <CheckCircle2 className="h-5 w-5 text-blue-600" />
+              <div className="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10">
+                <CheckCircle2 className="h-5 w-5 text-emerald-600" />
               </div>
               <div className="flex flex-col gap-0.5 sm:gap-1 min-w-0">
                 <p className="text-[10px] sm:text-xs font-medium text-muted-foreground truncate">
@@ -358,7 +361,7 @@ export function AdminShipmentsList({
               ) : kDeliveredTrend ? (
                 <span
                   className={
-                    kDeliveredTrend.up ? "text-emerald-600" : "text-rose-600"
+                    kDeliveredTrend.up ? "text-emerald-600" : "text-red-600"
                   }
                 >
                   {kDeliveredTrend.up ? "↑" : "↓"} {kDeliveredTrend.value}{" "}
@@ -372,7 +375,7 @@ export function AdminShipmentsList({
 
           <div className="flex flex-col justify-center rounded-xl border border-border/40 bg-card p-4 sm:p-5 shadow-sm min-w-0">
             <div className="flex items-center gap-3 sm:gap-4">
-              <div className="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl bg-amber-50">
+              <div className="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl bg-amber-500/10">
                 <Clock className="h-5 w-5 text-amber-600" />
               </div>
               <div className="flex flex-col gap-0.5 sm:gap-1 min-w-0">
@@ -390,7 +393,7 @@ export function AdminShipmentsList({
               ) : kInTransitTrend ? (
                 <span
                   className={
-                    kInTransitTrend.up ? "text-emerald-600" : "text-rose-600"
+                    kInTransitTrend.up ? "text-emerald-600" : "text-red-600"
                   }
                 >
                   {kInTransitTrend.up ? "↑" : "↓"} {kInTransitTrend.value}{" "}
@@ -404,8 +407,8 @@ export function AdminShipmentsList({
 
           <div className="flex flex-col justify-center rounded-xl border border-border/40 bg-card p-4 sm:p-5 shadow-sm min-w-0">
             <div className="flex items-center gap-3 sm:gap-4">
-              <div className="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl bg-purple-50">
-                <MapPin className="h-5 w-5 text-purple-600" />
+              <div className="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl bg-sky-500/10">
+                <MapPin className="h-5 w-5 text-sky-600" />
               </div>
               <div className="flex flex-col gap-0.5 sm:gap-1 min-w-0">
                 <p className="text-[10px] sm:text-xs font-medium text-muted-foreground truncate">
@@ -424,7 +427,7 @@ export function AdminShipmentsList({
               ) : kOutTrend ? (
                 <span
                   className={
-                    kOutTrend.up ? "text-emerald-600" : "text-rose-600"
+                    kOutTrend.up ? "text-emerald-600" : "text-red-600"
                   }
                 >
                   {kOutTrend.up ? "↑" : "↓"} {kOutTrend.value}{" "}
@@ -438,8 +441,8 @@ export function AdminShipmentsList({
 
           <div className="flex flex-col justify-center rounded-xl border border-border/40 bg-card p-4 sm:p-5 shadow-sm min-w-0">
             <div className="flex items-center gap-3 sm:gap-4">
-              <div className="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl bg-rose-50">
-                <XCircle className="h-5 w-5 text-rose-600" />
+              <div className="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl bg-red-500/10">
+                <XCircle className="h-5 w-5 text-red-600" />
               </div>
               <div className="flex flex-col gap-0.5 sm:gap-1 min-w-0">
                 <p className="text-[10px] sm:text-xs font-medium text-muted-foreground truncate">
@@ -456,7 +459,7 @@ export function AdminShipmentsList({
               ) : kFailedTrend ? (
                 <span
                   className={
-                    kFailedTrend.up ? "text-rose-600" : "text-emerald-600"
+                    kFailedTrend.up ? "text-red-600" : "text-emerald-600"
                   }
                 >
                   {kFailedTrend.up ? "↑" : "↓"} {kFailedTrend.value}{" "}
@@ -486,13 +489,13 @@ export function AdminShipmentsList({
                   placeholder="Search by order ID, customer or phone..."
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
-                  className="h-9 w-full rounded-md border border-border/50 bg-background pl-9 pr-4 text-sm focus:border-zinc-900 focus:outline-none"
+                  className="h-9 w-full rounded-md border border-border/50 bg-background pl-9 pr-4 text-sm focus:border-primary focus:outline-none"
                 />
               </form>
 
               <div className="flex items-center gap-2 overflow-x-auto">
                 <select
-                  className="h-9 rounded-md border border-border/50 bg-background px-3 text-sm text-muted-foreground focus:border-zinc-900 focus:outline-none"
+                  className="h-9 rounded-md border border-border/50 bg-background px-3 text-sm text-muted-foreground focus:border-primary focus:outline-none"
                   value={status}
                   onChange={(e) => setStatus(e.target.value)}
                 >
@@ -503,7 +506,7 @@ export function AdminShipmentsList({
                     </option>
                   ))}
                 </select>
-                <select className="h-9 rounded-md border border-border/50 bg-background px-3 text-sm text-muted-foreground focus:border-zinc-900 focus:outline-none hidden sm:block">
+                <select className="h-9 rounded-md border border-border/50 bg-background px-3 text-sm text-muted-foreground focus:border-primary focus:outline-none hidden sm:block">
                   <option value="">All Delivery Partners</option>
                   <option value="DELHIVERY">Delhivery</option>
                   <option value="SHIPROCKET">Shiprocket</option>
@@ -522,16 +525,29 @@ export function AdminShipmentsList({
             </div>
 
             {loading ? (
-              <div className="flex h-[400px] items-center justify-center">
-                <div className="h-8 w-8 animate-spin rounded-full border-4 border-zinc-900 border-t-transparent" />
+              <div className="flex flex-col gap-3 p-4">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="flex items-center gap-4">
+                    <Skeleton className="h-4 w-4 rounded" />
+                    <Skeleton className="h-4 w-28" />
+                    <Skeleton className="h-8 w-8 rounded-full" />
+                    <Skeleton className="h-4 w-32 flex-1" />
+                    <Skeleton className="h-5 w-24 rounded-full" />
+                    <Skeleton className="h-4 w-20" />
+                  </div>
+                ))}
               </div>
             ) : error ? (
               <div className="flex h-[400px] items-center justify-center p-4 text-sm text-destructive">
                 {error}
               </div>
             ) : items.length === 0 ? (
-              <div className="flex h-[400px] items-center justify-center p-4 text-sm text-muted-foreground">
-                No deliveries found matching your criteria.
+              <div className="p-4">
+                <EmptyState
+                  icon={Truck}
+                  headline="No shipments found"
+                  description="No deliveries match your current filters."
+                />
               </div>
             ) : (
               <>
@@ -569,20 +585,13 @@ export function AdminShipmentsList({
                           "OUT_FOR_DELIVERY",
                         ].includes(shipment.status);
 
-                        const tone = isDelivered
-                          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                        const badgeVariant = isDelivered
+                          ? ("success" as const)
                           : isFailed
-                            ? "bg-rose-50 text-rose-700 border-rose-200"
+                            ? ("destructive" as const)
                             : isTransit
-                              ? "bg-blue-50 text-blue-700 border-blue-200"
-                              : "bg-gray-50 text-gray-700 border-gray-200";
-                        const dotColor = isDelivered
-                          ? "bg-emerald-500"
-                          : isFailed
-                            ? "bg-rose-500"
-                            : isTransit
-                              ? "bg-blue-500"
-                              : "bg-gray-500";
+                              ? ("info" as const)
+                              : ("default" as const);
 
                         return (
                           <tr
@@ -599,7 +608,7 @@ export function AdminShipmentsList({
                               <div className="flex flex-col gap-0.5">
                                 <Link
                                   href={`/admin/orders/${shipment.orderId}`}
-                                  className="font-semibold text-foreground hover:text-zinc-900"
+                                  className="font-semibold text-foreground hover:text-primary"
                                 >
                                   {shipment.orderNumber}
                                 </Link>
@@ -614,7 +623,7 @@ export function AdminShipmentsList({
                             </td>
                             <td className="px-4 py-3">
                               <div className="flex items-center gap-3">
-                                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-xs font-bold text-slate-700 uppercase shrink-0">
+                                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-xs font-bold text-foreground uppercase shrink-0">
                                   {shipment.customerName?.[0] ?? "#"}
                                 </div>
                                 <span className="font-medium text-foreground">
@@ -624,7 +633,7 @@ export function AdminShipmentsList({
                             </td>
                             <td className="px-4 py-3">
                               <div className="flex items-center gap-3">
-                                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-700 uppercase shrink-0">
+                                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-sky-500/10 text-xs font-bold text-sky-700 uppercase shrink-0">
                                   {shipment.provider?.[0] ?? "P"}
                                 </div>
                                 <div className="flex flex-col gap-0.5">
@@ -632,7 +641,7 @@ export function AdminShipmentsList({
                                     {shippingProviderLabel(shipment.provider)}
                                   </span>
                                   {shipment.awbNumber && (
-                                    <span className="text-[11px] text-muted-foreground">
+                                    <span className="font-mono text-xs text-muted-foreground">
                                       AWB: {shipment.awbNumber}
                                     </span>
                                   )}
@@ -640,14 +649,9 @@ export function AdminShipmentsList({
                               </div>
                             </td>
                             <td className="px-4 py-3">
-                              <div
-                                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-medium border ${tone}`}
-                              >
-                                <div
-                                  className={`h-1.5 w-1.5 rounded-full ${dotColor}`}
-                                />
+                              <Badge dot variant={badgeVariant}>
                                 {shipment.status.replace(/_/g, " ")}
-                              </div>
+                              </Badge>
                             </td>
                             <td className="px-4 py-3">
                               {shipment.pickupScheduledDate ? (
@@ -675,7 +679,7 @@ export function AdminShipmentsList({
                                   href={shipment.trackingUrl}
                                   target="_blank"
                                   rel="noreferrer"
-                                  className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:underline"
+                                  className="inline-flex items-center gap-1 text-xs font-medium text-sky-600 hover:underline"
                                 >
                                   Track <ExternalLink className="h-3 w-3" />
                                 </a>
@@ -819,7 +823,7 @@ export function AdminShipmentsList({
                   </h3>
                   <Link
                     href="/admin/shipments"
-                    className="text-[11px] font-medium text-zinc-900 bg-zinc-100 px-2 py-0.5 rounded-full hover:bg-zinc-200"
+                    className="text-[11px] font-medium text-foreground bg-muted px-2 py-0.5 rounded-full hover:bg-muted/70"
                   >
                     View All
                   </Link>
@@ -840,7 +844,7 @@ export function AdminShipmentsList({
                         <div className="flex flex-col gap-0.5">
                           <Link
                             href={`/admin/orders/${s.orderId}`}
-                            className="text-xs font-semibold text-foreground hover:text-zinc-900"
+                            className="text-xs font-semibold text-foreground hover:text-primary"
                           >
                             {s.orderNumber}
                           </Link>
@@ -849,7 +853,7 @@ export function AdminShipmentsList({
                           </span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
+                          <span className="text-[10px] font-medium text-sky-700 bg-sky-500/10 px-2 py-0.5 rounded-full">
                             {s.status.replace(/_/g, " ")}
                           </span>
                           {s.trackingUrl && (

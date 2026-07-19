@@ -9,6 +9,8 @@ import { getApiErrorMessage } from "@/lib/error-messages";
 import { createIdempotencyKey } from "@/lib/idempotency";
 import { notifyAdminDataChanged } from "@/lib/admin-data-refresh";
 import { ADMIN_PERMISSIONS, hasAdminPermission } from "@/lib/permissions";
+import { Button } from "@/components/ui/button";
+import { FileSpreadsheet, Upload } from "lucide-react";
 
 export function AdminProductImportPanel() {
   const api = useAuthenticatedApi();
@@ -53,32 +55,53 @@ export function AdminProductImportPanel() {
       title="CSV import"
       description="Bulk create or update products from a CSV file."
     >
-      <div className="grid min-w-0 grid-cols-1 gap-3">
-        <input
-          type="file"
-          accept=".csv,text/csv"
-          className="text-sm"
-          onChange={(event) => {
-            setFile(event.target.files?.[0] ?? null);
-            setResult(null);
-            setError(null);
-          }}
-        />
-        <button
+      <div className="grid min-w-0 grid-cols-1 gap-4 rounded-2xl border border-border bg-card p-5">
+        <div className="flex items-center gap-2">
+          <span className="flex size-5 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+            1
+          </span>
+          <p className="text-sm font-semibold text-foreground">Choose a CSV file</p>
+        </div>
+        <label className="flex cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-dashed border-border bg-muted/30 p-8 text-center transition-colors hover:bg-muted/50">
+          <Upload className="size-6 text-muted-foreground" aria-hidden />
+          <span className="text-sm font-medium text-foreground">
+            {file ? file.name : "Click to select a CSV file"}
+          </span>
+          <span className="text-xs text-muted-foreground">.csv only</span>
+          <input
+            type="file"
+            accept=".csv,text/csv"
+            className="hidden"
+            onChange={(event) => {
+              setFile(event.target.files?.[0] ?? null);
+              setResult(null);
+              setError(null);
+            }}
+          />
+        </label>
+        <div className="flex items-center gap-2">
+          <span className="flex size-5 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+            2
+          </span>
+          <p className="text-sm font-semibold text-foreground">Run the import</p>
+        </div>
+        <Button
           type="button"
+          className="w-fit"
           onClick={() => void onImport()}
-          disabled={!file || uploading}
-          className="h-9 w-fit rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground disabled:opacity-60"
+          disabled={!file}
+          loading={uploading}
         >
-          {uploading ? "Importing…" : "Import CSV"}
-        </button>
+          {!uploading && <FileSpreadsheet aria-hidden />}
+          Import CSV
+        </Button>
         {error ? (
-          <p className="text-sm text-destructive" role="alert">
+          <p className="text-xs text-red-600" role="alert">
             {error}
           </p>
         ) : null}
         {result ? (
-          <div className="rounded-md border border-border bg-muted/30 p-3 text-sm">
+          <div className="rounded-xl border border-border bg-muted/30 p-4 text-sm text-foreground">
             <p>
               Created {result.createdCount}, updated {result.updatedCount}, failed{" "}
               {result.failedCount}.

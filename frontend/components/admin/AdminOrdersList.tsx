@@ -4,12 +4,16 @@ import Link from "next/link";
 
 import { useCallback, useEffect, useState } from "react";
 
+import { Download, Eye, Search, SlidersHorizontal } from "lucide-react";
+
 import { AdminPagination } from "@/components/admin/AdminPagination";
 
 import { AdminSection } from "@/components/admin/AdminSection";
 import { AdminTableScroll } from "@/components/admin/AdminTableScroll";
 
 import { AdminStatusBadge } from "@/components/admin/AdminStatusBadge";
+
+import { Badge } from "@/components/ui/badge";
 
 import { Button } from "@/components/ui/button";
 
@@ -44,7 +48,7 @@ import { ADMIN_PERMISSIONS, hasAdminPermission } from "@/lib/permissions";
 const PAGE_SIZE = 20;
 
 const inputClass =
-  "h-9 rounded-md border border-border bg-background px-2 text-sm";
+  "h-9 rounded-lg border border-border bg-background px-2 text-sm";
 
 function defaultExportDates() {
   const to = new Date();
@@ -58,6 +62,57 @@ function defaultExportDates() {
 
     to: to.toISOString().slice(0, 10),
   };
+}
+
+function paymentBadge(order: AdminOrderListItem) {
+  if (order.paymentMode === "COD") {
+    return (
+      <Badge variant="info">
+        {order.paymentStatus === "CAPTURED" ? "COD Collected" : "COD"}
+      </Badge>
+    );
+  }
+  if (order.paymentStatus === "CAPTURED") {
+    return <Badge variant="success">Paid</Badge>;
+  }
+  if (order.paymentStatus === "FAILED") {
+    return <Badge variant="destructive">Failed</Badge>;
+  }
+  if (
+    order.paymentStatus === "REFUNDED" ||
+    order.paymentStatus === "PARTIALLY_REFUNDED"
+  ) {
+    return (
+      <Badge variant="default">
+        {order.paymentStatus === "PARTIALLY_REFUNDED"
+          ? "Part. Refunded"
+          : "Refunded"}
+      </Badge>
+    );
+  }
+  return <Badge variant="warning">Pending</Badge>;
+}
+
+function deliveryBadge(order: AdminOrderListItem) {
+  if (order.isLocalDelivery) {
+    return <Badge variant="success">LOCAL</Badge>;
+  }
+  if (!order.shipmentStatus) {
+    return <span className="text-xs text-muted-foreground">—</span>;
+  }
+  const variant =
+    order.shipmentStatus === "DELIVERED"
+      ? "success"
+      : ["CANCELLED", "FAILED_DELIVERY", "RTO_INITIATED"].includes(
+            order.shipmentStatus,
+          )
+        ? "destructive"
+        : ["IN_TRANSIT", "OUT_FOR_DELIVERY"].includes(order.shipmentStatus)
+          ? "info"
+          : "default";
+  return (
+    <Badge variant={variant}>{order.shipmentStatus.replace(/_/g, " ")}</Badge>
+  );
 }
 
 interface AdminOrdersListProps {
@@ -235,29 +290,18 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
       empty={!loading && !error && items.length === 0}
       emptyMessage="No orders found."
     >
-      <div className="mb-4 grid min-w-0 grid-cols-1 gap-3 rounded-xl border border-border/40 bg-card p-4 shadow-sm">
+      <div className="mb-4 grid min-w-0 grid-cols-1 gap-3 rounded-xl border border-border bg-card p-4 shadow-sm">
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-4">
           <div className="flex w-full min-w-0 flex-col gap-3 sm:flex-1 sm:flex-row sm:flex-wrap">
             <div className="relative w-full min-w-0 sm:max-w-sm sm:flex-1">
-              <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                <svg
-                  className="w-4 h-4 text-muted-foreground"
+              <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                <Search
+                  className="h-4 w-4 text-muted-foreground"
                   aria-hidden="true"
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 20 20"
-                >
-                  <path
-                    stroke="currentColor"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="m19 19-4-4m0-7A7 7 0 1 1 1 8a7 7 0 0 1 14 0Z"
-                  />
-                </svg>
+                />
               </div>
               <input
-                className={`${inputClass} w-full pl-9 bg-muted/20 border-border/50`}
+                className={`${inputClass} w-full pl-9`}
                 placeholder="Search orders by ID, customer..."
                 value={searchInput}
                 onChange={(event) => setSearchInput(event.target.value)}
@@ -278,7 +322,7 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
             </div>
 
             <select
-              className={`${inputClass} w-full bg-muted/20 border-border/50 text-foreground font-medium sm:w-auto`}
+              className={`${inputClass} w-full font-medium text-foreground sm:w-auto`}
               value={status}
               onChange={(event) => {
                 setStatus(event.target.value);
@@ -294,7 +338,7 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
             </select>
 
             <select
-              className={`${inputClass} w-full bg-muted/20 border-border/50 text-foreground font-medium sm:w-auto`}
+              className={`${inputClass} w-full font-medium text-foreground sm:w-auto`}
               value={paymentFilter}
               onChange={(e) => { setPaymentFilter(e.target.value); setPage(1); }}
             >
@@ -312,6 +356,7 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
               className="h-9 gap-2 font-medium"
               onClick={() => {
                 setSearch("");
+                setSearchInput("");
                 setStatus("");
                 setPaymentFilter("");
                 setSortOrder("newest");
@@ -320,26 +365,12 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
                 setPage(1);
               }}
             >
-              <svg
-                className="w-4 h-4"
-                aria-hidden="true"
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 20 20"
-              >
-                <path
-                  stroke="currentColor"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M4 12.25V1m0 11.25a2.25 2.25 0 0 0 0 4.5m0-4.5a2.25 2.25 0 0 1 0 4.5M4 19v-2.25m6-13.5V1m0 2.25a2.25 2.25 0 0 0 0 4.5m0-4.5a2.25 2.25 0 0 1 0 4.5M10 19V7.75m6 4.5V1m0 11.25a2.25 2.25 0 1 0 0 4.5 2.25 2.25 0 0 0 0-4.5ZM16 19v-2"
-                />
-              </svg>
-              Filter
+              <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
+              Clear filters
             </Button>
 
             <select
-              className={`${inputClass} bg-muted/20 border-border/50 text-foreground font-medium`}
+              className={`${inputClass} font-medium text-foreground`}
               value={sortOrder}
               onChange={(e) => { setSortOrder(e.target.value); setPage(1); }}
             >
@@ -349,13 +380,64 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
           </div>
         </div>
 
-        <div className="flex flex-col gap-3 border-t border-border/40 pt-4 mt-2 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
+        {(search || status || paymentFilter || fromDate || toDate) && (
+          <div className="flex flex-wrap items-center gap-2">
+            {search && (
+              <FilterPill
+                label={`Search: ${search}`}
+                onRemove={() => {
+                  setSearch("");
+                  setSearchInput("");
+                  setPage(1);
+                }}
+              />
+            )}
+            {status && (
+              <FilterPill
+                label={status}
+                onRemove={() => {
+                  setStatus("");
+                  setPage(1);
+                }}
+              />
+            )}
+            {paymentFilter && (
+              <FilterPill
+                label={paymentFilter === "Paid" ? "Paid (Prepaid)" : "COD"}
+                onRemove={() => {
+                  setPaymentFilter("");
+                  setPage(1);
+                }}
+              />
+            )}
+            {fromDate && (
+              <FilterPill
+                label={`From ${fromDate}`}
+                onRemove={() => {
+                  setFromDate("");
+                  setPage(1);
+                }}
+              />
+            )}
+            {toDate && (
+              <FilterPill
+                label={`To ${toDate}`}
+                onRemove={() => {
+                  setToDate("");
+                  setPage(1);
+                }}
+              />
+            )}
+          </div>
+        )}
+
+        <div className="mt-2 flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
           <div className="grid w-full grid-cols-2 gap-3 sm:w-auto">
-            <label className="grid min-w-0 grid-cols-1 gap-1 text-xs text-muted-foreground font-medium">
+            <label className="grid min-w-0 grid-cols-1 gap-1 text-xs font-medium text-muted-foreground">
               From Date
               <input
                 type="date"
-                className={`${inputClass} w-full min-w-0 bg-muted/20 border-border/50 text-foreground`}
+                className={`${inputClass} w-full min-w-0 text-foreground`}
                 value={fromDate}
                 onChange={(event) => {
                   setFromDate(event.target.value);
@@ -363,11 +445,11 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
                 }}
               />
             </label>
-            <label className="grid min-w-0 grid-cols-1 gap-1 text-xs text-muted-foreground font-medium">
+            <label className="grid min-w-0 grid-cols-1 gap-1 text-xs font-medium text-muted-foreground">
               To Date
               <input
                 type="date"
-                className={`${inputClass} w-full min-w-0 bg-muted/20 border-border/50 text-foreground`}
+                className={`${inputClass} w-full min-w-0 text-foreground`}
                 value={toDate}
                 onChange={(event) => {
                   setToDate(event.target.value);
@@ -378,20 +460,20 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
           </div>
 
           <div className="grid w-full grid-cols-2 items-end gap-3 sm:w-auto">
-            <label className="grid min-w-0 grid-cols-1 gap-1 text-xs text-muted-foreground font-medium">
+            <label className="grid min-w-0 grid-cols-1 gap-1 text-xs font-medium text-muted-foreground">
               Export From
               <input
                 type="date"
-                className={`${inputClass} w-full min-w-0 bg-muted/20 border-border/50 text-foreground`}
+                className={`${inputClass} w-full min-w-0 text-foreground`}
                 value={exportFrom}
                 onChange={(event) => setExportFrom(event.target.value)}
               />
             </label>
-            <label className="grid min-w-0 grid-cols-1 gap-1 text-xs text-muted-foreground font-medium">
+            <label className="grid min-w-0 grid-cols-1 gap-1 text-xs font-medium text-muted-foreground">
               Export To
               <input
                 type="date"
-                className={`${inputClass} w-full min-w-0 bg-muted/20 border-border/50 text-foreground`}
+                className={`${inputClass} w-full min-w-0 text-foreground`}
                 value={exportTo}
                 onChange={(event) => setExportTo(event.target.value)}
               />
@@ -404,21 +486,7 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
               disabled={exporting || !exportFrom || !exportTo}
               onClick={() => void exportCsv()}
             >
-              <svg
-                className="w-4 h-4"
-                aria-hidden="true"
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 16 18"
-              >
-                <path
-                  stroke="currentColor"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M8 1v11m0 0 4-4m-4 4L4 8m11 4v3a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2v-3"
-                />
-              </svg>
+              <Download className="h-4 w-4" aria-hidden="true" />
               {exporting ? "Exporting…" : "Export"}
             </Button>
           </div>
@@ -426,15 +494,16 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
       </div>
 
       {data ? (
-        <div className="rounded-xl border border-border/40 bg-card p-5 shadow-sm">
+        <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
           <AdminTableScroll>
-            <table className="w-full min-w-[500px] md:min-w-[900px] text-left text-sm">
-              <thead className="border-b border-border/40 text-xs font-medium text-muted-foreground">
+            <table className="w-full min-w-[500px] text-left text-sm md:min-w-[900px]">
+              <thead className="sticky top-0 z-10 border-b border-border bg-card text-xs font-medium text-muted-foreground">
                 <tr>
-                  <th className="px-3 py-4 w-10">
+                  <th className="w-10 px-3 py-3">
                     <input
                       type="checkbox"
-                      className="rounded border-border text-zinc-900 focus:ring-zinc-900"
+                      className="rounded border-border accent-primary"
+                      aria-label="Select all orders"
                       checked={
                         items.length > 0 &&
                         items.every((o) => selectedIds[o.id])
@@ -448,23 +517,27 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
                       }}
                     />
                   </th>
-                  <th className="px-3 py-4">Order ID</th>
-                  <th className="px-3 py-4">Customer</th>
-                  <th className="px-3 py-4 hidden sm:table-cell">Date</th>
-                  <th className="px-3 py-4">Amount</th>
-                  <th className="px-3 py-4 hidden md:table-cell">Payment</th>
-                  <th className="px-3 py-4 hidden md:table-cell">Delivery</th>
-                  <th className="px-3 py-4">Order Status</th>
-                  <th className="px-3 py-4 text-right">Actions</th>
+                  <th className="px-3 py-3">Order ID</th>
+                  <th className="px-3 py-3">Customer</th>
+                  <th className="hidden px-3 py-3 sm:table-cell">Date</th>
+                  <th className="px-3 py-3 text-right">Amount</th>
+                  <th className="hidden px-3 py-3 md:table-cell">Payment</th>
+                  <th className="hidden px-3 py-3 md:table-cell">Delivery</th>
+                  <th className="px-3 py-3">Order Status</th>
+                  <th className="px-3 py-3 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border/20">
+              <tbody>
                 {items.map((order) => (
-                  <tr key={order.id} className="group hover:bg-muted/20">
-                    <td className="px-3 py-4">
+                  <tr
+                    key={order.id}
+                    className="group border-b border-border transition-colors duration-150 hover:bg-muted/50"
+                  >
+                    <td className="px-3 py-3">
                       <input
                         type="checkbox"
-                        className="rounded border-border text-zinc-900 focus:ring-zinc-900"
+                        className="rounded border-border accent-primary"
+                        aria-label={`Select order ${order.orderNumber}`}
                         checked={Boolean(selectedIds[order.id])}
                         onChange={(e) =>
                           setSelectedIds((prev) => ({
@@ -474,82 +547,45 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
                         }
                       />
                     </td>
-                    <td className="px-3 py-4">
+                    <td className="px-3 py-3">
                       <Link
                         href={`/admin/orders/${order.id}`}
-                        className="font-semibold text-foreground hover:text-zinc-900"
+                        className="font-semibold text-foreground transition-colors hover:text-primary"
                       >
                         {order.orderNumber}
                       </Link>
                     </td>
-                    <td className="px-3 py-4">
-                      <p className="font-medium text-foreground">
-                        {order.customerName}
-                      </p>
-                      <p className="text-[11px] text-muted-foreground mt-0.5">
-                        {order.customerEmail}
-                      </p>
+                    <td className="px-3 py-3">
+                      <div className="flex items-center gap-2.5">
+                        <span
+                          aria-hidden="true"
+                          className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary"
+                        >
+                          {(order.customerName || "?").charAt(0).toUpperCase()}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="truncate font-medium text-foreground">
+                            {order.customerName}
+                          </p>
+                          <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                            {order.customerEmail}
+                          </p>
+                        </div>
+                      </div>
                     </td>
-                    <td className="px-3 py-4 text-xs text-muted-foreground whitespace-pre-wrap hidden sm:table-cell">
+                    <td className="hidden whitespace-pre-wrap px-3 py-3 text-xs text-muted-foreground sm:table-cell">
                       {formatAdminDate(order.createdAt).replace(", ", "\n")}
                     </td>
-                    <td className="px-3 py-4 font-semibold text-foreground">
+                    <td className="px-3 py-3 text-right font-medium text-foreground">
                       {formatPaise(order.total)}
                     </td>
-                    <td className="px-3 py-4 hidden md:table-cell">
-                      {order.paymentMode === "COD" ? (
-                        <span className="inline-flex rounded-full bg-blue-50 px-2.5 py-0.5 text-[11px] font-medium text-blue-600">
-                          {order.paymentStatus === "CAPTURED" ? "COD Collected" : "COD"}
-                        </span>
-                      ) : order.paymentStatus === "CAPTURED" ? (
-                        <span className="inline-flex rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-medium text-emerald-700 border border-emerald-100">
-                          Paid
-                        </span>
-                      ) : order.paymentStatus === "FAILED" ? (
-                        <span className="inline-flex rounded-full bg-rose-50 px-2.5 py-0.5 text-[11px] font-medium text-rose-700 border border-rose-100">
-                          Failed
-                        </span>
-                      ) : order.paymentStatus === "REFUNDED" || order.paymentStatus === "PARTIALLY_REFUNDED" ? (
-                        <span className="inline-flex rounded-full bg-gray-100 px-2.5 py-0.5 text-[11px] font-medium text-gray-600">
-                          {order.paymentStatus === "PARTIALLY_REFUNDED" ? "Part. Refunded" : "Refunded"}
-                        </span>
-                      ) : (
-                        <span className="inline-flex rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-medium text-amber-700 border border-amber-100">
-                          Pending
-                        </span>
-                      )}
+                    <td className="hidden px-3 py-3 md:table-cell">
+                      {paymentBadge(order)}
                     </td>
-                    <td className="px-3 py-4 hidden md:table-cell">
-                      {order.isLocalDelivery ? (
-                        <span className="inline-flex items-center gap-1 rounded-full border border-emerald-100 bg-emerald-50 px-2.5 py-0.5 text-[11px] font-medium text-emerald-700">
-                          LOCAL
-                        </span>
-                      ) : order.shipmentStatus ? (
-                        <span
-                          className={[
-                            "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-medium",
-                            order.shipmentStatus === "DELIVERED"
-                              ? "bg-emerald-50 text-emerald-700"
-                              : [
-                                    "CANCELLED",
-                                    "FAILED_DELIVERY",
-                                    "RTO_INITIATED",
-                                  ].includes(order.shipmentStatus)
-                                ? "bg-rose-50 text-rose-700"
-                                : ["IN_TRANSIT", "OUT_FOR_DELIVERY"].includes(
-                                      order.shipmentStatus,
-                                    )
-                                  ? "bg-blue-50 text-blue-700"
-                                  : "bg-gray-50 text-gray-600",
-                          ].join(" ")}
-                        >
-                          {order.shipmentStatus.replace(/_/g, " ")}
-                        </span>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      )}
+                    <td className="hidden px-3 py-3 md:table-cell">
+                      {deliveryBadge(order)}
                     </td>
-                    <td className="px-3 py-4">
+                    <td className="px-3 py-3">
                       <AdminStatusBadge
                         label={
                           order.status === "DELIVERED"
@@ -559,34 +595,14 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
                         tone={orderStatusTone(order.status)}
                       />
                     </td>
-                    <td className="px-3 py-4 text-right">
+                    <td className="px-3 py-3 text-right">
                       <Link
                         href={`/admin/orders/${order.id}`}
-                        className="inline-flex items-center justify-center rounded-md p-1.5 text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors"
+                        className="inline-flex items-center justify-center rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
                         title="View order"
+                        aria-label={`View order ${order.orderNumber}`}
                       >
-                        <svg
-                          className="w-4 h-4"
-                          aria-hidden="true"
-                          xmlns="http://www.w3.org/2000/svg"
-                          fill="none"
-                          viewBox="0 0 20 14"
-                        >
-                          <path
-                            stroke="currentColor"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth="2"
-                            d="M10 10a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"
-                          />
-                          <path
-                            stroke="currentColor"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth="2"
-                            d="M10 13c-4.97 0-9-2.686-9-6s4.03-6 9-6 9 2.686 9 6-4.03 6-9 6Z"
-                          />
-                        </svg>
+                        <Eye className="h-4 w-4" aria-hidden="true" />
                       </Link>
                     </td>
                   </tr>
@@ -594,7 +610,7 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
               </tbody>
             </table>
           </AdminTableScroll>
-          <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-border/40 pt-4">
+          <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
             <p className="text-xs text-muted-foreground">
               Showing{" "}
               {Math.min(
@@ -609,5 +625,26 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
         </div>
       ) : null}
     </AdminSection>
+  );
+}
+
+interface FilterPillProps {
+  label: string;
+  onRemove: () => void;
+}
+
+function FilterPill({ label, onRemove }: FilterPillProps) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-0.5 text-xs text-foreground">
+      {label}
+      <button
+        type="button"
+        onClick={onRemove}
+        aria-label={`Remove filter ${label}`}
+        className="rounded-full text-muted-foreground transition-colors hover:text-foreground"
+      >
+        ×
+      </button>
+    </span>
   );
 }

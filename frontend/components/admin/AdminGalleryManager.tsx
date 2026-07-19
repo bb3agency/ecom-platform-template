@@ -9,10 +9,12 @@ import {
   Eye,
   EyeOff,
   ImageOff,
-  Loader2,
   Trash2,
   Upload,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useAdminAuth } from "@/contexts/admin-auth-context";
 import { useAuthStore } from "@/stores/auth";
 import { ADMIN_PERMISSIONS, hasAdminPermission } from "@/lib/permissions";
@@ -174,7 +176,7 @@ export function AdminGalleryManager() {
           }`}
         >
           <span
-            className={`inline-block size-5 transform rounded-full bg-white shadow transition-transform ${
+            className={`inline-block size-5 transform rounded-full bg-background shadow transition-transform ${
               enabled ? "translate-x-6" : "translate-x-1"
             }`}
           />
@@ -183,7 +185,7 @@ export function AdminGalleryManager() {
 
       {/* Upload */}
       {canWrite && (
-        <div className="rounded-2xl border border-dashed border-border bg-card p-5">
+        <div className="flex flex-col items-center gap-3 rounded-xl border-2 border-dashed border-border bg-muted/30 p-8 text-center">
           <input
             ref={fileInputRef}
             type="file"
@@ -192,20 +194,15 @@ export function AdminGalleryManager() {
             className="hidden"
             onChange={(e) => void handleUpload(e.target.files)}
           />
-          <button
+          <Upload className="size-6 text-muted-foreground" aria-hidden />
+          <Button
             type="button"
-            disabled={uploading}
+            loading={uploading}
             onClick={() => fileInputRef.current?.click()}
-            className="inline-flex h-11 items-center gap-2 rounded-full bg-primary px-6 text-sm font-bold text-white transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {uploading ? (
-              <Loader2 className="size-4 animate-spin" aria-hidden />
-            ) : (
-              <Upload className="size-4" aria-hidden />
-            )}
             {uploading ? "Uploading…" : "Upload images"}
-          </button>
-          <p className="mt-2 text-xs text-muted-foreground">
+          </Button>
+          <p className="text-xs text-muted-foreground">
             JPEG, PNG, WebP or GIF, up to 5 MB each. Images are stored on Cloudflare.
           </p>
         </div>
@@ -219,40 +216,59 @@ export function AdminGalleryManager() {
 
       {/* List */}
       {loading ? (
-        <div className="flex items-center justify-center gap-2 rounded-2xl border border-border bg-card p-10 text-sm text-muted-foreground">
-          <Loader2 className="size-4 animate-spin" aria-hidden /> Loading gallery…
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="overflow-hidden rounded-xl border border-border bg-card">
+              <Skeleton className="aspect-[4/3] w-full rounded-none" />
+              <div className="flex flex-col gap-2 p-4">
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-10 w-full" />
+              </div>
+            </div>
+          ))}
         </div>
       ) : images.length === 0 ? (
-        <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-border bg-card p-10 text-center">
-          <ImageOff className="size-8 text-muted-foreground" aria-hidden />
-          <p className="text-sm font-medium text-muted-foreground">
-            No images yet. Upload your first gallery image above.
-          </p>
-        </div>
+        <EmptyState
+          icon={ImageOff}
+          headline="No media uploaded"
+          description="Upload your first gallery image to show it on the storefront."
+          action={
+            canWrite ? (
+              <Button
+                type="button"
+                loading={uploading}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                {!uploading && <Upload aria-hidden />}
+                Upload images
+              </Button>
+            ) : null
+          }
+        />
       ) : (
-        <ul className="flex flex-col gap-3">
+        <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {images.map((img, index) => (
             <li
               key={img.id}
-              className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-4 sm:flex-row sm:items-start"
+              className="flex flex-col overflow-hidden rounded-xl border border-border bg-card"
             >
-              <div className="relative aspect-[4/3] w-full shrink-0 overflow-hidden rounded-xl bg-muted sm:w-40">
+              <div className="relative aspect-[4/3] w-full shrink-0 overflow-hidden bg-muted">
                 <Image
                   src={img.imageUrl}
                   alt={img.altText || "Gallery image"}
                   fill
-                  sizes="160px"
+                  sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
                   className="object-cover"
                 />
                 {!img.isActive && (
-                  <span className="absolute left-2 top-2 rounded-full bg-foreground/80 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+                  <span className="absolute left-2 top-2 rounded-full bg-foreground/80 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-background">
                     Hidden
                   </span>
                 )}
               </div>
 
-              <div className="flex min-w-0 flex-1 flex-col gap-2">
-                <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+              <div className="flex min-w-0 flex-1 flex-col gap-2 p-4">
+                <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Caption
                   <input
                     type="text"
@@ -266,7 +282,7 @@ export function AdminGalleryManager() {
                     className="mt-1 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-60"
                   />
                 </label>
-                <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Alt text (accessibility)
                   <input
                     type="text"
@@ -283,43 +299,48 @@ export function AdminGalleryManager() {
               </div>
 
               {canWrite && (
-                <div className="flex shrink-0 items-center gap-1 sm:flex-col">
-                  <button
+                <div className="flex shrink-0 items-center gap-1 border-t border-border px-4 py-2">
+                  <Button
                     type="button"
+                    size="icon-sm"
+                    variant="ghost"
                     aria-label="Move up"
                     disabled={index === 0 || busyId === img.id}
                     onClick={() => void handleMove(index, -1)}
-                    className="flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-40"
                   >
-                    <ArrowUp className="size-4" aria-hidden />
-                  </button>
-                  <button
+                    <ArrowUp aria-hidden />
+                  </Button>
+                  <Button
                     type="button"
+                    size="icon-sm"
+                    variant="ghost"
                     aria-label="Move down"
                     disabled={index === images.length - 1 || busyId === img.id}
                     onClick={() => void handleMove(index, 1)}
-                    className="flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-40"
                   >
-                    <ArrowDown className="size-4" aria-hidden />
-                  </button>
-                  <button
+                    <ArrowDown aria-hidden />
+                  </Button>
+                  <Button
                     type="button"
+                    size="icon-sm"
+                    variant="ghost"
                     aria-label={img.isActive ? "Hide image" : "Show image"}
                     disabled={busyId === img.id}
                     onClick={() => void patchImage(img.id, { isActive: !img.isActive })}
-                    className="flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-40"
                   >
-                    {img.isActive ? <Eye className="size-4" aria-hidden /> : <EyeOff className="size-4" aria-hidden />}
-                  </button>
-                  <button
+                    {img.isActive ? <Eye aria-hidden /> : <EyeOff aria-hidden />}
+                  </Button>
+                  <Button
                     type="button"
+                    size="icon-sm"
+                    variant="ghost"
                     aria-label="Delete image"
                     disabled={busyId === img.id}
+                    className="ml-auto text-destructive hover:bg-destructive/10 hover:text-destructive"
                     onClick={() => void handleDelete(img.id)}
-                    className="flex size-9 items-center justify-center rounded-lg text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-40"
                   >
-                    <Trash2 className="size-4" aria-hidden />
-                  </button>
+                    <Trash2 aria-hidden />
+                  </Button>
                 </div>
               )}
             </li>

@@ -10,6 +10,7 @@ import type { AdminStorefrontCouponsStatus } from "@/lib/admin-api";
 import { createIdempotencyKey } from "@/lib/idempotency";
 import { getApiErrorMessage } from "@/lib/error-messages";
 import { notifyAdminDataChanged } from "@/lib/admin-data-refresh";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export function AdminCouponsStorefrontBanner() {
   const api = useAuthenticatedApi();
@@ -61,8 +62,8 @@ export function AdminCouponsStorefrontBanner() {
 
   if (loading && !status) {
     return (
-      <div className="rounded-xl border border-border/40 bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
-        Loading storefront coupon settings…
+      <div className="rounded-xl border border-border bg-card px-4 py-3">
+        <Skeleton className="h-4 w-64" />
       </div>
     );
   }
@@ -84,8 +85,8 @@ export function AdminCouponsStorefrontBanner() {
     <div
       className={
         enabled
-          ? "rounded-xl border border-emerald-300/60 bg-emerald-50 px-4 py-4 text-sm text-emerald-950"
-          : "rounded-xl border border-amber-300/60 bg-amber-50 px-4 py-4 text-sm text-amber-950"
+          ? "rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-4 text-sm text-emerald-700 dark:text-emerald-400"
+          : "rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-4 text-sm text-amber-700 dark:text-amber-400"
       }
     >
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -113,13 +114,13 @@ export function AdminCouponsStorefrontBanner() {
           </div>
         </div>
 
-        <label className="flex shrink-0 items-center gap-3 rounded-lg border border-current/15 bg-white/60 px-3 py-2">
+        <label className="flex shrink-0 items-center gap-3 rounded-lg border border-current/15 bg-background/60 px-3 py-2">
           <span className="text-xs font-semibold uppercase tracking-wide">
             Storefront coupons
           </span>
           <input
             type="checkbox"
-            className="size-4 accent-[#23403d] disabled:opacity-50"
+            className="size-4 accent-primary disabled:opacity-50"
             checked={enabled}
             disabled={!canWrite || saving}
             onChange={(event) => void onToggle(event.target.checked)}

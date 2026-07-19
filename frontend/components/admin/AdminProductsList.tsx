@@ -5,7 +5,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AdminPagination } from "@/components/admin/AdminPagination";
 import { AdminRowActionsMenu } from "@/components/admin/AdminRowActionsMenu";
 import { AdminTableScroll } from "@/components/admin/AdminTableScroll";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { useToastStore } from "@/stores/toast";
 import { useAdminAuth } from "@/contexts/admin-auth-context";
@@ -37,6 +40,7 @@ import {
   Filter,
   Plus,
   Image as ImageIcon,
+  type LucideIcon,
 } from "lucide-react";
 import { STOREFRONT_URL } from "@/lib/constants";
 import Image from "next/image";
@@ -50,6 +54,55 @@ interface ProductKpis {
   active: number;
   outOfStock: number;
   lowStock: number;
+}
+
+interface ProductKpiCardProps {
+  label: string;
+  value: string;
+  icon: LucideIcon;
+  iconClassName: string;
+}
+
+function ProductKpiCard({ label, value, icon: Icon, iconClassName }: ProductKpiCardProps) {
+  return (
+    <div className="flex flex-col justify-center rounded-2xl border border-border bg-card p-4 sm:p-5 hover:shadow-sm transition-shadow min-w-0">
+      <div className="flex items-center gap-3 sm:gap-4">
+        <div
+          className={`flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl ${iconClassName}`}
+        >
+          <Icon className="h-5 w-5" />
+        </div>
+        <div className="flex flex-col gap-0.5 sm:gap-1 min-w-0">
+          <p className="text-xs text-muted-foreground truncate">{label}</p>
+          <p className="font-heading text-lg sm:text-2xl font-bold tracking-tight text-foreground truncate">
+            {value}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const inputClass =
+  "h-9 w-full rounded-lg border border-input bg-background text-sm text-foreground focus:border-ring focus:outline-none";
+
+function ProductRowsSkeleton() {
+  return (
+    <div className="flex flex-col divide-y divide-border">
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div key={i} className="flex items-center gap-3 px-4 py-3">
+          <Skeleton className="h-10 w-10 shrink-0 rounded-lg" />
+          <div className="flex flex-1 flex-col gap-1.5">
+            <Skeleton className="h-3.5 w-48" />
+            <Skeleton className="h-3 w-24" />
+          </div>
+          <Skeleton className="hidden h-3.5 w-20 sm:block" />
+          <Skeleton className="hidden h-3.5 w-16 sm:block" />
+          <Skeleton className="h-5 w-16 rounded-full" />
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export function AdminProductsList() {
@@ -255,77 +308,35 @@ export function AdminProductsList() {
       {confirmDialog}
       {/* KPI Cards Row */}
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-        <div className="flex flex-col justify-center rounded-xl border border-border/40 bg-card p-4 sm:p-5 shadow-sm min-w-0">
-          <div className="flex items-center gap-3 sm:gap-4">
-            <div className="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-50">
-              <Package className="h-5 w-5 text-emerald-600" />
-            </div>
-            <div className="flex flex-col gap-0.5 sm:gap-1 min-w-0">
-              <p className="text-[10px] sm:text-xs font-medium text-muted-foreground truncate">
-                Total Products
-              </p>
-              <p className="font-heading text-lg sm:text-2xl font-bold tracking-tight text-foreground truncate">
-                {productKpis ? productKpis.total.toLocaleString() : kpisLoading ? "…" : "—"}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex flex-col justify-center rounded-xl border border-border/40 bg-card p-4 sm:p-5 shadow-sm min-w-0">
-          <div className="flex items-center gap-3 sm:gap-4">
-            <div className="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl bg-blue-100">
-              <Tag className="h-5 w-5 text-blue-600" />
-            </div>
-            <div className="flex flex-col gap-0.5 sm:gap-1 min-w-0">
-              <p className="text-[10px] sm:text-xs font-medium text-muted-foreground truncate">
-                Active Products
-              </p>
-              <p className="font-heading text-lg sm:text-2xl font-bold tracking-tight text-foreground truncate">
-                {productKpis ? productKpis.active.toLocaleString() : "—"}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex flex-col justify-center rounded-xl border border-border/40 bg-card p-4 sm:p-5 shadow-sm min-w-0">
-          <div className="flex items-center gap-3 sm:gap-4">
-            <div className="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl bg-rose-100">
-              <EyeOff className="h-5 w-5 text-rose-600" />
-            </div>
-            <div className="flex flex-col gap-0.5 sm:gap-1 min-w-0">
-              <p className="text-[10px] sm:text-xs font-medium text-muted-foreground truncate">
-                Out of Stock
-              </p>
-              <p className="font-heading text-lg sm:text-2xl font-bold tracking-tight text-foreground truncate">
-                {productKpis ? productKpis.outOfStock.toLocaleString() : "—"}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex flex-col justify-center rounded-xl border border-border/40 bg-card p-4 sm:p-5 shadow-sm min-w-0">
-          <div className="flex items-center gap-3 sm:gap-4">
-            <div className="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl bg-purple-100">
-              <AlertTriangle className="h-5 w-5 text-purple-600" />
-            </div>
-            <div className="flex flex-col gap-0.5 sm:gap-1 min-w-0">
-              <p className="text-[10px] sm:text-xs font-medium text-muted-foreground truncate">
-                Low Stock
-              </p>
-              <p className="font-heading text-lg sm:text-2xl font-bold tracking-tight text-foreground truncate">
-                {productKpis ? productKpis.lowStock.toLocaleString() : "—"}
-              </p>
-            </div>
-          </div>
-          <div className="mt-3 sm:mt-4 flex flex-wrap items-center gap-1 sm:gap-1.5 text-[9px] sm:text-[11px] font-medium">
-            <span className="text-muted-foreground">vs last week</span>
-          </div>
-        </div>
+        <ProductKpiCard
+          label="Total Products"
+          value={productKpis ? productKpis.total.toLocaleString() : kpisLoading ? "…" : "—"}
+          icon={Package}
+          iconClassName="bg-muted text-muted-foreground"
+        />
+        <ProductKpiCard
+          label="Active Products"
+          value={productKpis ? productKpis.active.toLocaleString() : "—"}
+          icon={Tag}
+          iconClassName="bg-emerald-500/10 text-emerald-600"
+        />
+        <ProductKpiCard
+          label="Out of Stock"
+          value={productKpis ? productKpis.outOfStock.toLocaleString() : "—"}
+          icon={EyeOff}
+          iconClassName="bg-red-500/10 text-red-600"
+        />
+        <ProductKpiCard
+          label="Low Stock"
+          value={productKpis ? productKpis.lowStock.toLocaleString() : "—"}
+          icon={AlertTriangle}
+          iconClassName="bg-amber-500/10 text-amber-600"
+        />
       </div>
 
       {/* Main Table Section */}
-      <div className="flex flex-col rounded-xl border border-border/40 bg-card shadow-sm min-w-0 overflow-hidden">
-        <div className="flex flex-col gap-4 border-b border-border/40 p-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col rounded-2xl border border-border bg-card min-w-0 overflow-hidden">
+        <div className="flex flex-col gap-4 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between">
           <form
             className="relative w-full min-w-0 flex-1 sm:max-w-sm"
             onSubmit={(event) => {
@@ -340,13 +351,13 @@ export function AdminProductsList() {
               placeholder="Search products by name, SKU or barcode..."
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
-              className="h-9 w-full rounded-md border border-border/50 bg-background pl-9 pr-4 text-sm focus:border-zinc-900 focus:outline-none"
+              className={`${inputClass} pl-9 pr-4 placeholder:text-muted-foreground/60`}
             />
           </form>
 
           <div className="grid grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-row sm:items-center">
             <select
-              className="h-9 w-full rounded-md border border-border/50 bg-background px-3 text-sm text-muted-foreground focus:border-zinc-900 focus:outline-none sm:w-auto"
+              className={`${inputClass} px-3 text-muted-foreground sm:w-auto`}
               value={categoryFilter}
               onChange={(e) => {
                 setCategoryFilter(e.target.value);
@@ -361,7 +372,7 @@ export function AdminProductsList() {
               ))}
             </select>
             <select
-              className="h-9 w-full rounded-md border border-border/50 bg-background px-3 text-sm text-muted-foreground focus:border-zinc-900 focus:outline-none sm:w-auto"
+              className={`${inputClass} px-3 text-muted-foreground sm:w-auto`}
               value={statusFilter}
               onChange={(e) => {
                 setStatusFilter(e.target.value);
@@ -374,7 +385,7 @@ export function AdminProductsList() {
               <option value="out_of_stock">Out of stock</option>
             </select>
             <select
-              className="h-9 w-full rounded-md border border-border/50 bg-background px-3 text-sm text-muted-foreground focus:border-zinc-900 focus:outline-none sm:w-auto"
+              className={`${inputClass} px-3 text-muted-foreground sm:w-auto`}
               value={tagFilter}
               onChange={(e) => {
                 setTagFilter(e.target.value);
@@ -386,12 +397,12 @@ export function AdminProductsList() {
               <option value="sale">Sale</option>
               <option value="organic">Naturally Grown</option>
             </select>
-            <Button variant="outline" className="h-9 w-full gap-2 font-medium sm:w-auto">
+            <Button variant="outline" size="lg" className="w-full gap-2 font-medium sm:w-auto">
               <Filter className="h-4 w-4" /> More Filters
             </Button>
             {canWrite && (
               <Link href="/admin/products/new" className="col-span-2 sm:col-span-1">
-                <Button className="h-9 w-full gap-2 bg-zinc-900 text-white hover:bg-zinc-800 sm:w-auto">
+                <Button size="lg" className="w-full gap-2 sm:w-auto">
                   <Plus className="h-4 w-4" /> Add Product
                 </Button>
               </Link>
@@ -400,27 +411,37 @@ export function AdminProductsList() {
         </div>
 
         {loading ? (
-          <div className="flex h-64 items-center justify-center">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-zinc-900 border-t-transparent" />
-          </div>
+          <ProductRowsSkeleton />
         ) : error ? (
           <div className="flex h-64 items-center justify-center p-4 text-sm text-destructive">
             {error}
           </div>
         ) : items.length === 0 ? (
-          <div className="flex h-64 items-center justify-center p-4 text-sm text-muted-foreground">
-            No products found. Try adjusting your filters.
-          </div>
+          <EmptyState
+            icon={Package}
+            headline="No products found"
+            description="Create your first product."
+            className="m-4 border-0"
+            action={
+              canWrite ? (
+                <Link href="/admin/products/new">
+                  <Button className="gap-2">
+                    <Plus className="h-4 w-4" /> Add Product
+                  </Button>
+                </Link>
+              ) : undefined
+            }
+          />
         ) : (
           <>
             <AdminTableScroll>
               <table className="w-full min-w-[700px] text-left text-sm">
-                <thead className="border-b border-border/40 text-xs font-medium text-muted-foreground">
+                <thead className="sticky top-0 bg-card border-b border-border text-xs font-medium text-muted-foreground">
                   <tr>
                     <th className="px-4 py-3 w-10">
                       <input
                         type="checkbox"
-                        className="rounded border-border/50 text-zinc-900 focus:ring-zinc-900"
+                        className="rounded border-border text-primary focus:ring-ring"
                         checked={
                           items.length > 0 &&
                           items.every((item) => selectedIds[item.id])
@@ -438,13 +459,13 @@ export function AdminProductsList() {
                     <th className="px-4 py-3">Product</th>
                     <th className="px-4 py-3">Category</th>
                     <th className="px-4 py-3">SKU</th>
-                    <th className="px-4 py-3">Price</th>
+                    <th className="px-4 py-3 text-right">Price</th>
                     <th className="px-4 py-3">Variants</th>
                     <th className="px-4 py-3 text-center">Status</th>
                     <th className="px-4 py-3 text-center">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border/40">
+                <tbody className="divide-y divide-border">
                   {items.map((product) => {
                     const variants = ensureArray<
                       AdminProductListItem["variants"][number]
@@ -462,15 +483,21 @@ export function AdminProductsList() {
                       : activeVariants.length === 0
                         ? "Out of Stock"
                         : "Active";
-                    const statusActive =
-                      product.isActive && activeVariants.length > 0;
+                    const statusVariant = !product.isActive
+                      ? "default"
+                      : activeVariants.length === 0
+                        ? "destructive"
+                        : "success";
 
                     return (
-                      <tr key={product.id} className="group hover:bg-muted/30">
+                      <tr
+                        key={product.id}
+                        className="group hover:bg-muted/50 transition-colors"
+                      >
                         <td className="px-4 py-3">
                           <input
                             type="checkbox"
-                            className="rounded border-border/50 text-zinc-900 focus:ring-zinc-900"
+                            className="rounded border-border text-primary focus:ring-ring"
                             checked={Boolean(selectedIds[product.id])}
                             onChange={(e) => {
                               setSelectedIds((prev) => ({
@@ -482,7 +509,7 @@ export function AdminProductsList() {
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-3">
-                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-border/50 bg-muted/30 overflow-hidden relative">
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border bg-muted overflow-hidden relative">
                               {firstImage?.url ? (
                                 <Image
                                   src={resolveProductImageUrl(firstImage.url)}
@@ -497,7 +524,7 @@ export function AdminProductsList() {
                             <div className="flex flex-col gap-0.5">
                               <Link
                                 href={`/admin/products/${product.id}`}
-                                className="font-semibold text-foreground hover:text-zinc-900"
+                                className="font-medium text-foreground hover:text-primary"
                               >
                                 {product.name}
                               </Link>
@@ -507,57 +534,47 @@ export function AdminProductsList() {
                             </div>
                           </div>
                         </td>
-                        <td className="px-4 py-3 font-medium text-foreground">
+                        <td className="px-4 py-3 text-foreground">
                           {product.category.name}
                         </td>
-                        <td className="px-4 py-3 text-muted-foreground">
+                        <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
                           {defaultSku}
                         </td>
-                        <td className="px-4 py-3 font-semibold">
+                        <td className="px-4 py-3 text-right font-medium text-foreground">
                           {minPrice !== null ? formatPaise(minPrice) : "—"}
                         </td>
                         <td className="px-4 py-3 text-sm text-muted-foreground">
                           {variants.length}
                         </td>
                         <td className="px-4 py-3 text-center">
-                          <div
-                            className={`mx-auto inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium ${statusActive ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}
-                          >
-                            <div
-                              className={`h-1.5 w-1.5 rounded-full ${statusActive ? "bg-emerald-500" : "bg-rose-500"}`}
-                            />
+                          <Badge variant={statusVariant} dot>
                             {statusLabel}
-                          </div>
+                          </Badge>
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-center gap-1">
                             <Link href={`/admin/products/${product.id}`}>
-                              <button
-                                type="button"
-                                className="h-7 rounded-md bg-zinc-900 px-3 text-xs font-medium text-white hover:bg-zinc-800"
-                              >
+                              <Button size="sm" variant="outline">
                                 Edit
-                              </button>
+                              </Button>
                             </Link>
                             {canWrite && (
                               product.isActive ? (
-                                <button
-                                  type="button"
-                                  className="h-7 rounded-md bg-zinc-900 px-3 text-xs font-medium text-white hover:bg-zinc-800 disabled:opacity-60"
+                                <Button
+                                  size="sm"
                                   onClick={() => void handleDeleteProduct(product.id)}
                                   disabled={isDeleting === product.id}
                                 >
                                   Deactivate
-                                </button>
+                                </Button>
                               ) : (
-                                <button
-                                  type="button"
-                                  className="h-7 rounded-md bg-zinc-900 px-3 text-xs font-medium text-white hover:bg-zinc-800 disabled:opacity-60"
+                                <Button
+                                  size="sm"
                                   onClick={() => void handleRestoreProduct(product.id)}
                                   disabled={isDeleting === product.id}
                                 >
                                   Restore
-                                </button>
+                                </Button>
                               )
                             )}
                             {canWrite && (
@@ -578,7 +595,7 @@ export function AdminProductsList() {
               </table>
             </AdminTableScroll>
 
-            <div className="border-t border-border/40 p-4">
+            <div className="border-t border-border p-4">
               <AdminPagination
                 meta={
                   data?.meta || {

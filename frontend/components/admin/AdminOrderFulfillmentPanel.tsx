@@ -27,6 +27,17 @@ import { shippingProviderLabel } from "@/lib/shipping-provider-labels";
 import { ADMIN_PERMISSIONS, hasAdminPermission } from "@/lib/permissions";
 import { useAuthStore } from "@/stores/auth";
 import { getPaginatedItems } from "@/lib/admin-api";
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import type {
   AdminOrderDetail,
   AdminOrdersListResponse,
@@ -92,6 +103,10 @@ export function AdminOrderFulfillmentPanel({
     if (success) toast.success(success);
   }, [success]);
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  // Cancel-order modal (reason + optional note per the design system's cancel flow).
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState("Customer Request");
+  const [cancelNote, setCancelNote] = useState("");
   const [pickupWasScheduled, setPickupWasScheduled] = useState(false);
   const pollCancelRef = useRef<(() => void) | null>(null);
 
@@ -497,8 +512,88 @@ export function AdminOrderFulfillmentPanel({
     }
   };
 
+  const CANCEL_REASONS = [
+    "Customer Request",
+    "Out of Stock",
+    "Duplicate Order",
+    "Pricing Error",
+    "Suspected Fraud",
+    "Other",
+  ];
+
   return (
     <section className="min-w-0 rounded-xl border border-border bg-card">
+      {/* Cancel-order modal: reason + optional note. Cancelling recalls the shipment,
+          restocks items and auto-refunds prepaid payments (backend side-effects). */}
+      <Dialog open={cancelOpen} onOpenChange={(open) => busyAction === null && setCancelOpen(open)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Ban className="size-4 text-destructive" />
+              Cancel Order
+            </DialogTitle>
+            <DialogDescription>
+              This cannot be undone. The shipment is recalled (RTO if already in transit), items
+              are restocked, and prepaid payments are automatically refunded to the customer.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogBody className="flex flex-col gap-4">
+            <label className="flex flex-col gap-1.5">
+              <span className="text-sm font-medium text-foreground">Reason</span>
+              <select
+                value={cancelReason}
+                onChange={(event) => setCancelReason(event.target.value)}
+                disabled={busyAction !== null}
+                className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40"
+              >
+                {CANCEL_REASONS.map((reason) => (
+                  <option key={reason} value={reason}>
+                    {reason}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-sm font-medium text-foreground">
+                Notes <span className="font-normal text-muted-foreground">(optional)</span>
+              </span>
+              <Textarea
+                value={cancelNote}
+                onChange={(event) => setCancelNote(event.target.value)}
+                placeholder="Anything worth recording about this cancellation…"
+                rows={3}
+                disabled={busyAction !== null}
+              />
+            </label>
+          </DialogBody>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={busyAction !== null}
+              onClick={() => setCancelOpen(false)}
+            >
+              Keep Order
+            </Button>
+            <Button
+              type="button"
+              className="bg-red-600 text-white hover:bg-red-700"
+              loading={busyAction === "cancel"}
+              onClick={() => {
+                void runAction("cancel", "/admin/orders/:id/cancel", {
+                  body: {
+                    reason: cancelNote.trim()
+                      ? `${cancelReason} — ${cancelNote.trim()}`
+                      : cancelReason,
+                  },
+                }).then(() => setCancelOpen(false));
+              }}
+            >
+              Cancel Order
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       {/* Header */}
       <header className="border-b border-border px-6 py-4">
         <div className="flex items-center justify-between gap-2">
@@ -853,11 +948,11 @@ export function AdminOrderFulfillmentPanel({
                     : "Order can no longer be cancelled at this stage"
                 }
                 variant="warning"
-                onClick={() =>
-                  runAction("cancel", "/admin/orders/:id/cancel", {
-                    body: { reason: "Cancelled by admin fulfillment panel" },
-                  })
-                }
+                onClick={() => {
+                  setCancelReason("Customer Request");
+                  setCancelNote("");
+                  setCancelOpen(true);
+                }}
               />
             ) : null}
             {canNotify ? (

@@ -12,8 +12,8 @@ import {
   ToggleLeft,
   AlertCircle,
   CheckCircle2,
-  Loader2,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { useAdminAuth } from "@/contexts/admin-auth-context";
 import { useAuthenticatedApi } from "@/hooks/use-authenticated-api";
 import type {
@@ -84,11 +84,11 @@ function Field({ label, hint, required, error, children }: FieldProps) {
 
 const inputCls = (hasError?: boolean) =>
   cn(
-    "h-10 w-full rounded-lg border bg-background px-3 text-sm transition-colors",
+    "h-9 w-full rounded-lg border bg-background px-3 text-sm transition-colors",
     "focus:outline-none focus:ring-2 focus:ring-offset-0",
     hasError
       ? "border-destructive focus:ring-destructive/20"
-      : "border-border focus:border-zinc-900 focus:ring-zinc-900/10",
+      : "border-input focus:border-ring focus:ring-ring/40",
   );
 
 // ── Type Option Cards ────────────────────────────────────────────────────────
@@ -109,13 +109,13 @@ function TypeCard({ active, icon: Icon, label, desc, onClick }: TypeCardProps) {
       className={cn(
         "flex min-w-0 flex-col items-start gap-1.5 rounded-xl border-2 p-2.5 text-left transition-all sm:p-3",
         active
-          ? "border-zinc-900 bg-zinc-900 text-white shadow-md"
-          : "border-border bg-card text-foreground hover:border-zinc-400",
+          ? "border-primary bg-primary text-primary-foreground shadow-md"
+          : "border-border bg-card text-foreground hover:border-ring",
       )}
     >
-      <Icon className={cn("h-5 w-5", active ? "text-white" : "text-muted-foreground")} />
+      <Icon className={cn("h-5 w-5", active ? "text-primary-foreground" : "text-muted-foreground")} />
       <span className="text-xs font-semibold leading-none">{label}</span>
-      <span className={cn("text-[10px] leading-tight", active ? "text-white/70" : "text-muted-foreground")}>
+      <span className={cn("text-[10px] leading-tight", active ? "text-primary-foreground/70" : "text-muted-foreground")}>
         {desc}
       </span>
     </button>
@@ -364,9 +364,9 @@ export function AdminCouponForm({
 
           {/* ── Success flash ── */}
           {saved && (
-            <div className="mb-4 flex items-center gap-2.5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
-              <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
-              <p className="text-sm font-medium text-emerald-700">
+            <div className="mb-4 flex items-center gap-2.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3">
+              <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+              <p className="text-sm font-medium text-emerald-700 dark:text-emerald-400">
                 Coupon {isEdit ? "updated" : "created"} successfully!
               </p>
             </div>
@@ -559,12 +559,12 @@ export function AdminCouponForm({
                 className={cn(
                   "flex w-full items-center justify-between rounded-xl border-2 px-4 py-3 transition-all",
                   isActive
-                    ? "border-emerald-300 bg-emerald-50"
+                    ? "border-emerald-500/30 bg-emerald-500/10"
                     : "border-border bg-card",
                 )}
               >
                 <div className="flex flex-col items-start gap-0.5">
-                  <span className={cn("text-sm font-semibold", isActive ? "text-emerald-700" : "text-muted-foreground")}>
+                  <span className={cn("text-sm font-semibold", isActive ? "text-emerald-700 dark:text-emerald-400" : "text-muted-foreground")}>
                     {isActive ? "Active" : "Paused"}
                   </span>
                   <span className="text-[11px] text-muted-foreground">
@@ -575,10 +575,10 @@ export function AdminCouponForm({
                 </div>
                 <div className={cn(
                   "relative h-6 w-11 rounded-full transition-colors",
-                  isActive ? "bg-emerald-500" : "bg-zinc-200",
+                  isActive ? "bg-emerald-500" : "bg-muted",
                 )}>
                   <div className={cn(
-                    "absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform",
+                    "absolute top-0.5 h-5 w-5 rounded-full bg-background shadow-sm transition-transform",
                     isActive ? "translate-x-5" : "translate-x-0.5",
                   )} />
                 </div>
@@ -590,31 +590,28 @@ export function AdminCouponForm({
         {/* Footer */}
         <div className="shrink-0 border-t border-border/40 px-5 py-4">
           <div className="flex gap-3">
-            <button
+            <Button
               type="button"
+              variant="outline"
+              size="lg"
+              className="flex-1"
               onClick={onClose}
-              className="flex-1 rounded-xl border border-border py-2.5 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors"
             >
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
-              disabled={saving || saved}
-              onClick={() => void onSubmit()}
+              size="lg"
               className={cn(
-                "flex flex-1 items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold transition-all",
-                saved
-                  ? "bg-emerald-600 text-white"
-                  : saving
-                    ? "bg-zinc-700 text-white opacity-80"
-                    : "bg-zinc-900 text-white hover:bg-zinc-800 shadow-sm active:scale-[0.98]",
+                "flex-1 font-semibold",
+                saved && "bg-emerald-600 text-white hover:bg-emerald-600",
               )}
+              loading={saving}
+              disabled={saved}
+              onClick={() => void onSubmit()}
             >
               {saving ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Saving…
-                </>
+                "Saving…"
               ) : saved ? (
                 <>
                   <CheckCircle2 className="h-4 w-4" />
@@ -625,7 +622,7 @@ export function AdminCouponForm({
               ) : (
                 "Create Coupon"
               )}
-            </button>
+            </Button>
           </div>
         </div>
       </aside>

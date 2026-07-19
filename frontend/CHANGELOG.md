@@ -12,6 +12,21 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.53] — 2026-07-19
+
+### Changed
+- **Phases 2–5 of the admin design system in one release** — dashboard/analytics, orders cluster, catalog (PIM), and CRM/marketing surfaces all restyled onto the Phase-0 primitives and semantic tokens (per-client theming automatic; zero data/API/permission logic changed):
+  - **Phase 2 — Dashboard & analytics**: shared `KpiCard` (`components/admin/ui/kpi-card.tsx`: label / large metric / arrow-trend "vs last N days"); sales chart → gradient AreaChart on `var(--primary)` with tokenized grid/tooltip; category pie on `--chart-1..5` tokens; compact recent-orders feed with initial-avatars + Badge; low-stock feed with severity badges; skeletons instead of spinners and `EmptyState` everywhere; funnel steps/badges tokenized in AdminAnalyticsPanels; coupon analytics + order-alerts panels aligned.
+  - **Phase 3 — Orders cluster**: orders list rows (initial-avatar, sticky header, hover, removable filter pills, payment/delivery `Badge`s); kanban board de-branded (neutral columns, status-accent icons, card redesign, board skeleton, EmptyState) with drag & drop untouched; **Cancel Order is now a modal** (reason dropdown: Customer Request / Out of Stock / Duplicate / Pricing Error / Fraud / Other + optional note, red confirm with loading — composed into the existing reason string, no API change); order status/timeline/items panels rebuilt (timeline rail with state-colored icon nodes, totals footer with Grand Total); shipments/payments/returns lists + return detail tokenized with Badge/EmptyState/skeletons.
+  - **Phase 4 — Catalog (PIM)**: product editor sectioned into icon-headed cards with anchors, design-system inputs (validation wiring + `data-admin-field` intact), sky info-strip HSN autofill with pill chips, spreadsheet-style variants table, dashed image dropzones; products/categories lists with KPI tiles, Badge statuses, skeleton rows, EmptyStates; inventory list/bulk form/history (+/− delta timeline)/low-stock; gallery manager as an image-card grid with dropzone; product import with numbered steps.
+  - **Phase 5 — CRM & marketing**: customers list as a CRM table (avatar + stacked contact info, KPI header cards) and customer detail as a CRM dashboard (header block, dl-grid profile, orders/notes cards, EmptyStates); reviews as a moderation inbox (lucide star ratings, tinted approve/unpublish/delete actions); coupons list with mono code chips, usage progress bars (amber >70% / red >90%), lifecycle actions on lucide icons; coupon form + storefront banner tokenized (removed a hardcoded seed-brand hex).
+
+**Propagation:**
+- Severity: NORMAL (UX only, no contract change) · Layers: frontend (32 files: `components/admin/**` incl. new `components/admin/ui/kpi-card.tsx`)
+- Migration: NO · Flag: none · Design impact: none per-client (tokens; admin is engine) · Breaking: NO
+- Rollback: revert the files
+
+
 ## [0.1.52] — 2026-07-19
 
 ### Changed

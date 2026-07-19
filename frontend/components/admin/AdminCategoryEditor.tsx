@@ -26,9 +26,11 @@ import { resolveProductImageUrl } from "@/lib/media-url";
 import { uploadAdminCategoryImage } from "@/lib/admin-product-media";
 import { useAuthStore } from "@/stores/auth";
 import { useConfirm } from "@/components/ui/confirm-dialog";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const inputClass =
-  "h-10 w-full rounded-md border border-border bg-background px-3 text-sm focus:border-zinc-900 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60";
+  "h-10 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none disabled:cursor-not-allowed disabled:opacity-60";
 
 function slugify(value: string): string {
   return value
@@ -308,7 +310,14 @@ export function AdminCategoryEditor({ categoryId }: AdminCategoryEditorProps) {
   }
 
   if (loading) {
-    return <div className="p-6 text-sm text-muted-foreground">Loading…</div>;
+    return (
+      <div className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-5">
+        <Skeleton className="h-5 w-40" />
+        <Skeleton className="h-10 w-full" />
+        <Skeleton className="h-10 w-full" />
+        <Skeleton className="h-10 w-2/3" />
+      </div>
+    );
   }
 
   if (!isCreate && !category && error) {
@@ -338,9 +347,9 @@ export function AdminCategoryEditor({ categoryId }: AdminCategoryEditorProps) {
         </span>
       </div>
 
-      <div className="rounded-xl border border-border/40 bg-card shadow-sm">
-        <div className="border-b border-border/40 px-5 py-4">
-          <h2 className="text-base font-semibold">
+      <div className="rounded-2xl border border-border bg-card">
+        <div className="border-b border-border px-5 py-4">
+          <h2 className="text-sm font-semibold text-foreground">
             {isCreate ? "New Category" : "Edit Category"}
           </h2>
           <p className="text-xs text-muted-foreground mt-0.5">
@@ -417,11 +426,11 @@ export function AdminCategoryEditor({ categoryId }: AdminCategoryEditorProps) {
           {/* Category image — direct file upload only (same pipeline as product
               images: validated, stored on local disk or Cloudflare R2). */}
           <div className="sm:col-span-2 grid min-w-0 grid-cols-1 gap-2">
-            <span className="text-sm font-medium">Category image</span>
+            <span className="text-sm font-semibold text-foreground">Category image</span>
 
             {pendingPreviewUrl || imageUrl.trim() ? (
               <div className="flex flex-wrap items-start gap-3">
-                <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-lg border border-border/50">
+                <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-lg border border-border">
                   <Image
                     src={pendingPreviewUrl ?? resolveProductImageUrl(imageUrl.trim())}
                     alt={name || "Category image preview"}
@@ -478,7 +487,7 @@ export function AdminCategoryEditor({ categoryId }: AdminCategoryEditorProps) {
             <label className="flex items-center gap-3 cursor-pointer">
               <input
                 type="checkbox"
-                className="h-4 w-4 rounded border-border text-zinc-900 focus:ring-zinc-900 disabled:opacity-60"
+                className="h-4 w-4 rounded border-border text-primary focus:ring-ring disabled:opacity-60"
                 checked={isActive}
                 disabled={inputsDisabled}
                 onChange={(e) => setIsActive(e.target.checked)}
@@ -488,47 +497,43 @@ export function AdminCategoryEditor({ categoryId }: AdminCategoryEditorProps) {
           </div>
         </div>
 
-        <div className="border-t border-border/40 px-5 py-4 flex flex-wrap gap-2 justify-between">
+        <div className="border-t border-border px-5 py-4 flex flex-wrap gap-2 justify-between">
           <div className="flex flex-wrap gap-2">
             {canWrite && (
-              <button
-                type="button"
-                disabled={saving}
+              <Button
+                size="lg"
+                loading={saving}
                 onClick={() => void handleSave()}
-                className="h-9 rounded-md bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-60"
               >
                 {saving ? "Saving…" : isCreate ? "Create Category" : "Save Changes"}
-              </button>
+              </Button>
             )}
             <Link href="/admin/categories">
-              <button
-                type="button"
-                className="h-9 rounded-md border border-border/50 bg-card px-4 text-sm font-medium text-foreground hover:bg-muted/50"
-              >
+              <Button size="lg" variant="outline">
                 Back to Categories
-              </button>
+              </Button>
             </Link>
           </div>
 
           {canWrite && !isCreate && category && (
             category.isActive ? (
-              <button
-                type="button"
+              <Button
+                size="lg"
+                variant="destructive"
                 disabled={saving}
                 onClick={() => void handleDelete()}
-                className="h-9 rounded-md border border-rose-300 bg-rose-50 px-4 text-sm font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-60"
               >
                 Deactivate
-              </button>
+              </Button>
             ) : (
-              <button
-                type="button"
+              <Button
+                size="lg"
+                variant="outline"
                 disabled={saving}
                 onClick={() => void handleRestore()}
-                className="h-9 rounded-md border border-emerald-300 bg-emerald-50 px-4 text-sm font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
               >
                 Restore
-              </button>
+              </Button>
             )
           )}
         </div>

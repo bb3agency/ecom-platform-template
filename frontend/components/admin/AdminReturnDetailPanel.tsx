@@ -16,12 +16,13 @@ import {
   Calendar,
   FileText,
   StickyNote,
-  Loader2,
   AlertCircle,
   RotateCcw,
   ChevronRight,
 } from "lucide-react";
 import { AdminLoadingBlock } from "@/components/admin/ui/admin-ui";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { ensureArray, type AdminReturnRequestDetail, type AdminReturnRequestItem } from "@/lib/admin-api";
 import { formatAdminDate, formatPaise } from "@/lib/admin-format";
 import { getApiErrorMessageWithHint } from "@/lib/error-messages";
@@ -36,17 +37,18 @@ import { cn } from "@/lib/utils";
 interface StatusMeta {
   label: string;
   icon: React.ElementType;
+  variant: "warning" | "info" | "destructive" | "success";
   text: string;
   bg: string;
   border: string;
 }
 
 const STATUS_META: Record<string, StatusMeta> = {
-  REQUESTED: { label: "Requested", icon: Clock, text: "text-amber-700", bg: "bg-amber-50", border: "border-amber-200" },
-  APPROVED:  { label: "Approved",  icon: CheckCircle2, text: "text-blue-700", bg: "bg-blue-50", border: "border-blue-200" },
-  REJECTED:  { label: "Rejected",  icon: XCircle, text: "text-red-700", bg: "bg-red-50", border: "border-red-200" },
-  PICKED_UP: { label: "Picked Up", icon: Truck, text: "text-indigo-700", bg: "bg-indigo-50", border: "border-indigo-200" },
-  REFUNDED:  { label: "Refunded",  icon: RefreshCcw, text: "text-emerald-700", bg: "bg-emerald-50", border: "border-emerald-200" },
+  REQUESTED: { label: "Requested", icon: Clock, variant: "warning", text: "text-amber-700", bg: "bg-amber-500/10", border: "border-amber-500/30" },
+  APPROVED:  { label: "Approved",  icon: CheckCircle2, variant: "info", text: "text-sky-700", bg: "bg-sky-500/10", border: "border-sky-500/30" },
+  REJECTED:  { label: "Rejected",  icon: XCircle, variant: "destructive", text: "text-red-700", bg: "bg-red-500/10", border: "border-red-500/30" },
+  PICKED_UP: { label: "Picked Up", icon: Truck, variant: "info", text: "text-sky-700", bg: "bg-sky-500/10", border: "border-sky-500/30" },
+  REFUNDED:  { label: "Refunded",  icon: RefreshCcw, variant: "success", text: "text-emerald-700", bg: "bg-emerald-500/10", border: "border-emerald-500/30" },
 };
 
 // Status flow order
@@ -70,10 +72,10 @@ function StatusBadge({ status }: { status: string }) {
   if (!meta) return <span className="text-xs text-muted-foreground">{status}</span>;
   const Icon = meta.icon;
   return (
-    <span className={cn("inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold", meta.bg, meta.border, meta.text)}>
+    <Badge variant={meta.variant}>
       <Icon className="h-3.5 w-3.5" />
       {meta.label}
-    </span>
+    </Badge>
   );
 }
 
@@ -103,17 +105,17 @@ function StatusTimeline({ current }: { current: string }) {
               <div className={cn(
                 "flex h-8 w-8 items-center justify-center rounded-full border-2 transition-all",
                 active ? cn(meta.bg, meta.border, "shadow-md") :
-                done   ? "border-zinc-300 bg-zinc-100" :
-                         "border-border/40 bg-muted/30",
+                done   ? "border-emerald-500/30 bg-emerald-500/10" :
+                         "border-border bg-muted",
               )}>
-                <Icon className={cn("h-3.5 w-3.5", active ? meta.text : done ? "text-zinc-500" : "text-muted-foreground/30")} />
+                <Icon className={cn("h-3.5 w-3.5", active ? meta.text : done ? "text-emerald-600" : "text-muted-foreground/50")} />
               </div>
-              <span className={cn("text-[9px] font-semibold whitespace-nowrap", active ? meta.text : done ? "text-zinc-500" : "text-muted-foreground/40")}>
+              <span className={cn("text-[9px] font-semibold whitespace-nowrap", active ? meta.text : done ? "text-emerald-600" : "text-muted-foreground/50")}>
                 {meta.label}
               </span>
             </div>
             {!isLast && (
-              <div className={cn("h-0.5 w-8 mx-1 mb-4 rounded-full transition-colors", done ? "bg-zinc-300" : "bg-border/30")} />
+              <div className={cn("h-0.5 w-8 mx-1 mb-4 rounded-full transition-colors", done ? "bg-emerald-500/40" : "bg-border")} />
             )}
           </div>
         );
@@ -370,7 +372,7 @@ export function AdminReturnDetailPanel({ returnId }: AdminReturnDetailPanelProps
           <div className="p-4 flex flex-col gap-4">
             {/* Success / error banners */}
             {successMsg && (
-              <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5">
+              <div className="flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2.5">
                 <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
                 <p className="text-sm text-emerald-700 font-medium">{successMsg}</p>
               </div>
@@ -426,32 +428,21 @@ export function AdminReturnDetailPanel({ returnId }: AdminReturnDetailPanelProps
                 placeholder="Optional internal note (e.g. reason for rejection, refund amount, etc.)"
                 rows={3}
                 maxLength={1000}
-                className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2.5 text-sm placeholder:text-muted-foreground/60 focus:border-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-900/10 transition-colors"
+                className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-colors"
               />
               <p className="text-[10px] text-muted-foreground text-right">{adminNote.length}/1000</p>
             </div>
 
             {/* Submit */}
-            <button
-              type="button"
-              disabled={submitting || nextStatus === detail.status && !adminNote.trim()}
+            <Button
+              variant={nextStatus === "REJECTED" ? "destructive" : "default"}
+              loading={submitting}
+              disabled={nextStatus === detail.status && !adminNote.trim()}
               onClick={() => void handleUpdate()}
-              className={cn(
-                "flex w-full sm:w-auto sm:min-w-40 items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition-all",
-                submitting
-                  ? "bg-zinc-700 text-white opacity-80"
-                  : "bg-zinc-900 text-white hover:bg-zinc-800 shadow-sm active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed",
-              )}
+              className="w-full sm:w-auto sm:min-w-40 px-5"
             >
-              {submitting ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Saving…
-                </>
-              ) : (
-                "Save Changes"
-              )}
-            </button>
+              {submitting ? "Saving…" : "Save Changes"}
+            </Button>
           </div>
         </div>
       )}

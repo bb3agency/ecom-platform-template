@@ -87,9 +87,9 @@ export function AdminMyOrderAlertsPanel() {
   const hasPhone = Boolean(prefs?.phone?.trim());
 
   return (
-    <section className="grid min-w-0 grid-cols-1 gap-4 rounded-xl border border-border bg-muted/10 p-4 sm:p-5">
+    <section className="grid min-w-0 grid-cols-1 gap-4 rounded-2xl border border-border bg-card p-4 transition-shadow hover:shadow-sm sm:p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h4 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        <h4 className="flex items-center gap-2 text-sm font-semibold text-foreground">
           <BellRing className="h-4 w-4 text-muted-foreground/70" aria-hidden />
           Notify me about new orders
         </h4>
@@ -106,7 +106,7 @@ export function AdminMyOrderAlertsPanel() {
       <label className="flex items-center gap-3 cursor-pointer">
         <input
           type="checkbox"
-          className="h-4 w-4 rounded border-border text-zinc-900 focus:ring-zinc-900 disabled:opacity-60"
+          className="h-4 w-4 rounded border-border accent-primary text-primary focus:ring-primary disabled:opacity-60"
           checked={enabled}
           disabled={loading || saving}
           onChange={(e) => {
@@ -136,7 +136,7 @@ export function AdminMyOrderAlertsPanel() {
               >
                 <input
                   type="checkbox"
-                  className="h-4 w-4 rounded border-border text-zinc-900 focus:ring-zinc-900 disabled:opacity-60"
+                  className="h-4 w-4 rounded border-border accent-primary text-primary focus:ring-primary disabled:opacity-60"
                   checked={checked}
                   disabled={loading || saving || blocked}
                   onChange={(e) => {

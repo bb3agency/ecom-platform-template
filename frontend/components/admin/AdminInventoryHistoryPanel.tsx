@@ -80,7 +80,7 @@ export function AdminInventoryHistoryPanel({
             value={variantId}
             onChange={(event) => setVariantId(event.target.value)}
             placeholder="Variant ID"
-            className="h-9 min-w-48 rounded-md border border-border bg-background px-2 text-sm"
+            className="h-9 min-w-48 rounded-lg border border-input bg-background px-3 font-mono text-sm text-foreground placeholder:font-sans placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
           />
           <Button type="button" size="sm" variant="outline" onClick={() => void load(1)}>
             Load history
@@ -90,33 +90,34 @@ export function AdminInventoryHistoryPanel({
     >
       {history && meta ? (
         <>
-          <div className="overflow-x-auto rounded-md border border-border">
-            <table className="w-full text-left text-sm">
-              <thead className="border-b border-border bg-muted/50 text-xs uppercase text-muted-foreground">
-                <tr>
-                  <th className="px-3 py-2 font-medium">Delta</th>
-                  <th className="px-3 py-2 font-medium">Qty after</th>
-                  <th className="px-3 py-2 font-medium">Reason</th>
-                  <th className="px-3 py-2 font-medium">When</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((entry) => (
-                  <tr key={entry.id} className="border-b border-border last:border-0">
-                    <td className="px-3 py-2 font-medium">
-                      {entry.delta > 0 ? `+${entry.delta}` : entry.delta}
-                    </td>
-                    <td className="px-3 py-2">{entry.quantityAfter}</td>
-                    <td className="px-3 py-2 text-xs text-muted-foreground">
-                      {entry.reason ?? "—"}
-                    </td>
-                    <td className="px-3 py-2 text-xs text-muted-foreground">
-                      {formatAdminDate(entry.createdAt)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="overflow-x-auto rounded-xl border border-border bg-card">
+            <ul className="divide-y divide-border/60">
+              {items.map((entry) => (
+                <li
+                  key={entry.id}
+                  className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3 transition-colors hover:bg-muted/50"
+                >
+                  <span
+                    className={
+                      entry.delta > 0
+                        ? "w-14 shrink-0 font-semibold tabular-nums text-emerald-600"
+                        : entry.delta < 0
+                          ? "w-14 shrink-0 font-semibold tabular-nums text-red-600"
+                          : "w-14 shrink-0 font-semibold tabular-nums text-muted-foreground"
+                    }
+                  >
+                    {entry.delta > 0 ? `+${entry.delta}` : entry.delta < 0 ? `−${Math.abs(entry.delta)}` : "0"}
+                  </span>
+                  <span className="text-sm text-foreground">
+                    {entry.reason ?? "Adjustment"}
+                  </span>
+                  <span className="ml-auto flex flex-wrap items-center gap-x-3 text-xs text-muted-foreground">
+                    <span className="tabular-nums">After: {entry.quantityAfter}</span>
+                    <span>{formatAdminDate(entry.createdAt)}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
           </div>
           <AdminPagination meta={meta} onPageChange={(next) => void load(next)} />
         </>

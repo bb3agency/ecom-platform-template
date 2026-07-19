@@ -21,6 +21,9 @@ import {
   readPaginatedItems,
   type FlatPaginatedResponse,
 } from "@/lib/admin-api";
+import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
 import { formatAdminDate } from "@/lib/admin-format";
 import { getApiErrorMessage } from "@/lib/error-messages";
 import { useAuthenticatedApi } from "@/hooks/use-authenticated-api";
@@ -33,52 +36,41 @@ const PAGE_SIZE = 20;
 interface StatusMeta {
   label: string;
   icon: React.ElementType;
-  dot: string;
-  text: string;
-  bg: string;
-  border: string;
+  variant: "warning" | "info" | "destructive" | "success";
+  /** Active filter-pill classes (token accents matching the badge variant). */
+  pill: string;
 }
 
 const STATUS_META: Record<string, StatusMeta> = {
   REQUESTED: {
     label: "Requested",
     icon: Clock,
-    dot: "bg-amber-500",
-    text: "text-amber-700",
-    bg: "bg-amber-50",
-    border: "border-amber-200",
+    variant: "warning",
+    pill: "border-amber-500/30 bg-amber-500/10 text-amber-700",
   },
   APPROVED: {
     label: "Approved",
     icon: CheckCircle2,
-    dot: "bg-blue-500",
-    text: "text-blue-700",
-    bg: "bg-blue-50",
-    border: "border-blue-200",
+    variant: "info",
+    pill: "border-sky-500/30 bg-sky-500/10 text-sky-700",
   },
   REJECTED: {
     label: "Rejected",
     icon: XCircle,
-    dot: "bg-red-500",
-    text: "text-red-700",
-    bg: "bg-red-50",
-    border: "border-red-200",
+    variant: "destructive",
+    pill: "border-red-500/30 bg-red-500/10 text-red-700",
   },
   PICKED_UP: {
     label: "Picked Up",
     icon: Truck,
-    dot: "bg-indigo-500",
-    text: "text-indigo-700",
-    bg: "bg-indigo-50",
-    border: "border-indigo-200",
+    variant: "info",
+    pill: "border-sky-500/30 bg-sky-500/10 text-sky-700",
   },
   REFUNDED: {
     label: "Refunded",
     icon: RefreshCcw,
-    dot: "bg-emerald-500",
-    text: "text-emerald-700",
-    bg: "bg-emerald-50",
-    border: "border-emerald-200",
+    variant: "success",
+    pill: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700",
   },
 };
 
@@ -89,17 +81,10 @@ function StatusBadge({ status }: { status: string }) {
   if (!meta) return <span className="text-xs text-muted-foreground">{status}</span>;
   const Icon = meta.icon;
   return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold",
-        meta.bg,
-        meta.border,
-        meta.text,
-      )}
-    >
+    <Badge variant={meta.variant}>
       <Icon className="h-3 w-3" />
       {meta.label}
-    </span>
+    </Badge>
   );
 }
 
@@ -119,7 +104,7 @@ function KpiStrip({ items, total }: KpiStripProps) {
   const kpis = [
     { label: "Total", value: total, color: "text-foreground" },
     { label: "Requested", value: counts["REQUESTED"] ?? 0, color: "text-amber-600" },
-    { label: "Approved", value: counts["APPROVED"] ?? 0, color: "text-blue-600" },
+    { label: "Approved", value: counts["APPROVED"] ?? 0, color: "text-sky-600" },
     { label: "Rejected", value: counts["REJECTED"] ?? 0, color: "text-red-600" },
     { label: "Refunded", value: counts["REFUNDED"] ?? 0, color: "text-emerald-600" },
   ];
@@ -252,9 +237,9 @@ export function AdminReturnsList() {
                 "flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-all",
                 active
                   ? meta
-                    ? cn(meta.bg, meta.border, meta.text)
-                    : "border-zinc-900 bg-zinc-900 text-white"
-                  : "border-border/50 bg-card text-muted-foreground hover:bg-muted/50",
+                    ? meta.pill
+                    : "border-transparent bg-primary text-primary-foreground"
+                  : "border-border bg-card text-muted-foreground hover:bg-muted/50",
               )}
             >
               {meta && <meta.icon className="h-3 w-3" />}
@@ -276,31 +261,40 @@ export function AdminReturnsList() {
       {loading && (
         <div className="flex flex-col gap-3">
           {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="h-28 animate-pulse rounded-xl border border-border/40 bg-muted/30" />
+            <div key={i} className="flex flex-col gap-2 rounded-xl border border-border bg-card p-4">
+              <div className="flex items-center gap-2">
+                <Skeleton className="h-4 w-28" />
+                <Skeleton className="h-5 w-20 rounded-full" />
+              </div>
+              <Skeleton className="h-3.5 w-40" />
+              <Skeleton className="h-3 w-56" />
+            </div>
           ))}
         </div>
       )}
 
       {/* Empty state */}
       {!loading && !error && items.length === 0 && (
-        <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border border-border/40 bg-card py-16 text-center">
-          <PackageX className="h-12 w-12 text-muted-foreground/30" />
-          <div>
-            <p className="font-semibold text-muted-foreground">No return requests</p>
-            <p className="mt-1 text-sm text-muted-foreground/70">
-              {statusFilter ? `No requests with status "${STATUS_META[statusFilter]?.label}"` : "No return requests have been submitted yet."}
-            </p>
-          </div>
-          {statusFilter && (
-            <button
-              type="button"
-              onClick={() => setStatusFilter("")}
-              className="text-sm font-medium text-primary hover:underline"
-            >
-              Clear filter
-            </button>
-          )}
-        </div>
+        <EmptyState
+          icon={PackageX}
+          headline="No return requests"
+          description={
+            statusFilter
+              ? `No requests with status "${STATUS_META[statusFilter]?.label}"`
+              : "No return requests have been submitted yet."
+          }
+          action={
+            statusFilter ? (
+              <button
+                type="button"
+                onClick={() => setStatusFilter("")}
+                className="text-sm font-medium text-primary hover:underline"
+              >
+                Clear filter
+              </button>
+            ) : undefined
+          }
+        />
       )}
 
       {/* Mobile: card list */}

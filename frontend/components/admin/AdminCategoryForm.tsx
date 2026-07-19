@@ -27,6 +27,7 @@ import { useAuthStore } from "@/stores/auth";
 import Image from "next/image";
 import { useAuthenticatedApi } from "@/hooks/use-authenticated-api";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -54,7 +55,7 @@ function Field({ label, required, hint, error, children }: FieldProps) {
     <div className="flex flex-col gap-1.5">
       <label className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
         {label}
-        {required && <span className="text-rose-500">*</span>}
+        {required && <span className="text-destructive">*</span>}
       </label>
       {children}
       {hint && !error && <p className="text-[11px] text-muted-foreground/70">{hint}</p>}
@@ -69,7 +70,7 @@ function Field({ label, required, hint, error, children }: FieldProps) {
 }
 
 const inputClass =
-  "h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-900/10 disabled:opacity-50 transition-colors";
+  "h-10 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20 disabled:opacity-50 transition-colors";
 
 // ── Toggle switch ─────────────────────────────────────────────────────────────
 
@@ -81,13 +82,13 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
       aria-checked={checked}
       onClick={() => onChange(!checked)}
       className={cn(
-        "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-zinc-900/20",
-        checked ? "bg-zinc-900" : "bg-zinc-200",
+        "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-ring/30",
+        checked ? "bg-primary" : "bg-muted",
       )}
     >
       <span
         className={cn(
-          "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md transition-transform",
+          "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-background shadow-md transition-transform",
           checked ? "translate-x-5" : "translate-x-0",
         )}
       />
@@ -312,13 +313,13 @@ export function AdminCategoryForm({ open, category, onSaved, onClose }: AdminCat
         className="fixed inset-y-0 right-0 z-50 flex w-full flex-col bg-card shadow-2xl sm:w-[440px] sm:rounded-l-2xl"
       >
         {/* Header */}
-        <div className="flex shrink-0 items-center justify-between border-b border-border/40 px-5 py-4">
+        <div className="flex shrink-0 items-center justify-between border-b border-border px-5 py-4">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-zinc-100">
-              <FolderTree className="h-4 w-4 text-zinc-700" />
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted">
+              <FolderTree className="h-4 w-4 text-muted-foreground" />
             </div>
             <div>
-              <h2 className="text-sm font-bold text-foreground">
+              <h2 className="text-sm font-semibold text-foreground">
                 {isEdit ? "Edit Category" : "New Category"}
               </h2>
               <p className="text-[11px] text-muted-foreground">
@@ -330,7 +331,7 @@ export function AdminCategoryForm({ open, category, onSaved, onClose }: AdminCat
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="flex h-8 w-8 items-center justify-center rounded-lg border border-border/50 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
           >
             <X className="h-4 w-4" />
           </button>
@@ -340,7 +341,7 @@ export function AdminCategoryForm({ open, category, onSaved, onClose }: AdminCat
         <div className="flex-1 overflow-y-auto px-5 py-5">
           <div className="flex flex-col gap-5">
             {/* Name & Slug */}
-            <div className="flex flex-col gap-1.5 rounded-xl border border-border/40 bg-muted/20 px-4 py-4">
+            <div className="flex flex-col gap-1.5 rounded-2xl border border-border bg-muted/30 px-4 py-4">
               <div className="mb-2 flex items-center gap-1.5">
                 <Tag className="h-3.5 w-3.5 text-muted-foreground" />
                 <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Identity</span>
@@ -409,7 +410,7 @@ export function AdminCategoryForm({ open, category, onSaved, onClose }: AdminCat
                 <div className="grid min-w-0 grid-cols-1 gap-2">
                   {pendingPreviewUrl || imageUrl.trim() ? (
                     <div className="flex items-center gap-3">
-                      <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-border/50">
+                      <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-border">
                         <Image
                           src={pendingPreviewUrl ?? resolveProductImageUrl(imageUrl.trim())}
                           alt={name || "Category image preview"}
@@ -451,7 +452,7 @@ export function AdminCategoryForm({ open, category, onSaved, onClose }: AdminCat
             </div>
 
             {/* Active toggle */}
-            <div className="flex items-center justify-between rounded-xl border border-border/40 bg-muted/20 px-4 py-3.5">
+            <div className="flex items-center justify-between rounded-2xl border border-border bg-muted/30 px-4 py-3.5">
               <div>
                 <p className="text-sm font-semibold text-foreground">Active</p>
                 <p className="text-xs text-muted-foreground">
@@ -466,24 +467,15 @@ export function AdminCategoryForm({ open, category, onSaved, onClose }: AdminCat
         </div>
 
         {/* Footer */}
-        <div className="shrink-0 border-t border-border/40 px-5 py-4 flex items-center justify-between gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex h-10 items-center rounded-lg border border-border/50 bg-card px-4 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors"
-          >
+        <div className="shrink-0 border-t border-border px-5 py-4 flex items-center justify-between gap-3">
+          <Button variant="outline" size="lg" onClick={onClose}>
             Cancel
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            size="lg"
+            className="min-w-32"
             disabled={saving || success}
             onClick={() => void handleSubmit()}
-            className={cn(
-              "flex h-10 min-w-32 items-center justify-center gap-2 rounded-lg px-5 text-sm font-semibold transition-all",
-              saving || success
-                ? "bg-zinc-700 text-white opacity-80"
-                : "bg-zinc-900 text-white hover:bg-zinc-800 shadow-sm active:scale-[0.98]",
-            )}
           >
             {saving ? (
               <>
@@ -498,7 +490,7 @@ export function AdminCategoryForm({ open, category, onSaved, onClose }: AdminCat
             ) : (
               isEdit ? "Save Changes" : "Create Category"
             )}
-          </button>
+          </Button>
         </div>
       </div>
     </>

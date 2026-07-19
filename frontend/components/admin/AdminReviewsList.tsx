@@ -22,7 +22,10 @@ import { useAdminAuth } from "@/contexts/admin-auth-context";
 import { hasAdminPermission, ADMIN_PERMISSIONS } from "@/lib/permissions";
 import Image from "next/image";
 import Link from "next/link";
-import { Search, Check, X, Trash2, Eye, Loader2 } from "lucide-react";
+import { Search, Check, X, Trash2, Eye, Loader2, Star, ImageIcon, MessageSquare } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 
 const PAGE_SIZE = 20;
@@ -134,7 +137,7 @@ export function AdminReviewsList({
         <div className="relative flex-1 min-w-0 sm:max-w-sm">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <input
-            className="h-9 w-full rounded-md border border-border/50 bg-muted/20 pl-9 pr-3 text-sm focus:border-zinc-900 focus:outline-none"
+            className="h-9 w-full rounded-md border border-input bg-background pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring/40"
             placeholder="Search reviews by product or customer…"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
@@ -148,7 +151,7 @@ export function AdminReviewsList({
         </div>
 
         <select
-          className="h-9 rounded-md border border-border/50 bg-muted/20 px-3 text-sm font-medium text-foreground focus:border-zinc-900 focus:outline-none sm:min-w-32"
+          className="h-9 rounded-md border border-input bg-background px-3 text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-ring/40 sm:min-w-32"
           value={ratingFilter}
           onChange={(e) => setRatingFilter(e.target.value)}
         >
@@ -161,7 +164,7 @@ export function AdminReviewsList({
         </select>
 
         <select
-          className="h-9 rounded-md border border-border/50 bg-muted/20 px-3 text-sm font-medium text-foreground focus:border-zinc-900 focus:outline-none sm:min-w-32"
+          className="h-9 rounded-md border border-input bg-background px-3 text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-ring/40 sm:min-w-32"
           value={approvedFilter}
           onChange={(e) => setApprovedFilter(e.target.value)}
         >
@@ -183,23 +186,32 @@ export function AdminReviewsList({
       </div>
 
       {loading ? (
-        <div className="flex h-48 w-full items-center justify-center">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-5 shadow-sm">
+          {[0, 1, 2, 3, 4].map((i) => (
+            <div key={i} className="flex items-center gap-3">
+              <Skeleton className="h-10 w-10 shrink-0 rounded-md" />
+              <div className="flex-1 space-y-2">
+                <Skeleton className="h-3.5 w-2/5" />
+                <Skeleton className="h-3 w-3/5" />
+              </div>
+              <Skeleton className="h-5 w-20 rounded-full" />
+            </div>
+          ))}
         </div>
       ) : error ? (
         <div className="rounded-xl border border-destructive/20 bg-destructive/10 p-4 text-sm text-destructive font-medium">
           {error}
         </div>
       ) : data ? (
-        <div className="rounded-xl border border-border/40 bg-card p-5 shadow-sm min-w-0 overflow-hidden">
+        <div className="rounded-xl border border-border bg-card p-5 shadow-sm min-w-0 overflow-hidden">
           <AdminTableScroll>
             <table className="w-full min-w-[900px] text-left text-sm">
-              <thead className="border-b border-border/40 text-xs font-medium text-muted-foreground">
+              <thead className="border-b border-border text-xs font-medium text-muted-foreground">
                 <tr>
                   <th className="px-3 py-4 w-10">
                     <input
                       type="checkbox"
-                      className="rounded border-border text-zinc-900 focus:ring-zinc-900"
+                      className="rounded border-border accent-primary focus:ring-ring"
                       checked={
                         items.length > 0 &&
                         items.every((r) => selectedIds[r.id])
@@ -222,23 +234,25 @@ export function AdminReviewsList({
                   <th className="px-3 py-4 font-medium text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border/20">
+              <tbody className="divide-y divide-border/50">
                 {items.length === 0 ? (
                   <tr>
-                    <td
-                      colSpan={8}
-                      className="py-8 text-center text-sm text-muted-foreground"
-                    >
-                      No reviews found.
+                    <td colSpan={8} className="py-4">
+                      <EmptyState
+                        icon={MessageSquare}
+                        headline="No reviews awaiting moderation"
+                        description="Everything is up to date."
+                        className="border-none"
+                      />
                     </td>
                   </tr>
                 ) : null}
                 {items.map((review) => (
-                  <tr key={review.id} className="group hover:bg-muted/20">
+                  <tr key={review.id} className="group hover:bg-muted/40">
                     <td className="px-3 py-4">
                       <input
                         type="checkbox"
-                        className="rounded border-border text-zinc-900 focus:ring-zinc-900"
+                        className="rounded border-border accent-primary focus:ring-ring"
                         checked={Boolean(selectedIds[review.id])}
                         onChange={(e) =>
                           setSelectedIds((prev) => ({
@@ -250,7 +264,7 @@ export function AdminReviewsList({
                     </td>
                     <td className="px-3 py-4">
                       <div className="flex gap-3">
-                        <div className="h-10 w-10 shrink-0 overflow-hidden rounded-md border border-border/50 bg-muted">
+                        <div className="h-10 w-10 shrink-0 overflow-hidden rounded-md border border-border bg-muted">
                           {review.images && review.images.length > 0 ? (
                             <Image
                               src={resolveProductImageUrl(review.images[0])}
@@ -260,20 +274,8 @@ export function AdminReviewsList({
                               className="h-full w-full object-cover"
                             />
                           ) : (
-                            <div className="flex h-full w-full items-center justify-center bg-zinc-100 text-zinc-900">
-                              <svg
-                                className="h-5 w-5"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke="currentColor"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={1.5}
-                                  d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-                                />
-                              </svg>
+                            <div className="flex h-full w-full items-center justify-center bg-muted text-muted-foreground">
+                              <ImageIcon className="h-5 w-5" strokeWidth={1.5} />
                             </div>
                           )}
                         </div>
@@ -283,7 +285,7 @@ export function AdminReviewsList({
                               ? review.body.split("\n")[0]
                               : "No Title"}
                           </p>
-                          <p className="text-[11px] text-muted-foreground line-clamp-1">
+                          <p className="text-xs text-muted-foreground line-clamp-2">
                             {review.body
                               ? review.body
                               : "No review text provided."}
@@ -295,7 +297,7 @@ export function AdminReviewsList({
                       {review.productSlug ? (
                         <Link
                           href={`/products/${review.productSlug}`}
-                          className="font-medium text-foreground text-sm hover:text-zinc-900 hover:underline"
+                          className="font-medium text-foreground text-sm hover:text-primary hover:underline"
                         >
                           {review.productName ?? review.productId.slice(0, 8)}
                         </Link>
@@ -307,7 +309,7 @@ export function AdminReviewsList({
                     </td>
                     <td className="px-3 py-4">
                       <div className="flex items-center gap-2">
-                        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-100 text-[9px] font-bold text-blue-700 uppercase">
+                        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[9px] font-bold text-primary uppercase">
                           {review.author.firstName?.charAt(0)}
                           {review.author.lastName?.charAt(0)}
                         </div>
@@ -317,16 +319,21 @@ export function AdminReviewsList({
                       </div>
                     </td>
                     <td className="px-3 py-4">
-                      <div className="flex items-center gap-0.5 text-amber-400">
+                      <div
+                        className="flex items-center gap-0.5"
+                        role="img"
+                        aria-label={`Rated ${review.rating} out of 5 stars`}
+                      >
                         {[1, 2, 3, 4, 5].map((star) => (
-                          <svg
+                          <Star
                             key={star}
-                            className={`h-3.5 w-3.5 ${star <= review.rating ? "fill-current text-amber-400" : "fill-none text-muted-foreground/30 stroke-current"}`}
-                            viewBox="0 0 24 24"
-                            strokeWidth={star <= review.rating ? 0 : 2}
-                          >
-                            <path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
-                          </svg>
+                            aria-hidden
+                            className={`h-3.5 w-3.5 ${
+                              star <= review.rating
+                                ? "fill-amber-500 text-amber-500"
+                                : "text-muted-foreground/30"
+                            }`}
+                          />
                         ))}
                       </div>
                     </td>
@@ -334,21 +341,15 @@ export function AdminReviewsList({
                       {formatAdminDate(review.createdAt).replace(", ", "\n")}
                     </td>
                     <td className="px-3 py-4">
-                      <div
-                        className={`inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-medium border ${
-                          review.approved
-                            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                            : "bg-amber-50 text-amber-600 border-amber-100"
-                        }`}
-                      >
+                      <Badge variant={review.approved ? "success" : "warning"} dot>
                         {review.approved ? "Published" : "Pending"}
-                      </div>
+                      </Badge>
                     </td>
                     <td className="px-3 py-4 text-right">
                       <div className="flex items-center justify-end gap-2">
                         <Link
                           href={review.productSlug ? `/products/${review.productSlug}` : `/admin`}
-                          className="flex h-7 w-7 items-center justify-center rounded border border-border/50 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                          className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                           title="View product"
                           target="_blank"
                         >
@@ -358,7 +359,7 @@ export function AdminReviewsList({
                         {canModerate && (!review.approved ? (
                           <button
                             type="button"
-                            className="flex h-7 w-7 items-center justify-center rounded border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors"
+                            className="flex h-7 w-7 items-center justify-center rounded-md border border-emerald-500/30 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-400 transition-colors disabled:opacity-50"
                             disabled={actionId === review.id}
                             onClick={() => void moderate(review.id, true)}
                             title="Approve"
@@ -369,7 +370,7 @@ export function AdminReviewsList({
                         ) : (
                           <button
                             type="button"
-                            className="flex h-7 w-7 items-center justify-center rounded border border-amber-200 text-amber-700 bg-amber-50 hover:bg-amber-100 transition-colors"
+                            className="flex h-7 w-7 items-center justify-center rounded-md border border-amber-500/30 bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 dark:text-amber-400 transition-colors disabled:opacity-50"
                             disabled={actionId === review.id}
                             onClick={() => void moderate(review.id, false)}
                             title="Unpublish"
@@ -382,7 +383,7 @@ export function AdminReviewsList({
                         {canModerate && (
                           <button
                             type="button"
-                            className="flex h-7 w-7 items-center justify-center rounded border border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100 transition-colors"
+                            className="flex h-7 w-7 items-center justify-center rounded-md border border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors disabled:opacity-50"
                             title="Delete review"
                             aria-label="Delete review"
                             disabled={actionId === review.id}
@@ -398,7 +399,7 @@ export function AdminReviewsList({
               </tbody>
             </table>
           </AdminTableScroll>
-          <div className="mt-6 border-t border-border/40 pt-4">
+          <div className="mt-6 border-t border-border pt-4">
             <AdminPagination meta={data.meta} onPageChange={setPage} />
           </div>
         </div>

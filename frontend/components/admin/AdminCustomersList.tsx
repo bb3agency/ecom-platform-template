@@ -6,6 +6,10 @@ import { AdminPagination } from "@/components/admin/AdminPagination";
 import { AdminTableScroll } from "@/components/admin/AdminTableScroll";
 
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
+import { KpiCard } from "@/components/admin/ui/kpi-card";
 import {
   buildAdminQuery,
   coercePaginatedResponse,
@@ -37,14 +41,9 @@ const PAGE_SIZE = 8; // Match the design's items per page
 
 // ── shared helpers ──────────────────────────────────────────────────────────
 
-function calcTrend(
-  cur: number,
-  prev: number,
-): { value: string; up: boolean } | null {
+function calcTrendPct(cur: number, prev: number): number | null {
   if (!prev) return null;
-  const pct = ((cur - prev) / prev) * 100;
-  const abs = Math.round(Math.abs(pct) * 10) / 10;
-  return { value: `${pct >= 0 ? "+" : "-"}${abs}%`, up: pct >= 0 };
+  return ((cur - prev) / prev) * 100;
 }
 
 interface CustomerKpis {
@@ -124,8 +123,8 @@ export function AdminCustomersList({
 
   useAdminDataRefreshEffect(loadKpis, ["customers", "dashboard"]);
 
-  const totalTrend = customerKpis
-    ? calcTrend(customerKpis.total, customerKpis.totalPrev)
+  const totalTrendPct = customerKpis
+    ? calcTrendPct(customerKpis.total, customerKpis.totalPrev)
     : null;
 
   const load = useCallback(async () => {
@@ -171,108 +170,43 @@ export function AdminCustomersList({
   const items = readPaginatedItems(data);
 
   return (
-    <div className="flex flex-col gap-6 min-w-0">
+    <div className="flex min-w-0 flex-col gap-6">
       {/* KPI Cards Row */}
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-        <div className="flex flex-col justify-center rounded-xl border border-border/40 bg-card p-4 sm:p-5 shadow-sm min-w-0">
-          <div className="flex items-center gap-3 sm:gap-4">
-            <div className="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-50">
-              <Users className="h-5 w-5 text-emerald-600" />
-            </div>
-            <div className="flex flex-col gap-0.5 sm:gap-1 min-w-0">
-              <p className="text-[10px] sm:text-xs font-medium text-muted-foreground truncate">
-                Total Customers
-              </p>
-              <p className="font-heading text-lg sm:text-2xl font-bold tracking-tight text-foreground truncate">
-                {customerKpis
-                  ? customerKpis.total.toLocaleString()
-                  : kpisLoading
-                    ? "…"
-                    : "—"}
-              </p>
-            </div>
-          </div>
-          <div className="mt-3 sm:mt-4 flex flex-wrap items-center gap-1 sm:gap-1.5 text-[9px] sm:text-[11px] font-medium">
-            {kpisLoading ? (
-              <div className="h-3 w-20 animate-pulse rounded bg-muted" />
-            ) : totalTrend ? (
-              <span
-                className={totalTrend.up ? "text-emerald-600" : "text-rose-600"}
-              >
-                {totalTrend.up ? "↑" : "↓"} {totalTrend.value}{" "}
-                <span className="text-muted-foreground">{trendLabel}</span>
-              </span>
-            ) : (
-              <span className="text-muted-foreground">vs last week</span>
-            )}
-          </div>
-        </div>
-
-        <div className="flex flex-col justify-center rounded-xl border border-border/40 bg-card p-4 sm:p-5 shadow-sm min-w-0">
-          <div className="flex items-center gap-3 sm:gap-4">
-            <div className="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl bg-blue-100">
-              <UserPlus className="h-5 w-5 text-blue-600" />
-            </div>
-            <div className="flex flex-col gap-0.5 sm:gap-1 min-w-0">
-              <p className="text-[10px] sm:text-xs font-medium text-muted-foreground truncate">
-                New Customers
-              </p>
-              <p className="font-heading text-lg sm:text-2xl font-bold tracking-tight text-foreground truncate">
-                {customerKpis ? customerKpis.newCount.toLocaleString() : "—"}
-              </p>
-            </div>
-          </div>
-          <div className="mt-3 sm:mt-4 flex flex-wrap items-center gap-1 sm:gap-1.5 text-[9px] sm:text-[11px] font-medium">
-            <span className="text-muted-foreground">last 7 days</span>
-          </div>
-        </div>
-
-        <div className="flex flex-col justify-center rounded-xl border border-border/40 bg-card p-4 sm:p-5 shadow-sm min-w-0">
-          <div className="flex items-center gap-3 sm:gap-4">
-            <div className="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl bg-purple-100">
-              <ShoppingCart className="h-5 w-5 text-purple-600" />
-            </div>
-            <div className="flex flex-col gap-0.5 sm:gap-1 min-w-0">
-              <p className="text-[10px] sm:text-xs font-medium text-muted-foreground truncate">
-                Repeat Customers
-              </p>
-              <p className="font-heading text-lg sm:text-2xl font-bold tracking-tight text-foreground truncate">
-                —
-              </p>
-            </div>
-          </div>
-          <div className="mt-3 sm:mt-4 flex flex-wrap items-center gap-1 sm:gap-1.5 text-[9px] sm:text-[11px] font-medium">
-            <span className="text-muted-foreground">no direct data</span>
-          </div>
-        </div>
-
-        <div className="flex flex-col justify-center rounded-xl border border-border/40 bg-card p-4 sm:p-5 shadow-sm min-w-0">
-          <div className="flex items-center gap-3 sm:gap-4">
-            <div className="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl bg-amber-100">
-              <UserX className="h-5 w-5 text-amber-600" />
-            </div>
-            <div className="flex flex-col gap-0.5 sm:gap-1 min-w-0">
-              <p className="text-[10px] sm:text-xs font-medium text-muted-foreground truncate">
-                Inactive Customers
-              </p>
-              <p className="font-heading text-lg sm:text-2xl font-bold tracking-tight text-foreground truncate">
-                {customerKpis ? customerKpis.banned.toLocaleString() : "—"}
-              </p>
-            </div>
-          </div>
-          <div className="mt-3 sm:mt-4 flex flex-wrap items-center gap-1 sm:gap-1.5 text-[9px] sm:text-[11px] font-medium">
-            {kpisLoading ? (
-              <div className="h-3 w-20 animate-pulse rounded bg-muted" />
-            ) : (
-              <span className="text-muted-foreground">banned accounts</span>
-            )}
-          </div>
-        </div>
+        <KpiCard
+          label="Total Customers"
+          icon={Users}
+          loading={kpisLoading}
+          value={customerKpis ? customerKpis.total.toLocaleString() : "—"}
+          trend={
+            totalTrendPct !== null
+              ? { deltaPct: totalTrendPct, caption: trendLabel }
+              : null
+          }
+        />
+        <KpiCard
+          label="New Customers"
+          icon={UserPlus}
+          loading={kpisLoading}
+          value={customerKpis ? customerKpis.newCount.toLocaleString() : "—"}
+        />
+        <KpiCard
+          label="Repeat Customers"
+          icon={ShoppingCart}
+          loading={kpisLoading}
+          value="—"
+        />
+        <KpiCard
+          label="Banned Customers"
+          icon={UserX}
+          loading={kpisLoading}
+          value={customerKpis ? customerKpis.banned.toLocaleString() : "—"}
+        />
       </div>
 
       {/* Main Table Section */}
-      <div className="flex flex-col rounded-xl border border-border/40 bg-card shadow-sm min-w-0 overflow-hidden">
-        <div className="grid grid-cols-2 gap-3 border-b border-border/40 p-4 sm:flex sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+      <div className="flex min-w-0 flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+        <div className="grid grid-cols-2 gap-3 border-b border-border p-4 sm:flex sm:flex-row sm:items-center sm:justify-between sm:gap-4">
           <form
             className="relative col-span-2 w-full min-w-0 flex-1 sm:max-w-sm"
             onSubmit={(event) => {
@@ -280,20 +214,22 @@ export function AdminCustomersList({
               setSearch(searchInput.trim());
             }}
           >
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Search className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" />
             <input
               type="text"
               placeholder="Search customers by name, email or phone..."
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
-              className="h-9 w-full rounded-md border border-border/50 bg-background pl-9 pr-4 text-sm focus:border-zinc-900 focus:outline-none"
+              aria-label="Search customers"
+              className="h-9 w-full rounded-lg border border-border bg-background pl-9 pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
             />
           </form>
 
           <div className="flex w-full sm:w-auto">
             <select
-              className="h-9 w-full rounded-md border border-border/50 bg-background px-3 text-sm text-muted-foreground focus:border-zinc-900 focus:outline-none sm:w-auto"
+              className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 sm:w-auto"
               value={banFilter}
+              aria-label="Filter by status"
               onChange={(e) => {
                 setBanFilter(e.target.value);
                 setPage(1);
@@ -307,27 +243,42 @@ export function AdminCustomersList({
         </div>
 
         {loading ? (
-          <div className="flex h-64 items-center justify-center">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-zinc-900 border-t-transparent" />
+          <div className="flex flex-col gap-3 p-4">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-3">
+                <Skeleton className="size-9 rounded-full" />
+                <div className="flex flex-1 flex-col gap-1.5">
+                  <Skeleton className="h-3.5 w-40" />
+                  <Skeleton className="h-3 w-56" />
+                </div>
+                <Skeleton className="h-4 w-16" />
+                <Skeleton className="h-5 w-20 rounded-full" />
+              </div>
+            ))}
           </div>
         ) : error ? (
           <div className="flex h-64 items-center justify-center p-4 text-sm text-destructive">
             {error}
           </div>
         ) : items.length === 0 ? (
-          <div className="flex h-64 items-center justify-center p-4 text-sm text-muted-foreground">
-            No customers found. Try adjusting your filters.
+          <div className="p-4">
+            <EmptyState
+              icon={Users}
+              headline="No customers yet"
+              description="Customers appear here after their first sign-in or order. Try adjusting your search or filters."
+            />
           </div>
         ) : (
           <>
             <AdminTableScroll>
               <table className="w-full min-w-[700px] text-left text-sm">
-                <thead className="border-b border-border/40 text-xs font-medium text-muted-foreground">
+                <thead className="sticky top-0 z-10 bg-card text-xs font-medium text-muted-foreground shadow-[inset_0_-1px_0_0_var(--color-border)]">
                   <tr>
-                    <th className="px-4 py-3 w-10">
+                    <th className="w-10 px-4 py-3">
                       <input
                         type="checkbox"
-                        className="rounded border-border/50 text-zinc-900 focus:ring-zinc-900"
+                        aria-label="Select all customers"
+                        className="rounded border-border accent-primary"
                         checked={
                           items.length > 0 &&
                           items.every((item) => selectedIds[item.id])
@@ -343,22 +294,24 @@ export function AdminCustomersList({
                       />
                     </th>
                     <th className="px-4 py-3">Customer</th>
-                    <th className="px-4 py-3">Email</th>
-                    <th className="px-4 py-3">Phone</th>
-                    <th className="px-4 py-3 text-center">Total Orders</th>
-                    <th className="px-4 py-3 text-right">Total Spent</th>
+                    <th className="px-4 py-3 text-center">Orders</th>
+                    <th className="px-4 py-3 text-right">Lifetime Spend</th>
                     <th className="px-4 py-3 text-center">Status</th>
                     <th className="px-4 py-3">Joined On</th>
                     <th className="px-4 py-3 text-center">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border/40">
+                <tbody className="divide-y divide-border/60">
                   {items.map((customer) => (
-                    <tr key={customer.id} className="group hover:bg-muted/30">
+                    <tr
+                      key={customer.id}
+                      className="group transition-colors hover:bg-muted/50"
+                    >
                       <td className="px-4 py-3">
                         <input
                           type="checkbox"
-                          className="rounded border-border/50 text-zinc-900 focus:ring-zinc-900"
+                          aria-label={`Select ${customer.firstName ?? "customer"}`}
+                          className="rounded border-border accent-primary"
                           checked={Boolean(selectedIds[customer.id])}
                           onChange={(e) => {
                             setSelectedIds((prev) => ({
@@ -370,36 +323,36 @@ export function AdminCustomersList({
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
-                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-200 text-xs font-bold text-zinc-800 uppercase">
+                          <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold uppercase text-primary">
                             {customer.firstName?.[0]}
                             {customer.lastName?.[0]}
                           </div>
-                          <span className="font-semibold">
-                            {customer.firstName} {customer.lastName}
-                          </span>
+                          <div className="flex min-w-0 flex-col">
+                            <span className="truncate font-semibold text-foreground">
+                              {customer.firstName} {customer.lastName}
+                            </span>
+                            <span className="truncate text-xs text-muted-foreground">
+                              {customer.email ?? customer.phone ?? "—"}
+                              {customer.email && customer.phone
+                                ? ` · ${customer.phone}`
+                                : ""}
+                            </span>
+                          </div>
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-muted-foreground">
-                        {customer.email ?? "—"}
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">
-                        {customer.phone ?? "—"}
-                      </td>
-                      <td className="px-4 py-3 text-center font-medium">
+                      <td className="px-4 py-3 text-center font-medium text-foreground">
                         {customer.totalOrders}
                       </td>
-                      <td className="px-4 py-3 text-right font-semibold">
+                      <td className="px-4 py-3 text-right font-medium text-foreground">
                         {formatPaise(customer.totalSpendPaise)}
                       </td>
                       <td className="px-4 py-3 text-center">
-                        <div
-                          className={`mx-auto inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium ${customer.isBanned ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-700"}`}
+                        <Badge
+                          dot
+                          variant={customer.isBanned ? "destructive" : "success"}
                         >
-                          <div
-                            className={`h-1.5 w-1.5 rounded-full ${customer.isBanned ? "bg-red-500" : "bg-emerald-500"}`}
-                          />
                           {customer.isBanned ? "Banned" : "Active"}
-                        </div>
+                        </Badge>
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">
                         {formatAdminDate(customer.createdAt).split(",")[0]}
@@ -410,20 +363,22 @@ export function AdminCustomersList({
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-7 w-7 rounded-md"
+                              className="size-7 rounded-md"
                               title="View customer"
+                              aria-label="View customer"
                             >
-                              <Eye className="h-4 w-4 text-muted-foreground" />
+                              <Eye className="size-4 text-muted-foreground" />
                             </Button>
                           </Link>
                           <Link href={`/admin/customers/${customer.id}`}>
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-7 w-7 rounded-md"
+                              className="size-7 rounded-md"
                               title="Edit customer"
+                              aria-label="Edit customer"
                             >
-                              <Edit2 className="h-4 w-4 text-muted-foreground" />
+                              <Edit2 className="size-4 text-muted-foreground" />
                             </Button>
                           </Link>
                         </div>
@@ -434,7 +389,7 @@ export function AdminCustomersList({
               </table>
             </AdminTableScroll>
 
-            <div className="border-t border-border/40 p-4">
+            <div className="border-t border-border p-4">
               <AdminPagination
                 meta={
                   data?.meta || {

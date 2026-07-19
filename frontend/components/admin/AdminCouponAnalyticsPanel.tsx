@@ -73,7 +73,7 @@ export function AdminCouponAnalyticsPanel({
     >
       {data ? (
         <>
-          <div className="overflow-x-auto rounded-md border border-border">
+          <div className="overflow-x-auto rounded-xl border border-border">
             <table className="w-full text-left text-sm">
               <thead className="border-b border-border bg-muted/50 text-xs uppercase text-muted-foreground">
                 <tr>
@@ -84,10 +84,19 @@ export function AdminCouponAnalyticsPanel({
               </thead>
               <tbody>
                 {items.map((item) => (
-                  <tr key={item.couponId} className="border-b border-border last:border-0">
-                    <td className="px-3 py-2 font-mono">{item.code}</td>
+                  <tr
+                    key={item.couponId}
+                    className="border-b border-border last:border-0 hover:bg-muted/40"
+                  >
+                    <td className="px-3 py-2">
+                      <span className="font-mono text-xs font-medium text-foreground">
+                        {item.code}
+                      </span>
+                    </td>
                     <td className="px-3 py-2">{item.usesCount}</td>
-                    <td className="px-3 py-2">{formatPaise(item.totalDiscountPaise)}</td>
+                    <td className="px-3 py-2 font-medium">
+                      {formatPaise(item.totalDiscountPaise)}
+                    </td>
                   </tr>
                 ))}
               </tbody>

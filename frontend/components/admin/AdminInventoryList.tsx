@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { AdminPagination } from "@/components/admin/AdminPagination";
 import { AdminTableScroll } from "@/components/admin/AdminTableScroll";
-import { AdminStatusBadge } from "@/components/admin/AdminStatusBadge";
 import { useAdminAuth } from "@/contexts/admin-auth-context";
 import { useAuthenticatedApi } from "@/hooks/use-authenticated-api";
 import { useAdminDataRefreshEffect } from "@/hooks/use-admin-data-refresh-effect";
@@ -18,12 +17,17 @@ import { getApiErrorMessage } from "@/lib/error-messages";
 import { createIdempotencyKey } from "@/lib/idempotency";
 import { notifyAdminDataChanged } from "@/lib/admin-data-refresh";
 import { ADMIN_PERMISSIONS, hasAdminPermission } from "@/lib/permissions";
-import { AlertCircle, Loader2 } from "lucide-react";
+import { AlertCircle, Boxes } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const PAGE_SIZE = 20;
 
-const inputClass = "h-8 w-24 rounded-md border border-border bg-background px-2 text-sm focus:border-zinc-900 focus:outline-none";
+const inputClass =
+  "h-8 w-24 rounded-lg border border-input bg-background px-2 text-right text-sm tabular-nums focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary";
 
 interface AdminInventoryListProps {
   onViewHistory?: (variantId: string) => void;
@@ -98,7 +102,7 @@ export function AdminInventoryList({ onViewHistory }: AdminInventoryListProps) {
   const items = readPaginatedItems(data);
 
   return (
-    <div className="flex flex-col gap-4 min-w-0">
+    <div className="flex min-w-0 flex-col gap-4">
       {error && (
         <div className="flex items-center gap-2 rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
           <AlertCircle className="h-4 w-4 shrink-0" />
@@ -106,40 +110,52 @@ export function AdminInventoryList({ onViewHistory }: AdminInventoryListProps) {
         </div>
       )}
 
-      <div className="flex flex-col rounded-xl border border-border/40 bg-card shadow-sm min-w-0 overflow-hidden">
+      <div className="flex min-w-0 flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
         {loading && items.length === 0 ? (
-          <div className="flex h-48 items-center justify-center">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          <div className="flex flex-col gap-3 p-4">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-4">
+                <Skeleton className="h-4 w-1/3" />
+                <Skeleton className="h-4 w-24" />
+                <Skeleton className="h-4 w-16" />
+                <Skeleton className="h-4 w-16" />
+                <Skeleton className="ml-auto h-4 w-20" />
+              </div>
+            ))}
           </div>
         ) : items.length === 0 ? (
-          <div className="flex h-48 flex-col items-center justify-center gap-2 text-muted-foreground">
-            <p className="text-sm">No inventory rows found.</p>
-          </div>
+          <EmptyState
+            icon={Boxes}
+            headline="No inventory rows found"
+            description="Inventory rows appear here once products with variants exist."
+            className="m-4"
+          />
         ) : (
           <>
             <AdminTableScroll>
               <table className="w-full min-w-[760px] text-left text-sm">
-                <thead className="border-b border-border/40 bg-muted/30 text-xs uppercase tracking-wide text-muted-foreground">
+                <thead className="sticky top-0 z-10 border-b border-border bg-card text-xs uppercase tracking-wide text-muted-foreground">
                   <tr>
                     <th className="px-4 py-3 font-medium">Product</th>
                     <th className="px-4 py-3 font-medium">SKU</th>
-                    <th className="px-4 py-3 font-medium">On Hand</th>
-                    <th className="px-4 py-3 font-medium">Available</th>
-                    <th className="px-4 py-3 font-medium">Threshold</th>
-                    <th className="px-4 py-3 font-medium">Alert</th>
-                    <th className="px-4 py-3 font-medium text-center">Actions</th>
+                    <th className="px-4 py-3 text-right font-medium">On Hand</th>
+                    <th className="px-4 py-3 text-right font-medium">Available</th>
+                    <th className="px-4 py-3 text-right font-medium">Threshold</th>
+                    <th className="px-4 py-3 font-medium">Status</th>
+                    <th className="px-4 py-3 text-center font-medium">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border/40">
+                <tbody className="divide-y divide-border/60">
                   {items.map((row) => {
                     const available =
                       row.availableQuantity ??
                       Math.max(0, row.quantity - (row.reservedQuantity ?? 0));
-                    const low = row.lowStockAlerted || available <= row.lowStockThreshold;
+                    const out = available <= 0;
+                    const low = !out && (row.lowStockAlerted || available <= row.lowStockThreshold);
                     const isEditing = editingId === row.variantId;
 
                     return (
-                      <tr key={row.id} className="group hover:bg-muted/30">
+                      <tr key={row.id} className="group transition-colors hover:bg-muted/50">
                         <td className="px-4 py-3">
                           <p className="font-semibold text-foreground">{row.variant.product.name}</p>
                           <p className="text-xs text-muted-foreground">{row.variant.name}</p>
@@ -147,25 +163,35 @@ export function AdminInventoryList({ onViewHistory }: AdminInventoryListProps) {
                         <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
                           {row.variant.sku}
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-4 py-3 text-right tabular-nums">
                           {isEditing ? (
                             <input
                               className={inputClass}
                               value={quantity}
+                              aria-label="On-hand quantity"
                               onChange={(e) => setQuantity(e.target.value)}
                             />
                           ) : (
-                            <span className={cn("font-medium", low && "text-amber-600")}>
+                            <span
+                              className={cn(
+                                "font-medium text-foreground",
+                                low && "text-amber-600",
+                                out && "text-red-600",
+                              )}
+                            >
                               {row.quantity}
                             </span>
                           )}
                         </td>
-                        <td className="px-4 py-3 font-medium text-foreground">{available}</td>
-                        <td className="px-4 py-3">
+                        <td className="px-4 py-3 text-right font-medium tabular-nums text-foreground">
+                          {available}
+                        </td>
+                        <td className="px-4 py-3 text-right tabular-nums">
                           {isEditing ? (
                             <input
                               className={inputClass}
                               value={threshold}
+                              aria-label="Low-stock threshold"
                               onChange={(e) => setThreshold(e.target.value)}
                             />
                           ) : (
@@ -173,10 +199,18 @@ export function AdminInventoryList({ onViewHistory }: AdminInventoryListProps) {
                           )}
                         </td>
                         <td className="px-4 py-3">
-                          {low ? (
-                            <AdminStatusBadge label="Low stock" tone="warning" />
+                          {out ? (
+                            <Badge variant="destructive" dot>
+                              Out of Stock
+                            </Badge>
+                          ) : low ? (
+                            <Badge variant="warning" dot>
+                              Low Stock
+                            </Badge>
                           ) : (
-                            <AdminStatusBadge label="OK" tone="success" />
+                            <Badge variant="success" dot>
+                              In Stock
+                            </Badge>
                           )}
                         </td>
                         <td className="px-4 py-3">
@@ -184,39 +218,42 @@ export function AdminInventoryList({ onViewHistory }: AdminInventoryListProps) {
                             {canWrite &&
                               (isEditing ? (
                                 <>
-                                  <button
+                                  <Button
                                     type="button"
-                                    disabled={saving}
+                                    size="sm"
+                                    loading={saving}
                                     onClick={() => void saveEdit(row.variantId)}
-                                    className="flex h-7 items-center rounded-md bg-zinc-900 px-3 text-xs font-medium text-white hover:bg-zinc-800 disabled:opacity-60"
                                   >
-                                    {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : "Save"}
-                                  </button>
-                                  <button
+                                    Save
+                                  </Button>
+                                  <Button
                                     type="button"
+                                    size="sm"
+                                    variant="ghost"
                                     onClick={() => setEditingId(null)}
-                                    className="h-7 rounded-md border border-border/50 px-3 text-xs text-muted-foreground hover:text-foreground"
                                   >
                                     Cancel
-                                  </button>
+                                  </Button>
                                 </>
                               ) : (
-                                <button
+                                <Button
                                   type="button"
+                                  size="sm"
+                                  variant="outline"
                                   onClick={() => startEdit(row)}
-                                  className="h-7 rounded-md border border-border/50 px-3 text-xs font-medium text-foreground hover:bg-muted transition-colors"
                                 >
                                   Adjust
-                                </button>
+                                </Button>
                               ))}
                             {onViewHistory && (
-                              <button
+                              <Button
                                 type="button"
+                                size="sm"
+                                variant="ghost"
                                 onClick={() => onViewHistory(row.variantId)}
-                                className="h-7 rounded-md border border-border/50 px-3 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
                               >
                                 History
-                              </button>
+                              </Button>
                             )}
                           </div>
                         </td>
@@ -227,7 +264,7 @@ export function AdminInventoryList({ onViewHistory }: AdminInventoryListProps) {
               </table>
             </AdminTableScroll>
 
-            <div className="border-t border-border/40 p-4">
+            <div className="border-t border-border p-4">
               {data && <AdminPagination meta={data.meta} onPageChange={setPage} />}
             </div>
           </>

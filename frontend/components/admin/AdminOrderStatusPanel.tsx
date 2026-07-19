@@ -2,6 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { AdminSection } from "@/components/admin/AdminSection";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { orderStatusTone } from "@/lib/admin-format";
 import { useAdminAuth } from "@/contexts/admin-auth-context";
 import { useAuthenticatedApi } from "@/hooks/use-authenticated-api";
 import { ORDER_FILTER_STATUSES, type AdminOrderDetailFull } from "@/lib/admin-api";
@@ -12,7 +15,7 @@ import { notifyAdminDataChanged } from "@/lib/admin-data-refresh";
 import { ADMIN_PERMISSIONS, hasAdminPermission } from "@/lib/permissions";
 
 const inputClass =
-  "h-10 w-full rounded-md border border-border bg-background px-3 text-sm";
+  "h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30";
 
 interface AdminOrderStatusPanelProps {
   orderId: string;
@@ -95,8 +98,16 @@ export function AdminOrderStatusPanel({ orderId, onUpdated }: AdminOrderStatusPa
       error={error}
     >
       {order ? (
-        <div className="grid max-w-md gap-3">
-          <label className="grid min-w-0 grid-cols-1 gap-1 text-sm">
+        <div className="grid max-w-md gap-4">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              Current status
+            </span>
+            <Badge dot variant={orderStatusTone(order.status)}>
+              {order.status.replace(/_/g, " ")}
+            </Badge>
+          </div>
+          <label className="grid min-w-0 grid-cols-1 gap-1 text-sm text-foreground">
             Status
             <select className={inputClass} value={status} onChange={(e) => setStatus(e.target.value)}>
               {ORDER_FILTER_STATUSES.filter(
@@ -108,23 +119,23 @@ export function AdminOrderStatusPanel({ orderId, onUpdated }: AdminOrderStatusPa
               ))}
             </select>
           </label>
-          <label className="grid min-w-0 grid-cols-1 gap-1 text-sm">
+          <label className="grid min-w-0 grid-cols-1 gap-1 text-sm text-foreground">
             Note (optional)
             <textarea
-              className="min-h-20 rounded-md border border-border bg-background px-3 py-2 text-sm"
+              className="min-h-20 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
               value={note}
               onChange={(e) => setNote(e.target.value)}
               placeholder="Reason for status change"
             />
           </label>
-          <button
-            type="button"
-            disabled={saving || status === order.status}
-            className="h-9 w-fit rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground disabled:opacity-60"
+          <Button
+            className="w-fit px-4"
+            loading={saving}
+            disabled={status === order.status}
             onClick={() => void saveStatus()}
           >
             {saving ? "Saving…" : "Update status"}
-          </button>
+          </Button>
         </div>
       ) : null}
     </AdminSection>

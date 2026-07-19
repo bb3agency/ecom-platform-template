@@ -6,6 +6,8 @@ import { AdminDetailDrawer } from "@/components/admin/AdminDetailDrawer";
 import { AdminPagination } from "@/components/admin/AdminPagination";
 import { AdminTableScroll } from "@/components/admin/AdminTableScroll";
 import { AdminStatusBadge } from "@/components/admin/AdminStatusBadge";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   buildAdminQuery,
   PAYMENT_FILTER_STATUSES,
@@ -130,7 +132,7 @@ export function AdminPaymentsList({ from, to }: AdminPaymentsListProps = {}) {
             <div className="relative flex-1 min-w-0 sm:max-w-sm">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <input
-                className="h-9 w-full rounded-md border border-border/50 bg-muted/20 pl-9 pr-3 text-sm focus:border-zinc-900 focus:outline-none"
+                className="h-9 w-full rounded-md border border-border/50 bg-muted/20 pl-9 pr-3 text-sm focus:border-primary focus:outline-none"
                 placeholder="Search by transaction ID, order ID…"
                 value={search}
                 onChange={(e) => {
@@ -142,7 +144,7 @@ export function AdminPaymentsList({ from, to }: AdminPaymentsListProps = {}) {
 
             {/* Status filter */}
             <select
-              className="h-9 rounded-md border border-border/50 bg-muted/20 px-3 text-sm font-medium text-foreground focus:border-zinc-900 focus:outline-none sm:min-w-36"
+              className="h-9 rounded-md border border-border/50 bg-muted/20 px-3 text-sm font-medium text-foreground focus:border-primary focus:outline-none sm:min-w-36"
               value={status}
               onChange={(e) => {
                 setStatus(e.target.value);
@@ -157,7 +159,7 @@ export function AdminPaymentsList({ from, to }: AdminPaymentsListProps = {}) {
 
             {/* Method filter */}
             <select
-              className="h-9 rounded-md border border-border/50 bg-muted/20 px-3 text-sm font-medium text-foreground focus:border-zinc-900 focus:outline-none sm:min-w-44"
+              className="h-9 rounded-md border border-border/50 bg-muted/20 px-3 text-sm font-medium text-foreground focus:border-primary focus:outline-none sm:min-w-44"
               value={method}
               onChange={(e) => {
                 setMethod(e.target.value);
@@ -177,7 +179,7 @@ export function AdminPaymentsList({ from, to }: AdminPaymentsListProps = {}) {
                 From
                 <input
                   type="date"
-                  className="h-9 rounded-md border border-border/50 bg-muted/20 px-3 text-sm text-foreground focus:border-zinc-900 focus:outline-none"
+                  className="h-9 rounded-md border border-border/50 bg-muted/20 px-3 text-sm text-foreground focus:border-primary focus:outline-none"
                   value={fromDate}
                   onChange={(e) => {
                     setFromDate(e.target.value);
@@ -189,7 +191,7 @@ export function AdminPaymentsList({ from, to }: AdminPaymentsListProps = {}) {
                 To
                 <input
                   type="date"
-                  className="h-9 rounded-md border border-border/50 bg-muted/20 px-3 text-sm text-foreground focus:border-zinc-900 focus:outline-none"
+                  className="h-9 rounded-md border border-border/50 bg-muted/20 px-3 text-sm text-foreground focus:border-primary focus:outline-none"
                   value={toDate}
                   min={fromDate || undefined}
                   max={new Date().toISOString().slice(0, 10)}
@@ -225,30 +227,41 @@ export function AdminPaymentsList({ from, to }: AdminPaymentsListProps = {}) {
         {/* Table card */}
         <div className="flex flex-col rounded-xl border border-border/40 bg-card shadow-sm min-w-0 overflow-hidden">
           {loading && items.length === 0 ? (
-            <div className="flex h-48 items-center justify-center">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            <div className="flex flex-col gap-3 p-4">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="flex items-center gap-4">
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-6 w-6 rounded-full" />
+                  <Skeleton className="h-4 w-40 flex-1" />
+                  <Skeleton className="h-5 w-20 rounded-full" />
+                  <Skeleton className="h-4 w-24" />
+                </div>
+              ))}
             </div>
           ) : items.length === 0 ? (
-            <div className="flex h-56 flex-col items-center justify-center gap-3 text-muted-foreground">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-muted/50">
-                <CreditCard className="h-6 w-6" />
-              </div>
-              <div className="text-center">
-                <p className="text-sm font-medium text-foreground">No payments found</p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {hasFilters ? "Try adjusting your filters" : "Payment records will appear here once orders are placed"}
-                </p>
-              </div>
-              {hasFilters && (
-                <button
-                  type="button"
-                  onClick={clearFilters}
-                  className="flex h-8 items-center gap-1.5 rounded-md border border-border/50 px-3 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                >
-                  <SlidersHorizontal className="h-3.5 w-3.5" />
-                  Clear filters
-                </button>
-              )}
+            <div className="p-4">
+              <EmptyState
+                icon={CreditCard}
+                headline="No payments found"
+                description={
+                  hasFilters
+                    ? "Try adjusting your filters"
+                    : "Payment records will appear here once orders are placed"
+                }
+                action={
+                  hasFilters ? (
+                    <button
+                      type="button"
+                      onClick={clearFilters}
+                      className="flex h-8 items-center gap-1.5 rounded-lg border border-border px-3 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    >
+                      <SlidersHorizontal className="h-3.5 w-3.5" />
+                      Clear filters
+                    </button>
+                  ) : undefined
+                }
+              />
             </div>
           ) : (
             <>
@@ -275,14 +288,14 @@ export function AdminPaymentsList({ from, to }: AdminPaymentsListProps = {}) {
                         <td className="px-4 py-3">
                           <Link
                             href={`/admin/orders/${payment.orderId}`}
-                            className="font-medium text-foreground hover:text-zinc-900 hover:underline"
+                            className="font-medium text-foreground hover:text-primary hover:underline"
                           >
                             {payment.orderNumber}
                           </Link>
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2">
-                            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-zinc-200 text-[9px] font-bold text-zinc-800 uppercase">
+                            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-[9px] font-bold text-foreground uppercase">
                               {payment.customerName?.charAt(0) || "?"}
                             </div>
                             <div className="min-w-0">
@@ -299,7 +312,7 @@ export function AdminPaymentsList({ from, to }: AdminPaymentsListProps = {}) {
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2">
-                            <span className="rounded border border-border/50 bg-white px-1.5 py-0.5 text-[10px] font-bold text-slate-800 shadow-sm">
+                            <span className="rounded border border-border bg-background px-1.5 py-0.5 text-[10px] font-bold text-foreground shadow-sm">
                               {payment.provider === "razorpay" ? "RZP" : payment.provider.toUpperCase()}
                             </span>
                             <span className="text-xs text-muted-foreground">{payment.method || "—"}</span>

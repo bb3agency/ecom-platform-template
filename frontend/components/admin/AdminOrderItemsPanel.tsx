@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useAdminAuth } from "@/contexts/admin-auth-context";
 import { useAuthenticatedApi } from "@/hooks/use-authenticated-api";
 import {
@@ -121,9 +123,7 @@ export function AdminOrderItemsPanel({ orderId, onUpdated }: AdminOrderItemsPane
               : "Read-only for this order status."}
           </p>
         </div>
-        {loading ? (
-          <div className="h-4 w-20 animate-pulse rounded bg-muted" />
-        ) : null}
+        {loading ? <Skeleton className="h-4 w-20" /> : null}
       </header>
 
       {order ? (
@@ -184,16 +184,40 @@ export function AdminOrderItemsPanel({ orderId, onUpdated }: AdminOrderItemsPane
             </table>
           </div>
 
+          <div className="border-t border-border px-6 py-4">
+            <dl className="ml-auto grid w-full max-w-xs grid-cols-1 gap-1.5 text-sm">
+              <div className="flex items-center justify-between">
+                <dt className="text-muted-foreground">Subtotal</dt>
+                <dd className="text-foreground">{formatPaise(order.subtotal)}</dd>
+              </div>
+              <div className="flex items-center justify-between">
+                <dt className="text-muted-foreground">Discount</dt>
+                <dd className="text-foreground">
+                  {order.discountAmount > 0
+                    ? `−${formatPaise(order.discountAmount)}`
+                    : formatPaise(0)}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between">
+                <dt className="text-muted-foreground">Shipping</dt>
+                <dd className="text-foreground">{formatPaise(order.shippingCharge)}</dd>
+              </div>
+              <div className="mt-1 flex items-center justify-between border-t border-border pt-2 font-semibold">
+                <dt>Grand total</dt>
+                <dd>{formatPaise(order.total)}</dd>
+              </div>
+            </dl>
+          </div>
+
           {canEditItems ? (
             <div className="flex items-center gap-3 border-t border-border px-6 py-4">
-              <button
-                type="button"
-                disabled={saving}
+              <Button
+                className="px-4"
+                loading={saving}
                 onClick={() => void saveItems()}
-                className="h-9 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground disabled:opacity-60"
               >
                 {saving ? "Saving…" : "Save changes"}
-              </button>
+              </Button>
             </div>
           ) : null}
         </>

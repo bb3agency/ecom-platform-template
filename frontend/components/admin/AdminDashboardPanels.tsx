@@ -3,8 +3,10 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 
-import { Button } from "@/components/ui/button";
-import { AdminStatusBadge } from "@/components/admin/AdminStatusBadge";
+import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
+import { KpiCard } from "@/components/admin/ui/kpi-card";
 import type {
   AdminDashboardKpis,
   AdminSalesChart,
@@ -35,12 +37,13 @@ import {
   ShoppingCart,
   Users,
   Package,
-  TrendingUp,
-  TrendingDown,
+  PackageCheck,
+  LineChart as LineChartIcon,
+  PieChart as PieChartIcon,
 } from "lucide-react";
 import {
-  LineChart,
-  Line,
+  AreaChart,
+  Area,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -50,14 +53,10 @@ import {
   Cell,
 } from "recharts";
 
-function computeTrend(
-  current: number,
-  previous: number,
-): { value: string; up: boolean } | null {
+/** Percentage delta vs the comparison period, or null when no baseline. */
+function computeDelta(current: number, previous: number): number | null {
   if (!previous) return null;
-  const pct = ((current - previous) / previous) * 100;
-  const rounded = Math.round(Math.abs(pct) * 10) / 10;
-  return { value: `${pct >= 0 ? "+" : "-"}${rounded}%`, up: pct >= 0 };
+  return ((current - previous) / previous) * 100;
 }
 
 export function AdminDashboardKpisPanel({
@@ -107,18 +106,11 @@ export function AdminDashboardKpisPanel({
 
   useAdminDataRefreshEffect(load, ADMIN_DASHBOARD_REFRESH_SCOPES);
 
-  const revTrend =
-    kpis && prev ? computeTrend(kpis.revenuePaise, prev.revenuePaise) : null;
-  const ordTrend =
-    kpis && prev ? computeTrend(kpis.ordersCount, prev.ordersCount) : null;
-  const custTrend =
-    kpis && prev
-      ? computeTrend(kpis.customersCount, prev.customersCount)
-      : null;
-  const aovTrend =
-    kpis && prev
-      ? computeTrend(kpis.averageOrderValuePaise, prev.averageOrderValuePaise)
-      : null;
+  const trendOf = (pick: (k: AdminDashboardKpis) => number) => {
+    if (!kpis || !prev) return null;
+    const delta = computeDelta(pick(kpis), pick(prev));
+    return delta === null ? null : { deltaPct: delta, caption: trendLabel };
+  };
 
   return (
     <>
@@ -127,100 +119,33 @@ export function AdminDashboardKpisPanel({
         <KpiCard
           label="Total Revenue"
           value={kpis ? formatPaise(kpis.revenuePaise) : "₹0"}
-          icon={<Wallet className="h-5 w-5 text-emerald-600" />}
-          iconBg="bg-emerald-50"
-          trend={revTrend?.value}
-          trendUp={revTrend?.up}
-          trendLabel={trendLabel}
+          icon={Wallet}
+          trend={trendOf((k) => k.revenuePaise)}
           loading={loading}
         />
         <KpiCard
           label="Total Orders"
           value={kpis ? String(kpis.ordersCount) : "0"}
-          icon={<ShoppingCart className="h-5 w-5 text-blue-600" />}
-          iconBg="bg-blue-100"
-          trend={ordTrend?.value}
-          trendUp={ordTrend?.up}
-          trendLabel={trendLabel}
+          icon={ShoppingCart}
+          trend={trendOf((k) => k.ordersCount)}
           loading={loading}
         />
         <KpiCard
           label="Total Customers"
           value={kpis ? String(kpis.customersCount) : "0"}
-          icon={<Users className="h-5 w-5 text-amber-600" />}
-          iconBg="bg-amber-100"
-          trend={custTrend?.value}
-          trendUp={custTrend?.up}
-          trendLabel={trendLabel}
+          icon={Users}
+          trend={trendOf((k) => k.customersCount)}
           loading={loading}
         />
         <KpiCard
           label="Avg. Order Value"
           value={kpis ? formatPaise(kpis.averageOrderValuePaise) : "₹0"}
-          icon={<Package className="h-5 w-5 text-purple-600" />}
-          iconBg="bg-purple-100"
-          trend={aovTrend?.value}
-          trendUp={aovTrend?.up}
-          trendLabel={trendLabel}
+          icon={Package}
+          trend={trendOf((k) => k.averageOrderValuePaise)}
           loading={loading}
         />
       </div>
     </>
-  );
-}
-
-function KpiCard({
-  label,
-  value,
-  icon,
-  iconBg,
-  trend,
-  trendUp,
-  trendLabel,
-  loading,
-}: {
-  label: string;
-  value: string;
-  icon: React.ReactNode;
-  iconBg: string;
-  trend?: string;
-  trendUp?: boolean;
-  trendLabel?: string;
-  loading: boolean;
-}) {
-  return (
-    <div className="flex flex-col justify-center rounded-xl border border-border/40 bg-card p-4 sm:p-5 shadow-sm min-w-0">
-      <div className="flex items-center gap-3 sm:gap-4">
-        <div
-          className={`flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl ${iconBg}`}
-        >
-          {icon}
-        </div>
-        <div className="flex flex-col gap-0.5 sm:gap-1 min-w-0">
-          <p className="text-[10px] sm:text-xs font-medium text-muted-foreground truncate">{label}</p>
-          {loading ? (
-            <div className="h-6 sm:h-7 w-16 sm:w-24 animate-pulse rounded bg-muted" />
-          ) : (
-            <p className="font-heading text-lg sm:text-2xl font-bold tracking-tight text-foreground truncate">
-              {value}
-            </p>
-          )}
-        </div>
-      </div>
-      {!loading && trend !== undefined ? (
-        <div className="mt-3 sm:mt-4 flex flex-wrap items-center gap-1 sm:gap-1.5 text-[9px] sm:text-[11px] font-medium">
-          {trendUp ? (
-            <TrendingUp className="h-3 w-3 text-emerald-600" />
-          ) : (
-            <TrendingDown className="h-3 w-3 text-rose-500" />
-          )}
-          <span className={trendUp ? "text-emerald-600" : "text-rose-600"}>
-            {trend}
-          </span>
-          <span className="text-muted-foreground">{trendLabel}</span>
-        </div>
-      ) : null}
-    </div>
   );
 }
 
@@ -269,11 +194,11 @@ export function AdminSalesChartPanel({
   }));
 
   return (
-    <div className="flex flex-col rounded-xl border border-border/40 bg-card p-5 shadow-sm lg:col-span-2">
-      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="font-heading text-lg font-semibold">Sales Overview</h2>
+    <div className="flex flex-col rounded-2xl border border-border bg-card p-4 transition-shadow hover:shadow-sm sm:p-5 lg:col-span-2">
+      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <h2 className="text-sm font-semibold text-foreground">Sales Overview</h2>
         <select
-          className="h-8 rounded-md border border-border/50 bg-background px-2 text-xs text-muted-foreground focus:border-zinc-900 focus:outline-none"
+          className="h-8 rounded-md border border-border bg-background px-2 text-xs text-muted-foreground focus:border-primary focus:outline-none"
           value={granularity}
           onChange={(e) =>
             setGranularity(e.target.value as "day" | "week")
@@ -285,40 +210,54 @@ export function AdminSalesChartPanel({
       </div>
 
       {loading ? (
-        <div className="flex h-[220px] sm:h-[300px] w-full items-center justify-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-zinc-900 border-t-transparent"></div>
+        <div className="flex h-[220px] w-full items-end gap-2 sm:h-[300px]">
+          {/* Skeleton mimicking chart columns */}
+          <Skeleton className="h-1/3 flex-1" />
+          <Skeleton className="h-2/3 flex-1" />
+          <Skeleton className="h-1/2 flex-1" />
+          <Skeleton className="h-full flex-1" />
+          <Skeleton className="h-2/3 flex-1" />
         </div>
       ) : error ? (
-        <div className="flex h-[220px] sm:h-[300px] w-full items-center justify-center text-sm text-destructive">
+        <div className="flex h-[220px] w-full items-center justify-center text-sm text-destructive sm:h-[300px]">
           {error}
         </div>
       ) : points.length === 0 ? (
-        <div className="flex h-[220px] sm:h-[300px] w-full items-center justify-center text-sm text-muted-foreground">
-          No chart data available yet.
-        </div>
+        <EmptyState
+          icon={LineChartIcon}
+          headline="No sales data yet"
+          description="Revenue will appear here once orders come in for this period."
+          className="h-[220px] py-0 sm:h-[300px]"
+        />
       ) : (
-        <div className="h-[220px] sm:h-[300px] w-full">
+        <div className="h-[220px] w-full sm:h-[300px]">
           <AdminResponsiveContainer height="100%">
-          <LineChart
+          <AreaChart
             data={chartData}
             margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
           >
+            <defs>
+              <linearGradient id="salesRevenueFill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="var(--primary)" stopOpacity={0.15} />
+                <stop offset="100%" stopColor="var(--primary)" stopOpacity={0} />
+              </linearGradient>
+            </defs>
             <CartesianGrid
               strokeDasharray="3 3"
               vertical={false}
-              stroke="#e5e7eb"
+              stroke="var(--border)"
             />
             <XAxis
               dataKey="name"
               axisLine={false}
               tickLine={false}
-              tick={{ fontSize: 11, fill: "#6b7280" }}
+              tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
               dy={10}
             />
             <YAxis
               axisLine={false}
               tickLine={false}
-              tick={{ fontSize: 11, fill: "#6b7280" }}
+              tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
               tickFormatter={(value) =>
                 `${value >= 1000 ? value / 1000 + "k" : value}`
               }
@@ -327,25 +266,26 @@ export function AdminSalesChartPanel({
             <Tooltip
               content={<CustomTooltip />}
               cursor={{
-                stroke: "#10b981",
+                stroke: "var(--primary)",
                 strokeWidth: 1,
                 strokeDasharray: "5 5",
               }}
             />
-            <Line
+            <Area
               type="monotone"
               dataKey="revenue"
-              stroke="#10b981"
-              strokeWidth={3}
-              dot={{ r: 4, fill: "#fff", stroke: "#10b981", strokeWidth: 2 }}
+              stroke="var(--primary)"
+              strokeWidth={2}
+              fill="url(#salesRevenueFill)"
+              dot={{ r: 3, fill: "var(--card)", stroke: "var(--primary)", strokeWidth: 2 }}
               activeDot={{
-                r: 6,
-                fill: "#10b981",
-                stroke: "#fff",
+                r: 5,
+                fill: "var(--primary)",
+                stroke: "var(--card)",
                 strokeWidth: 2,
               }}
             />
-          </LineChart>
+          </AreaChart>
         </AdminResponsiveContainer>
         </div>
       )}
@@ -362,9 +302,9 @@ interface CustomTooltipProps {
 function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
   if (active && payload && payload.length) {
     return (
-      <div className="rounded-lg border border-border/50 bg-gray-900 px-3 py-2 text-white shadow-xl">
-        <p className="text-xs text-gray-300">{label}</p>
-        <p className="text-sm font-semibold">
+      <div className="rounded-lg border border-border bg-card px-3 py-2 shadow-sm">
+        <p className="text-xs text-muted-foreground">{label}</p>
+        <p className="text-sm font-semibold text-foreground">
           ₹{payload[0].value.toLocaleString()}
         </p>
       </div>
@@ -417,58 +357,53 @@ export function AdminTopProductsPanel({
   const items = ensureArray<AdminTopProductItem>(data?.items);
 
   return (
-    <div className="flex flex-col rounded-xl border border-border/40 bg-card p-5 shadow-sm lg:col-span-2">
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="font-heading text-lg font-semibold">
+    <div className="flex flex-col rounded-2xl border border-border bg-card p-4 transition-shadow hover:shadow-sm sm:p-5 lg:col-span-2">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <h2 className="text-sm font-semibold text-foreground">
           Top Selling Products
         </h2>
-        <Link href="/admin/products">
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8 text-xs font-medium"
-          >
-            View All
-          </Button>
+        <Link href="/admin/products" className="text-sm font-medium text-primary hover:underline">
+          View all
         </Link>
       </div>
 
       {loading ? (
-        <div className="flex h-[200px] w-full items-center justify-center">
-          <div className="h-6 w-6 animate-spin rounded-full border-2 border-zinc-900 border-t-transparent"></div>
-        </div>
+        <ListRowsSkeleton rows={5} />
       ) : error ? (
         <div className="flex h-[200px] w-full items-center justify-center text-sm text-destructive">
           {error}
         </div>
       ) : items.length === 0 ? (
-        <div className="flex h-[200px] w-full items-center justify-center text-sm text-muted-foreground">
-          No top products available yet.
-        </div>
+        <EmptyState
+          icon={Package}
+          headline="No top products yet"
+          description="Best sellers will appear here once orders are placed."
+          className="py-8"
+        />
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
-            <thead className="border-b border-border/50 text-xs text-muted-foreground">
+            <thead className="border-b border-border text-xs text-muted-foreground">
               <tr>
                 <th className="pb-3 pl-2 font-medium">Product</th>
-                <th className="pb-3 px-2 font-medium hidden sm:table-cell">Variant</th>
+                <th className="hidden pb-3 px-2 font-medium sm:table-cell">Variant</th>
                 <th className="pb-3 px-2 font-medium">Sold</th>
                 <th className="pb-3 px-2 font-medium">Revenue</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border/40">
+            <tbody className="divide-y divide-border">
               {items.map((item) => (
-                <tr key={item.variantId} className="group hover:bg-muted/30">
+                <tr key={item.variantId} className="group hover:bg-muted/40">
                   <td className="py-3 pl-2">
                     <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-muted/50 overflow-hidden border border-border/50">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10">
                         {/* Placeholder for product image since it's not in the API response */}
-                        <Package className="h-5 w-5 text-muted-foreground/50" />
+                        <Package className="h-4 w-4 text-primary" />
                       </div>
-                      <span className="font-medium">{item.productName}</span>
+                      <span className="font-medium text-foreground">{item.productName}</span>
                     </div>
                   </td>
-                  <td className="py-3 px-2 text-muted-foreground hidden sm:table-cell">
+                  <td className="hidden py-3 px-2 text-muted-foreground sm:table-cell">
                     {item.variantName || "Default"}
                   </td>
                   <td className="py-3 px-2 font-medium">{item.quantitySold}</td>
@@ -481,6 +416,24 @@ export function AdminTopProductsPanel({
           </table>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Skeleton rows that mimic the avatar + two-line list layout. */
+function ListRowsSkeleton({ rows }: { rows: number }) {
+  return (
+    <div className="flex flex-col gap-4">
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} className="flex items-center gap-3">
+          <Skeleton className="h-9 w-9 rounded-full" />
+          <div className="flex-1 space-y-1.5">
+            <Skeleton className="h-3.5 w-1/3" />
+            <Skeleton className="h-3 w-1/4" />
+          </div>
+          <Skeleton className="h-3.5 w-14" />
+        </div>
+      ))}
     </div>
   );
 }
@@ -533,37 +486,43 @@ export function AdminSalesByCategoryPanel({
     percentage: item.sharePercent,
   }));
 
-  // Standard colors from reference design
+  // Theme chart tokens (defined in globals.css) — no raw hex.
   const COLORS = [
-    "#10b981",
-    "#3b82f6",
-    "#f59e0b",
-    "#8b5cf6",
-    "#ec4899",
-    "#14b8a6",
-    "#9ca3af",
+    "var(--chart-1)",
+    "var(--chart-2)",
+    "var(--chart-3)",
+    "var(--chart-4)",
+    "var(--chart-5)",
   ];
 
   const totalRevenue = chartData.reduce((acc, curr) => acc + curr.value, 0);
 
   return (
-    <div className="flex flex-col rounded-xl border border-border/40 bg-card p-5 shadow-sm">
-      <h2 className="mb-4 font-heading text-lg font-semibold text-foreground">
+    <div className="flex flex-col rounded-2xl border border-border bg-card p-4 transition-shadow hover:shadow-sm sm:p-5">
+      <h2 className="mb-4 text-sm font-semibold text-foreground">
         Sales by Category
       </h2>
 
       {loading ? (
-        <div className="flex h-[240px] w-full items-center justify-center">
-          <div className="h-6 w-6 animate-spin rounded-full border-2 border-zinc-900 border-t-transparent"></div>
+        <div className="flex items-center gap-6 py-6">
+          <Skeleton className="h-[160px] w-[160px] shrink-0 rounded-full" />
+          <div className="flex-1 space-y-3">
+            <Skeleton className="h-3.5 w-3/4" />
+            <Skeleton className="h-3.5 w-2/3" />
+            <Skeleton className="h-3.5 w-1/2" />
+          </div>
         </div>
       ) : error ? (
         <div className="flex h-[240px] w-full items-center justify-center text-sm text-destructive">
           {error}
         </div>
       ) : chartData.length === 0 ? (
-        <div className="flex h-[240px] w-full items-center justify-center text-sm text-muted-foreground">
-          No category sales data yet.
-        </div>
+        <EmptyState
+          icon={PieChartIcon}
+          headline="No category sales yet"
+          description="Category share will appear here once orders come in."
+          className="py-8"
+        />
       ) : (
         <div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-around">
           <div className="relative h-[180px] w-[180px] shrink-0">
@@ -582,6 +541,7 @@ export function AdminSalesByCategoryPanel({
                     <Cell
                       key={`cell-${index}`}
                       fill={COLORS[index % COLORS.length]}
+                      stroke="var(--card)"
                     />
                   ))}
                 </Pie>
@@ -590,25 +550,25 @@ export function AdminSalesByCategoryPanel({
                     value ? `₹${Number(value).toLocaleString()}` : "₹0"
                   }
                   contentStyle={{
-                    background: "#111827",
-                    color: "#fff",
+                    background: "var(--card)",
+                    color: "var(--foreground)",
                     borderRadius: "8px",
-                    border: "none",
+                    border: "1px solid var(--border)",
                   }}
                 />
               </PieChart>
             </AdminResponsiveContainer>
-            <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
-              <span className="text-[20px] font-bold text-foreground">
+            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
+              <span className="font-heading text-xl font-semibold tracking-tight text-foreground">
                 ₹{Math.round(totalRevenue).toLocaleString()}
               </span>
-              <span className="text-[9px] uppercase tracking-wider text-muted-foreground font-medium">
+              <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
                 Total Sales
               </span>
             </div>
           </div>
 
-          <div className="flex flex-1 flex-col gap-2.5 w-full">
+          <div className="flex w-full flex-1 flex-col gap-2.5">
             {chartData.slice(0, 5).map((item, index) => (
               <div
                 key={item.name}
@@ -616,10 +576,10 @@ export function AdminSalesByCategoryPanel({
               >
                 <div className="flex items-center gap-2">
                   <div
-                    className="h-3 w-3 rounded-full shrink-0"
+                    className="h-2.5 w-2.5 shrink-0 rounded-full"
                     style={{ backgroundColor: COLORS[index % COLORS.length] }}
                   />
-                  <span className="font-medium text-muted-foreground max-w-[120px] truncate">
+                  <span className="max-w-[120px] truncate font-medium text-muted-foreground">
                     {item.name}
                   </span>
                 </div>
@@ -665,73 +625,67 @@ export function AdminRecentOrdersPanel() {
   useAdminDataRefreshEffect(load, ADMIN_DASHBOARD_REFRESH_SCOPES);
 
   return (
-    <div className="flex flex-col rounded-xl border border-border/40 bg-card p-5 shadow-sm">
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="font-heading text-lg font-semibold">Recent Orders</h2>
-        <Link href="/admin/orders">
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8 text-xs font-medium"
-          >
-            View All
-          </Button>
+    <div className="flex flex-col rounded-2xl border border-border bg-card p-4 transition-shadow hover:shadow-sm sm:p-5">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <h2 className="text-sm font-semibold text-foreground">Recent Orders</h2>
+        <Link href="/admin/orders" className="text-sm font-medium text-primary hover:underline">
+          View all
         </Link>
       </div>
 
       {loading ? (
-        <div className="flex h-[240px] w-full items-center justify-center">
-          <div className="h-6 w-6 animate-spin rounded-full border-2 border-zinc-900 border-t-transparent"></div>
-        </div>
+        <ListRowsSkeleton rows={5} />
       ) : error ? (
         <div className="flex h-[240px] w-full items-center justify-center text-sm text-destructive">
           {error}
         </div>
       ) : orders.length === 0 ? (
-        <div className="flex h-[240px] w-full items-center justify-center text-sm text-muted-foreground">
-          No orders yet.
-        </div>
+        <EmptyState
+          icon={ShoppingCart}
+          headline="No orders yet"
+          description="New orders will show up here as customers check out."
+          className="py-8"
+        />
       ) : (
         <div className="flex flex-col gap-4">
           {orders.map((order) => (
             <div
               key={order.id}
-              className="flex items-center justify-between border-b border-border/20 pb-3 last:border-none last:pb-0 gap-2"
+              className="flex items-center justify-between gap-2 border-b border-border pb-3 last:border-none last:pb-0"
             >
-              <div className="flex items-center gap-3 min-w-0 flex-1 pr-2">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-muted/50 border border-border/50">
-                  <ShoppingCart className="h-5 w-5 text-muted-foreground/60" />
+              <div className="flex min-w-0 flex-1 items-center gap-3 pr-2">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                  {(order.customerName?.trim()?.charAt(0) || "#").toUpperCase()}
                 </div>
                 <div className="min-w-0">
                   <Link
                     href={`/admin/orders/${order.id}`}
-                    className="font-semibold text-foreground text-sm hover:underline block truncate"
+                    className="block truncate text-sm font-semibold text-foreground hover:underline"
                   >
                     {order.orderNumber}
                   </Link>
-                  <p className="text-xs text-muted-foreground font-medium truncate">
+                  <p className="truncate text-xs text-muted-foreground">
                     {order.customerName}
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-2 sm:gap-4 text-right shrink-0">
+              <div className="flex shrink-0 items-center gap-2 text-right sm:gap-4">
                 <div className="hidden sm:block">
-                  <span className="font-semibold text-sm text-foreground">
+                  <span className="text-sm font-semibold text-foreground">
                     {formatPaise(order.total)}
                   </span>
-                  <p className="text-[10px] text-muted-foreground font-medium truncate max-w-[80px] sm:max-w-none">
+                  <p className="max-w-[80px] truncate text-xs text-muted-foreground sm:max-w-none">
                     {order.paymentMode}
                   </p>
                 </div>
                 <div className="flex flex-col items-end sm:hidden">
-                  <span className="font-semibold text-sm text-foreground">
+                  <span className="text-sm font-semibold text-foreground">
                     {formatPaise(order.total)}
                   </span>
                 </div>
-                <AdminStatusBadge
-                  label={order.status}
-                  tone={orderStatusTone(order.status)}
-                />
+                <Badge variant={orderStatusTone(order.status)} dot>
+                  {order.status}
+                </Badge>
               </div>
             </div>
           ))}
@@ -770,69 +724,62 @@ export function AdminLowStockPanel() {
   useAdminDataRefreshEffect(load, ADMIN_DASHBOARD_REFRESH_SCOPES);
 
   return (
-    <div className="flex flex-col rounded-xl border border-border/40 bg-card p-5 shadow-sm">
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="font-heading text-lg font-semibold">Low Stock Alert</h2>
-        <Link href="/admin/inventory">
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8 text-xs font-medium"
-          >
-            View All
-          </Button>
+    <div className="flex flex-col rounded-2xl border border-border bg-card p-4 transition-shadow hover:shadow-sm sm:p-5">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <h2 className="text-sm font-semibold text-foreground">Low Stock Alert</h2>
+        <Link href="/admin/inventory" className="text-sm font-medium text-primary hover:underline">
+          View all
         </Link>
       </div>
 
       {loading ? (
-        <div className="flex h-[240px] w-full items-center justify-center">
-          <div className="h-6 w-6 animate-spin rounded-full border-2 border-zinc-900 border-t-transparent"></div>
-        </div>
+        <ListRowsSkeleton rows={5} />
       ) : error ? (
         <div className="flex h-[240px] w-full items-center justify-center text-sm text-destructive">
           {error}
         </div>
       ) : items.length === 0 ? (
-        <div className="flex h-[240px] w-full items-center justify-center text-sm text-zinc-900 font-medium">
-          ✓ All inventory stock is healthy
-        </div>
+        <EmptyState
+          icon={PackageCheck}
+          headline="All stock is healthy"
+          description="Variants that fall below their low-stock threshold will appear here."
+          className="py-8"
+        />
       ) : (
         <div className="flex flex-col gap-4">
           {items.map((row) => (
             <div
               key={row.id}
-              className="flex items-center justify-between border-b border-border/20 pb-3 last:border-none last:pb-0 gap-2"
+              className="flex items-center justify-between gap-2 border-b border-border pb-3 last:border-none last:pb-0"
             >
-              <div className="flex items-center gap-3 min-w-0 flex-1 pr-2">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-rose-50 border border-rose-100">
-                  <Package className="h-5 w-5 text-rose-500" />
+              <div className="flex min-w-0 flex-1 items-center gap-3 pr-2">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-500/10">
+                  <Package className="h-4 w-4 text-amber-600" />
                 </div>
                 <div className="min-w-0">
-                  <p className="font-semibold text-sm text-foreground truncate">
+                  <p className="truncate text-sm font-semibold text-foreground">
                     {row.variant.product.name}
                   </p>
-                  <p className="text-xs text-muted-foreground font-medium truncate">
+                  <p className="truncate text-xs text-muted-foreground">
                     {row.variant.name}
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-2 sm:gap-4 text-right shrink-0">
+              <div className="flex shrink-0 items-center gap-2 text-right sm:gap-4">
                 <div className="hidden sm:block">
-                  <span className="font-bold text-sm text-rose-600">
+                  <span className="text-sm font-semibold text-foreground">
                     {row.quantity}
                   </span>
-                  <p className="text-[10px] text-muted-foreground font-medium">
-                    In Stock
-                  </p>
+                  <p className="text-xs text-muted-foreground">In Stock</p>
                 </div>
                 <div className="flex flex-col items-end sm:hidden">
-                  <span className="font-bold text-sm text-rose-600">
+                  <span className="text-sm font-semibold text-foreground">
                     {row.quantity}
                   </span>
                 </div>
-                <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-600 border border-rose-100 uppercase">
-                  Low
-                </span>
+                <Badge variant={row.quantity === 0 ? "destructive" : "warning"} dot>
+                  {row.quantity === 0 ? "Out of Stock" : "Low Stock"}
+                </Badge>
               </div>
             </div>
           ))}

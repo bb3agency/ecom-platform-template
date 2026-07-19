@@ -23,7 +23,16 @@ import {
   HelpCircle,
   GripVertical,
   Sparkles,
+  Info,
+  IndianRupee,
+  Layers,
+  Rocket,
+  Eye,
+  ClipboardList,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { AdminRowActionsMenu } from "@/components/admin/AdminRowActionsMenu";
 import { useCallback, useEffect, useState } from "react";
 import { useAdminAuth } from "@/contexts/admin-auth-context";
@@ -72,9 +81,9 @@ import {
 } from "@/lib/media-url";
 
 const inputClass =
-  "h-10 w-full rounded-md border border-border/50 bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-zinc-900/20";
+  "h-9 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground transition-colors placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-60";
 const textareaClass =
-  "min-h-[96px] w-full rounded-md border border-border bg-background px-3 py-2 text-sm";
+  "min-h-[96px] w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground transition-colors placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-60";
 
 function slugify(value: string): string {
   return value
@@ -1156,23 +1165,25 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
           {!isCreate && canWrite && (
             <div className="flex gap-1">
               {status === "Active" ? (
-                <button
-                  type="button"
+                <Button
+                  variant="outline"
+                  size="lg"
                   onClick={() => void deleteProduct()}
                   disabled={saving}
-                  className="h-9 flex-1 rounded-md bg-zinc-900 px-4 text-sm font-semibold text-white transition-colors hover:bg-zinc-800 disabled:opacity-60 sm:flex-none"
+                  className="flex-1 px-4 sm:flex-none"
                 >
                   Deactivate
-                </button>
+                </Button>
               ) : (
-                <button
-                  type="button"
+                <Button
+                  variant="outline"
+                  size="lg"
                   onClick={() => void restoreProduct()}
                   disabled={saving}
-                  className="h-9 flex-1 rounded-md bg-zinc-900 px-4 text-sm font-semibold text-white transition-colors hover:bg-zinc-800 disabled:opacity-60 sm:flex-none"
+                  className="flex-1 px-4 sm:flex-none"
                 >
                   Restore
-                </button>
+                </Button>
               )}
               <AdminRowActionsMenu
                 disabled={saving}
@@ -1182,24 +1193,22 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
             </div>
           )}
           <Link href="/admin/products" className="flex-1 sm:flex-none">
-            <button
-              type="button"
-              className="h-9 w-full rounded-md border border-border bg-background px-4 text-sm font-semibold text-foreground transition-colors hover:bg-muted/50"
-            >
+            <Button variant="outline" size="lg" className="w-full px-4">
               Cancel
-            </button>
+            </Button>
           </Link>
           {canWrite ? (
-            <button
-              type="button"
+            <Button
+              size="lg"
               onClick={() => void saveCoreFields()}
-              disabled={saving || loading}
-              className="flex h-9 flex-1 items-center justify-center gap-2 rounded-md bg-zinc-900 px-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-zinc-800 disabled:opacity-60 sm:flex-none"
+              loading={saving}
+              disabled={loading}
+              className="flex-1 px-4 sm:flex-none"
             >
-              {saving ? "Saving…" : isCreate ? "Save Product" : "Save Changes"}
-            </button>
+              {isCreate ? "Save Product" : "Save Changes"}
+            </Button>
           ) : (
-            <span className="text-xs text-muted-foreground">Read-only</span>
+            <Badge variant="outline">Read-only</Badge>
           )}
         </div>
       </header>
@@ -1211,9 +1220,9 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
         <div
           role="status"
           aria-live="polite"
-          className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-800 shadow-lg animate-in fade-in slide-in-from-bottom-2"
+          className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-700 shadow-lg animate-in fade-in slide-in-from-bottom-2"
         >
-          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-green-600 text-white">
+          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-600 text-white">
             <Check className="h-4 w-4" />
           </span>
           Image uploaded
@@ -1221,8 +1230,16 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
       ) : null}
 
       {loading ? (
-        <div className="flex h-[400px] w-full items-center justify-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-zinc-900 border-t-transparent"></div>
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <div className="flex flex-col gap-6 lg:col-span-2">
+            <Skeleton className="h-72 w-full rounded-2xl" />
+            <Skeleton className="h-56 w-full rounded-2xl" />
+            <Skeleton className="h-48 w-full rounded-2xl" />
+          </div>
+          <div className="flex flex-col gap-6">
+            <Skeleton className="h-48 w-full rounded-2xl" />
+            <Skeleton className="h-40 w-full rounded-2xl" />
+          </div>
         </div>
       ) : (
         // min-w-0 on grid children: grid items default to min-width:auto, so wide inner
@@ -1232,20 +1249,26 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
           {/* Left Column - 2/3 Width */}
           <div className="flex min-w-0 flex-col gap-6 lg:col-span-2">
             {/* Basic Information Section */}
-            <div className="rounded-xl border border-border/40 bg-card p-5 shadow-sm flex flex-col gap-4">
-              <h3 className="font-heading text-base font-bold text-foreground">
-                Basic Information
-              </h3>
+            <div id="section-basic" className="rounded-2xl border border-border bg-card p-5 flex flex-col gap-4">
+              <div className="flex flex-col gap-0.5">
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <Info className="h-4 w-4 text-muted-foreground" />
+                  Basic Information
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Name, category, slug and descriptions shown on the storefront.
+                </p>
+              </div>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <label
                   data-admin-field-label="name"
                   className={cn(
-                    "grid gap-1.5 text-xs font-bold text-muted-foreground uppercase tracking-wider",
+                    "grid gap-1.5 text-sm font-medium text-foreground",
                     getFieldError("name") && "rounded-md ring-2 ring-destructive/20",
                   )}
                 >
-                  Product Name <span className="text-rose-500">*</span>
+                  Product Name <span className="text-destructive">*</span>
                   <input
                     data-admin-field="name"
                     aria-invalid={Boolean(getFieldError("name"))}
@@ -1268,11 +1291,11 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                 <label
                   data-admin-field-label="sku"
                   className={cn(
-                    "grid gap-1.5 text-xs font-bold text-muted-foreground uppercase tracking-wider",
+                    "grid gap-1.5 text-sm font-medium text-foreground",
                     getFieldError("sku") && "rounded-md ring-2 ring-destructive/20",
                   )}
                 >
-                  SKU <span className="text-rose-500">*</span>
+                  SKU <span className="text-destructive">*</span>
                   <input
                     data-admin-field="sku"
                     aria-invalid={Boolean(getFieldError("sku"))}
@@ -1302,11 +1325,11 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                 <label
                   data-admin-field-label="categoryId"
                   className={cn(
-                    "grid gap-1.5 text-xs font-bold text-muted-foreground uppercase tracking-wider",
+                    "grid gap-1.5 text-sm font-medium text-foreground",
                     getFieldError("categoryId") && "rounded-md ring-2 ring-destructive/20",
                   )}
                 >
-                  Category <span className="text-rose-500">*</span>
+                  Category <span className="text-destructive">*</span>
                   <select
                     data-admin-field="categoryId"
                     aria-invalid={Boolean(getFieldError("categoryId"))}
@@ -1345,11 +1368,11 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                 <label
                   data-admin-field-label="slug"
                   className={cn(
-                    "grid gap-1.5 text-xs font-bold text-muted-foreground uppercase tracking-wider",
+                    "grid gap-1.5 text-sm font-medium text-foreground",
                     getFieldError("slug") && "rounded-md ring-2 ring-destructive/20",
                   )}
                 >
-                  URL Slug <span className="text-rose-500">*</span>
+                  URL Slug <span className="text-destructive">*</span>
                   <input
                     data-admin-field="slug"
                     aria-invalid={Boolean(getFieldError("slug"))}
@@ -1373,7 +1396,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                 {/* Storefront link — only shown for existing products with a saved slug */}
                 {!isCreate && slug ? (
                   <div className="grid min-w-0 grid-cols-1 gap-1.5">
-                    <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                    <span className="text-sm font-medium text-foreground">
                       Storefront Link
                     </span>
                     <AdminCopyLinkButton
@@ -1383,11 +1406,11 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                 ) : null}
               </div>
 
-              <label className="grid min-w-0 grid-cols-1 gap-1.5 text-xs font-bold text-muted-foreground uppercase tracking-wider">
+              <label className="grid min-w-0 grid-cols-1 gap-1.5 text-sm font-medium text-foreground">
                 Short Description
                 <div className="relative">
                   <textarea
-                    className={`${textareaClass} border-border/50 text-foreground resize-none pr-12`}
+                    className={`${textareaClass}  resize-none pr-12`}
                     placeholder="A short description about the product..."
                     maxLength={500}
                     value={shortDesc}
@@ -1402,7 +1425,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
 
               {gstInvoicingEnabled ? (
                 <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">
-                  <label className="grid min-w-0 grid-cols-1 gap-1.5 text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                  <label className="grid min-w-0 grid-cols-1 gap-1.5 text-sm font-medium text-foreground">
                     GST Rate (%)
                     <input
                       type="number"
@@ -1425,7 +1448,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                   getFieldError("hsnCode") && "rounded-md ring-2 ring-destructive/20",
                 )}
               >
-                <label className="grid gap-1.5 text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                <label className="grid gap-1.5 text-sm font-medium text-foreground">
                   HSN Code (optional)
                   <input
                     type="text"
@@ -1458,10 +1481,10 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                           .catch(() => setHsnSuggestions([]))
                           .finally(() => setHsnSuggestLoading(false));
                       }}
-                      className="flex w-fit items-center gap-1.5 rounded-md border border-dashed border-border px-2.5 py-1 text-[11px] font-semibold text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground disabled:opacity-50 cursor-pointer"
+                      className="flex h-7 w-fit items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50 cursor-pointer"
                       title="Suggests HSN codes from the product name (or the digits typed above) using the Harmonized System nomenclature"
                     >
-                      <Sparkles className="h-3 w-3" />
+                      <Sparkles className="h-3.5 w-3.5" />
                       {hsnSuggestLoading ? "Finding HSN codes…" : "Suggest HSN from product name"}
                     </button>
                     {hsnSuggestQueried && !hsnSuggestLoading && hsnSuggestions.length === 0 ? (
@@ -1471,25 +1494,30 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                       </p>
                     ) : null}
                     {hsnSuggestions.length > 0 ? (
-                      <div className="grid gap-1">
-                        {hsnSuggestions.map((s) => (
-                          <button
-                            key={s.code}
-                            type="button"
-                            onClick={() => {
-                              setHsnCode(s.code);
-                              setHsnSuggestions([]);
-                              setHsnSuggestQueried(false);
-                            }}
-                            className="flex items-start gap-2 rounded-md border border-border bg-muted/20 px-2.5 py-1.5 text-left transition-colors hover:border-primary/50 hover:bg-muted/40 cursor-pointer"
-                            title="Click to fill the HSN field"
-                          >
-                            <span className="shrink-0 font-mono text-xs font-bold text-primary">{s.code}</span>
-                            <span className="min-w-0 text-[11px] normal-case font-normal leading-snug text-muted-foreground">
-                              {s.description}
-                            </span>
-                          </button>
-                        ))}
+                      <div className="rounded-lg bg-sky-500/10 p-2.5">
+                        <p className="mb-1.5 text-xs font-medium text-sky-700">
+                          Click a suggestion to fill the HSN field
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {hsnSuggestions.map((s) => (
+                            <button
+                              key={s.code}
+                              type="button"
+                              onClick={() => {
+                                setHsnCode(s.code);
+                                setHsnSuggestions([]);
+                                setHsnSuggestQueried(false);
+                              }}
+                              className="flex max-w-full items-center gap-2 rounded-full border border-border bg-muted px-2.5 py-1 text-left text-xs transition-colors hover:bg-primary/10 hover:text-primary cursor-pointer"
+                              title={s.description}
+                            >
+                              <span className="shrink-0 font-mono font-semibold">{s.code}</span>
+                              <span className="min-w-0 truncate normal-case font-normal text-muted-foreground">
+                                {s.description}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     ) : null}
                   </div>
@@ -1499,16 +1527,16 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
               <label
                 data-admin-field-label="description"
                 className={cn(
-                  "grid gap-1.5 text-xs font-bold text-muted-foreground uppercase tracking-wider",
+                  "grid gap-1.5 text-sm font-medium text-foreground",
                   getFieldError("description") && "rounded-md ring-2 ring-destructive/20",
                 )}
               >
-                Description <span className="text-rose-500">*</span>
+                Description <span className="text-destructive">*</span>
                 <div
                   className={`rounded-lg border bg-background overflow-hidden ${
                     getFieldError("description")
                       ? "border-destructive ring-2 ring-destructive/25"
-                      : "border-border/50"
+                      : "border-input"
                   }`}
                 >
                   {/* Styled Editor Toolbar */}
@@ -1624,16 +1652,23 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
             {/* Pricing & Inventory Section */}
             <div
               data-admin-field-label="variants"
+              id="section-pricing"
               className={cn(
-                "rounded-xl border bg-card p-5 shadow-sm flex flex-col gap-4",
+                "rounded-2xl border bg-card p-5 flex flex-col gap-4",
                 pricingSectionHasError
                   ? "border-destructive ring-2 ring-destructive/20"
-                  : "border-border/40",
+                  : "border-border",
               )}
             >
-              <h3 className="font-heading text-base font-bold text-foreground">
-                Pricing & Inventory
-              </h3>
+              <div className="flex flex-col gap-0.5">
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <IndianRupee className="h-4 w-4 text-muted-foreground" />
+                  Pricing & Inventory
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Price, stock and shipping dimensions for the primary variant.
+                </p>
+              </div>
               {getFieldError("variants") ? (
                 <p className="text-xs font-medium text-destructive" role="alert">
                   {getFieldError("variants")}
@@ -1644,11 +1679,11 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                 <label
                   data-admin-field-label="price"
                   className={cn(
-                    "grid gap-1.5 text-xs font-bold text-muted-foreground uppercase tracking-wider",
+                    "grid gap-1.5 text-sm font-medium text-foreground",
                     getFieldError("price") && "rounded-md ring-2 ring-destructive/20",
                   )}
                 >
-                  Price <span className="text-rose-500">*</span>
+                  Price <span className="text-destructive">*</span>
                   <div className="relative flex items-center">
                     <span className="absolute left-3 text-muted-foreground font-medium text-sm">
                       ₹
@@ -1681,7 +1716,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                   ) : null}
                 </label>
 
-                <label className="grid min-w-0 grid-cols-1 gap-1.5 text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                <label className="grid min-w-0 grid-cols-1 gap-1.5 text-sm font-medium text-foreground">
                   <span className="flex items-center gap-1">
                     Compare at Price
                     <span className="normal-case font-medium text-muted-foreground/70">(optional)</span>
@@ -1694,7 +1729,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                       ₹
                     </span>
                     <input
-                      className={`${inputClass} border-border/50 text-foreground pl-7`}
+                      className={`${inputClass}  pl-7`}
                       placeholder="0.00"
                       value={
                         isCreate
@@ -1718,7 +1753,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
               </div>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 items-center">
-                <label className="grid min-w-0 grid-cols-1 gap-1.5 text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                <label className="grid min-w-0 grid-cols-1 gap-1.5 text-sm font-medium text-foreground">
                   <span className="flex items-center gap-1">
                     Weight (g)
                     <span title="Weight in grams — required for shipping rate calculation.">
@@ -1726,7 +1761,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                     </span>
                   </span>
                   <input
-                    className={`${inputClass} border-border/50 text-foreground`}
+                    className={`${inputClass} `}
                     type="number"
                     min="1"
                     placeholder="e.g. 500"
@@ -1745,10 +1780,10 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                     disabled={!canWrite}
                   />
                 </label>
-                <label className="grid min-w-0 grid-cols-1 gap-1.5 text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                <label className="grid min-w-0 grid-cols-1 gap-1.5 text-sm font-medium text-foreground">
                   Box Length (cm)
                   <input
-                    className={`${inputClass} border-border/50 text-foreground`}
+                    className={`${inputClass} `}
                     type="number"
                     min="1"
                     placeholder="15"
@@ -1767,10 +1802,10 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                     disabled={!canWrite}
                   />
                 </label>
-                <label className="grid min-w-0 grid-cols-1 gap-1.5 text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                <label className="grid min-w-0 grid-cols-1 gap-1.5 text-sm font-medium text-foreground">
                   Box Width (cm)
                   <input
-                    className={`${inputClass} border-border/50 text-foreground`}
+                    className={`${inputClass} `}
                     type="number"
                     min="1"
                     placeholder="15"
@@ -1789,10 +1824,10 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                     disabled={!canWrite}
                   />
                 </label>
-                <label className="grid min-w-0 grid-cols-1 gap-1.5 text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                <label className="grid min-w-0 grid-cols-1 gap-1.5 text-sm font-medium text-foreground">
                   Box Height (cm)
                   <input
-                    className={`${inputClass} border-border/50 text-foreground`}
+                    className={`${inputClass} `}
                     type="number"
                     min="1"
                     placeholder="10"
@@ -1811,10 +1846,10 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                     disabled={!canWrite}
                   />
                 </label>
-                <label className="flex items-center gap-2 text-xs font-bold text-muted-foreground uppercase tracking-wider sm:col-span-2">
+                <label className="flex items-center gap-2 text-sm font-medium text-foreground sm:col-span-2">
                   <input
                     type="checkbox"
-                    className="h-4 w-4 rounded border-border/50"
+                    className="h-4 w-4 rounded-sm border-input"
                     checked={
                       isCreate
                         ? createVariants[0]?.keepUpright ?? false
@@ -1831,10 +1866,10 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                   />
                   Keep upright (fragile / this-side-up)
                 </label>
-                <label className="grid min-w-0 grid-cols-1 gap-1.5 text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                  Stock Quantity <span className="text-rose-500">*</span>
+                <label className="grid min-w-0 grid-cols-1 gap-1.5 text-sm font-medium text-foreground">
+                  Stock Quantity <span className="text-destructive">*</span>
                   <input
-                    className={`${inputClass} border-border/50 text-foreground`}
+                    className={`${inputClass} `}
                     type="text"
                     placeholder={!isCreate ? "Managed in Inventory" : "0"}
                     value={
@@ -1852,10 +1887,10 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                   />
                 </label>
 
-                <label className="grid min-w-0 grid-cols-1 gap-1.5 text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                <label className="grid min-w-0 grid-cols-1 gap-1.5 text-sm font-medium text-foreground">
                   Low Stock Threshold
                   <input
-                    className={`${inputClass} border-border/50 text-foreground`}
+                    className={`${inputClass} `}
                     type="number"
                     min="0"
                     placeholder="10"
@@ -1870,14 +1905,17 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
             </div>
 
             {/* Product Images Section */}
-            <div className="rounded-xl border border-border/40 bg-card p-5 shadow-sm flex flex-col gap-4">
-              <h3 className="font-heading text-base font-bold text-foreground">
-                Product Images
-              </h3>
-              <p className="text-xs text-muted-foreground font-medium -mt-2">
-                Upload high-quality images of your product. You can drag and
-                drop or click to browse.
-              </p>
+            <div id="section-images" className="rounded-2xl border border-border bg-card p-5 flex flex-col gap-4">
+              <div className="flex flex-col gap-0.5">
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                  Product Images
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Upload high-quality images of your product. You can drag and
+                  drop or click to browse.
+                </p>
+              </div>
 
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
                 {/* Upload Box Component — at the image limit the dropzone would
@@ -1895,7 +1933,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                     </span>
                   </div>
                 ) : (
-                  <div className="relative flex flex-col items-center justify-center border-2 border-dashed border-border/60 hover:border-zinc-900/50 rounded-xl bg-muted/5 p-4 transition-colors cursor-pointer group text-center min-h-[120px]">
+                  <div className="relative flex flex-col items-center justify-center border-2 border-dashed border-border hover:border-primary/50 rounded-xl bg-muted/30 p-4 transition-colors cursor-pointer group text-center min-h-[120px]">
                     <input
                       type="file"
                       accept={PRODUCT_IMAGE_ACCEPT}
@@ -1914,13 +1952,13 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                         }
                       }}
                     />
-                    <UploadCloud className="h-6 w-6 text-muted-foreground group-hover:text-zinc-900 transition-colors mb-1.5" />
-                    <span className="text-[10px] font-bold text-muted-foreground group-hover:text-zinc-800">
+                    <UploadCloud className="h-6 w-6 text-muted-foreground group-hover:text-primary transition-colors mb-1.5" />
+                    <span className="text-[10px] font-bold text-muted-foreground group-hover:text-foreground">
                       Drag & drop here
                     </span>
                     <span className="text-[9px] text-muted-foreground mt-0.5 font-medium">
                       or{" "}
-                      <span className="text-zinc-900 underline font-semibold">
+                      <span className="text-primary underline font-semibold">
                         Browse Files
                       </span>
                     </span>
@@ -1932,7 +1970,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                   ? createImageFiles.map((entry, index) => (
                       <div
                         key={index}
-                        className="relative aspect-square rounded-xl overflow-hidden border border-border/50 group"
+                        className="relative aspect-square rounded-xl overflow-hidden border border-border group"
                       >
                         <Image
                           src={entry.previewUrl}
@@ -1942,7 +1980,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                           className="object-cover"
                         />
                         {index === 0 && (
-                          <span className="absolute top-2 left-2 bg-zinc-900 text-[9px] font-bold text-white px-2 py-0.5 rounded-full shadow-sm">
+                          <span className="absolute top-2 left-2 bg-primary text-[9px] font-bold text-primary-foreground px-2 py-0.5 rounded-full shadow-sm">
                             Primary
                           </span>
                         )}
@@ -1965,7 +2003,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                       .map((image, index) => (
                         <div
                           key={image.id}
-                          className="relative aspect-square rounded-xl overflow-hidden border border-border/50 group"
+                          className="relative aspect-square rounded-xl overflow-hidden border border-border group"
                         >
                           <Image
                             src={resolveProductImageUrl(image.url)}
@@ -1974,7 +2012,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                             className="object-cover"
                           />
                           {index === 0 && (
-                            <span className="absolute top-2 left-2 bg-zinc-900 text-[9px] font-bold text-white px-2 py-0.5 rounded-full shadow-sm z-10">
+                            <span className="absolute top-2 left-2 bg-primary text-[9px] font-bold text-primary-foreground px-2 py-0.5 rounded-full shadow-sm z-10">
                               Primary
                             </span>
                           )}
@@ -2053,21 +2091,22 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                   </summary>
                   <div className="mt-2.5 flex gap-2">
                     <input
-                      className={`${inputClass} border-border/50 text-foreground text-xs flex-1`}
+                      className={`${inputClass}  text-xs flex-1`}
                       placeholder="https://example.com/banana.jpg"
                       value={newImage.url}
                       onChange={(e) =>
                         setNewImage({ ...newImage, url: e.target.value })
                       }
                     />
-                    <button
-                      type="button"
+                    <Button
+                      variant="outline"
+                      size="lg"
                       disabled={saving}
                       onClick={() => void addImageByUrl()}
-                      className="h-10 rounded-md border border-border bg-background px-4 text-xs font-bold text-foreground hover:bg-muted/50"
+                      className="px-4"
                     >
                       Add URL
-                    </button>
+                    </Button>
                   </div>
                 </details>
               )}
@@ -2075,8 +2114,9 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
 
             {/* Variants table for edit mode so we don't lose variant editing capability */}
             {!isCreate && product && (
-              <div className="rounded-xl border border-border/40 bg-card p-5 shadow-sm flex flex-col gap-4">
-                <h3 className="font-heading text-base font-bold text-foreground">
+              <div id="section-variants" className="rounded-2xl border border-border bg-card p-5 flex flex-col gap-4">
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <Layers className="h-4 w-4 text-muted-foreground" />
                   Manage All Product Variants
                 </h3>
                 {canWrite ? (
@@ -2087,25 +2127,25 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                     they appear — the product page and product cards.
                   </p>
                 ) : null}
-                <AdminTableScroll className="rounded-lg border border-border/50">
+                <AdminTableScroll className="rounded-lg border border-border">
                   <table className="w-full min-w-[1220px] text-left text-sm">
-                    <thead className="border-b border-border/40 bg-muted/20 text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                    <thead className="sticky top-0 z-10 border-b border-border bg-card text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                       <tr>
                         <th className="w-8 px-2 py-3" aria-label="Reorder" />
                         <th className="px-3 py-3">SKU</th>
                         <th className="px-3 py-3">Name</th>
-                        <th className="px-3 py-3">Price (₹)</th>
-                        <th className="px-3 py-3">Cmp. At (₹)</th>
-                        <th className="px-3 py-3">Weight (g)</th>
-                        <th className="px-3 py-3">L (cm)</th>
-                        <th className="px-3 py-3">W (cm)</th>
-                        <th className="px-3 py-3">H (cm)</th>
+                        <th className="px-3 py-3 text-right">Price (₹)</th>
+                        <th className="px-3 py-3 text-right">Cmp. At (₹)</th>
+                        <th className="px-3 py-3 text-right">Weight (g)</th>
+                        <th className="px-3 py-3 text-right">L (cm)</th>
+                        <th className="px-3 py-3 text-right">W (cm)</th>
+                        <th className="px-3 py-3 text-right">H (cm)</th>
                         <th className="px-3 py-3">Upright</th>
                         <th className="px-3 py-3">Active</th>
                         <th className="px-3 py-3 text-right">Actions</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-border/20">
+                    <tbody className="divide-y divide-border/40">
                       {product.variants.map((variant) => (
                         <VariantEditRow
                           key={variant.id}
@@ -2124,9 +2164,9 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                   </table>
                 </AdminTableScroll>
                 {canWrite ? (
-                  <div className="mt-4 grid grid-cols-1 items-center gap-3 rounded-lg border border-dashed border-border/60 bg-muted/5 p-4 sm:grid-cols-2 md:grid-cols-6">
+                  <div className="mt-4 grid grid-cols-1 items-center gap-3 rounded-lg border border-dashed border-border bg-muted/30 p-4 sm:grid-cols-2 md:grid-cols-6">
                     <input
-                      className={`${inputClass} border-border/50 text-foreground font-mono`}
+                      className={`${inputClass}  font-mono`}
                       placeholder="New SKU"
                       value={newVariant.sku}
                       onChange={(event) =>
@@ -2137,7 +2177,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                       }
                     />
                     <input
-                      className={`${inputClass} border-border/50 text-foreground`}
+                      className={`${inputClass} `}
                       placeholder="Variant Name"
                       value={newVariant.name}
                       onChange={(event) =>
@@ -2152,7 +2192,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                         ₹
                       </span>
                       <input
-                        className={`${inputClass} border-border/50 text-foreground pl-7`}
+                        className={`${inputClass}  pl-7`}
                         placeholder="Price"
                         value={newVariant.pricePaise}
                         onChange={(event) =>
@@ -2168,7 +2208,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                         ₹
                       </span>
                       <input
-                        className={`${inputClass} border-border/50 text-foreground pl-7`}
+                        className={`${inputClass}  pl-7`}
                         placeholder="Compare-at"
                         value={newVariant.compareAtPricePaise}
                         onChange={(event) =>
@@ -2180,7 +2220,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                       />
                     </div>
                     <input
-                      className={`${inputClass} border-border/50 text-foreground`}
+                      className={`${inputClass} `}
                       type="number"
                       min="1"
                       placeholder="Weight (g)"
@@ -2193,7 +2233,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                       }
                     />
                     <input
-                      className={`${inputClass} border-border/50 text-foreground`}
+                      className={`${inputClass} `}
                       type="number"
                       min="1"
                       placeholder="Box Length (cm)"
@@ -2206,7 +2246,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                       }
                     />
                     <input
-                      className={`${inputClass} border-border/50 text-foreground`}
+                      className={`${inputClass} `}
                       type="number"
                       min="1"
                       placeholder="Box Width (cm)"
@@ -2219,7 +2259,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                       }
                     />
                     <input
-                      className={`${inputClass} border-border/50 text-foreground`}
+                      className={`${inputClass} `}
                       type="number"
                       min="1"
                       placeholder="Box Height (cm)"
@@ -2234,7 +2274,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                     <label className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
                       <input
                         type="checkbox"
-                        className="h-4 w-4 rounded border-border/50"
+                        className="h-4 w-4 rounded-sm border-input"
                         checked={newVariant.keepUpright}
                         onChange={(event) =>
                           setNewVariant({
@@ -2245,14 +2285,15 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                       />
                       Keep upright (fragile / this-side-up)
                     </label>
-                    <button
-                      type="button"
+                    <Button
+                      size="lg"
                       disabled={saving}
                       onClick={() => void addVariant()}
-                      className="h-10 rounded-md bg-zinc-900 px-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-zinc-800 disabled:opacity-60"
+                      className="px-4"
                     >
+                      <Plus className="h-4 w-4" />
                       Add Variant
-                    </button>
+                    </Button>
                   </div>
                 ) : null}
               </div>
@@ -2262,9 +2303,10 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
           {/* Right Column - 1/3 Width */}
           <div className="flex min-w-0 flex-col gap-6 lg:col-span-1">
             {/* Publish Control Card */}
-            <div className="rounded-xl border border-border/40 bg-card p-5 shadow-sm flex flex-col gap-4">
-              <div className="flex items-center justify-between border-b border-border/20 pb-2.5">
-                <h3 className="font-heading text-base font-bold text-foreground">
+            <div id="section-publish" className="rounded-2xl border border-border bg-card p-5 flex flex-col gap-4">
+              <div className="flex items-center justify-between border-b border-border pb-2.5">
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <Rocket className="h-4 w-4 text-muted-foreground" />
                   Publish
                 </h3>
                 <ChevronDown className="h-4 w-4 text-muted-foreground" />
@@ -2274,7 +2316,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                 <label className="grid min-w-0 grid-cols-1 gap-1 text-muted-foreground">
                   Status
                   <select
-                    className={`${inputClass} border-border/50 text-foreground mt-1.5 font-bold`}
+                    className={`${inputClass}  mt-1.5 font-bold`}
                     value={status}
                     onChange={(e) => setStatus(e.target.value)}
                     disabled={!canWrite}
@@ -2285,7 +2327,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                 </label>
 
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                  <span className="text-sm font-medium text-foreground">
                     Featured
                   </span>
                   <button
@@ -2311,8 +2353,8 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                 <div
                   className={`rounded-xl border p-3 flex items-center gap-2 text-xs font-semibold ${
                     status === "Active"
-                      ? "bg-emerald-50 border-emerald-200 text-emerald-700"
-                      : "bg-amber-50 border-amber-100 text-amber-700"
+                      ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-700"
+                      : "bg-amber-500/10 border-amber-500/30 text-amber-700"
                   }`}
                 >
                   <Check className="h-4 w-4 shrink-0" />
@@ -2326,8 +2368,9 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
             </div>
 
             {/* Product Live Preview Card */}
-            <div className="rounded-xl border border-border/40 bg-card p-5 shadow-sm flex flex-col gap-4">
-              <h3 className="font-heading text-base font-bold text-foreground">
+            <div className="rounded-2xl border border-border bg-card p-5 flex flex-col gap-4">
+              <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                <Eye className="h-4 w-4 text-muted-foreground" />
                 Product Preview
               </h3>
 
@@ -2364,7 +2407,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                   <h4 className="font-semibold text-foreground text-sm truncate">
                     {name || "Banana Bunch"}
                   </h4>
-                  <p className="font-bold text-zinc-900 text-sm mt-0.5">
+                  <p className="font-bold text-foreground text-sm mt-0.5">
                     ₹
                     {isCreate
                       ? createVariants[0]?.pricePaise
@@ -2385,23 +2428,18 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
             </div>
 
             {/* Summary Information Card */}
-            <div className="rounded-xl border border-border/40 bg-card p-5 shadow-sm flex flex-col gap-4">
-              <h3 className="font-heading text-base font-bold text-foreground">
+            <div className="rounded-2xl border border-border bg-card p-5 flex flex-col gap-4">
+              <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                <ClipboardList className="h-4 w-4 text-muted-foreground" />
                 Summary
               </h3>
 
               <div className="flex flex-col gap-3.5 text-xs font-bold text-muted-foreground">
                 <div className="flex items-center justify-between border-b border-border/10 pb-1.5">
                   <span>Status</span>
-                  <span
-                    className={`font-semibold ${
-                      status === "Active"
-                        ? "text-emerald-600"
-                        : "text-amber-600"
-                    }`}
-                  >
+                  <Badge variant={status === "Active" ? "success" : "warning"} dot>
                     {status}
-                  </span>
+                  </Badge>
                 </div>
 
                 <div className="flex items-center justify-between border-b border-border/10 pb-1.5">
@@ -2411,13 +2449,9 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
 
                 <div className="flex items-center justify-between border-b border-border/10 pb-1.5">
                   <span>Featured</span>
-                  <span
-                    className={
-                      isFeatured ? "text-emerald-600" : "text-foreground"
-                    }
-                  >
+                  <Badge variant={isFeatured ? "success" : "default"}>
                     {isFeatured ? "Yes" : "No"}
-                  </span>
+                  </Badge>
                 </div>
 
                 <div className="flex items-center justify-between border-b border-border/10 pb-1.5">
@@ -2518,7 +2552,7 @@ function VariantEditRow({
   return (
     <tr
       className={cn(
-        "border-b border-border last:border-0",
+        "border-b border-border transition-colors last:border-0 hover:bg-muted/40",
         dragOver && "bg-primary/5",
       )}
       onDragOver={(event) => {
@@ -2554,7 +2588,7 @@ function VariantEditRow({
       </td>
       <td className="px-3 py-2">
         <input
-          className={`${inputClass} min-w-[110px]`}
+          className={`${inputClass} h-8 min-w-[110px] font-mono text-xs`}
           value={draft.sku}
           onChange={(event) => setDraft({ ...draft, sku: event.target.value })}
           disabled={!canWrite}
@@ -2562,7 +2596,7 @@ function VariantEditRow({
       </td>
       <td className="px-3 py-2">
         <input
-          className={`${inputClass} min-w-[140px]`}
+          className={`${inputClass} h-8 min-w-[140px]`}
           value={draft.name}
           onChange={(event) => setDraft({ ...draft, name: event.target.value })}
           disabled={!canWrite}
@@ -2570,7 +2604,7 @@ function VariantEditRow({
       </td>
       <td className="px-3 py-2">
         <input
-          className={`${inputClass} min-w-[104px]`}
+          className={`${inputClass} h-8 min-w-[104px] text-right`}
           value={draft.pricePaise}
           onChange={(event) =>
             setDraft({ ...draft, pricePaise: event.target.value })
@@ -2583,7 +2617,7 @@ function VariantEditRow({
       </td>
       <td className="px-3 py-2">
         <input
-          className={`${inputClass} min-w-[104px]`}
+          className={`${inputClass} h-8 min-w-[104px] text-right`}
           value={draft.compareAtPricePaise}
           onChange={(event) =>
             setDraft({ ...draft, compareAtPricePaise: event.target.value })
@@ -2593,7 +2627,7 @@ function VariantEditRow({
       </td>
       <td className="px-3 py-2">
         <input
-          className={`${inputClass} min-w-[84px]`}
+          className={`${inputClass} h-8 min-w-[84px] text-right`}
           type="number"
           min="1"
           placeholder="g"
@@ -2606,7 +2640,7 @@ function VariantEditRow({
       </td>
       <td className="px-3 py-2">
         <input
-          className={`${inputClass} min-w-[68px]`}
+          className={`${inputClass} h-8 min-w-[68px] text-right`}
           type="number"
           min="1"
           placeholder="L"
@@ -2619,7 +2653,7 @@ function VariantEditRow({
       </td>
       <td className="px-3 py-2">
         <input
-          className={`${inputClass} min-w-[68px]`}
+          className={`${inputClass} h-8 min-w-[68px] text-right`}
           type="number"
           min="1"
           placeholder="W"
@@ -2632,7 +2666,7 @@ function VariantEditRow({
       </td>
       <td className="px-3 py-2">
         <input
-          className={`${inputClass} min-w-[68px]`}
+          className={`${inputClass} h-8 min-w-[68px] text-right`}
           type="number"
           min="1"
           placeholder="H"
@@ -2666,24 +2700,26 @@ function VariantEditRow({
       </td>
       <td className="px-3 py-2">
         {canWrite ? (
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              className="text-xs text-primary"
+          <div className="flex flex-wrap justify-end gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-primary hover:text-primary"
               disabled={saving}
               onClick={() => onSave(draft)}
             >
               Save
-            </button>
+            </Button>
             {canDelete ? (
-              <button
-                type="button"
-                className="text-xs text-destructive"
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-destructive hover:text-destructive"
                 disabled={saving}
                 onClick={onDelete}
               >
                 Delete
-              </button>
+              </Button>
             ) : (
               <span className="text-xs text-muted-foreground">
                 Last variant

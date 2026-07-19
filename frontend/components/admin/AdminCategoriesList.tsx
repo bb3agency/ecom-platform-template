@@ -4,6 +4,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AdminCategoryForm } from "@/components/admin/AdminCategoryForm";
 import { AdminPagination } from "@/components/admin/AdminPagination";
 import { AdminTableScroll } from "@/components/admin/AdminTableScroll";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { useToastStore } from "@/stores/toast";
 import { useAdminAuth } from "@/contexts/admin-auth-context";
@@ -229,56 +233,62 @@ export function AdminCategoriesList() {
     [parentNames],
   );
 
+  const kpiCards = [
+    {
+      label: "Total Categories",
+      value: categoryKpis
+        ? categoryKpis.total.toLocaleString()
+        : kpisLoading
+          ? "…"
+          : kpisError
+            ? "!"
+            : "—",
+      icon: Layers,
+      iconClassName: "bg-muted text-muted-foreground",
+    },
+    {
+      label: "Active",
+      value: categoryKpis ? categoryKpis.active.toLocaleString() : "—",
+      icon: Tag,
+      iconClassName: "bg-emerald-500/10 text-emerald-600",
+    },
+    {
+      label: "Inactive",
+      value: categoryKpis ? categoryKpis.inactive.toLocaleString() : "—",
+      icon: EyeOff,
+      iconClassName: "bg-muted text-muted-foreground",
+    },
+  ];
+
   return (
     <>
       {confirmDialog}
       <div className="flex flex-col gap-6 min-w-0">
         <div className="grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-3">
-          <div className="flex flex-col justify-center rounded-xl border border-border/40 bg-card p-4 sm:p-5 shadow-sm">
-            <div className="flex items-center gap-3 sm:gap-4">
-              <div className="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-50">
-                <Layers className="h-5 w-5 text-emerald-600" />
-              </div>
-              <div className="flex flex-col gap-0.5 sm:gap-1">
-                <p className="text-[10px] sm:text-xs font-medium text-muted-foreground">Total Categories</p>
-                <p className="font-heading text-lg sm:text-2xl font-bold tracking-tight text-foreground">
-                  {categoryKpis ? categoryKpis.total.toLocaleString() : kpisLoading ? "…" : kpisError ? "!" : "—"}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex flex-col justify-center rounded-xl border border-border/40 bg-card p-4 sm:p-5 shadow-sm">
-            <div className="flex items-center gap-3 sm:gap-4">
-              <div className="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl bg-blue-100">
-                <Tag className="h-5 w-5 text-blue-600" />
-              </div>
-              <div className="flex flex-col gap-0.5 sm:gap-1">
-                <p className="text-[10px] sm:text-xs font-medium text-muted-foreground">Active</p>
-                <p className="font-heading text-lg sm:text-2xl font-bold tracking-tight text-foreground">
-                  {categoryKpis ? categoryKpis.active.toLocaleString() : "—"}
-                </p>
+          {kpiCards.map(({ label, value, icon: Icon, iconClassName }) => (
+            <div
+              key={label}
+              className="flex flex-col justify-center rounded-2xl border border-border bg-card p-4 sm:p-5 hover:shadow-sm transition-shadow"
+            >
+              <div className="flex items-center gap-3 sm:gap-4">
+                <div
+                  className={`flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl ${iconClassName}`}
+                >
+                  <Icon className="h-5 w-5" />
+                </div>
+                <div className="flex flex-col gap-0.5 sm:gap-1">
+                  <p className="text-xs text-muted-foreground">{label}</p>
+                  <p className="font-heading text-lg sm:text-2xl font-bold tracking-tight text-foreground">
+                    {value}
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
-
-          <div className="flex flex-col justify-center rounded-xl border border-border/40 bg-card p-4 sm:p-5 shadow-sm">
-            <div className="flex items-center gap-3 sm:gap-4">
-              <div className="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl bg-rose-100">
-                <EyeOff className="h-5 w-5 text-rose-600" />
-              </div>
-              <div className="flex flex-col gap-0.5 sm:gap-1">
-                <p className="text-[10px] sm:text-xs font-medium text-muted-foreground">Inactive</p>
-                <p className="font-heading text-lg sm:text-2xl font-bold tracking-tight text-foreground">
-                  {categoryKpis ? categoryKpis.inactive.toLocaleString() : "—"}
-                </p>
-              </div>
-            </div>
-          </div>
+          ))}
         </div>
 
-        <div className="flex flex-col rounded-xl border border-border/40 bg-card shadow-sm min-w-0 overflow-hidden">
-          <div className="flex flex-col gap-4 border-b border-border/40 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col rounded-2xl border border-border bg-card min-w-0 overflow-hidden">
+          <div className="flex flex-col gap-4 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between">
             <form
               className="relative w-full min-w-0 flex-1 sm:max-w-sm"
               onSubmit={(e) => {
@@ -293,7 +303,7 @@ export function AdminCategoriesList() {
                 placeholder="Search categories…"
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
-                className="h-9 w-full rounded-md border border-border/50 bg-background pl-9 pr-4 text-sm focus:border-zinc-900 focus:outline-none"
+                className="h-9 w-full rounded-lg border border-input bg-background pl-9 pr-4 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none"
               />
             </form>
 
@@ -304,7 +314,7 @@ export function AdminCategoriesList() {
                   setStatusFilter(e.target.value);
                   setPage(1);
                 }}
-                className="h-9 rounded-md border border-border/50 bg-background px-3 text-sm focus:border-zinc-900 focus:outline-none"
+                className="h-9 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:border-ring focus:outline-none"
               >
                 <option value="active">Active (published)</option>
                 <option value="inactive">Inactive</option>
@@ -312,30 +322,30 @@ export function AdminCategoriesList() {
               </select>
 
               {canWrite && (
-                <button
-                  type="button"
+                <Button
+                  size="lg"
+                  className="gap-1.5"
                   onClick={() => {
                     setEditingCategory(null);
                     setFormOpen(true);
                   }}
-                  className="flex h-9 items-center gap-1.5 rounded-md bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-800"
                 >
                   <Plus className="h-4 w-4" />
                   Add Category
-                </button>
+                </Button>
               )}
             </div>
           </div>
 
           {error && (
-            <div className="p-4 text-sm text-destructive bg-destructive/10 border-b border-border/40">
+            <div className="p-4 text-sm text-destructive bg-destructive/10 border-b border-border">
               {error}
             </div>
           )}
 
           <AdminTableScroll>
             <table className="w-full text-left text-sm">
-              <thead className="border-b border-border/40 bg-muted/30 text-xs uppercase tracking-wide text-muted-foreground">
+              <thead className="sticky top-0 bg-card border-b border-border text-xs font-medium text-muted-foreground">
                 <tr>
                   <th className="px-4 py-3">Category</th>
                   <th className="px-4 py-3">Slug</th>
@@ -344,22 +354,54 @@ export function AdminCategoriesList() {
                   <th className="px-4 py-3 text-center">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border/40">
+              <tbody className="divide-y divide-border">
                 {loading && items.length === 0 ? (
-                  <tr>
-                    <td colSpan={colSpan} className="px-4 py-8 text-center text-muted-foreground text-sm">
-                      Loading…
-                    </td>
-                  </tr>
+                  Array.from({ length: 5 }).map((_, i) => (
+                    <tr key={i}>
+                      <td className="px-4 py-3">
+                        <Skeleton className="h-4 w-32" />
+                      </td>
+                      <td className="px-4 py-3">
+                        <Skeleton className="h-3.5 w-24" />
+                      </td>
+                      <td className="px-4 py-3">
+                        <Skeleton className="h-3.5 w-16" />
+                      </td>
+                      <td className="px-4 py-3">
+                        <Skeleton className="mx-auto h-5 w-16 rounded-full" />
+                      </td>
+                      <td className="px-4 py-3">
+                        <Skeleton className="mx-auto h-7 w-24 rounded-lg" />
+                      </td>
+                    </tr>
+                  ))
                 ) : items.length === 0 ? (
                   <tr>
-                    <td colSpan={colSpan} className="px-4 py-8 text-center text-muted-foreground text-sm">
-                      No categories found.
+                    <td colSpan={colSpan} className="p-4">
+                      <EmptyState
+                        icon={Layers}
+                        headline="No categories found"
+                        description="Create your first category."
+                        className="border-0"
+                        action={
+                          canWrite ? (
+                            <Button
+                              className="gap-2"
+                              onClick={() => {
+                                setEditingCategory(null);
+                                setFormOpen(true);
+                              }}
+                            >
+                              <Plus className="h-4 w-4" /> Add Category
+                            </Button>
+                          ) : undefined
+                        }
+                      />
                     </td>
                   </tr>
                 ) : (
                   items.map((cat) => (
-                    <tr key={cat.id} className="group hover:bg-muted/30">
+                    <tr key={cat.id} className="group hover:bg-muted/50 transition-colors">
                       <td className="px-4 py-3">
                         <button
                           type="button"
@@ -367,7 +409,7 @@ export function AdminCategoriesList() {
                             setEditingCategory(cat);
                             setFormOpen(true);
                           }}
-                          className="font-semibold text-foreground hover:text-zinc-900 hover:underline text-left"
+                          className="font-medium text-foreground hover:text-primary hover:underline text-left"
                         >
                           {cat.name}
                         </button>
@@ -379,65 +421,55 @@ export function AdminCategoriesList() {
                         {resolveParentName(cat)}
                       </td>
                       <td className="px-4 py-3 text-center">
-                        <span
-                          className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                            cat.isActive
-                              ? "bg-emerald-50 text-emerald-700"
-                              : "bg-rose-50 text-rose-700"
-                          }`}
-                        >
-                          <span
-                            className={`h-1.5 w-1.5 rounded-full ${cat.isActive ? "bg-emerald-500" : "bg-rose-500"}`}
-                          />
+                        <Badge variant={cat.isActive ? "success" : "default"} dot>
                           {cat.isActive ? "Active" : "Inactive"}
-                        </span>
+                        </Badge>
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-center gap-1">
                           {canWrite && (
-                            <button
-                              type="button"
+                            <Button
+                              size="icon-sm"
+                              variant="outline"
+                              aria-label="Edit category"
                               onClick={() => {
                                 setEditingCategory(cat);
                                 setFormOpen(true);
                               }}
-                              aria-label="Edit category"
-                              className="flex h-7 w-7 items-center justify-center rounded-md border border-border/50 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                             >
                               <Pencil className="h-3.5 w-3.5" />
-                            </button>
+                            </Button>
                           )}
                           {canWrite &&
                             (cat.isActive ? (
-                              <button
-                                type="button"
+                              <Button
+                                size="sm"
                                 disabled={isActioning === cat.id}
                                 onClick={() => void handleDeactivate(cat.id)}
-                                className="h-7 rounded-md bg-zinc-900 px-3 text-xs font-medium text-white hover:bg-zinc-800 disabled:opacity-60"
                               >
                                 Deactivate
-                              </button>
+                              </Button>
                             ) : (
-                              <button
-                                type="button"
+                              <Button
+                                size="sm"
+                                variant="outline"
                                 disabled={isActioning === cat.id}
                                 onClick={() => void handleRestore(cat.id)}
-                                className="h-7 rounded-md border border-zinc-300 bg-white px-3 text-xs font-medium text-zinc-900 hover:bg-zinc-50 disabled:opacity-60"
                               >
                                 Restore
-                              </button>
+                              </Button>
                             ))}
                           {canWrite && !cat.isActive && (
-                            <button
-                              type="button"
+                            <Button
+                              size="icon-sm"
+                              variant="destructive"
                               disabled={isActioning === cat.id}
                               onClick={() => void handlePermanentDelete(cat)}
                               aria-label="Permanently delete category"
-                              className="flex h-7 w-7 items-center justify-center rounded-md border border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100 transition-colors disabled:opacity-60"
                               title="Permanently delete"
                             >
                               <Trash2 className="h-3.5 w-3.5" />
-                            </button>
+                            </Button>
                           )}
                         </div>
                       </td>
@@ -448,7 +480,7 @@ export function AdminCategoriesList() {
             </table>
           </AdminTableScroll>
 
-          <div className="border-t border-border/40 p-4">
+          <div className="border-t border-border p-4">
             <AdminPagination
               meta={
                 data?.meta ?? {

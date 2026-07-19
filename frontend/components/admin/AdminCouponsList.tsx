@@ -39,6 +39,21 @@ import { notifyAdminDataChanged } from "@/lib/admin-data-refresh";
 
 import { ADMIN_PERMISSIONS, hasAdminPermission } from "@/lib/permissions";
 import { useConfirm } from "@/components/ui/confirm-dialog";
+import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Search,
+  Plus,
+  Pause,
+  Play,
+  Pencil,
+  Copy,
+  Trash2,
+  RotateCcw,
+  ScrollText,
+  Ticket,
+} from "lucide-react";
 
 const PAGE_SIZE = 50;
 
@@ -309,25 +324,9 @@ export function AdminCouponsList({
       <div className="mb-4 grid grid-cols-2 gap-3 rounded-xl border border-border/40 bg-card p-4 shadow-sm sm:flex sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-4">
         <div className="col-span-2 flex w-full min-w-0 flex-col gap-3 sm:flex-1 sm:flex-row sm:flex-wrap sm:items-center">
           <div className="relative w-full min-w-0 sm:max-w-sm sm:flex-1">
-            <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-              <svg
-                className="w-4 h-4 text-muted-foreground"
-                aria-hidden="true"
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 20 20"
-              >
-                <path
-                  stroke="currentColor"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="m19 19-4-4m0-7A7 7 0 1 1 1 8a7 7 0 0 1 14 0Z"
-                />
-              </svg>
-            </div>
+            <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" aria-hidden />
             <input
-              className="h-9 w-full rounded-md border border-border/50 bg-muted/20 pl-9 pr-3 text-sm focus:border-zinc-900 focus:outline-none"
+              className="h-9 w-full rounded-md border border-input bg-background pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring/40"
               placeholder="Search coupons by code..."
               value={searchInput}
               onChange={(e) => {
@@ -338,7 +337,7 @@ export function AdminCouponsList({
           </div>
 
           <select
-            className="h-9 w-full rounded-md border border-border/50 bg-muted/20 px-3 text-sm font-medium text-foreground focus:border-zinc-900 focus:outline-none sm:w-auto sm:min-w-32"
+            className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-ring/40 sm:w-auto sm:min-w-32"
             value={statusFilter}
             onChange={(e) => {
               setStatusFilter(e.target.value);
@@ -353,7 +352,7 @@ export function AdminCouponsList({
           </select>
 
           <select
-            className="h-9 w-full rounded-md border border-border/50 bg-muted/20 px-3 text-sm font-medium text-foreground focus:border-zinc-900 focus:outline-none sm:w-auto sm:min-w-32"
+            className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-ring/40 sm:w-auto sm:min-w-32"
             value={typeFilter}
             onChange={(e) => { setTypeFilter(e.target.value); setPage(1); }}
           >
@@ -369,22 +368,10 @@ export function AdminCouponsList({
             <Button
               type="button"
               size="sm"
-              className="h-9 w-full gap-2 bg-slate-900 text-white hover:bg-slate-800 sm:w-auto"
+              className="h-9 w-full gap-2 sm:w-auto"
               onClick={() => setShowCreate(true)}
             >
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 4v16m8-8H4"
-                />
-              </svg>
+              <Plus className="h-4 w-4" aria-hidden />
               Create Coupon
             </Button>
           ) : null}
@@ -392,20 +379,26 @@ export function AdminCouponsList({
       </div>
 
       {data ? (
-        <div className="rounded-xl border border-border/40 bg-card p-5 shadow-sm min-w-0 overflow-hidden">
+        <div className="rounded-xl border border-border bg-card p-5 shadow-sm min-w-0 overflow-hidden">
           {loading ? (
-            <div className="flex h-16 items-center justify-center">
-              <div className="h-5 w-5 animate-spin rounded-full border-2 border-zinc-900 border-t-transparent" />
+            <div className="mb-4 flex flex-col gap-3">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="flex items-center gap-3">
+                  <Skeleton className="h-5 w-24 rounded" />
+                  <Skeleton className="h-3.5 flex-1" />
+                  <Skeleton className="h-5 w-16 rounded-full" />
+                </div>
+              ))}
             </div>
           ) : null}
           <AdminTableScroll>
             <table className="w-full min-w-[900px] text-left text-sm">
-              <thead className="border-b border-border/40 text-xs font-medium text-muted-foreground">
+              <thead className="border-b border-border text-xs font-medium text-muted-foreground">
                 <tr>
                   <th className="px-3 py-4 w-10">
                     <input
                       type="checkbox"
-                      className="rounded border-border text-zinc-900 focus:ring-zinc-900"
+                      className="rounded border-border accent-primary focus:ring-ring"
                       checked={
                         items.length > 0 &&
                         items.every((c) => selectedIds[c.id])
@@ -429,14 +422,34 @@ export function AdminCouponsList({
                   <th className="px-3 py-4 font-medium text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border/20">
+              <tbody className="divide-y divide-border/50">
+                {!loading && items.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} className="py-4">
+                      <EmptyState
+                        icon={Ticket}
+                        headline="No coupons created"
+                        description="Create your first campaign."
+                        className="border-none"
+                        action={
+                          canWrite ? (
+                            <Button type="button" size="sm" onClick={() => setShowCreate(true)}>
+                              <Plus className="h-4 w-4" aria-hidden />
+                              Create Coupon
+                            </Button>
+                          ) : undefined
+                        }
+                      />
+                    </td>
+                  </tr>
+                ) : null}
                 {items.map((coupon) => (
                   <Fragment key={coupon.id}>
-                    <tr className="group hover:bg-muted/20">
+                    <tr className="group hover:bg-muted/40">
                       <td className="px-3 py-4">
                         <input
                           type="checkbox"
-                          className="rounded border-border text-zinc-900 focus:ring-zinc-900"
+                          className="rounded border-border accent-primary focus:ring-ring"
                           checked={Boolean(selectedIds[coupon.id])}
                           onChange={(e) =>
                             setSelectedIds((prev) => ({
@@ -448,10 +461,10 @@ export function AdminCouponsList({
                       </td>
                       <td className="px-3 py-4">
                         <div className="flex flex-col items-start gap-1">
-                          <span className="rounded bg-zinc-100 px-2.5 py-0.5 font-mono text-[11px] font-bold tracking-wider text-zinc-900 uppercase border border-zinc-200">
+                          <span className="rounded-md border border-border bg-muted px-2.5 py-0.5 font-mono text-sm font-semibold tracking-wider text-foreground uppercase">
                             {coupon.code}
                           </span>
-                          <p className="text-[11px] text-muted-foreground">
+                          <p className="text-xs text-muted-foreground">
                             {coupon.type === "FREE_SHIPPING"
                               ? "Free Shipping"
                               : coupon.type === "PERCENTAGE_OFF"
@@ -461,19 +474,13 @@ export function AdminCouponsList({
                         </div>
                       </td>
                       <td className="px-3 py-4">
-                        {coupon.type === "PERCENTAGE_OFF" ? (
-                          <span className="text-[11px] font-medium text-zinc-900">
-                            Percentage
-                          </span>
-                        ) : coupon.type === "FLAT_AMOUNT_OFF" ? (
-                          <span className="text-[11px] font-medium text-amber-600">
-                            Fixed Amount
-                          </span>
-                        ) : (
-                          <span className="text-[11px] font-medium text-blue-600">
-                            Free Shipping
-                          </span>
-                        )}
+                        <Badge variant="outline">
+                          {coupon.type === "PERCENTAGE_OFF"
+                            ? "Percentage"
+                            : coupon.type === "FLAT_AMOUNT_OFF"
+                              ? "Fixed Amount"
+                              : "Free Shipping"}
+                        </Badge>
                       </td>
                       <td className="px-3 py-4 font-semibold text-foreground">
                         {coupon.type === "PERCENTAGE_OFF"
@@ -496,12 +503,12 @@ export function AdminCouponsList({
                                 className={`h-full rounded-full ${
                                   (coupon.usesCount ?? 0) / coupon.maxUsesTotal >
                                   0.9
-                                    ? "bg-rose-500"
+                                    ? "bg-red-500"
                                     : (coupon.usesCount ?? 0) /
                                           coupon.maxUsesTotal >
                                         0.7
                                       ? "bg-amber-500"
-                                      : "bg-zinc-900"
+                                      : "bg-primary"
                                 }`}
                                 style={{
                                   width: `${Math.min(
@@ -527,58 +534,54 @@ export function AdminCouponsList({
                           ? formatPaise(coupon.minOrderPaise)
                           : "No min"}
                       </td>
-                      <td className="px-3 py-4 text-[11px] text-muted-foreground whitespace-pre-wrap leading-tight">
+                      <td className="px-3 py-4 text-xs text-muted-foreground whitespace-pre-wrap leading-tight">
                         {formatAdminDate(coupon.validFrom).split(",")[0]} -
                         {coupon.validUntil
                           ? formatAdminDate(coupon.validUntil).split(",")[0]
                           : " No end"}
                       </td>
                       <td className="px-3 py-4">
-                        <div className="flex items-center gap-1.5">
-                          <div
-                            className={`h-1.5 w-1.5 rounded-full ${
-                              coupon.status === "active"
-                                ? "bg-zinc-900"
-                                : coupon.status === "expired"
-                                  ? "bg-slate-400"
-                                  : (coupon.status as string) === "scheduled"
-                                    ? "bg-blue-500"
-                                    : "bg-rose-500"
-                            }`}
-                          />
-                          <span
-                            className={`text-[11px] font-medium ${
-                              coupon.status === "active"
-                                ? "text-zinc-900"
-                                : coupon.status === "expired"
-                                  ? "text-slate-500"
-                                  : (coupon.status as string) === "scheduled"
-                                    ? "text-blue-600"
-                                    : "text-rose-600"
-                            }`}
-                          >
-                            {coupon.status.charAt(0).toUpperCase() +
-                              coupon.status.slice(1)}
-                          </span>
-                        </div>
+                        <Badge
+                          dot
+                          variant={
+                            coupon.status === "active"
+                              ? "success"
+                              : coupon.status === "paused"
+                                ? "warning"
+                                : (coupon.status as string) === "scheduled"
+                                  ? "info"
+                                  : coupon.status === "expired"
+                                    ? "default"
+                                    : "destructive"
+                          }
+                        >
+                          {coupon.status.charAt(0).toUpperCase() +
+                            coupon.status.slice(1)}
+                        </Badge>
                       </td>
                       <td className="px-3 py-4 text-right">
                         <div className="flex justify-end gap-1.5">
                           {canWrite && coupon.status === "deleted" ? (
                             <button
                               type="button"
-                              className="rounded border border-zinc-300 bg-zinc-100 px-2 py-1 text-[11px] font-medium text-zinc-900 hover:bg-zinc-200 disabled:opacity-50"
+                              className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-[11px] font-medium text-foreground hover:bg-muted disabled:opacity-50"
                               disabled={actionId === coupon.id}
                               onClick={() => void restoreCoupon(coupon)}
                             >
+                              <RotateCcw className="h-3 w-3" aria-hidden />
                               Restore
                             </button>
                           ) : canWrite ? (
                             <>
                               <button
                                 type="button"
-                                className="flex h-7 w-7 items-center justify-center rounded border border-border/50 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+                                className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
                                 title={
+                                  coupon.isActive
+                                    ? "Pause coupon"
+                                    : "Activate coupon"
+                                }
+                                aria-label={
                                   coupon.isActive
                                     ? "Pause coupon"
                                     : "Activate coupon"
@@ -587,65 +590,25 @@ export function AdminCouponsList({
                                 onClick={() => void toggleActive(coupon)}
                               >
                                 {coupon.isActive ? (
-                                  <svg
-                                    className="h-3.5 w-3.5"
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                    stroke="currentColor"
-                                  >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      strokeWidth={2}
-                                      d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                                    />
-                                  </svg>
+                                  <Pause className="h-3.5 w-3.5" aria-hidden />
                                 ) : (
-                                  <svg
-                                    className="h-3.5 w-3.5"
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                    stroke="currentColor"
-                                  >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      strokeWidth={2}
-                                      d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
-                                    />
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      strokeWidth={2}
-                                      d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                                    />
-                                  </svg>
+                                  <Play className="h-3.5 w-3.5" aria-hidden />
                                 )}
                               </button>
                               <button
                                 type="button"
-                                className="flex h-7 w-7 items-center justify-center rounded border border-border/50 text-muted-foreground hover:bg-muted hover:text-foreground"
+                                className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-muted hover:text-foreground"
                                 title="Edit coupon"
+                                aria-label="Edit coupon"
                                 onClick={() => setEditingCoupon(coupon)}
                               >
-                                <svg
-                                  className="h-3.5 w-3.5"
-                                  fill="none"
-                                  viewBox="0 0 24 24"
-                                  stroke="currentColor"
-                                >
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
-                                  />
-                                </svg>
+                                <Pencil className="h-3.5 w-3.5" aria-hidden />
                               </button>
                               <button
                                 type="button"
-                                className="flex h-7 w-7 items-center justify-center rounded border border-border/50 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+                                className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
                                 title="Clone coupon"
+                                aria-label="Clone coupon"
                                 disabled={actionId === coupon.id}
                                 onClick={() =>
                                   setCloneTargetId(
@@ -655,60 +618,26 @@ export function AdminCouponsList({
                                   )
                                 }
                               >
-                                <svg
-                                  className="h-3.5 w-3.5"
-                                  fill="none"
-                                  viewBox="0 0 24 24"
-                                  stroke="currentColor"
-                                >
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
-                                  />
-                                </svg>
+                                <Copy className="h-3.5 w-3.5" aria-hidden />
                               </button>
                               <button
                                 type="button"
-                                className="flex h-7 w-7 items-center justify-center rounded border border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100 disabled:opacity-50"
+                                className="flex h-7 w-7 items-center justify-center rounded-md border border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/20 disabled:opacity-50"
                                 title="Delete coupon"
+                                aria-label="Delete coupon"
                                 disabled={actionId === coupon.id}
                                 onClick={() => void deleteCoupon(coupon)}
                               >
-                                <svg
-                                  className="h-3.5 w-3.5"
-                                  fill="none"
-                                  viewBox="0 0 24 24"
-                                  stroke="currentColor"
-                                >
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                                  />
-                                </svg>
+                                <Trash2 className="h-3.5 w-3.5" aria-hidden />
                               </button>
                               <button
                                 type="button"
-                                className="flex h-7 w-7 items-center justify-center rounded border border-border/50 text-muted-foreground hover:bg-muted hover:text-foreground"
+                                className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-muted hover:text-foreground"
                                 title="View audit log"
+                                aria-label="View audit log"
                                 onClick={() => void openAudit(coupon)}
                               >
-                                <svg
-                                  className="h-3.5 w-3.5"
-                                  fill="none"
-                                  viewBox="0 0 24 24"
-                                  stroke="currentColor"
-                                >
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
-                                  />
-                                </svg>
+                                <ScrollText className="h-3.5 w-3.5" aria-hidden />
                               </button>
                             </>
                           ) : null}
@@ -724,7 +653,7 @@ export function AdminCouponsList({
                             </span>
                             <input
                               type="text"
-                              className="h-7 flex-1 max-w-xs rounded-md border border-border/50 bg-background px-2 text-xs focus:border-zinc-900 focus:outline-none uppercase"
+                              className="h-7 flex-1 max-w-xs rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-ring/40 uppercase"
                               placeholder={`${coupon.code}-COPY`}
                               value={cloneCode}
                               onChange={(e) =>
@@ -739,7 +668,7 @@ export function AdminCouponsList({
                             <Button
                               type="button"
                               size="sm"
-                              className="h-7 bg-zinc-900 hover:bg-zinc-800 text-white text-xs"
+                              className="h-7 text-xs"
                               disabled={
                                 !cloneCode.trim() || actionId === coupon.id
                               }
@@ -770,7 +699,7 @@ export function AdminCouponsList({
               </tbody>
             </table>
           </AdminTableScroll>
-          <div className="mt-6 border-t border-border/40 pt-4">
+          <div className="mt-6 border-t border-border pt-4">
             <AdminPagination meta={data.meta} onPageChange={setPage} />
           </div>
         </div>

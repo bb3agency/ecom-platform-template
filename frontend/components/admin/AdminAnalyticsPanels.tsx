@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { Badge } from "@/components/ui/badge";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { AdminSection } from "@/components/admin/AdminSection";
 import {
@@ -169,7 +170,7 @@ function AdminRevenueAnalyticsPanel({
       empty={!loading && !error && points.length === 0}
       emptyMessage="No revenue data."
     >
-      <div className="overflow-x-auto rounded-md border border-border">
+      <div className="overflow-x-auto rounded-xl border border-border">
         <table className="w-full text-left text-sm">
           <thead className="border-b border-border bg-muted/50 text-xs uppercase text-muted-foreground">
             <tr>
@@ -204,11 +205,12 @@ const FUNNEL_STEP_LABELS: Record<string, string> = {
   PURCHASE: "Completed Purchase",
 };
 
+// Status accents only (design system): sky → violet → primary → amber → emerald.
 const FUNNEL_STEP_COLORS: Record<string, string> = {
-  PRODUCT_VIEW: "bg-blue-500",
-  ADD_TO_CART: "bg-indigo-500",
-  CHECKOUT_STARTED: "bg-violet-500",
-  PAYMENT_INITIATED: "bg-orange-500",
+  PRODUCT_VIEW: "bg-sky-500",
+  ADD_TO_CART: "bg-violet-500",
+  CHECKOUT_STARTED: "bg-primary",
+  PAYMENT_INITIATED: "bg-amber-500",
   PURCHASE: "bg-emerald-500",
 };
 
@@ -285,36 +287,32 @@ function AdminFunnelPanel({ from, to }: { from: string; to: string }) {
               )}
 
               {/* Step card */}
-              <div className="rounded-lg border border-border bg-background/60 p-4">
+              <div className="rounded-2xl border border-border bg-card p-4 transition-shadow hover:shadow-sm">
                 <div className="mb-2 flex items-center justify-between gap-4">
                   <div className="flex items-center gap-2">
-                    <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-bold text-muted-foreground">
+                    <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
                       {idx + 1}
                     </span>
                     <span className="text-sm font-medium text-foreground">{label}</span>
                   </div>
                   <div className="flex items-center gap-3 text-right">
-                    <span className="text-lg font-bold text-foreground tabular-nums">
+                    <span className="font-heading text-lg font-semibold tracking-tight text-foreground tabular-nums">
                       {step.count.toLocaleString()}
                     </span>
                     {idx > 0 && (
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-xs font-bold ${
+                      <Badge
+                        variant={
                           step.conversionRatePercent >= 50
-                            ? "bg-emerald-100 text-emerald-700"
+                            ? "success"
                             : step.conversionRatePercent >= 20
-                              ? "bg-amber-100 text-amber-700"
-                              : "bg-red-100 text-red-700"
-                        }`}
+                              ? "warning"
+                              : "destructive"
+                        }
                       >
                         {step.conversionRatePercent}% of views
-                      </span>
+                      </Badge>
                     )}
-                    {idx === 0 && (
-                      <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-bold text-blue-700">
-                        Top of funnel
-                      </span>
-                    )}
+                    {idx === 0 && <Badge variant="info">Top of funnel</Badge>}
                   </div>
                 </div>
                 {/* Progress bar */}
@@ -332,10 +330,10 @@ function AdminFunnelPanel({ from, to }: { from: string; to: string }) {
 
       {/* Summary row */}
       {steps.length > 0 && topCount > 0 && (
-        <div className="mt-4 flex flex-wrap gap-4 rounded-lg border border-border bg-muted/30 p-4">
+        <div className="mt-4 flex flex-wrap gap-4 rounded-2xl border border-border bg-muted/30 p-4">
           <div className="text-center">
             <p className="text-xs text-muted-foreground">Overall conversion</p>
-            <p className="text-xl font-bold text-foreground">
+            <p className="font-heading text-xl font-semibold tracking-tight text-foreground">
               {steps[steps.length - 1]?.conversionRatePercent ?? 0}%
             </p>
             <p className="text-xs text-muted-foreground">views → purchases</p>
@@ -343,14 +341,14 @@ function AdminFunnelPanel({ from, to }: { from: string; to: string }) {
           <div className="h-10 w-px self-center bg-border" />
           <div className="text-center">
             <p className="text-xs text-muted-foreground">Total purchases</p>
-            <p className="text-xl font-bold text-emerald-600">
+            <p className="font-heading text-xl font-semibold tracking-tight text-emerald-600">
               {(steps.find((s) => s.eventType === "PURCHASE")?.count ?? 0).toLocaleString()}
             </p>
           </div>
           <div className="h-10 w-px self-center bg-border" />
           <div className="text-center">
             <p className="text-xs text-muted-foreground">Cart add rate</p>
-            <p className="text-xl font-bold text-foreground">
+            <p className="font-heading text-xl font-semibold tracking-tight text-foreground">
               {steps.find((s) => s.eventType === "ADD_TO_CART")?.conversionRatePercent ?? 0}%
             </p>
             <p className="text-xs text-muted-foreground">of product views</p>
@@ -409,7 +407,7 @@ function AdminCategoryBreakdownPanel({
       empty={!loading && !error && items.length === 0}
       emptyMessage="No category data."
     >
-      <div className="overflow-x-auto rounded-md border border-border">
+      <div className="overflow-x-auto rounded-xl border border-border">
         <table className="w-full text-left text-sm">
           <thead className="border-b border-border bg-muted/50 text-xs uppercase text-muted-foreground">
             <tr>
@@ -470,7 +468,7 @@ function AdminInventoryAlertsPanel() {
       empty={!loading && !error && items.length === 0}
       emptyMessage="No low-stock alerts."
     >
-      <div className="overflow-x-auto rounded-md border border-border">
+      <div className="overflow-x-auto rounded-xl border border-border">
         <table className="w-full text-left text-sm">
           <thead className="border-b border-border bg-muted/50 text-xs uppercase text-muted-foreground">
             <tr>
@@ -559,7 +557,7 @@ function AdminShippingProviderStatsPanel({
       empty={!loading && !error && providers.length === 0}
       emptyMessage="No shipments in this period."
     >
-      <div className="overflow-x-auto rounded-md border border-border">
+      <div className="overflow-x-auto rounded-xl border border-border">
         <table className="w-full text-left text-sm">
           <thead className="border-b border-border bg-muted/50 text-xs uppercase text-muted-foreground">
             <tr>
@@ -648,7 +646,7 @@ function AdminNotificationStatsPanel({
       empty={!loading && !error && channels.length === 0}
       emptyMessage="No notification stats."
     >
-      <div className="overflow-x-auto rounded-md border border-border">
+      <div className="overflow-x-auto rounded-xl border border-border">
         <table className="w-full text-left text-sm">
           <thead className="border-b border-border bg-muted/50 text-xs uppercase text-muted-foreground">
             <tr>
