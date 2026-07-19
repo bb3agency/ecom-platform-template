@@ -12,6 +12,21 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.54] — 2026-07-19
+
+### Changed
+- **Admin design system — mobile-viewport pass + fixes across Phases 2–5** (visual/JSX only; no data/API/permission logic changed):
+  - **Mobile (375px) hardening** over ~30 admin components: wide tables consistently wrapped so the wrapper scrolls and the page never overflows horizontally; KPI grids 2-per-row at base; recharts wrappers given `min-w-0` + fixed heights; multi-column forms/detail layouts collapse to one column at base; filter bars stack and pills wrap; icon-only buttons bumped to ≥40px touch targets with aria-labels; kanban columns swipeable; notifications dropdown now fits narrow screens (`fixed inset-x-2` on mobile, anchored dropdown at ≥640px); bulk-inventory rows collapse to a 2-column labelled grid; gallery grid 2-col at base.
+  - **Orders page — removed redundant date controls**: the inline `From Date / To Date` + `Export From / Export To` input block is gone. The page-header date-range picker is now the single source of truth for the list range (shown as removable filter pills), and CSV export follows that same committed range via the shell Export button. Eliminates the triple set of date pickers.
+  - **Gallery page — removed duplicate uploader**: when the gallery is empty, only the friendly empty-state (single Upload CTA) shows; the dashed dropzone becomes an "add more" affordance once images exist (shared hidden file input so both triggers work).
+  - **Bug sweep**: fixed a stale short-description char counter (`/160` → `/500`) in the product editor; semantic `bg-destructive`/`text-destructive` in place of raw red utilities; removed non-functional decorative filter controls and dead checkboxes from Shipments; dead-conditional and vestigial export state cleanups.
+
+**Propagation:**
+- Severity: NORMAL (UX/responsive only) · Layers: frontend (`components/admin/**`)
+- Migration: NO · Flag: none · Design impact: none per-client (tokens; admin is engine) · Breaking: NO
+- Rollback: revert the files
+
+
 ## [0.1.53] — 2026-07-19
 
 ### Changed

@@ -34,8 +34,6 @@ import {
   Search,
   Eye,
   ExternalLink,
-  Filter,
-  Calendar,
 } from "lucide-react";
 import { PieChart, Pie, Cell, Tooltip } from "recharts";
 import { AdminResponsiveContainer } from "@/components/admin/AdminResponsiveContainer";
@@ -493,11 +491,12 @@ export function AdminShipmentsList({
                 />
               </form>
 
-              <div className="flex items-center gap-2 overflow-x-auto">
+              <div className="flex min-w-0 items-center gap-2 overflow-x-auto">
                 <select
-                  className="h-9 rounded-md border border-border/50 bg-background px-3 text-sm text-muted-foreground focus:border-primary focus:outline-none"
+                  className="h-9 shrink-0 rounded-md border border-border/50 bg-background px-3 text-sm text-muted-foreground focus:border-primary focus:outline-none"
                   value={status}
                   onChange={(e) => setStatus(e.target.value)}
+                  aria-label="Filter by shipment status"
                 >
                   <option value="">All Status</option>
                   {SHIPMENT_FILTER_STATUSES.map((s) => (
@@ -506,21 +505,6 @@ export function AdminShipmentsList({
                     </option>
                   ))}
                 </select>
-                <select className="h-9 rounded-md border border-border/50 bg-background px-3 text-sm text-muted-foreground focus:border-primary focus:outline-none hidden sm:block">
-                  <option value="">All Delivery Partners</option>
-                  <option value="DELHIVERY">Delhivery</option>
-                  <option value="SHIPROCKET">Shiprocket</option>
-                </select>
-                <div className="hidden sm:flex h-9 items-center gap-2 rounded-md border border-border/50 bg-background px-3 text-sm text-muted-foreground">
-                  <Calendar className="h-4 w-4" />
-                  <span>All Dates</span>
-                </div>
-                <Button
-                  variant="outline"
-                  className="h-9 gap-2 font-medium shrink-0"
-                >
-                  <Filter className="h-4 w-4" /> Filters
-                </Button>
               </div>
             </div>
 
@@ -555,12 +539,6 @@ export function AdminShipmentsList({
                   <table className="w-full text-left text-sm whitespace-nowrap">
                     <thead className="border-b border-border/40 text-xs font-medium text-muted-foreground">
                       <tr>
-                        <th className="px-4 py-3 w-10">
-                          <input
-                            type="checkbox"
-                            className="rounded border-border/50"
-                          />
-                        </th>
                         <th className="px-4 py-3">Order ID</th>
                         <th className="px-4 py-3">Customer</th>
                         <th className="px-4 py-3">Delivery Partner</th>
@@ -572,7 +550,6 @@ export function AdminShipmentsList({
                     </thead>
                     <tbody className="divide-y divide-border/40">
                       {items.map((shipment) => {
-                        // Mock fields to match the UI that are not immediately available
                         const isDelivered = shipment.status === "DELIVERED";
                         const isFailed = [
                           "CANCELLED",
@@ -598,12 +575,6 @@ export function AdminShipmentsList({
                             key={shipment.id}
                             className="group hover:bg-muted/30"
                           >
-                            <td className="px-4 py-3">
-                              <input
-                                type="checkbox"
-                                className="rounded border-border/50"
-                              />
-                            </td>
                             <td className="px-4 py-3">
                               <div className="flex flex-col gap-0.5">
                                 <Link
@@ -694,7 +665,8 @@ export function AdminShipmentsList({
                                 <Button
                                   variant="ghost"
                                   size="icon"
-                                  className="h-7 w-7 rounded-md"
+                                  className="h-9 w-9 rounded-md"
+                                  aria-label={`View shipment ${shipment.orderNumber}`}
                                   onClick={() => openDetail(shipment.id)}
                                 >
                                   <Eye className="h-4 w-4 text-muted-foreground" />

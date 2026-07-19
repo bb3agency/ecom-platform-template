@@ -90,41 +90,47 @@ export function AdminBulkInventoryForm() {
           {rows.map((row, index) => (
             <div
               key={index}
-              className="grid min-w-0 grid-cols-1 items-center gap-2 rounded-xl border border-border bg-muted/30 p-3 md:grid-cols-[1fr_1fr_1fr_auto]"
+              className="grid min-w-0 grid-cols-2 items-end gap-2 rounded-xl border border-border bg-muted/30 p-3 md:grid-cols-[1fr_1fr_1fr_auto]"
             >
-              <input
-                className={inputClass}
-                placeholder="Variant ID"
-                aria-label="Variant ID"
-                value={row.variantId}
-                onChange={(event) => {
-                  const next = [...rows];
-                  next[index] = { ...row, variantId: event.target.value };
-                  setRows(next);
-                }}
-              />
-              <input
-                className={inputClass}
-                placeholder="Quantity"
-                aria-label="Quantity"
-                value={row.quantity}
-                onChange={(event) => {
-                  const next = [...rows];
-                  next[index] = { ...row, quantity: event.target.value };
-                  setRows(next);
-                }}
-              />
-              <input
-                className={inputClass}
-                placeholder="Low stock threshold"
-                aria-label="Low stock threshold"
-                value={row.lowStockThreshold}
-                onChange={(event) => {
-                  const next = [...rows];
-                  next[index] = { ...row, lowStockThreshold: event.target.value };
-                  setRows(next);
-                }}
-              />
+              <label className="col-span-2 grid min-w-0 gap-1 text-xs font-medium text-muted-foreground md:col-span-1">
+                Variant ID
+                <input
+                  className={inputClass}
+                  placeholder="Variant ID"
+                  value={row.variantId}
+                  onChange={(event) => {
+                    const next = [...rows];
+                    next[index] = { ...row, variantId: event.target.value };
+                    setRows(next);
+                  }}
+                />
+              </label>
+              <label className="grid min-w-0 gap-1 text-xs font-medium text-muted-foreground">
+                Quantity
+                <input
+                  className={inputClass}
+                  placeholder="Quantity"
+                  value={row.quantity}
+                  onChange={(event) => {
+                    const next = [...rows];
+                    next[index] = { ...row, quantity: event.target.value };
+                    setRows(next);
+                  }}
+                />
+              </label>
+              <label className="grid min-w-0 gap-1 text-xs font-medium text-muted-foreground">
+                Low stock threshold
+                <input
+                  className={inputClass}
+                  placeholder="Threshold"
+                  value={row.lowStockThreshold}
+                  onChange={(event) => {
+                    const next = [...rows];
+                    next[index] = { ...row, lowStockThreshold: event.target.value };
+                    setRows(next);
+                  }}
+                />
+              </label>
               {rows.length > 1 ? (
                 <Button
                   type="button"
@@ -154,7 +160,7 @@ export function AdminBulkInventoryForm() {
             Apply bulk update
           </Button>
         </div>
-        {error ? <p className="text-xs text-red-600">{error}</p> : null}
+        {error ? <p className="text-xs text-destructive">{error}</p> : null}
         {result ? (
           <p className="flex items-center gap-1.5 text-sm text-foreground">
             <CheckCircle2 className="size-4 text-emerald-600" aria-hidden />

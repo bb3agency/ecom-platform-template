@@ -4,7 +4,7 @@ import Link from "next/link";
 
 import { useCallback, useEffect, useState } from "react";
 
-import { Download, Eye, Search, SlidersHorizontal } from "lucide-react";
+import { Eye, Search, SlidersHorizontal } from "lucide-react";
 
 import { AdminPagination } from "@/components/admin/AdminPagination";
 
@@ -144,18 +144,16 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
 
   const [loading, setLoading] = useState(true);
 
-  const [exporting, setExporting] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
 
   const [data, setData] =
     useState<PaginatedResponse<AdminOrderListItem> | null>(null);
 
-  // Sync filter and export dates when page-level range changes
-  const [exportFrom, setExportFrom] = useState(
-    from ?? defaultExportDates().from,
-  );
-  const [exportTo, setExportTo] = useState(to ?? defaultExportDates().to);
+  // Export follows the SAME committed range as the list (page-level date picker /
+  // pills). Falls back to the default window when no range is set.
+  const exportFrom = fromDate || defaultExportDates().from;
+  const exportTo = toDate || defaultExportDates().to;
 
   const [paymentFilter, setPaymentFilter] = useState("");
 
@@ -166,7 +164,6 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
   useEffect(() => {
     if (from !== undefined) {
       setFromDate(from);
-      setExportFrom(from);
       setPage(1);
     }
   }, [from]);
@@ -174,7 +171,6 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
   useEffect(() => {
     if (to !== undefined) {
       setToDate(to);
-      setExportTo(to);
     }
   }, [to]);
 
@@ -226,7 +222,6 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
 
   async function exportCsv() {
     if (!canExport) return;
-    setExporting(true);
     setError(null);
     try {
       const base = resolveApiBaseUrl();
@@ -257,8 +252,6 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
       URL.revokeObjectURL(url);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Export failed");
-    } finally {
-      setExporting(false);
     }
   }
 
@@ -431,66 +424,6 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
           </div>
         )}
 
-        <div className="mt-2 flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
-          <div className="grid w-full grid-cols-2 gap-3 sm:w-auto">
-            <label className="grid min-w-0 grid-cols-1 gap-1 text-xs font-medium text-muted-foreground">
-              From Date
-              <input
-                type="date"
-                className={`${inputClass} w-full min-w-0 text-foreground`}
-                value={fromDate}
-                onChange={(event) => {
-                  setFromDate(event.target.value);
-                  setPage(1);
-                }}
-              />
-            </label>
-            <label className="grid min-w-0 grid-cols-1 gap-1 text-xs font-medium text-muted-foreground">
-              To Date
-              <input
-                type="date"
-                className={`${inputClass} w-full min-w-0 text-foreground`}
-                value={toDate}
-                onChange={(event) => {
-                  setToDate(event.target.value);
-                  setPage(1);
-                }}
-              />
-            </label>
-          </div>
-
-          <div className="grid w-full grid-cols-2 items-end gap-3 sm:w-auto">
-            <label className="grid min-w-0 grid-cols-1 gap-1 text-xs font-medium text-muted-foreground">
-              Export From
-              <input
-                type="date"
-                className={`${inputClass} w-full min-w-0 text-foreground`}
-                value={exportFrom}
-                onChange={(event) => setExportFrom(event.target.value)}
-              />
-            </label>
-            <label className="grid min-w-0 grid-cols-1 gap-1 text-xs font-medium text-muted-foreground">
-              Export To
-              <input
-                type="date"
-                className={`${inputClass} w-full min-w-0 text-foreground`}
-                value={exportTo}
-                onChange={(event) => setExportTo(event.target.value)}
-              />
-            </label>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="col-span-2 h-9 gap-2 sm:col-span-1 sm:self-end"
-              disabled={exporting || !exportFrom || !exportTo}
-              onClick={() => void exportCsv()}
-            >
-              <Download className="h-4 w-4" aria-hidden="true" />
-              {exporting ? "Exporting…" : "Export"}
-            </Button>
-          </div>
-        </div>
       </div>
 
       {data ? (

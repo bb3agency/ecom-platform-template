@@ -1418,7 +1418,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                     disabled={!canWrite}
                   />
                   <span className="absolute bottom-2.5 right-3 text-[10px] text-muted-foreground font-semibold">
-                    {shortDesc.length}/160
+                    {shortDesc.length}/500
                   </span>
                 </div>
               </label>
@@ -1545,6 +1545,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                       type="button"
                       className="p-1 rounded hover:bg-muted text-muted-foreground"
                       title="Bold"
+                      aria-label="Bold"
                     >
                       <Bold className="h-3.5 w-3.5" />
                     </button>
@@ -1552,6 +1553,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                       type="button"
                       className="p-1 rounded hover:bg-muted text-muted-foreground"
                       title="Italic"
+                      aria-label="Italic"
                     >
                       <Italic className="h-3.5 w-3.5" />
                     </button>
@@ -1559,6 +1561,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                       type="button"
                       className="p-1 rounded hover:bg-muted text-muted-foreground"
                       title="Underline"
+                      aria-label="Underline"
                     >
                       <Underline className="h-3.5 w-3.5" />
                     </button>
@@ -1566,6 +1569,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                       type="button"
                       className="p-1 rounded hover:bg-muted text-muted-foreground"
                       title="Strikethrough"
+                      aria-label="Strikethrough"
                     >
                       <Strikethrough className="h-3.5 w-3.5" />
                     </button>
@@ -1574,6 +1578,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                       type="button"
                       className="p-1 rounded hover:bg-muted text-muted-foreground"
                       title="Align Left"
+                      aria-label="Align Left"
                     >
                       <AlignLeft className="h-3.5 w-3.5" />
                     </button>
@@ -1582,6 +1587,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                       type="button"
                       className="p-1 rounded hover:bg-muted text-muted-foreground"
                       title="Bullet List"
+                      aria-label="Bullet List"
                     >
                       <List className="h-3.5 w-3.5" />
                     </button>
@@ -1589,6 +1595,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                       type="button"
                       className="p-1 rounded hover:bg-muted text-muted-foreground"
                       title="Numbered List"
+                      aria-label="Numbered List"
                     >
                       <ListOrdered className="h-3.5 w-3.5" />
                     </button>
@@ -1596,6 +1603,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                       type="button"
                       className="p-1 rounded hover:bg-muted text-muted-foreground"
                       title="Quote"
+                      aria-label="Quote"
                     >
                       <Quote className="h-3.5 w-3.5" />
                     </button>
@@ -1604,6 +1612,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                       type="button"
                       className="p-1 rounded hover:bg-muted text-muted-foreground"
                       title="Link"
+                      aria-label="Link"
                     >
                       <Link2 className="h-3.5 w-3.5" />
                     </button>
@@ -1611,6 +1620,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                       type="button"
                       className="p-1 rounded hover:bg-muted text-muted-foreground"
                       title="Image"
+                      aria-label="Image"
                     >
                       <ImageIcon className="h-3.5 w-3.5" />
                     </button>
@@ -1618,6 +1628,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                       type="button"
                       className="p-1 rounded hover:bg-muted text-muted-foreground ml-auto"
                       title="Expand"
+                      aria-label="Expand"
                     >
                       <Maximize2 className="h-3.5 w-3.5" />
                     </button>
@@ -1992,7 +2003,8 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                               prev.filter((_, i) => i !== index),
                             );
                           }}
-                          className="absolute top-2 right-2 h-5 w-5 rounded-full bg-black/60 hover:bg-black/80 flex items-center justify-center text-white transition-colors"
+                          aria-label="Remove image"
+                          className="absolute top-2 right-2 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white transition-colors hover:bg-black/80"
                         >
                           <X className="h-3 w-3" />
                         </button>
@@ -2017,12 +2029,13 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                             </span>
                           )}
                           {canWrite && (
-                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5 z-10">
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity flex items-center justify-center gap-1.5 z-10">
                               <button
                                 type="button"
                                 onClick={() => void moveImage(image, -1)}
                                 className="h-6 w-6 rounded bg-black/70 text-white flex items-center justify-center text-xs hover:bg-black/90 font-bold"
                                 title="Move Left"
+                      aria-label="Move Left"
                               >
                                 ←
                               </button>
@@ -2031,6 +2044,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                                 onClick={() => void moveImage(image, 1)}
                                 className="h-6 w-6 rounded bg-black/70 text-white flex items-center justify-center text-xs hover:bg-black/90 font-bold"
                                 title="Move Right"
+                      aria-label="Move Right"
                               >
                                 →
                               </button>
@@ -2039,6 +2053,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                                 onClick={() => void removeImage(image.id)}
                                 className="h-6 w-6 rounded bg-red-600 text-white flex items-center justify-center text-xs hover:bg-red-700"
                                 title="Remove"
+                      aria-label="Remove"
                               >
                                 <X className="h-3.5 w-3.5" />
                               </button>

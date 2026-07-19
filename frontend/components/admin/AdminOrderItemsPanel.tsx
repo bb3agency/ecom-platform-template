@@ -114,7 +114,7 @@ export function AdminOrderItemsPanel({ orderId, onUpdated }: AdminOrderItemsPane
 
   return (
     <section className="rounded-xl border border-border bg-card">
-      <header className="flex items-center justify-between px-6 py-4">
+      <header className="flex items-center justify-between gap-3 px-4 py-4 sm:px-6">
         <div>
           <h2 className="font-heading text-sm font-semibold">Line items</h2>
           <p className="mt-0.5 text-xs text-muted-foreground">
@@ -184,7 +184,7 @@ export function AdminOrderItemsPanel({ orderId, onUpdated }: AdminOrderItemsPane
             </table>
           </div>
 
-          <div className="border-t border-border px-6 py-4">
+          <div className="border-t border-border px-4 py-4 sm:px-6">
             <dl className="ml-auto grid w-full max-w-xs grid-cols-1 gap-1.5 text-sm">
               <div className="flex items-center justify-between">
                 <dt className="text-muted-foreground">Subtotal</dt>
@@ -210,7 +210,7 @@ export function AdminOrderItemsPanel({ orderId, onUpdated }: AdminOrderItemsPane
           </div>
 
           {canEditItems ? (
-            <div className="flex items-center gap-3 border-t border-border px-6 py-4">
+            <div className="flex items-center gap-3 border-t border-border px-4 py-4 sm:px-6">
               <Button
                 className="px-4"
                 loading={saving}
@@ -222,7 +222,7 @@ export function AdminOrderItemsPanel({ orderId, onUpdated }: AdminOrderItemsPane
           ) : null}
         </>
       ) : !loading ? (
-        <p className="px-6 pb-4 text-sm text-muted-foreground">No line items.</p>
+        <p className="px-4 pb-4 text-sm text-muted-foreground sm:px-6">No line items.</p>
       ) : null}
     </section>
   );

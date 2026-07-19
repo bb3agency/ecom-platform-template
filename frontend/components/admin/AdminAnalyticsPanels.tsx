@@ -93,13 +93,15 @@ export function AdminAnalyticsPageContent() {
         onRangeChange={setRange}
       />
       {exportError && (
-        <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2.5 text-sm text-destructive">
-          <span className="font-medium">Export failed:</span> {exportError}
+        <div className="flex min-w-0 flex-wrap items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">
+          <span className="min-w-0 flex-1 break-words">
+            <span className="font-medium">Export failed:</span> {exportError}
+          </span>
           <button
             type="button"
             onClick={() => setExportError(null)}
-            className="ml-auto text-xs text-destructive/70 hover:text-destructive"
-            aria-label="Dismiss"
+            className="ml-auto flex size-9 shrink-0 items-center justify-center rounded-md text-xs text-destructive/70 hover:text-destructive"
+            aria-label="Dismiss export error"
           >
             ✕
           </button>
@@ -288,14 +290,14 @@ function AdminFunnelPanel({ from, to }: { from: string; to: string }) {
 
               {/* Step card */}
               <div className="rounded-2xl border border-border bg-card p-4 transition-shadow hover:shadow-sm">
-                <div className="mb-2 flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-2">
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5">
+                  <div className="flex min-w-0 items-center gap-2">
                     <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
                       {idx + 1}
                     </span>
-                    <span className="text-sm font-medium text-foreground">{label}</span>
+                    <span className="truncate text-sm font-medium text-foreground">{label}</span>
                   </div>
-                  <div className="flex items-center gap-3 text-right">
+                  <div className="flex shrink-0 items-center gap-3 text-right">
                     <span className="font-heading text-lg font-semibold tracking-tight text-foreground tabular-nums">
                       {step.count.toLocaleString()}
                     </span>

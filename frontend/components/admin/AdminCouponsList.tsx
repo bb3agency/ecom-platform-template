@@ -575,7 +575,7 @@ export function AdminCouponsList({
                             <>
                               <button
                                 type="button"
-                                className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+                                className="flex h-10 w-10 sm:h-7 sm:w-7 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
                                 title={
                                   coupon.isActive
                                     ? "Pause coupon"
@@ -597,7 +597,7 @@ export function AdminCouponsList({
                               </button>
                               <button
                                 type="button"
-                                className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+                                className="flex h-10 w-10 sm:h-7 sm:w-7 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-muted hover:text-foreground"
                                 title="Edit coupon"
                                 aria-label="Edit coupon"
                                 onClick={() => setEditingCoupon(coupon)}
@@ -606,7 +606,7 @@ export function AdminCouponsList({
                               </button>
                               <button
                                 type="button"
-                                className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+                                className="flex h-10 w-10 sm:h-7 sm:w-7 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
                                 title="Clone coupon"
                                 aria-label="Clone coupon"
                                 disabled={actionId === coupon.id}
@@ -622,7 +622,7 @@ export function AdminCouponsList({
                               </button>
                               <button
                                 type="button"
-                                className="flex h-7 w-7 items-center justify-center rounded-md border border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/20 disabled:opacity-50"
+                                className="flex h-10 w-10 sm:h-7 sm:w-7 items-center justify-center rounded-md border border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/20 disabled:opacity-50"
                                 title="Delete coupon"
                                 aria-label="Delete coupon"
                                 disabled={actionId === coupon.id}
@@ -632,7 +632,7 @@ export function AdminCouponsList({
                               </button>
                               <button
                                 type="button"
-                                className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+                                className="flex h-10 w-10 sm:h-7 sm:w-7 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-muted hover:text-foreground"
                                 title="View audit log"
                                 aria-label="View audit log"
                                 onClick={() => void openAudit(coupon)}

@@ -183,17 +183,24 @@ export function AdminGalleryManager() {
         </button>
       </div>
 
-      {/* Upload */}
+      {/* Hidden file input — shared by both the empty-state CTA and the
+          "add more" dropzone so the upload trigger always exists. */}
       {canWrite && (
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp,image/gif"
+          multiple
+          className="hidden"
+          onChange={(e) => void handleUpload(e.target.files)}
+        />
+      )}
+
+      {/* "Add more" dropzone — only when the gallery already has images. When
+          empty, the EmptyState below is the single upload affordance (avoids a
+          duplicate dropzone + empty-state both prompting to upload). */}
+      {canWrite && images.length > 0 && (
         <div className="flex flex-col items-center gap-3 rounded-xl border-2 border-dashed border-border bg-muted/30 p-8 text-center">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/jpeg,image/png,image/webp,image/gif"
-            multiple
-            className="hidden"
-            onChange={(e) => void handleUpload(e.target.files)}
-          />
           <Upload className="size-6 text-muted-foreground" aria-hidden />
           <Button
             type="button"
@@ -216,7 +223,7 @@ export function AdminGalleryManager() {
 
       {/* List */}
       {loading ? (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
           {Array.from({ length: 3 }).map((_, i) => (
             <div key={i} className="overflow-hidden rounded-xl border border-border bg-card">
               <Skeleton className="aspect-[4/3] w-full rounded-none" />
@@ -246,7 +253,7 @@ export function AdminGalleryManager() {
           }
         />
       ) : (
-        <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <ul className="grid grid-cols-2 gap-3 lg:grid-cols-3">
           {images.map((img, index) => (
             <li
               key={img.id}

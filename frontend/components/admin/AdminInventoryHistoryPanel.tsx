@@ -80,7 +80,8 @@ export function AdminInventoryHistoryPanel({
             value={variantId}
             onChange={(event) => setVariantId(event.target.value)}
             placeholder="Variant ID"
-            className="h-9 min-w-48 rounded-lg border border-input bg-background px-3 font-mono text-sm text-foreground placeholder:font-sans placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+            aria-label="Variant ID"
+            className="h-9 w-full min-w-0 sm:w-auto sm:min-w-48 rounded-lg border border-input bg-background px-3 font-mono text-sm text-foreground placeholder:font-sans placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
           />
           <Button type="button" size="sm" variant="outline" onClick={() => void load(1)}>
             Load history

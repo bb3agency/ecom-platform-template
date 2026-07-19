@@ -349,7 +349,7 @@ export function AdminReviewsList({
                       <div className="flex items-center justify-end gap-2">
                         <Link
                           href={review.productSlug ? `/products/${review.productSlug}` : `/admin`}
-                          className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                          className="flex h-10 w-10 sm:h-7 sm:w-7 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                           title="View product"
                           target="_blank"
                         >
@@ -359,7 +359,7 @@ export function AdminReviewsList({
                         {canModerate && (!review.approved ? (
                           <button
                             type="button"
-                            className="flex h-7 w-7 items-center justify-center rounded-md border border-emerald-500/30 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-400 transition-colors disabled:opacity-50"
+                            className="flex h-10 w-10 sm:h-7 sm:w-7 items-center justify-center rounded-md border border-emerald-500/30 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-400 transition-colors disabled:opacity-50"
                             disabled={actionId === review.id}
                             onClick={() => void moderate(review.id, true)}
                             title="Approve"
@@ -370,7 +370,7 @@ export function AdminReviewsList({
                         ) : (
                           <button
                             type="button"
-                            className="flex h-7 w-7 items-center justify-center rounded-md border border-amber-500/30 bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 dark:text-amber-400 transition-colors disabled:opacity-50"
+                            className="flex h-10 w-10 sm:h-7 sm:w-7 items-center justify-center rounded-md border border-amber-500/30 bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 dark:text-amber-400 transition-colors disabled:opacity-50"
                             disabled={actionId === review.id}
                             onClick={() => void moderate(review.id, false)}
                             title="Unpublish"
@@ -383,7 +383,7 @@ export function AdminReviewsList({
                         {canModerate && (
                           <button
                             type="button"
-                            className="flex h-7 w-7 items-center justify-center rounded-md border border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors disabled:opacity-50"
+                            className="flex h-10 w-10 sm:h-7 sm:w-7 items-center justify-center rounded-md border border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors disabled:opacity-50"
                             title="Delete review"
                             aria-label="Delete review"
                             disabled={actionId === review.id}

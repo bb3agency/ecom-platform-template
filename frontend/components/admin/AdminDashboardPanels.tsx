@@ -194,7 +194,7 @@ export function AdminSalesChartPanel({
   }));
 
   return (
-    <div className="flex flex-col rounded-2xl border border-border bg-card p-4 transition-shadow hover:shadow-sm sm:p-5 lg:col-span-2">
+    <div className="flex min-w-0 flex-col rounded-2xl border border-border bg-card p-4 transition-shadow hover:shadow-sm sm:p-5 lg:col-span-2">
       <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-sm font-semibold text-foreground">Sales Overview</h2>
         <select
@@ -230,7 +230,7 @@ export function AdminSalesChartPanel({
           className="h-[220px] py-0 sm:h-[300px]"
         />
       ) : (
-        <div className="h-[220px] w-full sm:h-[300px]">
+        <div className="h-[220px] w-full min-w-0 sm:h-[300px]">
           <AdminResponsiveContainer height="100%">
           <AreaChart
             data={chartData}
@@ -357,7 +357,7 @@ export function AdminTopProductsPanel({
   const items = ensureArray<AdminTopProductItem>(data?.items);
 
   return (
-    <div className="flex flex-col rounded-2xl border border-border bg-card p-4 transition-shadow hover:shadow-sm sm:p-5 lg:col-span-2">
+    <div className="flex min-w-0 flex-col rounded-2xl border border-border bg-card p-4 transition-shadow hover:shadow-sm sm:p-5 lg:col-span-2">
       <div className="mb-4 flex items-center justify-between gap-3">
         <h2 className="text-sm font-semibold text-foreground">
           Top Selling Products
@@ -498,7 +498,7 @@ export function AdminSalesByCategoryPanel({
   const totalRevenue = chartData.reduce((acc, curr) => acc + curr.value, 0);
 
   return (
-    <div className="flex flex-col rounded-2xl border border-border bg-card p-4 transition-shadow hover:shadow-sm sm:p-5">
+    <div className="flex min-w-0 flex-col rounded-2xl border border-border bg-card p-4 transition-shadow hover:shadow-sm sm:p-5">
       <h2 className="mb-4 text-sm font-semibold text-foreground">
         Sales by Category
       </h2>
@@ -625,7 +625,7 @@ export function AdminRecentOrdersPanel() {
   useAdminDataRefreshEffect(load, ADMIN_DASHBOARD_REFRESH_SCOPES);
 
   return (
-    <div className="flex flex-col rounded-2xl border border-border bg-card p-4 transition-shadow hover:shadow-sm sm:p-5">
+    <div className="flex min-w-0 flex-col rounded-2xl border border-border bg-card p-4 transition-shadow hover:shadow-sm sm:p-5">
       <div className="mb-4 flex items-center justify-between gap-3">
         <h2 className="text-sm font-semibold text-foreground">Recent Orders</h2>
         <Link href="/admin/orders" className="text-sm font-medium text-primary hover:underline">
@@ -724,7 +724,7 @@ export function AdminLowStockPanel() {
   useAdminDataRefreshEffect(load, ADMIN_DASHBOARD_REFRESH_SCOPES);
 
   return (
-    <div className="flex flex-col rounded-2xl border border-border bg-card p-4 transition-shadow hover:shadow-sm sm:p-5">
+    <div className="flex min-w-0 flex-col rounded-2xl border border-border bg-card p-4 transition-shadow hover:shadow-sm sm:p-5">
       <div className="mb-4 flex items-center justify-between gap-3">
         <h2 className="text-sm font-semibold text-foreground">Low Stock Alert</h2>
         <Link href="/admin/inventory" className="text-sm font-medium text-primary hover:underline">

@@ -211,7 +211,7 @@ export function AdminReturnsList() {
           type="button"
           onClick={() => void load(true)}
           disabled={loading || refreshing}
-          className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 sm:h-9 sm:w-9"
           aria-label="Refresh"
         >
           <RotateCcw className={cn("h-4 w-4", refreshing && "animate-spin")} />
@@ -308,7 +308,7 @@ export function AdminReturnsList() {
           </div>
 
           {/* Desktop table */}
-          <div className="hidden lg:block rounded-xl border border-border/40 bg-card shadow-sm overflow-hidden">
+          <div className="hidden lg:block rounded-xl border border-border/40 bg-card shadow-sm overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead className="border-b border-border/40 bg-muted/30">
                 <tr>

@@ -344,7 +344,7 @@ export function AdminCategoriesList() {
           )}
 
           <AdminTableScroll>
-            <table className="w-full text-left text-sm">
+            <table className="w-full min-w-[640px] text-left text-sm">
               <thead className="sticky top-0 bg-card border-b border-border text-xs font-medium text-muted-foreground">
                 <tr>
                   <th className="px-4 py-3">Category</th>

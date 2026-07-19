@@ -338,12 +338,7 @@ function AdminConsoleFrame({ children }: { children: ReactNode }) {
             </div>
           )}
 
-          <nav
-            className={cn(
-              "flex flex-1 flex-col gap-0.5 overflow-y-auto py-2 min-h-0",
-              collapsed ? "px-3" : "px-3",
-            )}
-          >
+          <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-3 py-2 min-h-0">
             {mainNavItems.map((item) => renderNavItem(item))}
 
             {secondaryNavItems.length > 0 && (
@@ -430,7 +425,7 @@ function AdminConsoleFrame({ children }: { children: ReactNode }) {
                 >
                   <Bell className="size-4" />
                   {pendingOrdersCount !== null && pendingOrdersCount > 0 && (
-                    <span className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[8px] font-bold text-white ring-2 ring-background">
+                    <span className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-destructive px-1 text-[8px] font-bold text-destructive-foreground ring-2 ring-background">
                       {pendingOrdersCount > 99 ? "99+" : String(pendingOrdersCount)}
                     </span>
                   )}

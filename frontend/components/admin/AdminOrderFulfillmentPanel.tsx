@@ -577,7 +577,7 @@ export function AdminOrderFulfillmentPanel({
             </Button>
             <Button
               type="button"
-              className="bg-red-600 text-white hover:bg-red-700"
+              variant="destructive"
               loading={busyAction === "cancel"}
               onClick={() => {
                 void runAction("cancel", "/admin/orders/:id/cancel", {
@@ -595,7 +595,7 @@ export function AdminOrderFulfillmentPanel({
         </DialogContent>
       </Dialog>
       {/* Header */}
-      <header className="border-b border-border px-6 py-4">
+      <header className="border-b border-border px-4 py-4 sm:px-6">
         <div className="flex items-center justify-between gap-2">
           <h2 className="font-heading text-sm font-semibold">
             Order fulfillment
@@ -627,7 +627,7 @@ export function AdminOrderFulfillmentPanel({
         </p>
       </header>
 
-      <div className="p-6 grid gap-6">
+      <div className="grid min-w-0 gap-6 p-4 sm:p-6">
         {/* Order picker */}
         {!hideOrderPicker ? (
           <label className="grid min-w-0 grid-cols-1 gap-1.5 text-sm font-medium">
@@ -786,7 +786,7 @@ export function AdminOrderFulfillmentPanel({
                       type="button"
                       onClick={runSyncStatus}
                       disabled={busyAction !== null}
-                      className="flex items-center gap-1 text-xs text-blue-600 hover:underline disabled:opacity-50"
+                      className="flex items-center gap-1 text-xs text-primary hover:underline disabled:opacity-50"
                       title="Pull latest status from shipping provider"
                     >
                       <RefreshCw className={`h-3 w-3 ${busyAction === "sync" ? "animate-spin" : ""}`} />

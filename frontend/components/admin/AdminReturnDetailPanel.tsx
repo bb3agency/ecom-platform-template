@@ -227,7 +227,7 @@ export function AdminReturnDetailPanel({ returnId }: AdminReturnDetailPanelProps
         <button
           type="button"
           onClick={() => router.back()}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground hover:text-foreground transition-colors"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground hover:text-foreground transition-colors sm:h-8 sm:w-8"
           aria-label="Back to returns"
         >
           <ArrowLeft className="h-4 w-4" />

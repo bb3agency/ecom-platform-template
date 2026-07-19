@@ -29,9 +29,9 @@ interface AdminNotificationsPanelProps {
 type Tab = "pending" | "issues";
 
 const STATUS_ICON: Record<string, React.ReactNode> = {
-  CONFIRMED: <ShoppingBag className="h-4 w-4" />,
-  PROCESSING: <Clock className="h-4 w-4" />,
-  SHIPPED: <Truck className="h-4 w-4" />,
+  CONFIRMED: <ShoppingBag className="size-4" />,
+  PROCESSING: <Clock className="size-4" />,
+  SHIPPED: <Truck className="size-4" />,
 };
 
 const STATUS_COLOR: Record<string, string> = {
@@ -112,7 +112,7 @@ export function AdminNotificationsPanel({ onClose }: AdminNotificationsPanelProp
   const items = tab === "pending" ? pendingOrders : issueOrders;
 
   return (
-    <div className="absolute left-auto right-0 top-full mt-2 w-[min(22rem,92vw)] z-50 rounded-2xl border border-border/50 bg-card shadow-2xl overflow-hidden">
+    <div className="fixed inset-x-2 top-16 z-50 overflow-hidden rounded-2xl border border-border/50 bg-card shadow-2xl sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[min(22rem,92vw)]">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-border/30 px-4 py-3">
         <span className="text-sm font-semibold text-foreground">Notifications</span>
@@ -120,18 +120,18 @@ export function AdminNotificationsPanel({ onClose }: AdminNotificationsPanelProp
           <button
             type="button"
             onClick={() => setRefreshKey((k) => k + 1)}
-            className="rounded-md p-1.5 text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors"
+            className="flex size-9 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors"
             aria-label="Refresh"
           >
-            <RefreshCw className={cn("h-3.5 w-3.5", (loadingPending || loadingIssues) && "animate-spin")} />
+            <RefreshCw className={cn("size-4", (loadingPending || loadingIssues) && "animate-spin")} />
           </button>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md p-1.5 text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors"
+            className="flex size-9 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors"
             aria-label="Close"
           >
-            <X className="h-3.5 w-3.5" />
+            <X className="size-4" />
           </button>
         </div>
       </div>
@@ -142,7 +142,7 @@ export function AdminNotificationsPanel({ onClose }: AdminNotificationsPanelProp
           type="button"
           onClick={() => setTab("pending")}
           className={cn(
-            "flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-t-md transition-colors",
+            "flex min-h-10 items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-t-md transition-colors",
             tab === "pending"
               ? "border-b-2 border-primary text-primary"
               : "text-muted-foreground hover:text-foreground",
@@ -159,7 +159,7 @@ export function AdminNotificationsPanel({ onClose }: AdminNotificationsPanelProp
           type="button"
           onClick={() => setTab("issues")}
           className={cn(
-            "flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-t-md transition-colors",
+            "flex min-h-10 items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-t-md transition-colors",
             tab === "issues"
               ? "border-b-2 border-destructive text-destructive"
               : "text-muted-foreground hover:text-foreground",

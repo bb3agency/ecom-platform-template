@@ -101,7 +101,7 @@ export function AdminOrderDetailPanel({ orderId }: AdminOrderDetailPanelProps) {
   return (
     <div className="grid min-w-0 grid-cols-1 gap-4">
       {/* Page header */}
-      <div className="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-border bg-card px-6 py-5">
+      <div className="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-border bg-card px-4 py-4 sm:px-6 sm:py-5">
         <div className="grid min-w-0 grid-cols-1 gap-1">
           <h1 className="font-heading text-xl font-semibold">{order.orderNumber}</h1>
           <p className="text-sm text-muted-foreground">
@@ -118,7 +118,7 @@ export function AdminOrderDetailPanel({ orderId }: AdminOrderDetailPanelProps) {
               type="button"
               disabled={downloadingInvoice}
               onClick={() => void downloadInvoice()}
-              className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted/50 disabled:opacity-60"
+              className="flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-medium hover:bg-muted/50 disabled:opacity-60"
             >
               <FileDown className="h-3.5 w-3.5" />
               {downloadingInvoice ? "Downloading…" : "Invoice PDF"}
@@ -258,7 +258,7 @@ export function AdminOrderDetailPanel({ orderId }: AdminOrderDetailPanelProps) {
       </div>
 
       {/* Order totals */}
-      <div className="rounded-xl border border-border bg-card px-6 py-4">
+      <div className="rounded-xl border border-border bg-card px-4 py-4 sm:px-6">
         <div className="flex flex-wrap items-center gap-x-8 gap-y-2">
           <TotalItem label="Subtotal" value={formatPaise(order.subtotal)} />
           <span className="hidden text-border sm:block">|</span>
@@ -271,7 +271,7 @@ export function AdminOrderDetailPanel({ orderId }: AdminOrderDetailPanelProps) {
       </div>
 
       {order.notes ? (
-        <div className="rounded-xl border border-border bg-card px-6 py-4">
+        <div className="rounded-xl border border-border bg-card px-4 py-4 sm:px-6">
           <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             Order notes
           </p>

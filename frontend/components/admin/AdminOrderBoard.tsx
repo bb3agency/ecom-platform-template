@@ -378,7 +378,7 @@ export function AdminOrderBoard() {
           <button
             type="button"
             onClick={() => router.back()}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border bg-background text-muted-foreground transition-colors hover:text-foreground"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border bg-background text-muted-foreground transition-colors hover:text-foreground lg:h-8 lg:w-8"
             aria-label="Back to orders"
           >
             <ArrowLeft className="h-4 w-4" />
@@ -407,7 +407,7 @@ export function AdminOrderBoard() {
             type="button"
             onClick={() => void load(true)}
             disabled={loading || refreshing}
-            className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-background text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+            className="flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-background text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50 lg:h-8 lg:w-8"
             aria-label="Refresh board"
           >
             <RefreshCw
