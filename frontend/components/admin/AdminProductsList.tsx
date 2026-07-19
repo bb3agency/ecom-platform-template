@@ -6,6 +6,8 @@ import { AdminPagination } from "@/components/admin/AdminPagination";
 import { AdminRowActionsMenu } from "@/components/admin/AdminRowActionsMenu";
 import { AdminTableScroll } from "@/components/admin/AdminTableScroll";
 import { Button } from "@/components/ui/button";
+import { useConfirm } from "@/components/ui/confirm-dialog";
+import { useToastStore } from "@/stores/toast";
 import { useAdminAuth } from "@/contexts/admin-auth-context";
 import { useAdminListResource } from "@/hooks/use-admin-list-resource";
 import {
@@ -113,6 +115,8 @@ export function AdminProductsList() {
 
   const [selectedIds, setSelectedIds] = useState<Record<string, boolean>>({});
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
+  const { confirm, confirmDialog } = useConfirm();
+  const pushToast = useToastStore((s) => s.push);
 
   // ── KPI state ────────────────────────────────────────────────────────────
   const [productKpis, setProductKpis] = useState<ProductKpis | null>(null);
@@ -166,13 +170,14 @@ export function AdminProductsList() {
 
   const handleDeleteProduct = async (productId: string) => {
     if (!canWrite) return;
-    if (
-      !window.confirm(
-        "Deactivate this product? It will be hidden from the storefront but can be restored later.",
-      )
-    ) {
-      return;
-    }
+    const ok = await confirm({
+      title: "Deactivate Product?",
+      description:
+        "The product will be hidden from the storefront. You can restore it at any time.",
+      confirmLabel: "Deactivate",
+      tone: "primary",
+    });
+    if (!ok) return;
 
     setIsDeleting(productId);
     try {
@@ -182,9 +187,10 @@ export function AdminProductsList() {
       });
       reload();
       notifyAdminDataChanged(["products", "inventory", "dashboard"]);
+      pushToast({ variant: "success", message: "Product deactivated." });
     } catch (err) {
       console.error("Failed to deactivate product", err);
-      alert(getApiErrorMessage(err));
+      pushToast({ variant: "error", message: getApiErrorMessage(err) });
     } finally {
       setIsDeleting(null);
     }
@@ -204,7 +210,7 @@ export function AdminProductsList() {
       notifyAdminDataChanged(["products", "inventory", "dashboard"]);
     } catch (err) {
       console.error("Failed to restore product", err);
-      alert(getApiErrorMessage(err));
+      pushToast({ variant: "error", message: getApiErrorMessage(err) });
     } finally {
       setIsDeleting(null);
     }
@@ -212,13 +218,19 @@ export function AdminProductsList() {
 
   const handleHardDeleteProduct = async (productId: string, productName: string) => {
     if (!canWrite) return;
-    if (
-      !window.confirm(
-        `Permanently delete "${productName}"? This cannot be undone and will remove all product data, variants, and images forever.`,
-      )
-    ) {
-      return;
-    }
+    const ok = await confirm({
+      title: "Delete Product?",
+      description: (
+        <>
+          This action cannot be undone. This will permanently delete{" "}
+          <span className="font-semibold text-foreground">“{productName}”</span> including all
+          variants and images.
+        </>
+      ),
+      confirmLabel: "Delete Product",
+      typeToConfirm: "DELETE",
+    });
+    if (!ok) return;
 
     setIsDeleting(productId);
     try {
@@ -230,7 +242,7 @@ export function AdminProductsList() {
       notifyAdminDataChanged(["products", "inventory", "dashboard"]);
     } catch (err) {
       console.error("Failed to permanently delete product", err);
-      alert(getApiErrorMessage(err));
+      pushToast({ variant: "error", message: getApiErrorMessage(err) });
     } finally {
       setIsDeleting(null);
     }
@@ -240,6 +252,7 @@ export function AdminProductsList() {
 
   return (
     <div className="flex flex-col gap-6 min-w-0">
+      {confirmDialog}
       {/* KPI Cards Row */}
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <div className="flex flex-col justify-center rounded-xl border border-border/40 bg-card p-4 sm:p-5 shadow-sm min-w-0">

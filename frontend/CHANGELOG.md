@@ -12,6 +12,23 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.51] — 2026-07-19
+
+### Added
+- **Phase 0 of the admin design system** (Linear/Stripe-dashboard direction; all styling via semantic tokens so each client themes automatically):
+  - New Base-UI-backed primitives in `components/ui/`: `dialog` (header/body/sticky-footer layout), `alert-dialog`, `sheet` (right/left/bottom slide-over), `input`, `textarea`, `select`, `switch`, `checkbox`, `tabs` (underline indicator), `tooltip`, `card`, `separator`, unified `badge` (status dot + status/marketing/payment variants), `empty-state` (icon + headline + CTA), and `confirm-dialog` with a promise-based `useConfirm()` hook.
+  - `Button` gains a `loading` prop — spinner + disable without layout shift.
+
+### Changed
+- **Every native browser popup in the admin console is gone.** All 14 `window.confirm()` and 4 `window.prompt()` calls replaced with design-system modals: product/category deactivate + permanent delete (permanent deletes require typing DELETE), variant delete + orders-conflict deactivate fallback, image remove, coupon delete, review delete, gallery image delete, customer note delete, **customer ban** (modal with required reason field replacing the inline textarea), **queue replay** (proper Dialog with reason + approval-token fields and inline validation), and clipboard-copy fallbacks (legacy textarea copy + toast instead of `window.prompt`). Error `alert()`s in the touched files now surface as toasts.
+- `AdminStatusBadge` restyled onto the unified `Badge` (same `label`/`tone` API, now with a status dot).
+
+**Propagation:**
+- Severity: NORMAL (UX only, no contract change) · Layers: frontend (`components/ui/**` new primitives, `components/admin/{AdminProductsList,AdminProductEditor,AdminCategoriesList,AdminCategoryEditor,AdminCouponsList,AdminCustomerDetailPanel,AdminGalleryManager,AdminReviewsList,AdminReplayActions,AdminCopyLinkButton,AdminRowActionsMenu,AdminStatusBadge}.tsx`, `components/ui/button.tsx`)
+- Migration: NO · Flag: none · Design impact: none per-client (semantic tokens; admin console is engine) · Breaking: NO
+- Rollback: revert the files
+
+
 ## [0.1.50] — 2026-07-19
 
 ### Fixed

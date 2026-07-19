@@ -4,6 +4,7 @@ import { MoreHorizontal, Trash2, Copy, Check } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
+import { useToastStore } from "@/stores/toast";
 
 interface AdminRowActionsMenuProps {
   disabled?: boolean;
@@ -32,7 +33,21 @@ export function AdminRowActionsMenu({
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      window.prompt("Copy the storefront link:", storefrontUrl);
+      // Clipboard API unavailable — legacy textarea copy fallback.
+      try {
+        const scratch = document.createElement("textarea");
+        scratch.value = storefrontUrl;
+        scratch.style.position = "fixed";
+        scratch.style.opacity = "0";
+        document.body.appendChild(scratch);
+        scratch.select();
+        document.execCommand("copy");
+        document.body.removeChild(scratch);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      } catch {
+        useToastStore.getState().push({ variant: "error", message: "Could not copy the link." });
+      }
     }
     closeMenu();
   };

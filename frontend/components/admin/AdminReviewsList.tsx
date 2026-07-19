@@ -23,6 +23,7 @@ import { hasAdminPermission, ADMIN_PERMISSIONS } from "@/lib/permissions";
 import Image from "next/image";
 import Link from "next/link";
 import { Search, Check, X, Trash2, Eye, Loader2 } from "lucide-react";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 
 const PAGE_SIZE = 20;
 
@@ -47,6 +48,7 @@ export function AdminReviewsList({
   const [data, setData] =
     useState<PaginatedResponse<AdminReviewListItem> | null>(null);
   const [actionId, setActionId] = useState<string | null>(null);
+  const { confirm, confirmDialog } = useConfirm();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -104,9 +106,12 @@ export function AdminReviewsList({
   }
 
   async function remove(reviewId: string) {
-    if (!window.confirm("Permanently delete this review?")) {
-      return;
-    }
+    const ok = await confirm({
+      title: "Delete Review?",
+      description: "The review will be permanently deleted. This cannot be undone.",
+      confirmLabel: "Delete Review",
+    });
+    if (!ok) return;
     setActionId(reviewId);
     try {
       await api(`/admin/reviews/${reviewId}`, { method: "DELETE" });
@@ -124,6 +129,7 @@ export function AdminReviewsList({
 
   return (
     <>
+      {confirmDialog}
       <div className="mb-4 flex flex-col gap-3 rounded-xl border border-border/40 bg-card p-4 shadow-sm sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
         <div className="relative flex-1 min-w-0 sm:max-w-sm">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />

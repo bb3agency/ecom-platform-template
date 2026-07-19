@@ -22,6 +22,8 @@ import { getApiErrorMessageWithHint } from "@/lib/error-messages";
 import { hasAdminPermission, ADMIN_PERMISSIONS } from "@/lib/permissions";
 import { useAuthStore } from "@/stores/auth";
 import { AdminLoadingBlock } from "@/components/admin/ui/admin-ui";
+import { useConfirm } from "@/components/ui/confirm-dialog";
+import { UserXIcon } from "lucide-react";
 
 interface AdminCustomerDetailPanelProps {
   customerId: string;
@@ -34,7 +36,7 @@ export function AdminCustomerDetailPanel({ customerId }: AdminCustomerDetailPane
   const [orders, setOrders] = useState<AdminCustomerOrderSummary[]>([]);
   const [notes, setNotes] = useState<AdminUserNote[]>([]);
   const [noteText, setNoteText] = useState("");
-  const [banReason, setBanReason] = useState("");
+  const { confirm, confirmDialog } = useConfirm();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -83,6 +85,7 @@ export function AdminCustomerDetailPanel({ customerId }: AdminCustomerDetailPane
 
   return (
     <div className="grid min-w-0 grid-cols-1 gap-6">
+      {confirmDialog}
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
       {message ? <p className="text-sm text-muted-foreground">{message}</p> : null}
 
@@ -199,17 +202,23 @@ export function AdminCustomerDetailPanel({ customerId }: AdminCustomerDetailPane
                   type="button"
                   className="shrink-0 text-xs text-destructive"
                   onClick={() => {
-                    if (!window.confirm("Delete this note?")) return;
-                    void api(`/admin/users/${customerId}/notes/${note.id}`, {
-                      method: "DELETE",
-                      idempotencyKey: createIdempotencyKey(),
-                    })
-                      .then(() => {
-                        setMessage("Note deleted.");
-                        notifyAdminDataChanged(["customers", "dashboard"]);
-                        return load();
+                    void confirm({
+                      title: "Delete Note?",
+                      description: "The note will be permanently removed.",
+                      confirmLabel: "Delete Note",
+                    }).then((ok) => {
+                      if (!ok) return;
+                      void api(`/admin/users/${customerId}/notes/${note.id}`, {
+                        method: "DELETE",
+                        idempotencyKey: createIdempotencyKey(),
                       })
-                      .catch((err) => setError(getApiErrorMessageWithHint(err)));
+                        .then(() => {
+                          setMessage("Note deleted.");
+                          notifyAdminDataChanged(["customers", "dashboard"]);
+                          return load();
+                        })
+                        .catch((err) => setError(getApiErrorMessageWithHint(err)));
+                    });
                   }}
                 >
                   Delete
@@ -252,29 +261,34 @@ export function AdminCustomerDetailPanel({ customerId }: AdminCustomerDetailPane
 
       {canWrite ? (
         <AdminSection title="Ban / unban">
-          <textarea
-            value={banReason}
-            onChange={(event) => setBanReason(event.target.value)}
-            placeholder="Ban reason (required for ban)"
-            className="mb-3 min-h-20 w-full rounded-md border px-3 py-2 text-sm"
-          />
           <div className="flex flex-wrap gap-2">
             <Button
               type="button"
               variant="destructive"
               size="sm"
               onClick={() => {
-                void api(`/admin/users/${customerId}/ban`, {
-                  method: "PATCH",
-                  idempotencyKey: createIdempotencyKey(),
-                  body: JSON.stringify({ reason: banReason }),
-                })
-                  .then(() => {
-                    setMessage("Customer banned.");
-                    notifyAdminDataChanged(["customers", "dashboard"]);
-                    return load();
+                void confirm({
+                  title: "Ban Customer?",
+                  description:
+                    "The customer will no longer be able to sign in or place orders. You can unban them later.",
+                  confirmLabel: "Ban Customer",
+                  icon: UserXIcon,
+                  reasonLabel: "Reason (required)",
+                  reasonPlaceholder: "e.g. repeated COD refusals, abusive behaviour…",
+                }).then((ok) => {
+                  if (!ok) return;
+                  void api(`/admin/users/${customerId}/ban`, {
+                    method: "PATCH",
+                    idempotencyKey: createIdempotencyKey(),
+                    body: JSON.stringify({ reason: ok.reason }),
                   })
-                  .catch((err) => setError(getApiErrorMessageWithHint(err)));
+                    .then(() => {
+                      setMessage("Customer banned.");
+                      notifyAdminDataChanged(["customers", "dashboard"]);
+                      return load();
+                    })
+                    .catch((err) => setError(getApiErrorMessageWithHint(err)));
+                });
               }}
             >
               Ban customer

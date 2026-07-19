@@ -38,6 +38,7 @@ import { createIdempotencyKey } from "@/lib/idempotency";
 import { notifyAdminDataChanged } from "@/lib/admin-data-refresh";
 
 import { ADMIN_PERMISSIONS, hasAdminPermission } from "@/lib/permissions";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 
 const PAGE_SIZE = 50;
 
@@ -88,6 +89,7 @@ export function AdminCouponsList({
     useState<PaginatedResponse<AdminCouponListItem> | null>(null);
 
   const [actionId, setActionId] = useState<string | null>(null);
+  const { confirm, confirmDialog } = useConfirm();
 
   const [showCreate, setShowCreate] = useState(false);
 
@@ -177,7 +179,17 @@ export function AdminCouponsList({
   }
 
   async function deleteCoupon(coupon: AdminCouponListItem) {
-    if (!window.confirm(`Delete coupon ${coupon.code}?`)) return;
+    const ok = await confirm({
+      title: "Delete Coupon?",
+      description: (
+        <>
+          Coupon <span className="font-semibold text-foreground">{coupon.code}</span> will be
+          removed from the storefront. Deleted coupons stay in this list and can be restored.
+        </>
+      ),
+      confirmLabel: "Delete Coupon",
+    });
+    if (!ok) return;
 
     setActionId(coupon.id);
 
@@ -271,6 +283,7 @@ export function AdminCouponsList({
 
   return (
     <>
+      {confirmDialog}
       {/* Create / Edit modal */}
       <AdminCouponForm
         open={formOpen}

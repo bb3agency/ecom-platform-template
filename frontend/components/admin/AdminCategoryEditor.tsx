@@ -25,6 +25,7 @@ import { useAdminFormValidation } from "@/hooks/use-admin-form-validation";
 import { resolveProductImageUrl } from "@/lib/media-url";
 import { uploadAdminCategoryImage } from "@/lib/admin-product-media";
 import { useAuthStore } from "@/stores/auth";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 
 const inputClass =
   "h-10 w-full rounded-md border border-border bg-background px-3 text-sm focus:border-zinc-900 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60";
@@ -53,6 +54,7 @@ export function AdminCategoryEditor({ categoryId }: AdminCategoryEditorProps) {
   const [category, setCategory] = useState<AdminCategoryListItem | null>(null);
   const [loading, setLoading] = useState(!isCreate);
   const [saving, setSaving] = useState(false);
+  const { confirm, confirmDialog } = useConfirm();
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -261,13 +263,13 @@ export function AdminCategoryEditor({ categoryId }: AdminCategoryEditorProps) {
 
   async function handleDelete() {
     if (!canWrite || !categoryId) return;
-    if (
-      !window.confirm(
-        "Deactivate this category? It will be hidden from the storefront. You can restore it later.",
-      )
-    ) {
-      return;
-    }
+    const ok = await confirm({
+      title: "Deactivate Category?",
+      description: "It will be hidden from the storefront. You can restore it later.",
+      confirmLabel: "Deactivate",
+      tone: "primary",
+    });
+    if (!ok) return;
     setSaving(true);
     setError(null);
     try {
@@ -321,6 +323,7 @@ export function AdminCategoryEditor({ categoryId }: AdminCategoryEditorProps) {
 
   return (
     <div className="flex flex-col gap-6">
+      {confirmDialog}
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <Link href="/admin" className="hover:text-foreground transition-colors">
           Dashboard

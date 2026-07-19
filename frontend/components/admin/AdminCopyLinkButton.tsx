@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Copy, Check, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useToastStore } from "@/stores/toast";
 
 interface AdminCopyLinkButtonProps {
   url: string;
@@ -23,7 +24,21 @@ export function AdminCopyLinkButton({
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      window.prompt("Copy the storefront link:", url);
+      // Clipboard API unavailable (http/LAN testing) — legacy textarea copy fallback.
+      try {
+        const scratch = document.createElement("textarea");
+        scratch.value = url;
+        scratch.style.position = "fixed";
+        scratch.style.opacity = "0";
+        document.body.appendChild(scratch);
+        scratch.select();
+        document.execCommand("copy");
+        document.body.removeChild(scratch);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      } catch {
+        useToastStore.getState().push({ variant: "error", message: "Could not copy the link." });
+      }
     }
   };
 

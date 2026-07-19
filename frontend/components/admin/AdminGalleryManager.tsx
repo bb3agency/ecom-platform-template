@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowDown,
@@ -37,6 +38,7 @@ export function AdminGalleryManager() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const { confirm, confirmDialog } = useConfirm();
   const [uploading, setUploading] = useState(false);
   const [savingToggle, setSavingToggle] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -110,7 +112,12 @@ export function AdminGalleryManager() {
 
   const handleDelete = async (id: string) => {
     if (!accessToken) return;
-    if (!window.confirm("Delete this image? This cannot be undone.")) return;
+    const ok = await confirm({
+      title: "Delete Image?",
+      description: "The image will be permanently removed from the gallery. This cannot be undone.",
+      confirmLabel: "Delete Image",
+    });
+    if (!ok) return;
     setBusyId(id);
     setError(null);
     try {
@@ -145,6 +152,7 @@ export function AdminGalleryManager() {
 
   return (
     <div className="flex flex-col gap-6">
+      {confirmDialog}
       {/* Enable toggle */}
       <div className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-5 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">

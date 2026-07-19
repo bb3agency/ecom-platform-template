@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AdminCategoryForm } from "@/components/admin/AdminCategoryForm";
 import { AdminPagination } from "@/components/admin/AdminPagination";
 import { AdminTableScroll } from "@/components/admin/AdminTableScroll";
+import { useConfirm } from "@/components/ui/confirm-dialog";
+import { useToastStore } from "@/stores/toast";
 import { useAdminAuth } from "@/contexts/admin-auth-context";
 import { useAdminListResource } from "@/hooks/use-admin-list-resource";
 import {
@@ -67,6 +69,8 @@ export function AdminCategoriesList() {
     useAdminListResource<AdminCategoryListItem>(fetchPage);
 
   const [isActioning, setIsActioning] = useState<string | null>(null);
+  const { confirm, confirmDialog } = useConfirm();
+  const pushToast = useToastStore((s) => s.push);
 
   const loadParentNames = useCallback(async () => {
     try {
@@ -137,13 +141,14 @@ export function AdminCategoriesList() {
 
   const handleDeactivate = async (categoryId: string) => {
     if (!canWrite) return;
-    if (
-      !window.confirm(
-        "Deactivate this category? Products using it will not be affected. You can restore it later.",
-      )
-    ) {
-      return;
-    }
+    const ok = await confirm({
+      title: "Deactivate Category?",
+      description:
+        "Products using this category will not be affected. You can restore it later.",
+      confirmLabel: "Deactivate",
+      tone: "primary",
+    });
+    if (!ok) return;
     setIsActioning(categoryId);
     try {
       await api(`/admin/categories/${categoryId}`, {
@@ -155,7 +160,7 @@ export function AdminCategoriesList() {
       void loadParentNames();
       notifyAdminDataChanged(["categories", "products", "dashboard"]);
     } catch (err) {
-      alert(getApiErrorMessage(err));
+      pushToast({ variant: "error", message: getApiErrorMessage(err) });
     } finally {
       setIsActioning(null);
     }
@@ -175,7 +180,7 @@ export function AdminCategoriesList() {
       void loadParentNames();
       notifyAdminDataChanged(["categories", "products", "dashboard"]);
     } catch (err) {
-      alert(getApiErrorMessage(err));
+      pushToast({ variant: "error", message: getApiErrorMessage(err) });
     } finally {
       setIsActioning(null);
     }
@@ -183,13 +188,19 @@ export function AdminCategoriesList() {
 
   const handlePermanentDelete = async (cat: AdminCategoryListItem) => {
     if (!canWrite) return;
-    if (
-      !window.confirm(
-        `Permanently delete "${cat.name}"? This cannot be undone. The category must have no products assigned.`,
-      )
-    ) {
-      return;
-    }
+    const ok = await confirm({
+      title: "Delete Category?",
+      description: (
+        <>
+          This action cannot be undone. This will permanently delete{" "}
+          <span className="font-semibold text-foreground">“{cat.name}”</span>. The category
+          must have no products assigned.
+        </>
+      ),
+      confirmLabel: "Delete Category",
+      typeToConfirm: "DELETE",
+    });
+    if (!ok) return;
     setIsActioning(cat.id);
     try {
       await api(`/admin/categories/${cat.id}/permanent`, {
@@ -201,7 +212,7 @@ export function AdminCategoriesList() {
       void loadParentNames();
       notifyAdminDataChanged(["categories", "products", "dashboard"]);
     } catch (err) {
-      alert(getApiErrorMessage(err));
+      pushToast({ variant: "error", message: getApiErrorMessage(err) });
     } finally {
       setIsActioning(null);
     }
@@ -220,6 +231,7 @@ export function AdminCategoriesList() {
 
   return (
     <>
+      {confirmDialog}
       <div className="flex flex-col gap-6 min-w-0">
         <div className="grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-3">
           <div className="flex flex-col justify-center rounded-xl border border-border/40 bg-card p-4 sm:p-5 shadow-sm">

@@ -57,6 +57,7 @@ import { fetchPublicStoreConfigClient } from "@/lib/storefront-settings";
 import { STOREFRONT_URL } from "@/lib/constants";
 import { AdminCopyLinkButton } from "@/components/admin/AdminCopyLinkButton";
 import { AdminTableScroll } from "@/components/admin/AdminTableScroll";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 import {
   buildPrimaryVariantPricePatch,
   mergePrimaryVariantPrices,
@@ -159,6 +160,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
     if (success) toast.success(success);
   }, [success]);
   const [saving, setSaving] = useState(false);
+  const { confirm, confirmDialog } = useConfirm();
   const [gstInvoicingEnabled, setGstInvoicingEnabled] = useState(false);
 
   useEffect(() => {
@@ -630,13 +632,13 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
 
   async function deleteProduct() {
     if (!canWrite || !productId) return;
-    if (
-      !window.confirm(
-        "Deactivate this product? It will be hidden from the storefront but can be restored later.",
-      )
-    ) {
-      return;
-    }
+    const ok = await confirm({
+      title: "Deactivate Product?",
+      description: "It will be hidden from the storefront but can be restored later.",
+      confirmLabel: "Deactivate",
+      tone: "primary",
+    });
+    if (!ok) return;
     setSaving(true);
     setError(null);
     try {
@@ -673,13 +675,19 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
 
   async function hardDeleteProduct() {
     if (!canWrite || !productId) return;
-    if (
-      !window.confirm(
-        `Permanently delete "${name || "this product"}"? This cannot be undone and will remove all product data, variants, and images forever.`,
-      )
-    ) {
-      return;
-    }
+    const ok = await confirm({
+      title: "Delete Product?",
+      description: (
+        <>
+          This action cannot be undone. This will permanently delete{" "}
+          <span className="font-semibold text-foreground">“{name || "this product"}”</span>{" "}
+          including all variants and images.
+        </>
+      ),
+      confirmLabel: "Delete Product",
+      typeToConfirm: "DELETE",
+    });
+    if (!ok) return;
     setSaving(true);
     setError(null);
     try {
@@ -825,7 +833,12 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
       setError("Cannot delete the last variant of a product.");
       return;
     }
-    if (!window.confirm("Delete this variant?")) return;
+    const ok = await confirm({
+      title: "Delete Variant?",
+      description: "The variant will be permanently deleted. This cannot be undone.",
+      confirmLabel: "Delete Variant",
+    });
+    if (!ok) return;
     setSaving(true);
     setError(null);
     try {
@@ -841,11 +854,13 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
       // Offer the correct action instead of a dead end: deactivate — it disappears from the
       // storefront AND from live customer carts; already-placed orders keep flowing untouched.
       if (isApiErrorWithCode(err, "CONFLICT")) {
-        const deactivate = window.confirm(
-          "This variant appears in existing orders, so it can't be permanently deleted.\n\n" +
-            "Deactivate it instead? It will disappear from the storefront and from customer carts. " +
-            "Orders already placed are unaffected and will still be packed and delivered.",
-        );
+        const deactivate = await confirm({
+          title: "Deactivate Variant Instead?",
+          description:
+            "This variant appears in existing orders, so it can't be permanently deleted. Deactivating removes it from the storefront and customer carts — already-placed orders are unaffected.",
+          confirmLabel: "Deactivate Variant",
+          tone: "primary",
+        });
         if (deactivate) {
           try {
             await api(`/admin/products/${productId}/variants/${variantId}`, {
@@ -1000,7 +1015,12 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
 
   async function removeImage(imageId: string) {
     if (!canWrite || !productId) return;
-    if (!window.confirm("Remove this image?")) return;
+    const ok = await confirm({
+      title: "Remove Image?",
+      description: "The image will be removed from this product.",
+      confirmLabel: "Remove Image",
+    });
+    if (!ok) return;
     setSaving(true);
     setError(null);
     try {
@@ -1110,6 +1130,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
 
   return (
     <div className="flex flex-col gap-6">
+      {confirmDialog}
       {/* Top Breadcrumb & Header */}
       <header className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
