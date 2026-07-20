@@ -12,6 +12,18 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.55] — 2026-07-19
+
+### Fixed
+- **Admin session-extend now uses the single-flight refresh guard** (`components/auth/AdminSessionWarning.tsx`, `components/auth/AdminIdleTimeoutModal.tsx`): both "Stay Signed In" / "Extend session" handlers called the raw `refreshAccessToken()`, bypassing `refreshAccessTokenOnce()`. Because refresh tokens are single-use + rotated, clicking Extend exactly when the access token expires (while admin panels burst parallel 401→refresh calls) could consume-race the shared cookie → one call rotates it, the other gets "already consumed" → hard logout. Both now route through `refreshAccessTokenOnce()` (the same guard the API client uses). Surfaced by a security audit; same bug class as the fe-core 0.1.50 / be-core 0.1.73 session-race fixes.
+- NOTE: `components/auth/**` is outside the frontend-core sync manifest — these two files are hand-carried to each client repo alongside this release (the sync PR only bumps the version marker + this changelog).
+
+**Propagation:**
+- Severity: MEDIUM (mid-session admin logout) · Layers: frontend (`components/auth/AdminSessionWarning.tsx`, `components/auth/AdminIdleTimeoutModal.tsx` — HAND-CARRY per client, sync-excluded)
+- Migration: NO · Flag: none · Design impact: none · Breaking: NO
+- Rollback: revert the files
+
+
 ## [0.1.54] — 2026-07-19
 
 ### Changed

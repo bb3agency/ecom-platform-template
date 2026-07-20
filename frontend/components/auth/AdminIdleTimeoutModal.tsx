@@ -3,7 +3,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuthStore } from "@/stores/auth";
 import { redirectToAdminLogin } from "@/lib/admin-auth-navigation";
-import { logoutSession, refreshAccessToken } from "@/lib/auth-api";
+import { logoutSession } from "@/lib/auth-api";
+import { refreshAccessTokenOnce } from "@/lib/restore-auth-session";
 import { parseAccessTokenClaims } from "@/lib/jwt-utils";
 import { LogOut, RefreshCw, Timer } from "lucide-react";
 import { useIdleTimeout } from "@/hooks/use-idle-timeout";
@@ -41,7 +42,9 @@ export function AdminIdleTimeoutModal() {
   const handleExtend = useCallback(async () => {
     setExtending(true);
     try {
-      const refreshed = await refreshAccessToken();
+      // Single-flight refresh guard (see refreshAccessTokenOnce) — avoids the
+      // single-use-cookie consume race that logs the admin out mid-session.
+      const refreshed = await refreshAccessTokenOnce();
       const claims = parseAccessTokenClaims(refreshed.accessToken);
       if (claims?.role === "ADMIN") {
         setAccessToken(refreshed.accessToken);

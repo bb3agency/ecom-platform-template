@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { redirectToAdminLogin } from "@/lib/admin-auth-navigation";
 import { getAccessTokenExpiryMs, parseAccessTokenClaims } from "@/lib/jwt-utils";
 import { useAuthStore } from "@/stores/auth";
-import { refreshAccessToken } from "@/lib/auth-api";
+import { refreshAccessTokenOnce } from "@/lib/restore-auth-session";
 import { Loader2 } from "lucide-react";
 
 const WARNING_LEAD_MS = 2 * 60 * 1000;
@@ -42,7 +42,10 @@ export function AdminSessionWarning() {
     setExtending(true);
     setExtendError(null);
     try {
-      const refreshed = await refreshAccessToken();
+      // Single-flight: routes through the shared refresh guard so a burst of
+      // parallel 401 retries + this "Extend" click cannot consume-race the
+      // single-use refresh cookie into a mid-session logout.
+      const refreshed = await refreshAccessTokenOnce();
       const claims = parseAccessTokenClaims(refreshed.accessToken);
       if (claims?.role === "ADMIN") {
         setAccessToken(refreshed.accessToken);

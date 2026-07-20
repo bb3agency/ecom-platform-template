@@ -919,7 +919,15 @@ export class OrdersService {
         }
         if (
           input?.refundAmountPaise !== undefined &&
-          (input.refundAmountPaise <= 0 || input.refundAmountPaise > existing.payment.amount)
+          (input.refundAmountPaise <= 0 ||
+            // Cap against the REMAINING refundable balance, not the full captured
+            // amount — otherwise a PARTIALLY_REFUNDED payment could be re-refunded up
+            // to 100% on each call. (The refunds worker also atomically clamps to the
+            // remaining balance; this is the earlier, clearer rejection.)
+            input.refundAmountPaise >
+              existing.payment.amount -
+                existing.payment.refundedAmountPaise -
+                existing.payment.refundPendingAmountPaise)
         ) {
           throw new AppError(
             ERROR_CODES.VALIDATION_ERROR,
@@ -2763,7 +2771,15 @@ export class OrdersService {
         }
         if (
           input.refundAmountPaise !== undefined &&
-          (input.refundAmountPaise <= 0 || input.refundAmountPaise > existing.payment.amount)
+          (input.refundAmountPaise <= 0 ||
+            // Cap against the REMAINING refundable balance, not the full captured
+            // amount — otherwise a PARTIALLY_REFUNDED payment could be re-refunded up
+            // to 100% on each call. (The refunds worker also atomically clamps to the
+            // remaining balance; this is the earlier, clearer rejection.)
+            input.refundAmountPaise >
+              existing.payment.amount -
+                existing.payment.refundedAmountPaise -
+                existing.payment.refundPendingAmountPaise)
         ) {
           throw new AppError(
             ERROR_CODES.VALIDATION_ERROR,
@@ -3310,7 +3326,15 @@ export class OrdersService {
         }
         if (
           input?.refundAmountPaise !== undefined &&
-          (input.refundAmountPaise <= 0 || input.refundAmountPaise > existing.payment.amount)
+          (input.refundAmountPaise <= 0 ||
+            // Cap against the REMAINING refundable balance, not the full captured
+            // amount — otherwise a PARTIALLY_REFUNDED payment could be re-refunded up
+            // to 100% on each call. (The refunds worker also atomically clamps to the
+            // remaining balance; this is the earlier, clearer rejection.)
+            input.refundAmountPaise >
+              existing.payment.amount -
+                existing.payment.refundedAmountPaise -
+                existing.payment.refundPendingAmountPaise)
         ) {
           throw new AppError(
             ERROR_CODES.VALIDATION_ERROR,

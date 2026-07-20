@@ -12,6 +12,17 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.74] — 2026-07-19
+
+### Fixed
+- **Partial-refund cap now validates against the REMAINING refundable balance, not the full captured amount** (`modules/orders/orders.service.ts`, all 3 admin refund/cancel validation sites). Previously a `PARTIALLY_REFUNDED` payment could accept a `refundAmountPaise` up to the full `payment.amount` on each call, so cumulative partial refunds could in principle exceed 100% at the request layer. The refunds worker already atomically clamps to `amount − refunded − pending` (and Razorpay rejects over-refunds), so no over-refund was actually reachable — this is the earlier, clearer rejection (defense-in-depth), surfaced by a security audit.
+
+**Propagation:**
+- Severity: LOW (defense-in-depth; no reachable over-refund — worker + provider already cap) · Layers: backend (`modules/orders/orders.service.ts`)
+- Migration: NO · Flag: none · Design impact: none · Breaking: NO
+- Rollback: revert the file
+
+
 ## [0.1.73] — 2026-07-19
 
 ### Fixed
