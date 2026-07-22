@@ -12,6 +12,23 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.56] — 2026-07-22
+
+### Added
+- **Customer + admin surfaces for product-level local delivery** (pairs with backend-core 0.1.75). New engine component `components/checkout/LocalDeliveryNotices.tsx` exporting three pieces: `LocalDeliverySplitNotice` (explains which items land in which of the two orders — auto-opens once when the pincode resolves, dismissible, and always re-openable from the order summary), `LocalDeliveryBlockedNotice` (names exactly which local-delivery-only items cannot reach the pincode and must be removed; hard-blocks the Place Order button), and `OrderSplitNotice` (re-opens the same explanation from the customer order page at any time, driven by `Order.groupOrders`). Admin product editor gains a **Local delivery only** toggle with an explanatory banner and a Delivery badge in the summary; the admin product list badges local-only products so the flag can be audited without opening each one. CSV import accepts an optional `isLocalDeliveryOnly` column.
+
+### Fixed
+- **Checkout could get permanently stuck blocked.** Editing a blocked pincode down to five digits left `checkoutBlocked` true with a stale notice on screen and no way back, because the quote effect's early-return reset only the quote state.
+- **Dismissed notices re-opened themselves.** Toggling payment mode (or re-applying a coupon) re-ran the quote effect and re-fired a modal the customer had just dismissed; auto-open is now gated on the pincode actually changing.
+- **"Change address" was a dead action** — it only closed the dialog. It now focuses the pincode field, and falls back to a "Close" label when the host supplies no handler, so the button never lies about what it does.
+
+**Propagation:**
+- Severity: MEDIUM (new customer-facing capability) · Layers: frontend (`components/checkout/{LocalDeliveryNotices,CheckoutForm}.tsx`, `components/admin/{AdminProductEditor,AdminProductsList}.tsx`, `lib/{admin-api,orders-api}.ts`, `types/{cart,product}.ts`)
+- Migration: NO · Flag: none (inert until a product is flagged) · Breaking: NO
+- **Design impact: NONE to synced code** — all new UI uses semantic tokens only and imports no theme file. BUT the order-page mount point lives in `app/(account)/orders/[id]/page.tsx`, which is per-client theme and OUTSIDE the sync manifest: each client must add the two lines by hand (`import { OrderSplitNotice } from "@/components/checkout/LocalDeliveryNotices";` and `<OrderSplitNotice groupOrders={order.groupOrders} />` at the top of the returned section). Without it the split explanation is available during checkout but not later from the order page.
+- Requires: backend-core >= 0.1.75
+- Rollback: revert the files
+
 ## [0.1.55] — 2026-07-19
 
 ### Fixed

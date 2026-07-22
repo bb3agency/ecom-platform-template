@@ -12,6 +12,25 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.75] — 2026-07-22
+
+### Added
+- **Product-level local delivery with cart splitting.** New `Product.isLocalDeliveryOnly` flag: a flagged product is fulfilled by the merchant directly and is NEVER handed to Delhivery/Shiprocket, so it can only reach pincodes on the local-delivery whitelist. A cart is now classified into one of four shapes at checkout (`common/shipping/local-delivery-split.ts`, pure + unit-tested): `ALL_COURIER` (one courier order), `ALL_LOCAL` (one LOCAL order), `SPLIT` (TWO sibling orders — the local items and the courier items), `BLOCKED` (checkout refused; `error.details.products` names exactly what the customer must remove). Split siblings are linked by the new `Order.orderGroupId` and funded by ONE Razorpay payment: each sibling holds its own `Payment` row with its apportioned share, all sharing the same `providerOrderId` (refunds stay per-order; Razorpay accepts multiple partial refunds on one payment). The coupon is finalized once for the whole checkout, so a split never consumes two uses. Discount is apportioned pro-rata by subtotal using largest-remainder, so the combined total is paise-identical to the unsplit total; free-shipping-above, coupon minimums and store minimum-order are all evaluated on the WHOLE cart so a customer never loses a benefit because their cart divided. The courier leg is rated on the courier items ONLY and cached under a distinct quote scope, so a split can never be charged a whole-cart rate that included the locally-delivered items' weight.
+
+### Fixed
+- **Blocked-item details were silently stripped from API responses.** `errorDetailsSchema` is `additionalProperties: false`, so the `pincode`/`products` fields the error handler spreads were dropped at serialization — the storefront's blocking modal would have rendered an empty list. Both fields are now declared, with a route-level regression test (verified failing before the fix) and a schema-contract test pinning every field this feature depends on.
+- **Legacy prepaid flow could strand an unpaid order.** `POST /orders` + `POST /payments/initiate` funds a single `orderId`, so a split cart there created two `PENDING_PAYMENT` orders and only ever paid for one. That path now rejects prepaid splits and directs to prepare-checkout (which funds both at once). COD is unaffected — each COD order carries its own payment.
+- **`estimatedDays` is floored at 1** (the response-schema minimum) so a 0-day provider quote cannot turn a valid split into a 500.
+
+**BEHAVIOUR CHANGE:** an unflagged product now ALWAYS ships by courier, even to a whitelisted pincode. Previously a whitelisted pincode routed the entire order LOCAL. The whitelist now gates only what local-delivery-only products can reach.
+
+**Propagation:**
+- Severity: MEDIUM (new capability; contains one deliberate behaviour change to existing local delivery) · Layers: backend (`common/shipping/local-delivery-split.ts` + tests, `common/errors/{error-codes,error-response.schema}.ts` + test, `modules/cart/{cart.service,cart.schemas}.ts`, `modules/orders/{orders.service,orders.schemas}.ts` + tests, `modules/products/{products.service,products.schemas,products.types}.ts`, `prisma/schema.prisma`) — pairs with frontend-core 0.1.56
+- Migration: **YES** — `20260722090000_add_local_delivery_product_flag` adds `Product.isLocalDeliveryOnly` (default false) + `Order.orderGroupId` + its index. Additive and backfill-free; every existing product keeps its current courier behaviour.
+- Flag: none (inert by default — `isLocalDeliveryOnly` defaults false on every product, so with no merchant action behaviour is unchanged EXCEPT the whitelist change below) · Design impact: none (engine only) · Breaking: NO
+- Rollback: revert the files; the migration is additive and safe to leave applied.
+- **Operator (REQUIRED before deploying to a store with `localDeliveryEnabled = true`):** verify with `SELECT "localDeliveryEnabled" FROM "StoreSettings";`. If true, flag the products that must stay local (Admin → Products → Local delivery only) BEFORE deploy — otherwise orders to whitelisted pincodes will start going to a courier. Stores with local delivery disabled need no action.
+
 ## [0.1.74] — 2026-07-19
 
 ### Fixed
