@@ -12,6 +12,9 @@ export const ERROR_CODES = {
   COUPON_EXPIRED: 'COUPON_EXPIRED',
   COUPON_USAGE_EXCEEDED: 'COUPON_USAGE_EXCEEDED',
   PINCODE_NOT_SERVICEABLE: 'PINCODE_NOT_SERVICEABLE',
+  // Cart holds local-delivery-only products that cannot reach the destination pincode.
+  // error.details.products lists exactly what the customer has to remove to proceed.
+  LOCAL_DELIVERY_ONLY_UNAVAILABLE: 'LOCAL_DELIVERY_ONLY_UNAVAILABLE',
   RATE_LIMIT_EXCEEDED: 'RATE_LIMIT_EXCEEDED',
   CONFIG_NOT_READY: 'CONFIG_NOT_READY',
   INTERNAL_ERROR: 'INTERNAL_ERROR',

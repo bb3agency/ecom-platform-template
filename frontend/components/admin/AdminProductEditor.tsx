@@ -205,6 +205,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
   const [categoryId, setCategoryId] = useState("");
   const [tagsText, setTagsText] = useState("");
   const [isFeatured, setIsFeatured] = useState(false);
+  const [isLocalDeliveryOnly, setIsLocalDeliveryOnly] = useState(false);
   const [gstRate, setGstRate] = useState("12");
   const [hsnCode, setHsnCode] = useState("");
   // HSN autofill: suggestions from the backend's vendored WCO Harmonized System
@@ -272,6 +273,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
       setCategoryId(normalized.category.id);
       setTagsText(normalized.tags.join(", "));
       setIsFeatured(normalized.isFeatured);
+      setIsLocalDeliveryOnly(normalized.isLocalDeliveryOnly === true);
       setGstRate(String(normalized.attributes?.gstRate ?? 12));
       setHsnCode(resolveAdminProductHsnCode(normalized));
       // Map isActive → Status dropdown: true = "Active", false = "Draft"
@@ -491,6 +493,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
           categoryId,
           tags,
           isFeatured,
+          isLocalDeliveryOnly,
           isActive: productIsActive,
           ...(shortDesc.trim() ? { metaDescription: shortDesc.trim() } : {}),
           ...buildProductTaxAttributes({
@@ -574,6 +577,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
             categoryId,
             tags,
             isFeatured,
+            isLocalDeliveryOnly,
             isActive: productIsActive,
             metaDescription: shortDesc.trim() || null,
             ...buildProductTaxAttributes({
@@ -2364,6 +2368,41 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                   </button>
                 </div>
 
+                {/* Local delivery only. Restricts the product to the store's whitelisted
+                    pincodes and keeps it away from Delhivery/Shiprocket entirely. */}
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-foreground">
+                      Local delivery only
+                    </span>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={isLocalDeliveryOnly}
+                      aria-label="Toggle local delivery only"
+                      onClick={() => setIsLocalDeliveryOnly(!isLocalDeliveryOnly)}
+                      disabled={!canWrite}
+                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                        isLocalDeliveryOnly ? "bg-sky-600" : "bg-muted-foreground/30"
+                      }`}
+                    >
+                      <span
+                        aria-hidden="true"
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                          isLocalDeliveryOnly ? "translate-x-5" : "translate-x-0"
+                        }`}
+                      />
+                    </button>
+                  </div>
+                  {isLocalDeliveryOnly && (
+                    <p className="rounded-lg border border-sky-500/30 bg-sky-500/10 p-3 text-xs font-medium text-sky-700 dark:text-sky-300">
+                      Delivered by you, never by a courier. Customers can only buy this to
+                      pincodes on your local delivery whitelist. If their cart also has
+                      courier items, checkout places two separate orders.
+                    </p>
+                  )}
+                </div>
+
                 {/* Status helper banner */}
                 <div
                   className={`rounded-xl border p-3 flex items-center gap-2 text-xs font-semibold ${
@@ -2466,6 +2505,13 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                   <span>Featured</span>
                   <Badge variant={isFeatured ? "success" : "default"}>
                     {isFeatured ? "Yes" : "No"}
+                  </Badge>
+                </div>
+
+                <div className="flex items-center justify-between border-b border-border/10 pb-1.5">
+                  <span>Delivery</span>
+                  <Badge variant={isLocalDeliveryOnly ? "info" : "default"}>
+                    {isLocalDeliveryOnly ? "Local only" : "Courier"}
                   </Badge>
                 </div>
 

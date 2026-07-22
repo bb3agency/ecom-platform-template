@@ -11,6 +11,12 @@ import { MapPin, AlertTriangle, ShoppingBag, Truck, Tag } from "lucide-react";
 import { checkPincodeServiceability, getDeliveryRates, applyCartCoupon, removeCartCoupon } from "@/lib/cart-api";
 import { getApiErrorMessage, getApiErrorMessageWithHint } from "@/lib/error-messages";
 import { ApiError } from "@/lib/api";
+import {
+  LocalDeliveryBlockedNotice,
+  LocalDeliverySplitNotice,
+  type BlockedLocalDeliveryProduct,
+} from "./LocalDeliveryNotices";
+import type { DeliverySplit } from "@/types/cart";
 import { createIdempotencyKey } from "@/lib/idempotency";
 import { useAuthStore } from "@/stores/auth";
 import { useCartStore } from "@/stores/cart";
@@ -75,6 +81,16 @@ export function CheckoutForm() {
   const [shippingQuote, setShippingQuote] = useState<{ shippingCharge: number; estimatedDays: number; selectedShippingProvider?: "DELHIVERY" | "SHIPROCKET" | "LOCAL"; courierCompanyId?: number } | null>(null);
   const [shippingQuoteLoading, setShippingQuoteLoading] = useState(false);
   const [shippingQuoteError, setShippingQuoteError] = useState<string | null>(null);
+  // Product-level local delivery. `deliverySplit` is set when the cart will become two orders;
+  // `blockedLocalDelivery` when local-only items cannot reach the pincode at all. Both notices
+  // stay re-openable from the order summary while the customer is still in checkout.
+  const [deliverySplit, setDeliverySplit] = useState<DeliverySplit | null>(null);
+  const [splitNoticeOpen, setSplitNoticeOpen] = useState(false);
+  const [blockedLocalDelivery, setBlockedLocalDelivery] = useState<{
+    pincode: string;
+    products: BlockedLocalDeliveryProduct[];
+  } | null>(null);
+  const [blockedNoticeOpen, setBlockedNoticeOpen] = useState(false);
   const [couponCode, setCouponCode] = useState("");
   const [couponLoading, setCouponLoading] = useState(false);
   const [couponError, setCouponError] = useState<string | null>(null);
@@ -199,11 +215,34 @@ export function CheckoutForm() {
             courierCompanyId: rates.courierCompanyId,
           });
           setShippingQuoteError(null);
+          // Cart splits across fulfilment channels: surface the explanation once per
+          // pincode, then leave it re-openable from the summary.
+          setDeliverySplit(rates.split ?? null);
+          setBlockedLocalDelivery(null);
+          if (rates.split) setSplitNoticeOpen(true);
         }
       })
       .catch((err) => {
         if (!cancelled) {
           setShippingQuote(null);
+          setDeliverySplit(null);
+          // Local-delivery-only items that cannot reach this pincode. The customer must remove
+          // them; the backend refuses the order until they do.
+          if (err instanceof ApiError && err.code === "LOCAL_DELIVERY_ONLY_UNAVAILABLE") {
+            const details = err.details as
+              | { pincode?: string; products?: BlockedLocalDeliveryProduct[] }
+              | undefined;
+            setBlockedLocalDelivery({
+              pincode: details?.pincode ?? pincode,
+              products: details?.products ?? [],
+            });
+            setBlockedNoticeOpen(true);
+            setShippingQuoteError(
+              "Some items in your cart can't be delivered to this pincode. Remove them to continue.",
+            );
+            return;
+          }
+          setBlockedLocalDelivery(null);
           const isProviderError =
             err instanceof ApiError &&
             (err.code === "CONFIG_NOT_READY" || err.code === "INTERNAL_ERROR");
@@ -326,7 +365,9 @@ export function CheckoutForm() {
     cart?.meetsMinimumOrder ??
     (effectiveMinOrderPaise === 0 || cartSubtotal >= effectiveMinOrderPaise);
   const belowMinOrder = configAvailable && !meetsMinimumOrder && effectiveMinOrderPaise > 0;
-  const checkoutBlocked = !configAvailable || belowMinOrder;
+  // Local-delivery-only items that cannot reach the entered pincode hard-block checkout: the
+  // customer has to remove them (the backend refuses the order either way).
+  const checkoutBlocked = !configAvailable || belowMinOrder || blockedLocalDelivery !== null;
   const shippingCharge = shippingQuote?.shippingCharge ?? 0;
   const hasShippingQuote = shippingQuote !== null && !shippingQuoteError;
   const estimatedPayableTotal = hasShippingQuote
@@ -512,7 +553,19 @@ export function CheckoutForm() {
 
       razorpay.open();
     } catch (err) {
-      if (err instanceof ApiError && err.code === "VALIDATION_ERROR") {
+      if (err instanceof ApiError && err.code === "LOCAL_DELIVERY_ONLY_UNAVAILABLE") {
+        // The pincode changed (or the whitelist did) between quoting and submitting. Re-raise
+        // the blocking notice so the customer sees exactly what to remove.
+        const details = err.details as
+          | { pincode?: string; products?: BlockedLocalDeliveryProduct[] }
+          | undefined;
+        setBlockedLocalDelivery({
+          pincode: details?.pincode ?? form.getValues("pincode"),
+          products: details?.products ?? [],
+        });
+        setBlockedNoticeOpen(true);
+        setError("Some items in your cart can't be delivered to this pincode.");
+      } else if (err instanceof ApiError && err.code === "VALIDATION_ERROR") {
         setError(getApiErrorMessageWithHint(err));
       } else if (
         err instanceof ApiError &&
@@ -849,10 +902,39 @@ export function CheckoutForm() {
           {shippingQuoteError && (
             <p className="rounded-xl bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">{shippingQuoteError}</p>
           )}
-          {shippingQuote?.selectedShippingProvider === "LOCAL" && (
+          {shippingQuote?.selectedShippingProvider === "LOCAL" && !deliverySplit && (
             <p className="rounded-xl bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700">
               Local delivery — this order is delivered directly by the store.
             </p>
+          )}
+          {/* Split notice: dismissible, but always re-openable while the customer is still
+              in checkout (and again later from the order page). */}
+          {deliverySplit && (
+            <div className="rounded-xl border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-xs font-medium text-sky-800">
+              <p>This cart will be placed as two separate orders. You still pay once.</p>
+              <button
+                type="button"
+                onClick={() => setSplitNoticeOpen(true)}
+                className="mt-1 font-bold underline underline-offset-2 hover:no-underline"
+              >
+                See what goes in each order
+              </button>
+            </div>
+          )}
+          {blockedLocalDelivery && (
+            <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs font-medium text-destructive">
+              <p>
+                Some items can&apos;t be delivered to {blockedLocalDelivery.pincode}. Remove them
+                to continue.
+              </p>
+              <button
+                type="button"
+                onClick={() => setBlockedNoticeOpen(true)}
+                className="mt-1 font-bold underline underline-offset-2 hover:no-underline"
+              >
+                See which items
+              </button>
+            </div>
           )}
           {shippingQuote && shippingQuote.estimatedDays > 0 && (
             <p className="text-xs text-muted-foreground">
@@ -883,10 +965,29 @@ export function CheckoutForm() {
             ? "Store settings unavailable"
             : belowMinOrder
               ? "Minimum order not met"
-              : paymentMode === "COD"
-                ? "Place Order — Cash on Delivery"
-                : "Place Order — Pay Online"}
+              : blockedLocalDelivery
+                ? "Remove undeliverable items to continue"
+                : paymentMode === "COD"
+                  ? "Place Order — Cash on Delivery"
+                  : "Place Order — Pay Online"}
       </button>
+
+      {deliverySplit && (
+        <LocalDeliverySplitNotice
+          open={splitNoticeOpen}
+          onOpenChange={setSplitNoticeOpen}
+          split={deliverySplit}
+        />
+      )}
+      {blockedLocalDelivery && (
+        <LocalDeliveryBlockedNotice
+          open={blockedNoticeOpen}
+          onOpenChange={setBlockedNoticeOpen}
+          pincode={blockedLocalDelivery.pincode}
+          products={blockedLocalDelivery.products}
+          onGoToCart={() => router.push("/cart")}
+        />
+      )}
 
       {error ? (
         <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">

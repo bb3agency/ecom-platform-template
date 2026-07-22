@@ -22,8 +22,35 @@ import {
   resolveLocalDeliveryQuote,
   resolveLocalDeliverySettings
 } from '@common/shipping/local-delivery';
+import { classifyLocalDeliverySplit } from '@common/shipping/local-delivery-split';
 import { sendTechnicalFailureAlert } from '@modules/notifications/notification-failure-alert';
 import { AddCartItemInput, ApplyCouponInput, UpdateCartItemInput } from './cart.types';
+
+/**
+ * Cache scope for the courier-leg quote of a cart that splits across fulfilment channels.
+ * Keeps that quote from ever being confused with the whole-cart quote (which includes the
+ * weight of the locally-delivered items and would overcharge the courier leg).
+ */
+export const SHIPPING_QUOTE_SCOPE_COURIER_LEG = 'courier-leg';
+
+/** Cart line shape the rating + split paths need. */
+type CartItemForRating = {
+  variantId: string;
+  quantity: number;
+  priceSnapshot: number;
+  variant: {
+    id: string;
+    name: string;
+    sku: string;
+    weight?: number | null;
+    packageLengthCm?: number | null;
+    packageWidthCm?: number | null;
+    packageHeightCm?: number | null;
+    keepUpright?: boolean | null;
+    // Optional: rating-only call sites (and their fixtures) do not load the product relation.
+    product?: { name?: string; isLocalDeliveryOnly?: boolean | null } | null;
+  };
+};
 
 /**
  * A rejected serviceability/rate call is only a definitive "this provider cannot ship
@@ -60,6 +87,9 @@ const CART_ITEM_PRODUCT_SELECT = {
   name: true,
   slug: true,
   metaDescription: true,
+  // Drives fulfilment-channel classification (see common/shipping/local-delivery-split.ts)
+  // and lets the storefront badge local-delivery-only lines in the cart.
+  isLocalDeliveryOnly: true,
   images: {
     orderBy: { sortOrder: 'asc' as const },
     take: 1,
@@ -629,31 +659,74 @@ export class CartService {
       throw new AppError(ERROR_CODES.VALIDATION_ERROR, 'At least one cart item is required to calculate delivery rates', 400);
     }
 
-    // Merchant-fulfilled local delivery short-circuit: whitelisted pincodes never touch the
-    // courier providers. The fee is purely pincode-based (per-pincode override or store
-    // default) — no weight, box-dimension, or packaging computation is involved.
+    // Classify the cart across fulfilment channels BEFORE quoting. Local-delivery-only
+    // products never touch a courier, so a cart can need two quotes (a pincode-based local fee
+    // plus a courier rate on the remaining items) — or be undeliverable altogether.
+    const subtotal = cart.items.reduce((sum, item) => sum + item.priceSnapshot * item.quantity, 0);
     const localSettings = await resolveLocalDeliverySettings(this.fastify.prisma);
-    if (localSettings.enabled) {
-      const subtotal = cart.items.reduce((sum, item) => sum + item.priceSnapshot * item.quantity, 0);
-      const couponsEnabledForLocal = await isStorefrontCouponsEnabled(this.fastify.prisma);
-      const localQuote = resolveLocalDeliveryQuote(localSettings, pincode, {
-        subtotalPaise: subtotal,
-        freeShippingCoupon: couponsEnabledForLocal && cart.coupon?.type === CouponType.FREE_SHIPPING
-      });
-      if (localQuote) {
-        // Persist so checkout consumes the exact same fee (shown rate == charged rate).
-        await this.persistShippingQuote(userId, sessionToken, cart.id, pincode, paymentMode, {
-          provider: 'LOCAL',
-          shippingChargePaise: localQuote.shippingChargePaise,
-          estimatedDays: localQuote.estimatedDays
-        });
-        return {
+    const couponsEnabledForLocal = await isStorefrontCouponsEnabled(this.fastify.prisma);
+    const localQuote = resolveLocalDeliveryQuote(localSettings, pincode, {
+      subtotalPaise: subtotal,
+      freeShippingCoupon: couponsEnabledForLocal && cart.coupon?.type === CouponType.FREE_SHIPPING
+    });
+
+    // Defensive read: a cart line whose product relation is absent is treated as an ordinary
+    // courier item. Missing data must never block a checkout or invent a split.
+    const decorated = cart.items.map((item) => ({
+      item,
+      isLocalDeliveryOnly: item.variant.product?.isLocalDeliveryOnly === true
+    }));
+    const plan = classifyLocalDeliverySplit(decorated, {
+      pincodeLocallyDeliverable: localQuote != null
+    });
+
+    // Surface the blocker as soon as the customer enters a pincode, rather than letting them
+    // reach payment first. The storefront turns these details into the "remove these items"
+    // modal.
+    if (plan.mode === 'BLOCKED') {
+      throw new AppError(
+        ERROR_CODES.LOCAL_DELIVERY_ONLY_UNAVAILABLE,
+        'Some items in your cart are available for local delivery only and cannot be delivered to this pincode. Remove them to continue.',
+        422,
+        {
           pincode,
-          shippingCharge: localQuote.shippingChargePaise,
-          estimatedDays: localQuote.estimatedDays,
-          selectedShippingProvider: 'LOCAL' as const
-        };
-      }
+          products: plan.blockedItems.map(({ item }) => ({
+            variantId: item.variantId,
+            productName: item.variant.product.name,
+            variantName: item.variant.name,
+            sku: item.variant.sku
+          }))
+        }
+      );
+    }
+
+    if (plan.mode === 'ALL_LOCAL') {
+      const quote = localQuote!;
+      // Persist so checkout consumes the exact same fee (shown rate == charged rate).
+      await this.persistShippingQuote(userId, sessionToken, cart.id, pincode, paymentMode, {
+        provider: 'LOCAL',
+        shippingChargePaise: quote.shippingChargePaise,
+        estimatedDays: quote.estimatedDays
+      });
+      return {
+        pincode,
+        shippingCharge: quote.shippingChargePaise,
+        estimatedDays: quote.estimatedDays,
+        selectedShippingProvider: 'LOCAL' as const
+      };
+    }
+
+    if (plan.mode === 'SPLIT') {
+      return this.getSplitDeliveryRates({
+        cart,
+        userId,
+        sessionToken,
+        pincode,
+        paymentMode,
+        localQuote: localQuote!,
+        localItems: plan.localItems.map((d) => d.item),
+        courierItems: plan.courierItems.map((d) => d.item)
+      });
     }
 
     const usingNoop = this.isNoopMode();
@@ -708,6 +781,123 @@ export class CartService {
       pincode,
       shippingCharge: noopQuote.shippingChargePaise,
       estimatedDays: noopQuote.estimatedDays
+    };
+  }
+
+  /**
+   * Delivery rates for a cart that splits across fulfilment channels.
+   *
+   * The local leg is a flat pincode-based fee; the courier leg is rated on the courier items
+   * ONLY (their weight and boxes), never the whole cart — otherwise the customer would be
+   * charged courier weight for goods the merchant hands over personally.
+   *
+   * The courier quote is cached under SHIPPING_QUOTE_SCOPE_COURIER_LEG so checkout reuses this
+   * exact rate (shown == charged) and can never pick up a stale whole-cart quote.
+   */
+  private async getSplitDeliveryRates(input: {
+    cart: { id: string; coupon: Coupon | null; items: CartItemForRating[] };
+    userId: string | undefined;
+    sessionToken: string | undefined;
+    pincode: string;
+    paymentMode: 'COD' | 'PREPAID';
+    localQuote: { shippingChargePaise: number; estimatedDays: number };
+    localItems: CartItemForRating[];
+    courierItems: CartItemForRating[];
+  }) {
+    const usingNoop = this.isNoopMode();
+    const pickupPincode = await resolvePickupPincode(this.fastify.prisma, {
+      noopFallback: usingNoop ? '500001' : null
+    });
+    if (!pickupPincode) {
+      throw new AppError(ERROR_CODES.INTERNAL_ERROR, 'Pickup pincode is not configured', 503);
+    }
+
+    const courierCart = { coupon: input.cart.coupon, items: input.courierItems };
+    const providerRuntime = resolveDualShippingRuntime();
+
+    let courierCharge: number;
+    let courierEstimatedDays: number;
+    let courierProvider: 'DELHIVERY' | 'SHIPROCKET' | null = null;
+    let courierCompanyId: number | null = null;
+
+    if (providerRuntime.hasAny) {
+      const result = await this.getDeliveryRatesMultiProvider({
+        cart: courierCart,
+        pincode: input.pincode,
+        pickupPincode,
+        paymentMode: input.paymentMode,
+        delhiveryAdapter: providerRuntime.delhivery?.adapter ?? null,
+        shiprocketAdapter: providerRuntime.shiprocket?.adapter ?? null
+      });
+      courierCharge = result.shippingCharge;
+      courierEstimatedDays = result.estimatedDays;
+      courierProvider = result.selectedShippingProvider;
+      courierCompanyId = result.courierCompanyId ?? null;
+      await this.persistShippingQuote(
+        input.userId,
+        input.sessionToken,
+        input.cart.id,
+        input.pincode,
+        input.paymentMode,
+        {
+          provider: result.selectedShippingProvider,
+          shippingChargePaise: result.shippingCharge,
+          estimatedDays: result.estimatedDays,
+          ...(result.courierCompanyId != null ? { courierCompanyId: result.courierCompanyId } : {})
+        },
+        SHIPPING_QUOTE_SCOPE_COURIER_LEG
+      );
+    } else {
+      if (!usingNoop) {
+        throw new AppError(ERROR_CODES.INTERNAL_ERROR, 'Shipping provider is not configured', 503);
+      }
+      const noopQuote = await this.computeShippingChargeForCart({
+        cart: courierCart,
+        destinationPincode: input.pincode,
+        originPincode: pickupPincode,
+        provider: new NoopShippingAdapter(),
+        usingNoop: true,
+        paymentMode: input.paymentMode
+      });
+      courierCharge = noopQuote.shippingChargePaise;
+      courierEstimatedDays = noopQuote.estimatedDays;
+    }
+
+    const describe = (items: CartItemForRating[]) =>
+      items.map((item) => ({
+        variantId: item.variantId,
+        productName: item.variant.product?.name ?? '',
+        variantName: item.variant.name,
+        sku: item.variant.sku,
+        quantity: item.quantity
+      }));
+
+    return {
+      pincode: input.pincode,
+      // Combined figures keep every existing caller working; `split` carries the detail.
+      shippingCharge: input.localQuote.shippingChargePaise + courierCharge,
+      estimatedDays: Math.max(input.localQuote.estimatedDays, courierEstimatedDays),
+      ...(courierProvider ? { selectedShippingProvider: courierProvider } : {}),
+      ...(courierCompanyId != null ? { courierCompanyId } : {}),
+      split: {
+        mode: 'SPLIT' as const,
+        groups: [
+          {
+            channel: 'LOCAL' as const,
+            shippingCharge: input.localQuote.shippingChargePaise,
+            estimatedDays: input.localQuote.estimatedDays,
+            selectedShippingProvider: 'LOCAL' as const,
+            items: describe(input.localItems)
+          },
+          {
+            channel: 'COURIER' as const,
+            shippingCharge: courierCharge,
+            estimatedDays: courierEstimatedDays,
+            ...(courierProvider ? { selectedShippingProvider: courierProvider } : {}),
+            items: describe(input.courierItems)
+          }
+        ]
+      }
     };
   }
 
@@ -874,15 +1064,24 @@ export class CartService {
     }
   }
 
+  /**
+   * `scope` separates quotes that cover different subsets of the same cart. An unscoped key
+   * holds the whole-cart quote; SHIPPING_QUOTE_SCOPE_COURIER_LEG holds the courier-only quote
+   * for a cart that splits across fulfilment channels. Keeping them apart means a split
+   * checkout can never read (and be overcharged by) a whole-cart quote that included the
+   * weight of the locally-delivered items.
+   */
   private buildShippingQuoteKey(
     userId: string | undefined,
     sessionToken: string | undefined,
     pincode: string,
-    paymentMode: 'COD' | 'PREPAID'
+    paymentMode: 'COD' | 'PREPAID',
+    scope?: string | undefined
   ): string | null {
     const owner = userId ?? sessionToken;
     if (!owner) return null;
-    return `shipping:quote:${owner}:${pincode}:${paymentMode}`;
+    const base = `shipping:quote:${owner}:${pincode}:${paymentMode}`;
+    return scope ? `${base}:${scope}` : base;
   }
 
   private async persistShippingQuote(
@@ -896,9 +1095,10 @@ export class CartService {
       shippingChargePaise: number;
       estimatedDays: number;
       courierCompanyId?: number;
-    }
+    },
+    scope?: string | undefined
   ): Promise<void> {
-    const key = this.buildShippingQuoteKey(userId, sessionToken, pincode, paymentMode);
+    const key = this.buildShippingQuoteKey(userId, sessionToken, pincode, paymentMode, scope);
     if (!key) return;
     try {
       await this.fastify.redis.set(key, JSON.stringify({ cartId, ...quote }), 'EX', 1800);
@@ -919,14 +1119,15 @@ export class CartService {
     sessionToken: string | undefined,
     cartId: string,
     pincode: string,
-    paymentMode: 'COD' | 'PREPAID'
+    paymentMode: 'COD' | 'PREPAID',
+    scope?: string | undefined
   ): Promise<{
     provider: 'DELHIVERY' | 'SHIPROCKET' | 'LOCAL';
     shippingChargePaise: number;
     estimatedDays: number;
     courierCompanyId?: number;
   } | null> {
-    const key = this.buildShippingQuoteKey(userId, sessionToken, pincode, paymentMode);
+    const key = this.buildShippingQuoteKey(userId, sessionToken, pincode, paymentMode, scope);
     if (!key) return null;
     let raw: string | null;
     try {

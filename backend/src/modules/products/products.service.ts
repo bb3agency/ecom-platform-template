@@ -369,6 +369,13 @@ export class ProductsService {
       if (input.isFeatured !== undefined && input.isFeatured !== existing.isFeatured) {
         updatePayload.isFeatured = input.isFeatured;
       }
+      if (
+        input.isLocalDeliveryOnly !== undefined &&
+        input.isLocalDeliveryOnly !==
+          (existing as unknown as { isLocalDeliveryOnly?: boolean }).isLocalDeliveryOnly
+      ) {
+        updatePayload.isLocalDeliveryOnly = input.isLocalDeliveryOnly;
+      }
       if (input.isActive !== undefined && input.isActive !== existing.isActive) {
         updatePayload.isActive = input.isActive;
       }
@@ -405,6 +412,9 @@ export class ProductsService {
         ...(input.metaTitle !== undefined ? { metaTitle: input.metaTitle } : {}),
         ...(input.metaDescription !== undefined ? { metaDescription: input.metaDescription } : {}),
         isFeatured: input.isFeatured ?? false,
+        // Defaults false so every new product is courier-shippable unless the merchant
+        // explicitly restricts it to local delivery.
+        isLocalDeliveryOnly: input.isLocalDeliveryOnly ?? false,
         isActive: input.isActive ?? true,
         ...(variantsInput.length > 0
           ? {
@@ -510,6 +520,8 @@ export class ProductsService {
       const categorySlug = cols[columnIndex.get('categoryslug') ?? -1];
       const tagsRaw = cols[columnIndex.get('tags') ?? -1] ?? '';
       const isFeaturedRaw = cols[columnIndex.get('isfeatured') ?? -1] ?? 'false';
+      // Optional column — absent means courier-shippable, matching the schema default.
+      const isLocalDeliveryOnlyRaw = cols[columnIndex.get('islocaldeliveryonly') ?? -1] ?? 'false';
       const sku = cols[columnIndex.get('sku') ?? -1];
       const variantName = cols[columnIndex.get('variantname') ?? -1];
       const priceRaw = cols[columnIndex.get('price') ?? -1];
@@ -549,6 +561,7 @@ export class ProductsService {
             .map((tag) => tag.trim())
             .filter((tag) => tag.length > 0),
           isFeatured: isFeaturedRaw.toLowerCase() === 'true',
+          isLocalDeliveryOnly: isLocalDeliveryOnlyRaw.toLowerCase() === 'true',
           ...(hsnCodeRaw || gstRateRaw
             ? {
                 attributes: {
@@ -920,6 +933,10 @@ export class ProductsService {
     if (input.isFeatured !== undefined) {
       updateData.isFeatured = input.isFeatured;
       updateManyData.isFeatured = input.isFeatured;
+    }
+    if (input.isLocalDeliveryOnly !== undefined) {
+      updateData.isLocalDeliveryOnly = input.isLocalDeliveryOnly;
+      updateManyData.isLocalDeliveryOnly = input.isLocalDeliveryOnly;
     }
     if (input.isActive !== undefined) {
       updateData.isActive = input.isActive;

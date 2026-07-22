@@ -461,6 +461,11 @@ model Product {
   metaDescription String?
   isActive        Boolean          @default(true)
   isFeatured      Boolean          @default(false)
+  // Merchant-fulfilled local delivery ONLY. When true this product can never be handed to a
+  // courier (Delhivery/Shiprocket) — it ships exclusively through the local-delivery flow, so
+  // it is purchasable only to pincodes on the local-delivery whitelist. A cart mixing these
+  // with normal products splits into two orders at checkout. See common/shipping/local-delivery-split.ts.
+  isLocalDeliveryOnly Boolean      @default(false)
   images          ProductImage[]
   variants        ProductVariant[]
   wishlistItems   WishlistItem[]
@@ -613,6 +618,11 @@ model Order {
   notes              String?
   paymentMode        PaymentMode          @default(PREPAID)
   courierCompanyId              Int?
+  // Links the sibling orders produced when one cart splits across fulfilment channels
+  // (local-delivery items vs courier items). Null for ordinary single-channel orders.
+  // Siblings share one Razorpay payment: each carries its own Payment row holding its
+  // apportioned share, all with the same providerOrderId.
+  orderGroupId                  String?
   shiprocketOrderId             String?
   selectedShippingProvider      ShippingProvider?
   shippingChargeQuotedPaise     Int?
@@ -636,6 +646,7 @@ model Order {
   @@index([status, createdAt])
   @@index([shiprocketOrderId])
   @@index([paymentMode])
+  @@index([orderGroupId])
 }
 
 model OrderItem {

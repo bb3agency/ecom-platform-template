@@ -40,6 +40,9 @@ export const productListItemSchema = {
     description: { type: 'string', maxLength: 5000 },
     tags: { type: 'array', items: { type: 'string', maxLength: 50 } },
     isFeatured: { type: 'boolean' },
+    // Merchant-fulfilled local delivery only — never couriered, so purchasable only to
+    // whitelisted pincodes. Storefront/admin surfaces badge these lines.
+    isLocalDeliveryOnly: { type: 'boolean' },
     isActive: { type: 'boolean' },
     inStock: { type: 'boolean' },
     // Approved-review aggregates. Present on storefront list + detail so product
@@ -326,6 +329,9 @@ const adminProductInputProperties = {
   metaTitle: { type: 'string', maxLength: 200 },
   metaDescription: { type: 'string', maxLength: 500 },
   isFeatured: { type: 'boolean' },
+  // Merchant-fulfilled local delivery only — never couriered, so purchasable only to
+  // whitelisted pincodes. See common/shipping/local-delivery-split.ts.
+  isLocalDeliveryOnly: { type: 'boolean' },
   isActive: { type: 'boolean' },
   images: {
     type: 'array',

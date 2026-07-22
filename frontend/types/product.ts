@@ -32,6 +32,12 @@ export interface Product {
   reviewCount: number;
   tags: string[];
   isFeatured: boolean;
+  /**
+   * Merchant-fulfilled local delivery ONLY — never handed to a courier, so this product can
+   * only be delivered to pincodes on the store's local-delivery whitelist. A cart mixing these
+   * with ordinary products is split into two orders at checkout.
+   */
+  isLocalDeliveryOnly?: boolean;
   isActive: boolean;
   images: ProductImage[];
   variants: ProductVariant[];

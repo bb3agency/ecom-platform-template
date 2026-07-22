@@ -27,6 +27,12 @@ export type CreateProductInput = {
   metaDescription?: string;
   isFeatured?: boolean;
   isActive?: boolean;
+  /**
+   * Merchant-fulfilled local delivery ONLY — this product is never handed to a courier, so it
+   * can only be bought to pincodes on the local-delivery whitelist. Mixing these with ordinary
+   * products splits the cart into two orders at checkout.
+   */
+  isLocalDeliveryOnly?: boolean;
   images?: Array<{
     url: string;
     altText: string;

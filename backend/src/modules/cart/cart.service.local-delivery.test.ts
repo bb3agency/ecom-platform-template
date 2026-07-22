@@ -14,7 +14,16 @@ const LOCAL_SETTINGS_ROW = {
   localDeliveryEstimatedDays: 1
 };
 
-function createFastify(overrides: Record<string, unknown> = {}): FastifyInstance {
+/**
+ * Since product-level local delivery landed, the LOCAL channel is driven by the PRODUCT flag —
+ * a whitelisted pincode alone no longer pulls an ordinary product out of the courier channel.
+ * So the local-delivery fixtures must flag their products as local-delivery-only.
+ */
+function createFastify(
+  overrides: Record<string, unknown> = {},
+  opts: { localDeliveryOnly?: boolean } = {}
+): FastifyInstance {
+  const isLocalDeliveryOnly = opts.localDeliveryOnly ?? true;
   return {
     prisma: {
       storeSettings: {
@@ -25,7 +34,18 @@ function createFastify(overrides: Record<string, unknown> = {}): FastifyInstance
           id: 'cart_1',
           coupon: null,
           items: [
-            { quantity: 2, priceSnapshot: 10000, variant: { id: 'v1', weight: 500 } }
+            {
+              variantId: 'v1',
+              quantity: 2,
+              priceSnapshot: 10000,
+              variant: {
+                id: 'v1',
+                name: 'Default',
+                sku: 'SKU-1',
+                weight: 500,
+                product: { name: 'Fresh Greens', isLocalDeliveryOnly }
+              }
+            }
           ]
         })
       }
@@ -85,6 +105,30 @@ describe('CartService local delivery short-circuit', () => {
     await expect(service.getDeliveryRates('user_1', undefined, '500002')).resolves.toMatchObject({
       shippingCharge: 2000,
       selectedShippingProvider: 'LOCAL'
+    });
+  });
+
+  it('keeps an ordinary product on the courier even in a whitelisted pincode', async () => {
+    // Product-level local delivery: the whitelist gates what local-delivery-ONLY products can
+    // reach; it must not divert ordinary products into the merchant-fulfilled channel.
+    const fastify = createFastify({}, { localDeliveryOnly: false });
+    const service = new CartService(fastify);
+    // The beforeEach fetch stub throws on any courier call, which proves the courier path was
+    // entered rather than short-circuited to LOCAL.
+    await expect(service.getDeliveryRates('user_1', undefined, '500001')).rejects.toThrow();
+  });
+
+  it('refuses to quote when a local-delivery-only product cannot reach the pincode', async () => {
+    const service = new CartService(createFastify());
+    // The customer must remove these items before checkout can proceed — the storefront turns
+    // error.details.products into the blocking "remove these items" modal.
+    await expect(service.getDeliveryRates('user_1', undefined, '999999')).rejects.toMatchObject({
+      code: 'LOCAL_DELIVERY_ONLY_UNAVAILABLE',
+      statusCode: 422,
+      details: {
+        pincode: '999999',
+        products: [{ productName: 'Fresh Greens', sku: 'SKU-1' }]
+      }
     });
   });
 

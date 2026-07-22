@@ -422,6 +422,8 @@ export interface AdminProductListItem {
   description: string;
   tags: string[];
   isFeatured: boolean;
+  /** Merchant-fulfilled local delivery only — never couriered. See local-delivery-split.ts. */
+  isLocalDeliveryOnly?: boolean;
   isActive: boolean;
   metaDescription: string | null;
   attributes?: { gstRate?: number; hsnCode?: string } | null;
@@ -439,6 +441,8 @@ export interface AdminCreateProductInput {
   categoryId: string;
   tags?: string[];
   isFeatured?: boolean;
+  /** Merchant-fulfilled local delivery only — never couriered. See local-delivery-split.ts. */
+  isLocalDeliveryOnly?: boolean;
   isActive?: boolean;
   metaDescription?: string;
   attributes?: { gstRate?: number; hsnCode?: string };
@@ -466,6 +470,8 @@ export interface AdminUpdateProductInput {
   categoryId?: string;
   tags?: string[];
   isFeatured?: boolean;
+  /** Merchant-fulfilled local delivery only — never couriered. See local-delivery-split.ts. */
+  isLocalDeliveryOnly?: boolean;
   isActive?: boolean;
   metaDescription?: string;
   attributes?: { gstRate?: number; hsnCode?: string } | null;
