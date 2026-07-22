@@ -863,6 +863,11 @@ export class CartService {
       courierEstimatedDays = noopQuote.estimatedDays;
     }
 
+    // The response schema floors estimatedDays at 1. A provider (or the noop adapter) reporting
+    // 0 would otherwise fail serialization and turn a valid quote into a 500.
+    const localDays = Math.max(1, input.localQuote.estimatedDays);
+    const courierDays = Math.max(1, courierEstimatedDays);
+
     const describe = (items: CartItemForRating[]) =>
       items.map((item) => ({
         variantId: item.variantId,
@@ -876,7 +881,7 @@ export class CartService {
       pincode: input.pincode,
       // Combined figures keep every existing caller working; `split` carries the detail.
       shippingCharge: input.localQuote.shippingChargePaise + courierCharge,
-      estimatedDays: Math.max(input.localQuote.estimatedDays, courierEstimatedDays),
+      estimatedDays: Math.max(localDays, courierDays),
       ...(courierProvider ? { selectedShippingProvider: courierProvider } : {}),
       ...(courierCompanyId != null ? { courierCompanyId } : {}),
       split: {
@@ -885,14 +890,14 @@ export class CartService {
           {
             channel: 'LOCAL' as const,
             shippingCharge: input.localQuote.shippingChargePaise,
-            estimatedDays: input.localQuote.estimatedDays,
+            estimatedDays: localDays,
             selectedShippingProvider: 'LOCAL' as const,
             items: describe(input.localItems)
           },
           {
             channel: 'COURIER' as const,
             shippingCharge: courierCharge,
-            estimatedDays: courierEstimatedDays,
+            estimatedDays: courierDays,
             ...(courierProvider ? { selectedShippingProvider: courierProvider } : {}),
             items: describe(input.courierItems)
           }

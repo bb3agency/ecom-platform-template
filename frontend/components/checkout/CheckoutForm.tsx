@@ -91,6 +91,10 @@ export function CheckoutForm() {
     products: BlockedLocalDeliveryProduct[];
   } | null>(null);
   const [blockedNoticeOpen, setBlockedNoticeOpen] = useState(false);
+  // Which pincode we have already auto-opened a notice for. Without this, switching payment
+  // mode (or re-applying a coupon) re-runs the quote effect and re-opens a modal the customer
+  // just dismissed. They can still reopen it themselves from the summary.
+  const announcedPincodeRef = useRef<string | null>(null);
   const [couponCode, setCouponCode] = useState("");
   const [couponLoading, setCouponLoading] = useState(false);
   const [couponError, setCouponError] = useState<string | null>(null);
@@ -200,6 +204,14 @@ export function CheckoutForm() {
     if (!accessToken || !pincode || pincode.length !== 6) {
       setShippingQuote(null);
       setShippingQuoteError(null);
+      // Clear the local-delivery verdicts too. Without this, editing a blocked pincode down to
+      // 5 digits would leave checkoutBlocked stuck true (and a stale notice on screen) with no
+      // way back.
+      setDeliverySplit(null);
+      setSplitNoticeOpen(false);
+      setBlockedLocalDelivery(null);
+      setBlockedNoticeOpen(false);
+      announcedPincodeRef.current = null;
       return;
     }
     let cancelled = false;
@@ -219,7 +231,10 @@ export function CheckoutForm() {
           // pincode, then leave it re-openable from the summary.
           setDeliverySplit(rates.split ?? null);
           setBlockedLocalDelivery(null);
-          if (rates.split) setSplitNoticeOpen(true);
+          if (rates.split && announcedPincodeRef.current !== pincode) {
+            announcedPincodeRef.current = pincode;
+            setSplitNoticeOpen(true);
+          }
         }
       })
       .catch((err) => {
@@ -236,7 +251,10 @@ export function CheckoutForm() {
               pincode: details?.pincode ?? pincode,
               products: details?.products ?? [],
             });
-            setBlockedNoticeOpen(true);
+            if (announcedPincodeRef.current !== pincode) {
+              announcedPincodeRef.current = pincode;
+              setBlockedNoticeOpen(true);
+            }
             setShippingQuoteError(
               "Some items in your cart can't be delivered to this pincode. Remove them to continue.",
             );
@@ -986,6 +1004,7 @@ export function CheckoutForm() {
           pincode={blockedLocalDelivery.pincode}
           products={blockedLocalDelivery.products}
           onGoToCart={() => router.push("/cart")}
+          onChangeAddress={() => form.setFocus("pincode")}
         />
       )}
 

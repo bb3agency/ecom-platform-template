@@ -5,6 +5,7 @@ import * as metricsModule from '@common/observability/metrics';
 import { AppError } from './app-error';
 import { ERROR_CODES } from './error-codes';
 import { registerGlobalErrorHandler } from './error-handler';
+import { standardErrorResponses } from './error-response.schema';
 
 describe('global error handler', () => {
   beforeEach(() => {
@@ -14,6 +15,54 @@ describe('global error handler', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllEnvs();
+  });
+
+  it('keeps LOCAL_DELIVERY_ONLY_UNAVAILABLE details through response-schema serialization', async () => {
+    // Regression guard: errorDetailsSchema is additionalProperties:false, so any detail field
+    // that is not declared there is SILENTLY stripped when a route attaches the standard error
+    // responses. The storefront renders `products` as the "remove these items" list, so losing
+    // it would leave the customer with an empty, useless modal.
+    const app = Fastify();
+    await registerGlobalErrorHandler(app);
+
+    app.get(
+      '/api/v1/cart/delivery-rates',
+      { schema: { response: { ...standardErrorResponses } } },
+      async () => {
+        throw new AppError(
+          ERROR_CODES.LOCAL_DELIVERY_ONLY_UNAVAILABLE,
+          'Some items are local delivery only',
+          422,
+          {
+            pincode: '999999',
+            products: [
+              {
+                variantId: 'v1',
+                productName: 'Fresh Greens',
+                variantName: 'Default',
+                sku: 'SKU-1'
+              }
+            ]
+          }
+        );
+      }
+    );
+
+    const response = await app.inject({ method: 'GET', url: '/api/v1/cart/delivery-rates' });
+
+    expect(response.statusCode).toBe(422);
+    const body = response.json() as {
+      error: {
+        code: string;
+        details: { pincode: string; products: Array<{ productName: string; sku: string }> };
+      };
+    };
+    expect(body.error.code).toBe(ERROR_CODES.LOCAL_DELIVERY_ONLY_UNAVAILABLE);
+    expect(body.error.details.pincode).toBe('999999');
+    expect(body.error.details.products).toHaveLength(1);
+    expect(body.error.details.products[0]?.productName).toBe('Fresh Greens');
+
+    await app.close();
   });
 
   it('maps AppError responses and sets Retry-After for 429', async () => {

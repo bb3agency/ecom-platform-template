@@ -220,6 +220,8 @@ interface LocalDeliveryBlockedNoticeProps {
   products: BlockedLocalDeliveryProduct[];
   /** Sends the customer to the cart so they can remove the offending items. */
   onGoToCart?: () => void;
+  /** Closes the notice and puts the cursor back in the pincode field. */
+  onChangeAddress?: () => void;
 }
 
 export function LocalDeliveryBlockedNotice({
@@ -228,6 +230,7 @@ export function LocalDeliveryBlockedNotice({
   pincode,
   products,
   onGoToCart,
+  onChangeAddress,
 }: LocalDeliveryBlockedNoticeProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -258,8 +261,17 @@ export function LocalDeliveryBlockedNotice({
         </DialogBody>
 
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-            Change address
+          {/* Only offer "Change address" when the host can actually focus the field —
+              otherwise the button would just close the dialog and read as a dead action. */}
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              onOpenChange(false);
+              onChangeAddress?.();
+            }}
+          >
+            {onChangeAddress ? "Change address" : "Close"}
           </Button>
           {onGoToCart ? (
             <Button type="button" onClick={onGoToCart}>

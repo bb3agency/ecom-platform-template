@@ -28,7 +28,7 @@ import type { CheckoutRiskAssessmentPort } from '@common/interfaces/checkout-ris
 import { PaymentProviderAdapter } from '@common/interfaces/payment-provider.interface';
 import { canTransitionOrder } from '@common/orders/order-state-machine';
 import { mapShipmentWebhookStatus, mapShipmentStatusToOrderStatus } from '@common/orders/webhook-status-mappers';
-import { CartService } from '@modules/cart/cart.service';
+import { CartService, SHIPPING_QUOTE_SCOPE_COURIER_LEG } from '@modules/cart/cart.service';
 import { createPaymentProvider } from '@modules/payments/payment-provider';
 import { createShippingAdapterForProvider } from '@modules/shipping/shipping-provider';
 import { createInvoiceStorageProvider } from '@modules/invoices/invoice-storage-provider';
@@ -459,9 +459,8 @@ export class OrdersService {
         userId: input.userId,
         destinationPincode: input.destinationPincode,
         paymentMode: input.paymentMode,
-        // The whole cart IS the courier leg here, so the cached whole-cart quote applies
+        // The whole cart IS the courier leg here, so the unscoped whole-cart quote applies
         // verbatim — this is what guarantees shown rate == charged rate.
-        useStoredQuote: true,
         ...(input.selectedShippingProviderHint !== undefined
           ? { selectedShippingProviderHint: input.selectedShippingProviderHint }
           : {}),
@@ -502,10 +501,10 @@ export class OrdersService {
       userId: input.userId,
       destinationPincode: input.destinationPincode,
       paymentMode: input.paymentMode,
-      // The cached quote covers the WHOLE cart (including the local items' weight), so it
-      // would overcharge this leg. Recompute on the courier subset only — getDeliveryRates
-      // does exactly the same for a split cart, so shown still equals charged.
-      useStoredQuote: false,
+      // Read the COURIER-LEG quote, not the whole-cart one: the latter includes the locally
+      // delivered items' weight and would overcharge this leg. getDeliveryRates caches the
+      // courier-subset quote under this same scope, so shown rate == charged rate here too.
+      quoteScope: SHIPPING_QUOTE_SCOPE_COURIER_LEG,
       ...(input.selectedShippingProviderHint !== undefined
         ? { selectedShippingProviderHint: input.selectedShippingProviderHint }
         : {}),
@@ -567,7 +566,12 @@ export class OrdersService {
     userId: string;
     destinationPincode: string;
     paymentMode: 'COD' | 'PREPAID';
-    useStoredQuote: boolean;
+    /**
+     * Cache scope of the quote the customer was shown. Undefined = the whole-cart quote;
+     * SHIPPING_QUOTE_SCOPE_COURIER_LEG = the courier-only quote of a split cart. Reading the
+     * matching scope is what guarantees shown rate == charged rate for both shapes.
+     */
+    quoteScope?: string | undefined;
     selectedShippingProviderHint?: string | undefined;
     courierCompanyIdHint?: number | undefined;
   }): Promise<{
@@ -587,16 +591,16 @@ export class OrdersService {
 
     const quoteCart = { coupon: input.cart.coupon, items: input.items };
 
-    let authoritativeQuote =
-      input.useStoredQuote && !usingNoop
-        ? await cartService.getStoredShippingQuote(
-            input.userId,
-            undefined,
-            input.cart.id,
-            input.destinationPincode,
-            input.paymentMode
-          )
-        : null;
+    let authoritativeQuote = usingNoop
+      ? null
+      : await cartService.getStoredShippingQuote(
+          input.userId,
+          undefined,
+          input.cart.id,
+          input.destinationPincode,
+          input.paymentMode,
+          input.quoteScope
+        );
     if (authoritativeQuote?.provider === 'LOCAL') {
       // Stale LOCAL quote (pincode de-whitelisted between quote and checkout) — discard.
       authoritativeQuote = null;
@@ -804,6 +808,20 @@ export class OrdersService {
           ? { courierCompanyIdHint: input.courierCompanyId }
           : {})
       });
+
+      // A split cart needs ONE payment spanning both orders. This legacy two-step path
+      // (`POST /orders` then `POST /payments/initiate`) funds a single orderId, so it would
+      // create two PENDING_PAYMENT orders and strand the second one unpaid forever. The
+      // single-call prepare-checkout → confirm-prepaid path handles the split correctly, so
+      // route prepaid splits there instead of half-charging the customer.
+      // COD is unaffected: each COD order carries its own COD payment, no linkage required.
+      if (requestedPaymentMode !== 'COD' && groups.length > 1) {
+        throw new AppError(
+          ERROR_CODES.VALIDATION_ERROR,
+          'This cart must be placed as two orders and cannot use the two-step payment flow. Use prepare-checkout to pay for both orders at once.',
+          400
+        );
+      }
 
       if (requestedPaymentMode === 'COD') {
         const codSettings = await tx.storeSettings.findUnique({

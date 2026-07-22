@@ -528,8 +528,14 @@ export function AdminProductsList() {
                               >
                                 {product.name}
                               </Link>
-                              <span className="text-xs text-muted-foreground">
+                              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
                                 {variants.length} Unit(s)
+                                {/* Local-delivery-only products never go to a courier and can
+                                    only be sold to whitelisted pincodes — surfaced here so the
+                                    merchant can audit the flag without opening each product. */}
+                                {product.isLocalDeliveryOnly && (
+                                  <Badge variant="info">Local only</Badge>
+                                )}
                               </span>
                             </div>
                           </div>

@@ -30,6 +30,25 @@ export const errorDetailsSchema = {
           message: { type: 'string', maxLength: 400 }
         }
       }
+    },
+    // LOCAL_DELIVERY_ONLY_UNAVAILABLE: the destination pincode, and the local-delivery-only
+    // products that cannot reach it. The storefront renders `products` as the "remove these
+    // items to continue" list, so both MUST be declared here — this schema is
+    // additionalProperties:false, and anything unlisted is silently stripped on serialization.
+    pincode: { type: 'string', maxLength: 6 },
+    products: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['variantId', 'productName', 'variantName', 'sku'],
+        properties: {
+          variantId: { type: 'string', maxLength: 64 },
+          productName: { type: 'string', maxLength: 300 },
+          variantName: { type: 'string', maxLength: 300 },
+          sku: { type: 'string', maxLength: 100 }
+        }
+      }
     }
   }
 } as const;
