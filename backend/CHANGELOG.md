@@ -12,6 +12,17 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.76] — 2026-07-22
+
+### Fixed
+- **VPS deploy job no longer goes RED on every release that carries a migration.** `vps-deploy.sh` polled `/api/v1/health` 30 times at 2s intervals — a 60-second window. Backend boot does considerably more than start a server: it decrypts and applies the Ops DB config overlay, warms the Prisma engine, and on a migration release also waits behind migrate-on-boot. On a shared VPS that regularly exceeds 60s, so the script exited 1 and the deploy job failed **while the container became healthy moments later** — observed three times during the 0.1.75 rollout, on both clients, with production verified healthy and serving the new build each time. The real damage is not the red X: it is that a routinely-failing deploy trains operators to ignore deploy failures, and `Deploy to VPS` is `workflow_run`-gated elsewhere. Raised to 90 attempts (3 minutes). A genuinely broken deploy still fails, just two minutes later.
+
+**Propagation:**
+- Severity: MEDIUM (no production impact — deploys were succeeding; the signal was wrong, which is its own hazard) · Layers: backend (`scripts/vps-deploy.sh`)
+- Migration: NO · Flag: none · Design impact: none · Breaking: NO
+- Rollback: revert the file
+- Operator: none. Takes effect on the next deploy, which runs the updated script it just pulled.
+
 ## [0.1.75] — 2026-07-22
 
 ### Added

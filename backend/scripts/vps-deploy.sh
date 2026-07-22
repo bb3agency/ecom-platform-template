@@ -27,7 +27,13 @@ set -euo pipefail
 
 CLIENT_PATH="${1:?CLIENT_PATH argument is required}"
 EXPECTED_SHA="${2:?COMMIT_SHA argument is required}"
-HEALTH_RETRIES=30
+# Backend boot does more than start a server: it decrypts and applies the Ops DB config
+# overlay, warms the Prisma engine, and on a release carrying a migration also waits behind
+# migrate-on-boot. The old 30×2s = 60s window was shorter than that on a shared VPS, so the
+# deploy job went RED on every migration release while the container became healthy moments
+# later — training operators to ignore red deploys. 90×2s = 3 min covers a cold migrate boot;
+# a genuinely broken deploy still fails, just two minutes later.
+HEALTH_RETRIES=90
 HEALTH_INTERVAL=2
 
 log() { echo "[deploy] $(date -u '+%Y-%m-%dT%H:%M:%SZ') $*"; }
