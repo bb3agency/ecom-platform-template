@@ -12,6 +12,31 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.78] — 2026-07-24
+
+### Changed
+- **Local delivery is now all-or-nothing per cart — the two-order split is removed.** A checkout pincode on the whitelist means the merchant delivers the WHOLE cart at the local fee (flagged and unflagged items together, one order, no courier). A pincode NOT on the whitelist gives an ordinary courier order — unless the cart holds a `isLocalDeliveryOnly` product, which cannot be couriered, so checkout is blocked (`LOCAL_DELIVERY_ONLY_UNAVAILABLE`, `error.details.products` names what to remove). This replaces the mixed-cart split shipped in 0.1.75/0.1.77: under the new rule no cart shape can produce two orders, so the split machinery is deleted rather than left unreachable.
+
+  | pincode whitelisted? | cart has a flagged product? | result |
+  |---|---|---|
+  | yes | (either) | whole cart → one LOCAL order |
+  | no | no | ordinary courier order |
+  | no | yes | BLOCKED — remove the flagged items |
+
+### Removed
+- Classifier `SPLIT` mode, `apportionPaise`, `computeSplitLegTotals`; `getSplitDeliveryRates` and the courier-leg quote cache scope in `cart.service`; multi-order creation in `createOrder`/`confirmPrepaid` (back to one order + one payment); the delivery-rates `split` field and the order `orderGroupId`/`groupOrders` response fields.
+- **`Order.orderGroupId` column + index** — migration `20260724090000_drop_order_group_id`. Safe: no split order ever existed in production (no product was flagged during the brief split window), so every row was NULL.
+
+### Note
+- Weight/dimension engines need no per-leg logic: a `LOCAL` order skips cartonization (the merchant delivers it) and a courier order rates the whole cart as it always has — no item is ever hand-delivered while its neighbours are couriered. A stale multi-group prepaid session left over from the split window is rejected with a restart prompt rather than mis-created.
+
+**Propagation:**
+- Severity: MEDIUM (behaviour simplification correcting 0.1.75/0.1.77; no data loss) · Layers: backend (`common/shipping/local-delivery-split.ts` + tests, `modules/cart/{cart.service,cart.schemas}.ts`, `modules/orders/{orders.service,orders.schemas}.ts` + tests, `prisma/schema.prisma`) — pairs with frontend-core 0.1.57
+- Migration: **YES** — `20260724090000_drop_order_group_id` (drops one nullable column + its index; every row was NULL). Additive-safe, no backfill.
+- Flag: none · Design impact: none (engine only) · Breaking: NO
+- Rollback: revert the files; re-add the column if needed (it was unused).
+- Operator: none.
+
 ## [0.1.77] — 2026-07-23
 
 ### Fixed

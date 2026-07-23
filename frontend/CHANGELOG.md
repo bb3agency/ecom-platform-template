@@ -12,6 +12,18 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.57] — 2026-07-24
+
+### Removed
+- **Split-order UI removed** (pairs with backend-core 0.1.78 — local delivery no longer splits a cart). Deleted `LocalDeliverySplitNotice` and `OrderSplitNotice` from `components/checkout/LocalDeliveryNotices.tsx` (the blocking `LocalDeliveryBlockedNotice` stays — a local-delivery-only product bound for a non-whitelisted pincode still blocks checkout with a remove-these-items modal). Removed the split banner + modal wiring from `CheckoutForm.tsx` and the `DeliverySplit`/`FulfilmentGroup`/`OrderGroupSibling` types and `groupOrders`/`orderGroupId`/`split` fields from `types/cart.ts` + `lib/orders-api.ts`.
+
+**Propagation:**
+- Severity: MEDIUM · Layers: frontend (`components/checkout/{LocalDeliveryNotices,CheckoutForm}.tsx`, `lib/orders-api.ts`, `types/cart.ts`)
+- Migration: NO · Flag: none · Breaking: NO
+- **Design impact: the order-page `OrderSplitNotice` mount in `app/(account)/orders/[id]/page.tsx` (per-client theme, OUTSIDE the sync manifest) must be hand-removed per client BEFORE this sync, or the sync PR's typecheck fails on the dangling import.** Both current clients were pre-cleared (raghava in its feature commit, sbgs `cc3d5b5`).
+- Requires: backend-core >= 0.1.78
+- Rollback: revert the files
+
 ## [0.1.56] — 2026-07-22
 
 ### Added
