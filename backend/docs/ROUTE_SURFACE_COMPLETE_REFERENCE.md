@@ -572,9 +572,22 @@ for missing HSN and omit the FSSAI line; courier bookings fall back to
 `StoreSettings.localDelivery*`: master toggle, whitelisted pincode list (each entry may carry its
 own `feePaise`; null/absent → the store default fee, default ₹20/2000 paise), the default fee,
 an optional free-above-subtotal threshold, and the estimated-days figure shown at checkout.
-When a checkout destination pincode is on this whitelist, Delhivery/Shiprocket are **never
-invoked** (no serviceability, no quote, no booking, no webhooks): the order is created with
-`selectedShippingProvider = LOCAL`, `canShipNow` is always false with a local-delivery reason,
+When a checkout destination pincode is on this whitelist, the merchant delivers the order and
+Delhivery/Shiprocket are **never invoked** for it (no serviceability, no quote, no booking, no
+webhooks): the order is created with `selectedShippingProvider = LOCAL`.
+
+**Interaction with `Product.isLocalDeliveryOnly` (2026-07-22).** A flagged product is
+local-delivery-ONLY and can never be couriered; an unflagged product is "either channel is
+fine". So: no flagged products + whitelisted pincode → the whole order is LOCAL (the behaviour
+above, unchanged); no flagged products + non-whitelisted → ordinary courier order; a MIXED cart
++ whitelisted pincode → the cart **splits into two sibling orders** sharing `Order.orderGroupId`
+(a LOCAL one and a courier one, the courier leg rated and cartonized on its own items only, so
+the hand-delivered goods' weight and box dimensions never reach the courier); a cart containing
+flagged products bound for a **non-whitelisted** pincode is refused with
+`LOCAL_DELIVERY_ONLY_UNAVAILABLE` (422) and `error.details.products` naming what to remove.
+See `common/shipping/local-delivery-split.ts` for the full table.
+
+For a LOCAL order `canShipNow` is always false with a local-delivery reason,
 `POST /admin/orders/:id/ship` hard-rejects (422), and the admin advances the order manually via
 `PATCH /admin/orders/:id/status` — each manual change (SHIPPED / OUT_FOR_DELIVERY / DELIVERED /
 CANCELLED) fires the matching customer notification through `send-primary`, and marking a local

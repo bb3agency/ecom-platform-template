@@ -11,7 +11,7 @@ const localItem = (sku: string): Item => ({ sku, isLocalDeliveryOnly: true });
 const courierItem = (sku: string): Item => ({ sku, isLocalDeliveryOnly: false });
 
 describe('classifyLocalDeliverySplit', () => {
-  it('routes a cart with no local-only products to the courier', () => {
+  it('routes a cart with no local-only products to the courier when the pincode is not whitelisted', () => {
     const result = classifyLocalDeliverySplit([courierItem('A'), courierItem('B')], {
       pincodeLocallyDeliverable: false
     });
@@ -21,14 +21,17 @@ describe('classifyLocalDeliverySplit', () => {
     expect(result.blockedItems).toEqual([]);
   });
 
-  it('keeps ordinary products on the courier even when the pincode is locally deliverable', () => {
-    // Deliberate: the whitelist gates what local-only products can reach; it does not pull
-    // ordinary products into the merchant-fulfilled channel.
-    const result = classifyLocalDeliverySplit([courierItem('A')], {
+  it('delivers an ordinary cart locally when the pincode IS whitelisted', () => {
+    // An unflagged product is "either channel is fine", not "courier only" — so a whitelisted
+    // pincode pulls the whole cart into the local channel. This is what lets a store with zero
+    // flagged products keep working exactly as it did before product-level flags existed.
+    const result = classifyLocalDeliverySplit([courierItem('A'), courierItem('B')], {
       pincodeLocallyDeliverable: true
     });
-    expect(result.mode).toBe('ALL_COURIER');
-    expect(result.courierItems).toHaveLength(1);
+    expect(result.mode).toBe('ALL_LOCAL');
+    expect(result.localItems).toHaveLength(2);
+    expect(result.courierItems).toEqual([]);
+    expect(result.blockedItems).toEqual([]);
   });
 
   it('routes an all-local cart to the local channel when the pincode is whitelisted', () => {
@@ -70,9 +73,27 @@ describe('classifyLocalDeliverySplit', () => {
     expect(result.blockedItems).toHaveLength(1);
   });
 
-  it('treats an empty cart as ALL_COURIER rather than throwing', () => {
-    const result = classifyLocalDeliverySplit([], { pincodeLocallyDeliverable: true });
-    expect(result.mode).toBe('ALL_COURIER');
+  it('does not throw on an empty cart', () => {
+    // Empty carts are rejected upstream; this only guards against the classifier itself
+    // blowing up if it is ever reached with one.
+    expect(classifyLocalDeliverySplit([], { pincodeLocallyDeliverable: false }).mode).toBe(
+      'ALL_COURIER'
+    );
+    expect(classifyLocalDeliverySplit([], { pincodeLocallyDeliverable: true }).mode).toBe(
+      'ALL_LOCAL'
+    );
+  });
+
+  it('excludes flagged items from the courier leg so their weight is never rated', () => {
+    // The courier quote must be computed on courierItems only — the merchant hand-delivers the
+    // flagged goods, so their weight and box dimensions never enter the courier network.
+    const result = classifyLocalDeliverySplit(
+      [localItem('HEAVY-LOCAL'), courierItem('C1'), courierItem('C2')],
+      { pincodeLocallyDeliverable: true }
+    );
+    expect(result.mode).toBe('SPLIT');
+    expect(result.courierItems.map((i) => i.sku)).toEqual(['C1', 'C2']);
+    expect(result.courierItems.some((i) => i.isLocalDeliveryOnly)).toBe(false);
   });
 });
 

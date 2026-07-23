@@ -5,19 +5,31 @@
  * handed to a courier (Delhivery/Shiprocket). It can therefore only reach pincodes on the
  * merchant's local-delivery whitelist (Admin → Settings → Local Delivery).
  *
- * That gives a cart four possible shapes at checkout:
+ * Two independent signals decide fulfilment, and BOTH matter:
  *
- *   ALL_COURIER  no local-only products      → one ordinary courier order
- *   ALL_LOCAL    only local-only products,   → one order with selectedShippingProvider = LOCAL
- *                pincode whitelisted
- *   SPLIT        both kinds, pincode         → TWO sibling orders sharing an orderGroupId:
- *                whitelisted                   the local one and the courier one
- *   BLOCKED      local-only products present → checkout refused; the customer must remove the
- *                but pincode NOT whitelisted   offending products (they cannot be shipped there)
+ *   the product flag  — a flagged product is local-delivery-ONLY, always, whatever the pincode
+ *   the pincode       — a whitelisted pincode is an area the merchant drives to
  *
- * Note the deliberate asymmetry: an *unflagged* product always goes by courier, even to a
- * whitelisted pincode. The whitelist gates what local-only products can reach; it does not
- * pull ordinary products into the local channel.
+ * Which gives this table:
+ *
+ *   cart contents          pincode whitelisted   result
+ *   ────────────────────── ───────────────────── ──────────────────────────────────────────
+ *   no flagged products    yes                   ALL_LOCAL  — merchant delivers the whole cart
+ *   no flagged products    no                    ALL_COURIER
+ *   some flagged, some not yes                   SPLIT      — two sibling orders
+ *   some flagged, some not no                    BLOCKED    — remove the flagged items
+ *   all flagged            yes                   ALL_LOCAL
+ *   all flagged            no                    BLOCKED
+ *
+ * The key point: an unflagged product is NOT "courier-only" — it is "either is fine", so a
+ * whitelisted pincode pulls it into the local channel. That is why a store with zero flagged
+ * products keeps working exactly as it did before product-level flags existed. The flag only
+ * ever ADDS a restriction (never couriered), it never removes the whitelist's reach.
+ *
+ * A SPLIT therefore happens only when the cart genuinely needs both channels: flagged items the
+ * merchant must hand-deliver alongside items being couriered. The courier leg is then rated on
+ * the courier items ONLY — the flagged items' weight and box dimensions are excluded, since
+ * they never enter the courier network.
  *
  * This module is pure — no Prisma, no network — so every branch is unit-testable.
  * Fee resolution for the local leg lives in ./local-delivery.ts.
@@ -56,9 +68,14 @@ export function classifyLocalDeliverySplit<T extends SplittableItem>(
   const localOnly = items.filter((item) => item.isLocalDeliveryOnly);
   const courier = items.filter((item) => !item.isLocalDeliveryOnly);
 
-  // No local-only products: ordinary courier order regardless of whether the pincode
-  // happens to be whitelisted.
+  // No local-only products: the pincode whitelist alone decides. A whitelisted pincode means
+  // the merchant drives to that area, so they deliver the whole cart themselves at the local
+  // fee — no courier, no split. This is the long-standing local-delivery behaviour and the
+  // reason an ordinary store needs zero per-product configuration to keep working.
   if (localOnly.length === 0) {
+    if (opts.pincodeLocallyDeliverable) {
+      return { mode: 'ALL_LOCAL', localItems: courier, courierItems: [], blockedItems: [] };
+    }
     return { mode: 'ALL_COURIER', localItems: [], courierItems: courier, blockedItems: [] };
   }
 

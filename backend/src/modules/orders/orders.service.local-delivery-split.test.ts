@@ -190,7 +190,10 @@ describe('OrdersService createOrder — product-level local delivery', () => {
     expect(paymentAmounts).toEqual([33500, 15000]);
   });
 
-  it('keeps a single order when nothing in the cart is local-delivery-only', async () => {
+  it('delivers an ordinary (unflagged) cart locally when the pincode is whitelisted', async () => {
+    // The whitelist alone decides for a cart with no flagged products: one LOCAL order at the
+    // pincode fee, no courier, no split. A store that has flagged nothing keeps working exactly
+    // as it did before product-level flags existed.
     const tx = buildTx([cartItem('v2', 'Packaged Honey', 10000, false)]);
     const service = new OrdersService(buildFastify(tx));
 
@@ -198,9 +201,52 @@ describe('OrdersService createOrder — product-level local delivery', () => {
 
     const orders = createdOrders(tx);
     expect(orders).toHaveLength(1);
-    // Ordinary products stay on the courier even though 500001 is whitelisted.
-    expect(orders[0]?.['selectedShippingProvider']).toBeUndefined();
+    expect(orders[0]?.['selectedShippingProvider']).toBe('LOCAL');
+    expect(orders[0]?.['shippingCharge']).toBe(3500);
     expect(orders[0]?.['orderGroupId']).toBeUndefined();
+  });
+
+  it('sends an ordinary (unflagged) cart to the courier when the pincode is NOT whitelisted', async () => {
+    const tx = buildTx([cartItem('v2', 'Packaged Honey', 10000, false)]);
+    tx.address.findFirst.mockResolvedValue({ ...ADDRESS, pincode: '999999' });
+    const fastify = buildFastify(tx);
+    (fastify.prisma.address.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ...ADDRESS,
+      pincode: '999999'
+    });
+    const service = new OrdersService(fastify);
+
+    await service.createOrder('user_1', { addressId: 'addr_1', paymentMode: 'COD' });
+
+    const orders = createdOrders(tx);
+    expect(orders).toHaveLength(1);
+    expect(orders[0]?.['selectedShippingProvider']).toBeUndefined();
+    expect(orders[0]?.['shippingCharge']).toBe(5000);
+  });
+
+  it('rates the courier leg on the courier items ONLY — hand-delivered weight is excluded', async () => {
+    // The merchant carries the flagged goods themselves, so their weight and box dimensions
+    // must never reach the courier's rating call. Otherwise the customer is charged courier
+    // weight for a parcel the courier never sees, and the AWB is later re-billed on a
+    // mismatch. (The booking side is safe by construction: a split writes partitioned
+    // OrderItem rows, and queues/workers/shipping.worker.ts cartonizes from order.items.)
+    const quoteSpy = vi.spyOn(CartService.prototype, 'computeShippingChargeForCart');
+    const tx = buildTx([
+      cartItem('v1', 'Fresh Greens', 30000, true),
+      cartItem('v2', 'Packaged Honey', 10000, false)
+    ]);
+    const service = new OrdersService(buildFastify(tx));
+
+    await service.createOrder('user_1', { addressId: 'addr_1', paymentMode: 'COD' });
+
+    expect(quoteSpy).toHaveBeenCalled();
+    const ratedItems = (
+      quoteSpy.mock.calls.at(-1)?.[0] as unknown as {
+        cart: { items: Array<{ variant: { id: string } }> };
+      }
+    ).cart.items;
+    expect(ratedItems.map((i) => i.variant.id)).toEqual(['v2']);
+    expect(ratedItems).toHaveLength(1);
   });
 
   it('keeps a single LOCAL order when the whole cart is local-delivery-only', async () => {

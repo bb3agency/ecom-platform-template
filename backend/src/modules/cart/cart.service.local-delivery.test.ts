@@ -108,14 +108,27 @@ describe('CartService local delivery short-circuit', () => {
     });
   });
 
-  it('keeps an ordinary product on the courier even in a whitelisted pincode', async () => {
-    // Product-level local delivery: the whitelist gates what local-delivery-ONLY products can
-    // reach; it must not divert ordinary products into the merchant-fulfilled channel.
+  it('delivers an ORDINARY (unflagged) product locally when the pincode is whitelisted', async () => {
+    // Regression guard for the reported "whitelisted pincode still quoted Shiprocket" bug.
+    // An unflagged product is not courier-only — a whitelisted pincode means the merchant
+    // drives there, so the whole cart is delivered locally at the pincode fee. The beforeEach
+    // fetch stub throws on ANY courier call, so this passing also proves no provider was
+    // consulted.
     const fastify = createFastify({}, { localDeliveryOnly: false });
     const service = new CartService(fastify);
-    // The beforeEach fetch stub throws on any courier call, which proves the courier path was
-    // entered rather than short-circuited to LOCAL.
-    await expect(service.getDeliveryRates('user_1', undefined, '500001')).rejects.toThrow();
+    await expect(service.getDeliveryRates('user_1', undefined, '500001')).resolves.toEqual({
+      pincode: '500001',
+      shippingCharge: 3500,
+      estimatedDays: 1,
+      selectedShippingProvider: 'LOCAL'
+    });
+  });
+
+  it('sends an ordinary product to the courier when the pincode is NOT whitelisted', async () => {
+    const fastify = createFastify({}, { localDeliveryOnly: false });
+    const service = new CartService(fastify);
+    // Courier path entered → the throwing fetch stub fires, proving no LOCAL short-circuit.
+    await expect(service.getDeliveryRates('user_1', undefined, '999999')).rejects.toThrow();
   });
 
   it('refuses to quote when a local-delivery-only product cannot reach the pincode', async () => {

@@ -4,10 +4,16 @@ import type { PrismaClient } from '@prisma/client';
  * Merchant-fulfilled local delivery.
  *
  * When the customer's pincode is on the merchant's whitelist (Admin → Settings →
- * Local Delivery), the courier providers (Delhivery/Shiprocket) are never invoked:
- * no serviceability calls, no rate quotes, no shipment booking, no webhooks. The
- * order is flagged `selectedShippingProvider = 'LOCAL'` and the merchant fulfils
- * it directly, advancing the status manually from the admin panel.
+ * Local Delivery), the merchant delivers the order themselves: the order is flagged
+ * `selectedShippingProvider = 'LOCAL'` and no courier is involved at all — no
+ * serviceability calls, no rate quotes, no shipment booking, no webhooks. The merchant
+ * advances the status manually from the admin panel.
+ *
+ * This module answers only "is this pincode locally deliverable, and at what fee". WHICH
+ * items go local is decided by ./local-delivery-split.ts, because a product can be flagged
+ * `isLocalDeliveryOnly`. The one case where a whitelisted pincode still touches a courier is
+ * a SPLIT cart: flagged items become a LOCAL order and the remaining items become a separate
+ * courier order, rated on those items alone.
  *
  * Fee model: each whitelisted pincode may carry its own fee; a pincode without an
  * explicit fee falls back to the store-wide default (₹20). One optional
