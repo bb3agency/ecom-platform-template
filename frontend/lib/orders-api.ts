@@ -44,21 +44,6 @@ export interface OrderLineItem {
   isPurchasable?: boolean;
 }
 
-/**
- * A sibling order from the same split checkout. `isCurrent` marks the one being viewed, so the
- * UI can say "this order" vs "your other order" without comparing ids itself.
- */
-export interface OrderGroupSibling {
-  id: string;
-  orderNumber: string;
-  status: string;
-  total: number;
-  /** LOCAL = delivered by the store directly; COURIER = shipped by Delhivery/Shiprocket. */
-  channel: "LOCAL" | "COURIER";
-  isCurrent: boolean;
-  items: Array<{ productName: string; variantName: string; quantity: number }>;
-}
-
 export interface OrderSummary {
   id: string;
   orderNumber: string;
@@ -73,17 +58,6 @@ export interface OrderSummary {
   selectedShippingProvider?: "DELHIVERY" | "SHIPROCKET" | "LOCAL" | null;
   /** Merchant-fulfilled local delivery order — no courier or AWB will ever exist. */
   isLocalDelivery?: boolean;
-  /**
-   * Non-null when this order came from a cart that split across fulfilment channels
-   * (local-delivery-only items vs courier items). Siblings share this id.
-   */
-  orderGroupId?: string | null;
-  /**
-   * Every order produced by the same checkout, when the cart split. Empty/absent for ordinary
-   * orders. Lets the storefront re-open the "your cart became two orders" explanation from the
-   * orders page at any time.
-   */
-  groupOrders?: OrderGroupSibling[];
   discountAmount: number;
   couponCode?: string | null;
   total: number;

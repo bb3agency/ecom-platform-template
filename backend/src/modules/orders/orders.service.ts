@@ -19,7 +19,6 @@ import { resolvePickupPincode } from '@common/shipping/resolve-pickup-pincode';
 import { cartonize } from '@common/shipping/cartonize';
 import {
   classifyLocalDeliverySplit,
-  computeSplitLegTotals,
   type LocalDeliverySplitMode
 } from '@common/shipping/local-delivery-split';
 import { parseBoxPresets } from '@common/shipping/select-box-preset';
@@ -28,7 +27,7 @@ import type { CheckoutRiskAssessmentPort } from '@common/interfaces/checkout-ris
 import { PaymentProviderAdapter } from '@common/interfaces/payment-provider.interface';
 import { canTransitionOrder } from '@common/orders/order-state-machine';
 import { mapShipmentWebhookStatus, mapShipmentStatusToOrderStatus } from '@common/orders/webhook-status-mappers';
-import { CartService, SHIPPING_QUOTE_SCOPE_COURIER_LEG } from '@modules/cart/cart.service';
+import { CartService } from '@modules/cart/cart.service';
 import { createPaymentProvider } from '@modules/payments/payment-provider';
 import { createShippingAdapterForProvider } from '@modules/shipping/shipping-provider';
 import { createInvoiceStorageProvider } from '@modules/invoices/invoice-storage-provider';
@@ -367,19 +366,13 @@ export class OrdersService {
   }
 
   /**
-   * Splits a cart across fulfilment channels and prices each leg.
+   * Decides the fulfilment channel for a cart and prices it — always a single order.
    *
-   * Products flagged `isLocalDeliveryOnly` are merchant-fulfilled and never handed to a
-   * courier, so a cart can need TWO orders: one delivered locally, one shipped. See
-   * common/shipping/local-delivery-split.ts for the classification rules.
-   *
-   * Returns one group for ordinary carts (mode ALL_COURIER / ALL_LOCAL) and two for a SPLIT.
-   * Throws LOCAL_DELIVERY_ONLY_UNAVAILABLE when the cart holds local-only products that
-   * cannot reach the destination — `error.details.products` names exactly what to remove.
-   *
-   * Threshold-bearing inputs (subtotal for the free-shipping-above rule, and the coupon
-   * discount) are computed on the WHOLE cart by the caller and only apportioned here, so a
-   * customer never loses a benefit merely because their cart divided.
+   * A whitelisted pincode means the merchant delivers the whole cart at the local fee
+   * (LOCAL); otherwise it is an ordinary courier order — unless the cart holds a product
+   * flagged `isLocalDeliveryOnly`, which cannot be couriered, in which case checkout is
+   * refused with LOCAL_DELIVERY_ONLY_UNAVAILABLE (`error.details.products` names what to
+   * remove). See common/shipping/local-delivery-split.ts for the full table.
    */
   private async resolveFulfilmentGroups(input: {
     db: Prisma.TransactionClient | PrismaClient;
@@ -393,8 +386,8 @@ export class OrdersService {
     freeShippingCoupon: boolean;
     selectedShippingProviderHint?: string | undefined;
     courierCompanyIdHint?: number | undefined;
-  }): Promise<{ mode: LocalDeliverySplitMode; groups: FulfilmentGroup[] }> {
-    // Free-above threshold is evaluated on the whole-cart subtotal, not the local leg's share.
+  }): Promise<{ mode: LocalDeliverySplitMode; group: FulfilmentGroup }> {
+    // Free-above threshold is evaluated on the whole-cart subtotal.
     const localQuote = await input.cartService.getLocalDeliveryQuoteForCheckout(
       input.destinationPincode,
       input.subtotal,
@@ -424,87 +417,34 @@ export class OrdersService {
       );
     }
 
-    const localItems = plan.localItems.map((d) => d.item);
-    const courierItems = plan.courierItems.map((d) => d.item);
-    const sumOf = (items: CheckoutCartItem[]) =>
-      items.reduce((sum, item) => sum + item.priceSnapshot * item.quantity, 0);
-
+    // ALL_LOCAL — the merchant delivers the whole cart at the pincode fee, no courier.
     if (plan.mode === 'ALL_LOCAL') {
-      // localQuote is non-null here: ALL_LOCAL is only reachable when the pincode is whitelisted.
-      const quote = localQuote!;
+      const quote = localQuote!; // non-null here: ALL_LOCAL only reachable for a whitelisted pincode
       return {
         mode: plan.mode,
-        groups: [
-          {
-            channel: 'LOCAL',
-            items: localItems,
-            subtotal: input.subtotal,
-            shippingCharge: quote.shippingChargePaise,
-            discountAmount: input.discountAmount,
-            total: Math.max(input.subtotal + quote.shippingChargePaise - input.discountAmount, 0),
-            selectedShippingProvider: 'LOCAL',
-            courierCompanyId: null,
-            estimatedDays: quote.estimatedDays
-          }
-        ]
+        group: {
+          channel: 'LOCAL',
+          items: input.cart.items,
+          subtotal: input.subtotal,
+          shippingCharge: quote.shippingChargePaise,
+          discountAmount: input.discountAmount,
+          total: Math.max(input.subtotal + quote.shippingChargePaise - input.discountAmount, 0),
+          selectedShippingProvider: 'LOCAL',
+          courierCompanyId: null,
+          estimatedDays: quote.estimatedDays
+        }
       };
     }
 
-    if (plan.mode === 'ALL_COURIER') {
-      const courierQuote = await this.resolveCourierQuoteForItems({
-        db: input.db,
-        cartService: input.cartService,
-        cart: input.cart,
-        items: courierItems,
-        userId: input.userId,
-        destinationPincode: input.destinationPincode,
-        paymentMode: input.paymentMode,
-        // The whole cart IS the courier leg here, so the unscoped whole-cart quote applies
-        // verbatim — this is what guarantees shown rate == charged rate.
-        ...(input.selectedShippingProviderHint !== undefined
-          ? { selectedShippingProviderHint: input.selectedShippingProviderHint }
-          : {}),
-        ...(input.courierCompanyIdHint !== undefined
-          ? { courierCompanyIdHint: input.courierCompanyIdHint }
-          : {})
-      });
-      return {
-        mode: plan.mode,
-        groups: [
-          {
-            channel: 'COURIER',
-            items: courierItems,
-            subtotal: input.subtotal,
-            shippingCharge: courierQuote.shippingChargePaise,
-            discountAmount: input.discountAmount,
-            total: Math.max(
-              input.subtotal + courierQuote.shippingChargePaise - input.discountAmount,
-              0
-            ),
-            selectedShippingProvider: courierQuote.provider,
-            courierCompanyId: courierQuote.courierCompanyId,
-            estimatedDays: courierQuote.estimatedDays
-          }
-        ]
-      };
-    }
-
-    // SPLIT — price each leg on its own items.
-    const quote = localQuote!;
-    const localSubtotal = sumOf(localItems);
-    const courierSubtotal = sumOf(courierItems);
+    // ALL_COURIER — ordinary courier order over the whole cart.
     const courierQuote = await this.resolveCourierQuoteForItems({
       db: input.db,
       cartService: input.cartService,
       cart: input.cart,
-      items: courierItems,
+      items: input.cart.items,
       userId: input.userId,
       destinationPincode: input.destinationPincode,
       paymentMode: input.paymentMode,
-      // Read the COURIER-LEG quote, not the whole-cart one: the latter includes the locally
-      // delivered items' weight and would overcharge this leg. getDeliveryRates caches the
-      // courier-subset quote under this same scope, so shown rate == charged rate here too.
-      quoteScope: SHIPPING_QUOTE_SCOPE_COURIER_LEG,
       ...(input.selectedShippingProviderHint !== undefined
         ? { selectedShippingProviderHint: input.selectedShippingProviderHint }
         : {}),
@@ -512,51 +452,28 @@ export class OrdersService {
         ? { courierCompanyIdHint: input.courierCompanyIdHint }
         : {})
     });
-
-    const legs = computeSplitLegTotals({
-      localSubtotalPaise: localSubtotal,
-      courierSubtotalPaise: courierSubtotal,
-      localShippingPaise: quote.shippingChargePaise,
-      courierShippingPaise: courierQuote.shippingChargePaise,
-      totalDiscountPaise: input.discountAmount
-    });
-
     return {
       mode: plan.mode,
-      groups: [
-        {
-          channel: 'LOCAL',
-          items: localItems,
-          subtotal: legs.local.subtotalPaise,
-          shippingCharge: legs.local.shippingChargePaise,
-          discountAmount: legs.local.discountAmountPaise,
-          total: legs.local.totalPaise,
-          selectedShippingProvider: 'LOCAL',
-          courierCompanyId: null,
-          estimatedDays: quote.estimatedDays
-        },
-        {
-          channel: 'COURIER',
-          items: courierItems,
-          subtotal: legs.courier.subtotalPaise,
-          shippingCharge: legs.courier.shippingChargePaise,
-          discountAmount: legs.courier.discountAmountPaise,
-          total: legs.courier.totalPaise,
-          selectedShippingProvider: courierQuote.provider,
-          courierCompanyId: courierQuote.courierCompanyId,
-          estimatedDays: courierQuote.estimatedDays
-        }
-      ]
+      group: {
+        channel: 'COURIER',
+        items: input.cart.items,
+        subtotal: input.subtotal,
+        shippingCharge: courierQuote.shippingChargePaise,
+        discountAmount: input.discountAmount,
+        total: Math.max(input.subtotal + courierQuote.shippingChargePaise - input.discountAmount, 0),
+        selectedShippingProvider: courierQuote.provider,
+        courierCompanyId: courierQuote.courierCompanyId,
+        estimatedDays: courierQuote.estimatedDays
+      }
     };
   }
 
   /**
-   * Authoritative courier quote for a set of cart items. Extracted from the checkout paths so
-   * the whole-cart case and the split courier-leg case resolve identically.
+   * Authoritative courier quote for the cart.
    *
    * The provider is ALWAYS chosen server-side as the cheapest serviceable option — never
-   * trusted from the client. Priority: cached quote the customer saw (when it covers exactly
-   * these items) → fresh cross-provider comparison → noop/single-provider fallback.
+   * trusted from the client. Priority: cached quote the customer saw → fresh cross-provider
+   * comparison → noop/single-provider fallback.
    */
   private async resolveCourierQuoteForItems(input: {
     db: Prisma.TransactionClient | PrismaClient;
@@ -566,12 +483,6 @@ export class OrdersService {
     userId: string;
     destinationPincode: string;
     paymentMode: 'COD' | 'PREPAID';
-    /**
-     * Cache scope of the quote the customer was shown. Undefined = the whole-cart quote;
-     * SHIPPING_QUOTE_SCOPE_COURIER_LEG = the courier-only quote of a split cart. Reading the
-     * matching scope is what guarantees shown rate == charged rate for both shapes.
-     */
-    quoteScope?: string | undefined;
     selectedShippingProviderHint?: string | undefined;
     courierCompanyIdHint?: number | undefined;
   }): Promise<{
@@ -598,8 +509,7 @@ export class OrdersService {
           undefined,
           input.cart.id,
           input.destinationPincode,
-          input.paymentMode,
-          input.quoteScope
+          input.paymentMode
         );
     if (authoritativeQuote?.provider === 'LOCAL') {
       // Stale LOCAL quote (pincode de-whitelisted between quote and checkout) — discard.
@@ -788,10 +698,16 @@ export class OrdersService {
       const requestedPaymentMode = input.paymentMode ?? 'PREPAID';
       const paymentModeForQuote: 'COD' | 'PREPAID' = requestedPaymentMode === 'COD' ? 'COD' : 'PREPAID';
 
-      // Split the cart across fulfilment channels. Local-delivery-only products never reach a
-      // courier, so this may return TWO groups (one order each) — or throw
-      // LOCAL_DELIVERY_ONLY_UNAVAILABLE when such products cannot reach this pincode at all.
-      const { groups } = await this.resolveFulfilmentGroups({
+      // Random, unguessable customer-facing reference (see order-number.ts) — sequential
+      // numbers leaked order volume and were enumerable.
+      const orderNumber = await generateUniqueOrderNumber(
+        tx as unknown as Parameters<typeof generateUniqueOrderNumber>[0]
+      );
+
+      // Decide the fulfilment channel. A whitelisted pincode → the whole cart is delivered
+      // locally; otherwise courier — unless the cart holds a local-delivery-only product bound
+      // for a non-whitelisted pincode, which throws LOCAL_DELIVERY_ONLY_UNAVAILABLE.
+      const { group } = await this.resolveFulfilmentGroups({
         db: tx,
         cartService,
         cart,
@@ -809,20 +725,6 @@ export class OrdersService {
           : {})
       });
 
-      // A split cart needs ONE payment spanning both orders. This legacy two-step path
-      // (`POST /orders` then `POST /payments/initiate`) funds a single orderId, so it would
-      // create two PENDING_PAYMENT orders and strand the second one unpaid forever. The
-      // single-call prepare-checkout → confirm-prepaid path handles the split correctly, so
-      // route prepaid splits there instead of half-charging the customer.
-      // COD is unaffected: each COD order carries its own COD payment, no linkage required.
-      if (requestedPaymentMode !== 'COD' && groups.length > 1) {
-        throw new AppError(
-          ERROR_CODES.VALIDATION_ERROR,
-          'This cart must be placed as two orders and cannot use the two-step payment flow. Use prepare-checkout to pay for both orders at once.',
-          400
-        );
-      }
-
       if (requestedPaymentMode === 'COD') {
         const codSettings = await tx.storeSettings.findUnique({
           where: { singletonKey: 'default' },
@@ -839,90 +741,77 @@ export class OrdersService {
       const orderStatus =
         requestedPaymentMode === 'COD' ? OrderStatus.CONFIRMED : OrderStatus.PENDING_PAYMENT;
 
-      // Sibling orders from one split cart share a group id so the customer (and admin) can
-      // always see they came from a single checkout.
-      const orderGroupId = groups.length > 1 ? randomUUID() : null;
-      const createdOrderIds: string[] = [];
-
-      for (const group of groups) {
-        const groupOrderNumber = await generateUniqueOrderNumber(
-          tx as unknown as Parameters<typeof generateUniqueOrderNumber>[0]
-        );
-
-        const order = await tx.order.create({
-          data: {
-            orderNumber: groupOrderNumber,
-            userId,
-            status: orderStatus,
-            ...({ paymentMode: requestedPaymentMode } as Record<string, unknown>),
-            ...(group.selectedShippingProvider
-              ? ({ selectedShippingProvider: group.selectedShippingProvider } as Record<string, unknown>)
-              : {}),
-            ...(group.courierCompanyId != null
-              ? ({ courierCompanyId: group.courierCompanyId } as Record<string, unknown>)
-              : {}),
-            ...(orderGroupId ? ({ orderGroupId } as Record<string, unknown>) : {}),
-            shippingAddress: {
-              fullName: shippingAddress.fullName,
-              phone: shippingAddress.phone,
-              line1: shippingAddress.line1,
-              ...(shippingAddress.line2 ? { line2: shippingAddress.line2 } : {}),
-              city: shippingAddress.city,
-              state: shippingAddress.state,
-              pincode: shippingAddress.pincode
-            },
-            subtotal: group.subtotal,
-            shippingCharge: group.shippingCharge,
-            ...({ shippingChargeQuotedPaise: group.shippingCharge } as Record<string, unknown>),
-            discountAmount: group.discountAmount,
-            total: group.total,
-            ...(input.notes !== undefined ? { notes: input.notes } : {}),
-            ...(effectiveCoupon ? { coupons: { connect: { id: effectiveCoupon.id } } } : {})
-          }
-        });
-        createdOrderIds.push(order.id);
-
-        if (requestedPaymentMode === 'COD') {
-          await tx.payment.create({
-            data: {
-              orderId: order.id,
-              provider: PaymentProvider.COD,
-              providerOrderId: `COD-${groupOrderNumber}`,
-              amount: group.total,
-              currency: 'INR',
-              status: PaymentStatus.CREATED
-            }
-          });
+      const order = await tx.order.create({
+        data: {
+          orderNumber,
+          userId,
+          status: orderStatus,
+          ...({ paymentMode: requestedPaymentMode } as Record<string, unknown>),
+          ...(group.selectedShippingProvider
+            ? ({ selectedShippingProvider: group.selectedShippingProvider } as Record<string, unknown>)
+            : {}),
+          ...(group.courierCompanyId != null
+            ? ({ courierCompanyId: group.courierCompanyId } as Record<string, unknown>)
+            : {}),
+          shippingAddress: {
+            fullName: shippingAddress.fullName,
+            phone: shippingAddress.phone,
+            line1: shippingAddress.line1,
+            ...(shippingAddress.line2 ? { line2: shippingAddress.line2 } : {}),
+            city: shippingAddress.city,
+            state: shippingAddress.state,
+            pincode: shippingAddress.pincode
+          },
+          subtotal: group.subtotal,
+          shippingCharge: group.shippingCharge,
+          ...({ shippingChargeQuotedPaise: group.shippingCharge } as Record<string, unknown>),
+          discountAmount: group.discountAmount,
+          total: group.total,
+          ...(input.notes !== undefined ? { notes: input.notes } : {}),
+          ...(effectiveCoupon ? { coupons: { connect: { id: effectiveCoupon.id } } } : {})
         }
+      });
 
-        for (const item of group.items) {
-          await tx.orderItem.create({
-            data: {
-              orderId: order.id,
-              variantId: item.variantId,
-              productName: item.variant.product.name,
-              variantName: item.variant.name,
-              sku: item.variant.sku,
-              quantity: item.quantity,
-              unitPrice: item.priceSnapshot,
-              totalPrice: item.priceSnapshot * item.quantity
-            }
-          });
-        }
-
-        const initialStatus =
-          ((order as Record<string, unknown>)['status'] as OrderStatus) ??
-          OrderStatus.PENDING_PAYMENT;
-        await tx.orderStatusHistory.create({
+      if (requestedPaymentMode === 'COD') {
+        await tx.payment.create({
           data: {
             orderId: order.id,
-            fromStatus: null,
-            toStatus: initialStatus,
-            triggeredBy: 'SYSTEM',
-            note: 'Order created'
+            provider: PaymentProvider.COD,
+            providerOrderId: `COD-${orderNumber}`,
+            amount: group.total,
+            currency: 'INR',
+            status: PaymentStatus.CREATED
           }
         });
       }
+
+      for (const item of group.items) {
+        await tx.orderItem.create({
+          data: {
+            orderId: order.id,
+            variantId: item.variantId,
+            productName: item.variant.product.name,
+            variantName: item.variant.name,
+            sku: item.variant.sku,
+            quantity: item.quantity,
+            unitPrice: item.priceSnapshot,
+            totalPrice: item.priceSnapshot * item.quantity
+          }
+        });
+      }
+
+      const initialStatus =
+        ((order as Record<string, unknown>)['status'] as OrderStatus) ??
+        OrderStatus.PENDING_PAYMENT;
+      await tx.orderStatusHistory.create({
+        data: {
+          orderId: order.id,
+          fromStatus: null,
+          toStatus: initialStatus,
+          triggeredBy: 'SYSTEM',
+          note: 'Order created'
+        }
+      });
 
       await tx.cartItem.deleteMany({ where: { cartId: cart.id } });
       const reservationDelegate = (
@@ -939,12 +828,9 @@ export class OrdersService {
       }
       await tx.cart.update({ where: { id: cart.id }, data: { couponId: null } });
 
-      // Finalize the coupon ONCE for the whole checkout, against the primary order and the
-      // full discount. The split is an internal fulfilment detail — it must never consume two
-      // uses of the customer's coupon.
       if (requestedPaymentMode === 'COD' && effectiveCoupon) {
         await finalizeCouponUsageForOrder(tx, {
-          orderId: createdOrderIds[0]!,
+          orderId: order.id,
           userId,
           discountAmount,
           coupons: [{ id: effectiveCoupon.id, usesCount: effectiveCoupon.usesCount }]
@@ -952,7 +838,7 @@ export class OrdersService {
       }
 
       const finalized = await tx.order.findUniqueOrThrow({
-        where: { id: createdOrderIds[0]! },
+        where: { id: order.id },
         include: {
           items: true,
           payment: true,
@@ -976,37 +862,31 @@ export class OrdersService {
         }
       });
 
-      return {
-        order: this.serializeOrder(finalized, {
-          exposeProviderReferences: false,
-          exposeInternalReferences: false
-        }),
-        createdOrderIds
-      };
+      return this.serializeOrder(finalized, {
+        exposeProviderReferences: false,
+        exposeInternalReferences: false
+      });
     });
     recordCheckoutPath('/api/v1/orders', 'success');
 
     // COD orders are CONFIRMED immediately; enqueue the canonical side-effect handler so
     // inventory is deducted, OrderConfirmed email is sent, and an invoice is generated —
-    // exactly mirroring the PREPAID worker path. A split cart produces two orders, and each
-    // needs its own fulfilment run.
-    if (createdOrder.order.paymentMode === 'COD') {
-      for (const orderId of createdOrder.createdOrderIds) {
-        await this.enqueueOutboxMessage(
-          'orderProcessing',
-          'process-order-update',
-          {
-            orderId,
-            toStatus: OrderStatus.CONFIRMED,
-            triggeredBy: 'COD_ORDER_CREATED',
-            note: 'COD order placed'
-          },
-          `process-order-update:confirmed:${orderId}`
-        );
-      }
+    // exactly mirroring the PREPAID worker path.
+    if (createdOrder.paymentMode === 'COD') {
+      await this.enqueueOutboxMessage(
+        'orderProcessing',
+        'process-order-update',
+        {
+          orderId: createdOrder.id,
+          toStatus: OrderStatus.CONFIRMED,
+          triggeredBy: 'COD_ORDER_CREATED',
+          note: 'COD order placed'
+        },
+        `process-order-update:confirmed:${createdOrder.id}`
+      );
     }
 
-    return createdOrder.order;
+    return createdOrder;
   }
 
   async getMyOrderById(userId: string, orderId: string) {
@@ -1081,43 +961,11 @@ export class OrdersService {
       select: { id: true, status: true, reason: true, adminNote: true, createdAt: true, updatedAt: true }
     });
 
-    // When this order came from a cart that split across fulfilment channels, hand the UI its
-    // sibling(s) so the "your cart became two orders" explanation can be reopened at any time
-    // — not just during checkout. Scoped to this user, so it can never leak another's orders.
-    const groupId = (order as unknown as { orderGroupId: string | null }).orderGroupId;
-    const groupOrders = groupId
-      ? await this.fastify.prisma.order.findMany({
-          where: { orderGroupId: groupId, userId },
-          orderBy: { createdAt: 'asc' },
-          select: {
-            id: true,
-            orderNumber: true,
-            status: true,
-            total: true,
-            selectedShippingProvider: true,
-            items: { select: { productName: true, variantName: true, quantity: true } }
-          }
-        })
-      : [];
-
     return {
       ...this.serializeOrder(order, {
         exposeProviderReferences: false,
         exposeInternalReferences: false
       }),
-      groupOrders: groupOrders.map((sibling) => ({
-        id: sibling.id,
-        orderNumber: sibling.orderNumber,
-        status: sibling.status,
-        total: sibling.total,
-        channel: sibling.selectedShippingProvider === 'LOCAL' ? ('LOCAL' as const) : ('COURIER' as const),
-        isCurrent: sibling.id === order.id,
-        items: sibling.items.map((item) => ({
-          productName: item.productName,
-          variantName: item.variantName,
-          quantity: item.quantity
-        }))
-      })),
       returnRequests: returnRequests.map((rr) => ({
         id: rr.id,
         status: rr.status,
@@ -1615,10 +1463,10 @@ export class OrdersService {
     }
     const discountAmount = this.calculateOrderDiscount(subtotal, effectiveCoupon, cart.items);
 
-    // Split the cart across fulfilment channels. Local-delivery-only products never reach a
-    // courier, so this may return TWO groups (one order each) — or throw
-    // LOCAL_DELIVERY_ONLY_UNAVAILABLE when such products cannot reach this pincode at all.
-    const { mode: splitMode, groups } = await this.resolveFulfilmentGroups({
+    // Decide the fulfilment channel (LOCAL for a whitelisted pincode, else courier) — or throw
+    // LOCAL_DELIVERY_ONLY_UNAVAILABLE when a local-delivery-only product cannot reach this
+    // pincode. Always a single order.
+    const { group } = await this.resolveFulfilmentGroups({
       db: this.fastify.prisma,
       cartService,
       cart,
@@ -1636,12 +1484,8 @@ export class OrdersService {
         : {})
     });
 
-    // ONE Razorpay payment covers the whole cart even when it splits — the customer sees a
-    // single modal for the combined amount, and each resulting order gets its own Payment row
-    // sharing this providerOrderId.
-    const shippingCharge = groups.reduce((sum, g) => sum + g.shippingCharge, 0);
-    const total = groups.reduce((sum, g) => sum + g.total, 0);
-    const primaryGroup = groups[0]!;
+    const shippingCharge = group.shippingCharge;
+    const total = group.total;
 
     await this.checkoutRisk.assertInitiatePaymentAllowed({
       userId,
@@ -1676,11 +1520,8 @@ export class OrdersService {
       total,
       couponId: effectiveCoupon?.id ?? null,
       razorpayOrderId: razorpayOrder.providerOrderId,
-      // Legacy top-level fields describe the PRIMARY group. Kept so a session created by the
-      // previous release still confirms correctly after a deploy (confirmPrepaid falls back to
-      // them when `groups` is absent).
-      selectedShippingProvider: primaryGroup.selectedShippingProvider,
-      courierCompanyId: primaryGroup.courierCompanyId,
+      selectedShippingProvider: group.selectedShippingProvider,
+      courierCompanyId: group.courierCompanyId,
       items: cart.items.map((item) => ({
         variantId: item.variantId,
         productName: item.variant.product.name,
@@ -1689,27 +1530,6 @@ export class OrdersService {
         quantity: item.quantity,
         unitPrice: item.priceSnapshot,
         totalPrice: item.priceSnapshot * item.quantity
-      })),
-      // Authoritative per-order breakdown. One entry for an ordinary cart, two for a split.
-      splitMode,
-      groups: groups.map((group) => ({
-        channel: group.channel,
-        subtotal: group.subtotal,
-        shippingCharge: group.shippingCharge,
-        discountAmount: group.discountAmount,
-        total: group.total,
-        selectedShippingProvider: group.selectedShippingProvider,
-        courierCompanyId: group.courierCompanyId,
-        estimatedDays: group.estimatedDays,
-        items: group.items.map((item) => ({
-          variantId: item.variantId,
-          productName: item.variant.product.name,
-          variantName: item.variant.name,
-          sku: item.variant.sku,
-          quantity: item.quantity,
-          unitPrice: item.priceSnapshot,
-          totalPrice: item.priceSnapshot * item.quantity
-        }))
       }))
     };
 
@@ -1747,41 +1567,22 @@ export class OrdersService {
       selectedShippingProvider?: string | null;
       courierCompanyId?: number | null;
       items: Array<{ variantId: string; productName: string; variantName: string; sku: string; quantity: number; unitPrice: number; totalPrice: number }>;
-      // Present from the product-level-local-delivery release onward. Absent on sessions
-      // created by the previous version — those fall back to the legacy top-level fields.
-      splitMode?: LocalDeliverySplitMode;
-      groups?: Array<{
-        channel: 'LOCAL' | 'COURIER';
-        subtotal: number;
-        shippingCharge: number;
-        discountAmount: number;
-        total: number;
-        selectedShippingProvider: string | null;
-        courierCompanyId: number | null;
-        estimatedDays: number | null;
-        items: Array<{ variantId: string; productName: string; variantName: string; sku: string; quantity: number; unitPrice: number; totalPrice: number }>;
-      }>;
+      // Vestigial: the short-lived split release wrote a `groups` array. Local delivery no
+      // longer splits, so a session carrying more than one group is stale — reject it below
+      // rather than silently create just the first order.
+      groups?: unknown[];
     };
 
-    // Normalise legacy (pre-split) sessions into the same one-group shape so the creation
-    // path below has exactly one code path.
-    const sessionGroups = session.groups?.length
-      ? session.groups
-      : [
-          {
-            channel: (session.selectedShippingProvider === 'LOCAL' ? 'LOCAL' : 'COURIER') as
-              | 'LOCAL'
-              | 'COURIER',
-            subtotal: session.subtotal,
-            shippingCharge: session.shippingCharge,
-            discountAmount: session.discountAmount,
-            total: session.total,
-            selectedShippingProvider: session.selectedShippingProvider ?? null,
-            courierCompanyId: session.courierCompanyId ?? null,
-            estimatedDays: null,
-            items: session.items
-          }
-        ];
+    // A stale multi-group session predates the no-split change. Its flat fields describe only
+    // the first order, so confirming it would drop the rest — make the customer restart.
+    if (Array.isArray(session.groups) && session.groups.length > 1) {
+      await this.fastify.redis.del(input.checkoutSessionId);
+      throw new AppError(
+        ERROR_CODES.NOT_FOUND,
+        'Checkout session is no longer valid. Please restart checkout.',
+        404
+      );
+    }
 
     if (session.userId !== userId) {
       throw new AppError(ERROR_CODES.FORBIDDEN, 'Checkout session does not belong to this user', 403);
@@ -1799,12 +1600,9 @@ export class OrdersService {
       throw new AppError(ERROR_CODES.PAYMENT_VERIFICATION_FAILED, 'Invalid payment signature', 401);
     }
 
-    // Idempotency: if order already confirmed for this Razorpay order, return it
-    // A split checkout writes one Payment row per sibling order, all sharing this
-    // providerOrderId — order by creation so a replay always returns the same (primary) order.
+    // Idempotency: if order already confirmed for this Razorpay order, return it.
     const existing = await this.fastify.prisma.payment.findFirst({
       where: { providerOrderId: input.razorpayOrderId },
-      orderBy: { createdAt: 'asc' },
       include: { order: { include: { items: true, payment: true, invoice: { select: { invoiceNumber: true, pdfUrl: true, issuedAt: true } }, shipment: { include: { events: { orderBy: { occurredAt: 'desc' } } } }, statusHistory: { orderBy: { createdAt: 'desc' } }, couponUsages: { include: { coupon: { select: { code: true } } } } } } }
     });
     if (existing?.order && existing.order.status === OrderStatus.CONFIRMED) {
@@ -1822,155 +1620,133 @@ export class OrdersService {
     }
 
     try {
-      const { primary: createdOrder, all: createdOrders } = await this.fastify.prisma.$transaction(
-        async (tx) => {
-          const effectiveCoupon = session.couponId
-            ? await tx.coupon.findUnique({ where: { id: session.couponId } })
-            : null;
+      const createdOrder = await this.fastify.prisma.$transaction(async (tx) => {
+        const effectiveCoupon = session.couponId
+          ? await tx.coupon.findUnique({ where: { id: session.couponId } })
+          : null;
 
-          // Sibling orders from one split cart share a group id so the customer (and admin)
-          // can always see they came from a single checkout.
-          const orderGroupId = sessionGroups.length > 1 ? randomUUID() : null;
-          const createdIds: string[] = [];
+        // Random, unguessable customer-facing reference (see order-number.ts).
+        const orderNumber = await generateUniqueOrderNumber(
+          tx as unknown as Parameters<typeof generateUniqueOrderNumber>[0]
+        );
 
-          for (const group of sessionGroups) {
-            // Random, unguessable customer-facing reference (see order-number.ts).
-            const orderNumber = await generateUniqueOrderNumber(
-              tx as unknown as Parameters<typeof generateUniqueOrderNumber>[0]
-            );
-
-            const order = await tx.order.create({
-              data: {
-                orderNumber,
-                userId,
-                status: OrderStatus.CONFIRMED,
-                paymentMode: 'PREPAID',
-                ...(group.selectedShippingProvider
-                  ? ({ selectedShippingProvider: group.selectedShippingProvider } as Record<string, unknown>)
-                  : {}),
-                ...(group.courierCompanyId != null
-                  ? ({ courierCompanyId: group.courierCompanyId } as Record<string, unknown>)
-                  : {}),
-                ...(orderGroupId ? ({ orderGroupId } as Record<string, unknown>) : {}),
-                shippingAddress: {
-                  fullName: session.shippingAddress.fullName,
-                  phone: session.shippingAddress.phone,
-                  line1: session.shippingAddress.line1,
-                  ...(session.shippingAddress.line2 ? { line2: session.shippingAddress.line2 } : {}),
-                  city: session.shippingAddress.city,
-                  state: session.shippingAddress.state,
-                  pincode: session.shippingAddress.pincode
-                },
-                subtotal: group.subtotal,
-                shippingCharge: group.shippingCharge,
-                ...({ shippingChargeQuotedPaise: group.shippingCharge } as Record<string, unknown>),
-                discountAmount: group.discountAmount,
-                total: group.total,
-                ...(session.notes ? { notes: session.notes } : {}),
-                ...(effectiveCoupon ? { coupons: { connect: { id: effectiveCoupon.id } } } : {})
-              }
-            });
-            createdIds.push(order.id);
-
-            // One Razorpay payment funds every sibling: each row carries its own apportioned
-            // share and they all share providerOrderId/providerPaymentId. Refunds stay
-            // per-order and Razorpay accepts multiple partial refunds against one payment.
-            await tx.payment.create({
-              data: {
-                orderId: order.id,
-                provider: PaymentProvider.RAZORPAY,
-                providerOrderId: input.razorpayOrderId,
-                providerPaymentId: input.razorpayPaymentId,
-                amount: group.total,
-                currency: 'INR',
-                status: PaymentStatus.CAPTURED,
-                capturedAt: new Date()
-              }
-            });
-
-            for (const item of group.items) {
-              await tx.orderItem.create({
-                data: {
-                  orderId: order.id,
-                  variantId: item.variantId,
-                  productName: item.productName,
-                  variantName: item.variantName,
-                  sku: item.sku,
-                  quantity: item.quantity,
-                  unitPrice: item.unitPrice,
-                  totalPrice: item.totalPrice
-                }
-              });
-            }
-
-            await tx.orderStatusHistory.create({
-              data: {
-                orderId: order.id,
-                fromStatus: null,
-                toStatus: OrderStatus.CONFIRMED,
-                triggeredBy: 'SYSTEM',
-                note: 'Order confirmed after successful payment'
-              }
-            });
+        const order = await tx.order.create({
+          data: {
+            orderNumber,
+            userId,
+            status: OrderStatus.CONFIRMED,
+            paymentMode: 'PREPAID',
+            ...(session.selectedShippingProvider
+              ? ({ selectedShippingProvider: session.selectedShippingProvider } as Record<string, unknown>)
+              : {}),
+            ...(session.courierCompanyId != null
+              ? ({ courierCompanyId: session.courierCompanyId } as Record<string, unknown>)
+              : {}),
+            shippingAddress: {
+              fullName: session.shippingAddress.fullName,
+              phone: session.shippingAddress.phone,
+              line1: session.shippingAddress.line1,
+              ...(session.shippingAddress.line2 ? { line2: session.shippingAddress.line2 } : {}),
+              city: session.shippingAddress.city,
+              state: session.shippingAddress.state,
+              pincode: session.shippingAddress.pincode
+            },
+            subtotal: session.subtotal,
+            shippingCharge: session.shippingCharge,
+            ...({ shippingChargeQuotedPaise: session.shippingCharge } as Record<string, unknown>),
+            discountAmount: session.discountAmount,
+            total: session.total,
+            ...(session.notes ? { notes: session.notes } : {}),
+            ...(effectiveCoupon ? { coupons: { connect: { id: effectiveCoupon.id } } } : {})
           }
+        });
 
-          // Clear cart
-          await tx.cartItem.deleteMany({ where: { cartId: session.cartId } });
-          await tx.cart.update({ where: { id: session.cartId }, data: { couponId: null } });
-
-          // Finalize coupon ONCE for the whole checkout, against the primary order and the
-          // full discount. The split is an internal fulfilment detail — it must never consume
-          // two uses of the customer's coupon.
-          if (effectiveCoupon) {
-            await finalizeCouponUsageForOrder(tx, {
-              orderId: createdIds[0]!,
-              userId,
-              discountAmount: session.discountAmount,
-              coupons: [{ id: effectiveCoupon.id, usesCount: effectiveCoupon.usesCount }]
-            });
+        await tx.payment.create({
+          data: {
+            orderId: order.id,
+            provider: PaymentProvider.RAZORPAY,
+            providerOrderId: input.razorpayOrderId,
+            providerPaymentId: input.razorpayPaymentId,
+            amount: session.total,
+            currency: 'INR',
+            status: PaymentStatus.CAPTURED,
+            capturedAt: new Date()
           }
+        });
 
-          const primary = await tx.order.findUniqueOrThrow({
-            where: { id: createdIds[0]! },
-            include: {
-              items: true,
-              payment: true,
-              invoice: { select: { invoiceNumber: true, pdfUrl: true, issuedAt: true } },
-              shipment: { include: { events: { orderBy: { occurredAt: 'desc' } } } },
-              statusHistory: { orderBy: { createdAt: 'desc' } },
-              couponUsages: { include: { coupon: { select: { code: true } } } }
+        for (const item of session.items) {
+          await tx.orderItem.create({
+            data: {
+              orderId: order.id,
+              variantId: item.variantId,
+              productName: item.productName,
+              variantName: item.variantName,
+              sku: item.sku,
+              quantity: item.quantity,
+              unitPrice: item.unitPrice,
+              totalPrice: item.totalPrice
             }
           });
-          return { primary, all: createdIds };
         }
-      );
+
+        await tx.orderStatusHistory.create({
+          data: {
+            orderId: order.id,
+            fromStatus: null,
+            toStatus: OrderStatus.CONFIRMED,
+            triggeredBy: 'SYSTEM',
+            note: 'Order confirmed after successful payment'
+          }
+        });
+
+        await tx.cartItem.deleteMany({ where: { cartId: session.cartId } });
+        await tx.cart.update({ where: { id: session.cartId }, data: { couponId: null } });
+
+        if (effectiveCoupon) {
+          await finalizeCouponUsageForOrder(tx, {
+            orderId: order.id,
+            userId,
+            discountAmount: session.discountAmount,
+            coupons: [{ id: effectiveCoupon.id, usesCount: effectiveCoupon.usesCount }]
+          });
+        }
+
+        return tx.order.findUniqueOrThrow({
+          where: { id: order.id },
+          include: {
+            items: true,
+            payment: true,
+            invoice: { select: { invoiceNumber: true, pdfUrl: true, issuedAt: true } },
+            shipment: { include: { events: { orderBy: { occurredAt: 'desc' } } } },
+            statusHistory: { orderBy: { createdAt: 'desc' } },
+            couponUsages: { include: { coupon: { select: { code: true } } } }
+          }
+        });
+      });
 
       // Delete checkout session from Redis
       await this.fastify.redis.del(input.checkoutSessionId);
 
-      // Queue side effects (inventory deduction, email, invoice) for EVERY order the checkout
-      // produced — a split cart yields two orders that each need their own fulfilment run.
-      for (const [index, orderId] of createdOrders.entries()) {
-        await this.enqueueOutboxMessage(
-          'orderProcessing',
-          'process-order-update',
-          {
-            orderId,
-            toStatus: OrderStatus.CONFIRMED,
-            triggeredBy: 'PREPAID_CONFIRMED',
-            note: 'Payment confirmed',
-            providerOrderId: input.razorpayOrderId,
-            providerPaymentId: input.razorpayPaymentId
-          },
-          `process-order-update:confirmed:${orderId}`
-        );
+      // Queue side effects (inventory deduction, email, invoice).
+      await this.enqueueOutboxMessage(
+        'orderProcessing',
+        'process-order-update',
+        {
+          orderId: createdOrder.id,
+          toStatus: OrderStatus.CONFIRMED,
+          triggeredBy: 'PREPAID_CONFIRMED',
+          note: 'Payment confirmed',
+          providerOrderId: input.razorpayOrderId,
+          providerPaymentId: input.razorpayPaymentId
+        },
+        `process-order-update:confirmed:${createdOrder.id}`
+      );
 
-        await this.enqueueAnalyticsEvent(AnalyticsEventType.PAYMENT_INITIATED, `order:${orderId}`, userId, {
-          orderId,
-          provider: PaymentProvider.RAZORPAY,
-          amount: sessionGroups[index]?.total ?? 0
-        });
-      }
+      await this.enqueueAnalyticsEvent(AnalyticsEventType.PAYMENT_INITIATED, `order:${createdOrder.id}`, userId, {
+        orderId: createdOrder.id,
+        provider: PaymentProvider.RAZORPAY,
+        amount: session.total
+      });
 
       recordCheckoutPath('/api/v1/payments/confirm-prepaid', 'success');
       return this.serializeOrder(createdOrder, { exposeProviderReferences: false, exposeInternalReferences: false });
@@ -4930,10 +4706,6 @@ export class OrdersService {
       ...((order as Record<string, unknown>)['selectedShippingProvider'] != null
         ? { selectedShippingProvider: (order as Record<string, unknown>)['selectedShippingProvider'] as string }
         : {}),
-      // Non-null when this order came from a cart that split across fulfilment channels. The
-      // sibling order shares this id — surfaces use it to explain "your cart became two
-      // orders" long after checkout. Sibling summaries are attached by getMyOrderById.
-      orderGroupId: ((order as Record<string, unknown>)['orderGroupId'] as string | null) ?? null,
       discountAmount: order.discountAmount,
       ...(order.couponUsages && order.couponUsages.length > 0 && order.couponUsages[0]?.coupon
         ? { coupon: order.couponUsages[0].coupon }

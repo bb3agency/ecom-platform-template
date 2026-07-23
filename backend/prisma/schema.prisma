@@ -618,11 +618,6 @@ model Order {
   notes              String?
   paymentMode        PaymentMode          @default(PREPAID)
   courierCompanyId              Int?
-  // Links the sibling orders produced when one cart splits across fulfilment channels
-  // (local-delivery items vs courier items). Null for ordinary single-channel orders.
-  // Siblings share one Razorpay payment: each carries its own Payment row holding its
-  // apportioned share, all with the same providerOrderId.
-  orderGroupId                  String?
   shiprocketOrderId             String?
   selectedShippingProvider      ShippingProvider?
   shippingChargeQuotedPaise     Int?
@@ -646,7 +641,6 @@ model Order {
   @@index([status, createdAt])
   @@index([shiprocketOrderId])
   @@index([paymentMode])
-  @@index([orderGroupId])
 }
 
 model OrderItem {

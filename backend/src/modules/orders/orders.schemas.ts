@@ -375,9 +375,6 @@ const orderListItemSchema = {
     shipBlockReason: { anyOf: [{ type: 'string', maxLength: 240 }, { type: 'null' }] },
     // Merchant-fulfilled local delivery (selectedShippingProvider = LOCAL) — no courier involved.
     isLocalDelivery: { type: 'boolean' },
-    // Non-null when the order came from a cart that split across fulfilment channels
-    // (local-delivery-only items vs courier items). Siblings share this id.
-    orderGroupId: { anyOf: [{ type: 'string', maxLength: 64 }, { type: 'null' }] },
     shippingMode: { type: 'string', enum: ['MANUAL'], maxLength: 10 }
   }
 } as const;
@@ -520,9 +517,6 @@ const adminOrderDetailSchema = {
     shipBlockReason: { anyOf: [{ type: 'string', maxLength: 240 }, { type: 'null' }] },
     // Merchant-fulfilled local delivery (selectedShippingProvider = LOCAL) — no courier involved.
     isLocalDelivery: { type: 'boolean' },
-    // Non-null when the order came from a cart that split across fulfilment channels
-    // (local-delivery-only items vs courier items). Siblings share this id.
-    orderGroupId: { anyOf: [{ type: 'string', maxLength: 64 }, { type: 'null' }] },
     shippingMode: { type: 'string', enum: ['MANUAL'], maxLength: 10 },
     notes: { anyOf: [{ type: 'string', maxLength: 2000 }, { type: 'null' }] },
     createdAt: { type: 'string', maxLength: 64 },
@@ -681,39 +675,6 @@ const customerOrderDetailSchema = {
           adminNote: { anyOf: [{ type: 'string', maxLength: 2000 }, { type: 'null' }] },
           createdAt: { type: 'string', maxLength: 64 },
           updatedAt: { type: 'string', maxLength: 64 }
-        }
-      }
-    },
-    // Every order produced by the same checkout, when the cart split across fulfilment
-    // channels. Empty for ordinary orders. Lets the storefront re-open the "your cart became
-    // two orders" explanation from the orders page at any time, long after checkout.
-    groupOrders: {
-      type: 'array',
-      maxItems: 2,
-      items: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['id', 'orderNumber', 'status', 'total', 'channel', 'isCurrent', 'items'],
-        properties: {
-          id: { type: 'string', maxLength: 64 },
-          orderNumber: { type: 'string', maxLength: 64 },
-          status: { type: 'string', enum: orderStatusValues, maxLength: 40 },
-          total: { type: 'integer', minimum: 0, maximum: 1000000000 },
-          channel: { type: 'string', enum: ['LOCAL', 'COURIER'], maxLength: 10 },
-          isCurrent: { type: 'boolean' },
-          items: {
-            type: 'array',
-            items: {
-              type: 'object',
-              additionalProperties: false,
-              required: ['productName', 'variantName', 'quantity'],
-              properties: {
-                productName: { type: 'string', maxLength: 300 },
-                variantName: { type: 'string', maxLength: 300 },
-                quantity: { type: 'integer', minimum: 1 }
-              }
-            }
-          }
         }
       }
     },
@@ -1337,9 +1298,6 @@ const boardOrderItemSchema = {
     shipBlockReason: { anyOf: [{ type: 'string', maxLength: 240 }, { type: 'null' }] },
     // Merchant-fulfilled local delivery (selectedShippingProvider = LOCAL) — no courier involved.
     isLocalDelivery: { type: 'boolean' },
-    // Non-null when the order came from a cart that split across fulfilment channels
-    // (local-delivery-only items vs courier items). Siblings share this id.
-    orderGroupId: { anyOf: [{ type: 'string', maxLength: 64 }, { type: 'null' }] },
     shippingMode: { type: 'string', enum: ['MANUAL'], maxLength: 10 }
   }
 } as const;

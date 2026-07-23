@@ -13,10 +13,8 @@ import { getApiErrorMessage, getApiErrorMessageWithHint } from "@/lib/error-mess
 import { ApiError } from "@/lib/api";
 import {
   LocalDeliveryBlockedNotice,
-  LocalDeliverySplitNotice,
   type BlockedLocalDeliveryProduct,
 } from "./LocalDeliveryNotices";
-import type { DeliverySplit } from "@/types/cart";
 import { createIdempotencyKey } from "@/lib/idempotency";
 import { useAuthStore } from "@/stores/auth";
 import { useCartStore } from "@/stores/cart";
@@ -81,19 +79,15 @@ export function CheckoutForm() {
   const [shippingQuote, setShippingQuote] = useState<{ shippingCharge: number; estimatedDays: number; selectedShippingProvider?: "DELHIVERY" | "SHIPROCKET" | "LOCAL"; courierCompanyId?: number } | null>(null);
   const [shippingQuoteLoading, setShippingQuoteLoading] = useState(false);
   const [shippingQuoteError, setShippingQuoteError] = useState<string | null>(null);
-  // Product-level local delivery. `deliverySplit` is set when the cart will become two orders;
-  // `blockedLocalDelivery` when local-only items cannot reach the pincode at all. Both notices
-  // stay re-openable from the order summary while the customer is still in checkout.
-  const [deliverySplit, setDeliverySplit] = useState<DeliverySplit | null>(null);
-  const [splitNoticeOpen, setSplitNoticeOpen] = useState(false);
+  // Local-delivery-only items that cannot reach the entered pincode. Set when the backend
+  // refuses the quote; blocks checkout until the customer removes them.
   const [blockedLocalDelivery, setBlockedLocalDelivery] = useState<{
     pincode: string;
     products: BlockedLocalDeliveryProduct[];
   } | null>(null);
   const [blockedNoticeOpen, setBlockedNoticeOpen] = useState(false);
-  // Which pincode we have already auto-opened a notice for. Without this, switching payment
-  // mode (or re-applying a coupon) re-runs the quote effect and re-opens a modal the customer
-  // just dismissed. They can still reopen it themselves from the summary.
+  // Which pincode we have already auto-opened the blocking notice for, so switching payment
+  // mode (or re-applying a coupon) does not re-open a modal the customer just dismissed.
   const announcedPincodeRef = useRef<string | null>(null);
   const [couponCode, setCouponCode] = useState("");
   const [couponLoading, setCouponLoading] = useState(false);
@@ -204,11 +198,9 @@ export function CheckoutForm() {
     if (!accessToken || !pincode || pincode.length !== 6) {
       setShippingQuote(null);
       setShippingQuoteError(null);
-      // Clear the local-delivery verdicts too. Without this, editing a blocked pincode down to
+      // Clear the blocking verdict too. Without this, editing a blocked pincode down to
       // 5 digits would leave checkoutBlocked stuck true (and a stale notice on screen) with no
       // way back.
-      setDeliverySplit(null);
-      setSplitNoticeOpen(false);
       setBlockedLocalDelivery(null);
       setBlockedNoticeOpen(false);
       announcedPincodeRef.current = null;
@@ -227,20 +219,12 @@ export function CheckoutForm() {
             courierCompanyId: rates.courierCompanyId,
           });
           setShippingQuoteError(null);
-          // Cart splits across fulfilment channels: surface the explanation once per
-          // pincode, then leave it re-openable from the summary.
-          setDeliverySplit(rates.split ?? null);
           setBlockedLocalDelivery(null);
-          if (rates.split && announcedPincodeRef.current !== pincode) {
-            announcedPincodeRef.current = pincode;
-            setSplitNoticeOpen(true);
-          }
         }
       })
       .catch((err) => {
         if (!cancelled) {
           setShippingQuote(null);
-          setDeliverySplit(null);
           // Local-delivery-only items that cannot reach this pincode. The customer must remove
           // them; the backend refuses the order until they do.
           if (err instanceof ApiError && err.code === "LOCAL_DELIVERY_ONLY_UNAVAILABLE") {
@@ -920,24 +904,10 @@ export function CheckoutForm() {
           {shippingQuoteError && (
             <p className="rounded-xl bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">{shippingQuoteError}</p>
           )}
-          {shippingQuote?.selectedShippingProvider === "LOCAL" && !deliverySplit && (
+          {shippingQuote?.selectedShippingProvider === "LOCAL" && (
             <p className="rounded-xl bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700">
               Local delivery — this order is delivered directly by the store.
             </p>
-          )}
-          {/* Split notice: dismissible, but always re-openable while the customer is still
-              in checkout (and again later from the order page). */}
-          {deliverySplit && (
-            <div className="rounded-xl border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-xs font-medium text-sky-800">
-              <p>This cart will be placed as two separate orders. You still pay once.</p>
-              <button
-                type="button"
-                onClick={() => setSplitNoticeOpen(true)}
-                className="mt-1 font-bold underline underline-offset-2 hover:no-underline"
-              >
-                See what goes in each order
-              </button>
-            </div>
           )}
           {blockedLocalDelivery && (
             <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs font-medium text-destructive">
@@ -990,13 +960,6 @@ export function CheckoutForm() {
                   : "Place Order — Pay Online"}
       </button>
 
-      {deliverySplit && (
-        <LocalDeliverySplitNotice
-          open={splitNoticeOpen}
-          onOpenChange={setSplitNoticeOpen}
-          split={deliverySplit}
-        />
-      )}
       {blockedLocalDelivery && (
         <LocalDeliveryBlockedNotice
           open={blockedNoticeOpen}

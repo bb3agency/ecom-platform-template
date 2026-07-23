@@ -31,7 +31,6 @@ import { formatOrderDate, orderStatusChipClass, orderStatusLabel } from "@/lib/o
 import { toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 import { OrderReviewPrompt } from "@/components/product/OrderReviewPrompt";
-import { OrderSplitNotice } from "@/components/checkout/LocalDeliveryNotices";
 import { useStoreConfig } from "@/components/providers/StoreConfigProvider";
 
 const PLACEHOLDER_IMAGE = "/images/product-placeholder.svg";
@@ -276,10 +275,6 @@ export default function AccountOrderDetailPage() {
 
   return (
     <section className="flex flex-col gap-4 sm:gap-5">
-      {/* Explains "why are there two orders?" for carts that split across fulfilment
-          channels. Renders nothing for ordinary orders. */}
-      <OrderSplitNotice groupOrders={order.groupOrders} />
-
       {/* ── Header ─────────────────────────────────────────────────────── */}
       <div className="rounded-2xl border border-[#efe8e4] bg-white p-4 sm:p-6">
         <Link

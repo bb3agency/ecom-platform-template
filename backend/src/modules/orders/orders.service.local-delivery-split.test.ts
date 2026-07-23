@@ -146,7 +146,9 @@ describe('OrdersService createOrder — product-level local delivery', () => {
     } as never);
   });
 
-  it('splits a mixed cart into two linked COD orders with the items partitioned', async () => {
+  it('delivers a MIXED cart entirely locally as ONE order when the pincode is whitelisted', async () => {
+    // A whitelisted pincode means the merchant delivers the whole cart — flagged and unflagged
+    // items ride together in a single LOCAL order at the pincode fee. No split, no courier.
     const tx = buildTx([
       cartItem('v1', 'Fresh Greens', 30000, true),
       cartItem('v2', 'Packaged Honey', 10000, false)
@@ -156,44 +158,26 @@ describe('OrdersService createOrder — product-level local delivery', () => {
     await service.createOrder('user_1', { addressId: 'addr_1', paymentMode: 'COD' });
 
     const orders = createdOrders(tx);
-    expect(orders).toHaveLength(2);
-
-    // Local leg first, courier leg second.
+    expect(orders).toHaveLength(1);
     expect(orders[0]?.['selectedShippingProvider']).toBe('LOCAL');
-    expect(orders[1]?.['selectedShippingProvider']).toBeUndefined();
-
-    // Siblings are linked by a shared, non-null group id.
-    const groupIds = orders.map((order) => order['orderGroupId']);
-    expect(groupIds[0]).toBeTruthy();
-    expect(groupIds[0]).toBe(groupIds[1]);
-
-    // Each leg is priced on its own items plus its own shipping.
-    expect(orders[0]?.['subtotal']).toBe(30000);
+    // Whole-cart subtotal + the single pincode fee.
+    expect(orders[0]?.['subtotal']).toBe(40000);
     expect(orders[0]?.['shippingCharge']).toBe(3500);
-    expect(orders[1]?.['subtotal']).toBe(10000);
-    expect(orders[1]?.['shippingCharge']).toBe(5000);
 
-    // Items land in the right order: local product on the local leg only.
+    // Both products are on the one order.
     const itemRows = tx.orderItem.create.mock.calls.map(
-      (call) => (call[0] as { data: Record<string, unknown> }).data
+      (call) => (call[0] as { data: Record<string, unknown> }).data['productName']
     );
-    const localItems = itemRows.filter((row) => row['orderId'] === 'order_1');
-    const courierItems = itemRows.filter((row) => row['orderId'] === 'order_2');
-    expect(localItems.map((row) => row['productName'])).toEqual(['Fresh Greens']);
-    expect(courierItems.map((row) => row['productName'])).toEqual(['Packaged Honey']);
+    expect(itemRows).toEqual(['Fresh Greens', 'Packaged Honey']);
 
-    // One COD payment per order, each for its own leg total.
-    expect(tx.payment.create).toHaveBeenCalledTimes(2);
-    const paymentAmounts = tx.payment.create.mock.calls.map(
-      (call) => (call[0] as { data: Record<string, number> }).data['amount']
+    // Exactly one COD payment for the whole cart.
+    expect(tx.payment.create).toHaveBeenCalledTimes(1);
+    expect((tx.payment.create.mock.calls[0]?.[0] as { data: Record<string, number> }).data['amount']).toBe(
+      43500
     );
-    expect(paymentAmounts).toEqual([33500, 15000]);
   });
 
   it('delivers an ordinary (unflagged) cart locally when the pincode is whitelisted', async () => {
-    // The whitelist alone decides for a cart with no flagged products: one LOCAL order at the
-    // pincode fee, no courier, no split. A store that has flagged nothing keeps working exactly
-    // as it did before product-level flags existed.
     const tx = buildTx([cartItem('v2', 'Packaged Honey', 10000, false)]);
     const service = new OrdersService(buildFastify(tx));
 
@@ -203,7 +187,6 @@ describe('OrdersService createOrder — product-level local delivery', () => {
     expect(orders).toHaveLength(1);
     expect(orders[0]?.['selectedShippingProvider']).toBe('LOCAL');
     expect(orders[0]?.['shippingCharge']).toBe(3500);
-    expect(orders[0]?.['orderGroupId']).toBeUndefined();
   });
 
   it('sends an ordinary (unflagged) cart to the courier when the pincode is NOT whitelisted', async () => {
@@ -224,31 +207,6 @@ describe('OrdersService createOrder — product-level local delivery', () => {
     expect(orders[0]?.['shippingCharge']).toBe(5000);
   });
 
-  it('rates the courier leg on the courier items ONLY — hand-delivered weight is excluded', async () => {
-    // The merchant carries the flagged goods themselves, so their weight and box dimensions
-    // must never reach the courier's rating call. Otherwise the customer is charged courier
-    // weight for a parcel the courier never sees, and the AWB is later re-billed on a
-    // mismatch. (The booking side is safe by construction: a split writes partitioned
-    // OrderItem rows, and queues/workers/shipping.worker.ts cartonizes from order.items.)
-    const quoteSpy = vi.spyOn(CartService.prototype, 'computeShippingChargeForCart');
-    const tx = buildTx([
-      cartItem('v1', 'Fresh Greens', 30000, true),
-      cartItem('v2', 'Packaged Honey', 10000, false)
-    ]);
-    const service = new OrdersService(buildFastify(tx));
-
-    await service.createOrder('user_1', { addressId: 'addr_1', paymentMode: 'COD' });
-
-    expect(quoteSpy).toHaveBeenCalled();
-    const ratedItems = (
-      quoteSpy.mock.calls.at(-1)?.[0] as unknown as {
-        cart: { items: Array<{ variant: { id: string } }> };
-      }
-    ).cart.items;
-    expect(ratedItems.map((i) => i.variant.id)).toEqual(['v2']);
-    expect(ratedItems).toHaveLength(1);
-  });
-
   it('keeps a single LOCAL order when the whole cart is local-delivery-only', async () => {
     const tx = buildTx([cartItem('v1', 'Fresh Greens', 30000, true)]);
     const service = new OrdersService(buildFastify(tx));
@@ -259,7 +217,6 @@ describe('OrdersService createOrder — product-level local delivery', () => {
     expect(orders).toHaveLength(1);
     expect(orders[0]?.['selectedShippingProvider']).toBe('LOCAL');
     expect(orders[0]?.['shippingCharge']).toBe(3500);
-    expect(orders[0]?.['orderGroupId']).toBeUndefined();
   });
 
   it('refuses checkout when a local-delivery-only item cannot reach the pincode', async () => {
@@ -288,19 +245,19 @@ describe('OrdersService createOrder — product-level local delivery', () => {
     expect(tx.order.create).not.toHaveBeenCalled();
   });
 
-  it('rejects a prepaid split on the legacy two-step flow instead of stranding an order', async () => {
-    // POST /orders + POST /payments/initiate funds a single orderId, so a split there would
-    // leave the second order permanently unpaid. Prepaid splits must use prepare-checkout.
+  it('places a mixed cart as ONE local order on the legacy two-step (COD) flow too', async () => {
+    // No split means the legacy POST /orders path handles a mixed whitelisted cart in a single
+    // order — there is no longer any multi-order case that path cannot fund.
     const tx = buildTx([
       cartItem('v1', 'Fresh Greens', 30000, true),
       cartItem('v2', 'Packaged Honey', 10000, false)
     ]);
     const service = new OrdersService(buildFastify(tx));
 
-    await expect(
-      service.createOrder('user_1', { addressId: 'addr_1', paymentMode: 'PREPAID' })
-    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', statusCode: 400 });
+    await service.createOrder('user_1', { addressId: 'addr_1', paymentMode: 'COD' });
 
-    expect(tx.order.create).not.toHaveBeenCalled();
+    const orders = createdOrders(tx);
+    expect(orders).toHaveLength(1);
+    expect(orders[0]?.['selectedShippingProvider']).toBe('LOCAL');
   });
 });

@@ -268,53 +268,7 @@ export const deliveryRatesSchema = {
           enum: ['DELHIVERY', 'SHIPROCKET', 'LOCAL'],
           maxLength: 20
         },
-        courierCompanyId: { type: 'integer', minimum: 1 },
-        // Present only when the cart splits across fulfilment channels: some items are
-        // local-delivery-only (merchant-fulfilled) and the rest go by courier, so checkout
-        // will place TWO orders. `shippingCharge`/`estimatedDays` above are the combined
-        // figures; these groups carry the per-order detail the split-notice modal renders.
-        split: {
-          type: 'object',
-          additionalProperties: false,
-          required: ['mode', 'groups'],
-          properties: {
-            mode: { type: 'string', enum: ['SPLIT'], maxLength: 10 },
-            groups: {
-              type: 'array',
-              maxItems: 2,
-              items: {
-                type: 'object',
-                additionalProperties: false,
-                required: ['channel', 'shippingCharge', 'estimatedDays', 'items'],
-                properties: {
-                  channel: { type: 'string', enum: ['LOCAL', 'COURIER'], maxLength: 10 },
-                  shippingCharge: { type: 'integer', minimum: 0, maximum: 1000000000 },
-                  estimatedDays: { type: 'integer', minimum: 1, maximum: 30 },
-                  selectedShippingProvider: {
-                    type: 'string',
-                    enum: ['DELHIVERY', 'SHIPROCKET', 'LOCAL'],
-                    maxLength: 20
-                  },
-                  items: {
-                    type: 'array',
-                    items: {
-                      type: 'object',
-                      additionalProperties: false,
-                      required: ['variantId', 'productName', 'variantName', 'sku', 'quantity'],
-                      properties: {
-                        variantId: { type: 'string', maxLength: 64 },
-                        productName: { type: 'string', maxLength: 300 },
-                        variantName: { type: 'string', maxLength: 300 },
-                        sku: { type: 'string', maxLength: 100 },
-                        quantity: { type: 'integer', minimum: 1 }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
+        courierCompanyId: { type: 'integer', minimum: 1 }
       }
     },
     ...standardErrorResponses
