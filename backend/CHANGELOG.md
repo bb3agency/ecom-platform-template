@@ -12,6 +12,31 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.77] — 2026-07-23
+
+### Fixed
+- **A whitelisted local-delivery pincode delivers the WHOLE cart locally again.** 0.1.75 treated an unflagged product as courier-only, so a store with zero `isLocalDeliveryOnly` products never reached the local channel at all — a whitelisted pincode still quoted Delhivery/Shiprocket (reported live: pincode on the whitelist at a ₹30 fee was charged ₹85.72 by Shiprocket). That inverted the long-standing behaviour where the whitelist alone decided. An unflagged product now means "either channel is fine", not "courier only", so the whitelist pulls it local; the product flag only ever ADDS a restriction (never couriered) and never removes the whitelist's reach. Full table:
+
+  | cart contents | pincode whitelisted | result |
+  |---|---|---|
+  | no flagged products | yes | `ALL_LOCAL` — **was `ALL_COURIER`, the bug** |
+  | no flagged products | no | `ALL_COURIER` |
+  | some flagged, some not | yes | `SPLIT` — two sibling orders |
+  | some flagged, some not | no | `BLOCKED` — remove the flagged items |
+  | all flagged | yes | `ALL_LOCAL` |
+  | all flagged | no | `BLOCKED` |
+
+  A store that has flagged nothing behaves exactly as it did before product-level flags existed, with no per-product configuration required.
+
+### Verified (no change needed)
+- **Weight / dimensions / packaging across a split are correct by construction.** The courier leg is rated on the courier items ONLY (new test asserts the rating call receives just those items), and because a split writes partitioned `OrderItem` rows, everything downstream that reads `order.items` — cartonization, packaging tare, AWB box dimensions, and the declared item list in `queues/workers/shipping.worker.ts` — excludes the hand-delivered goods automatically. The shipping worker additionally hard-drops any `create-shipment` job for a `LOCAL` order. Free-shipping coupons zero both legs. Admin new-order alerts select `AdminLocalOrder` vs `AdminNewOrder` per order, so a split emails the address-carrying template for the local leg only.
+
+**Propagation:**
+- Severity: HIGH (customers on whitelisted pincodes were quoted and charged courier rates instead of the merchant's local fee) · Layers: backend (`common/shipping/local-delivery-split.ts` + tests, `common/shipping/local-delivery.ts` doc, `modules/cart/cart.service.local-delivery.test.ts`, `modules/orders/orders.service.local-delivery-split.test.ts`, `docs/ROUTE_SURFACE_COMPLETE_REFERENCE.md`)
+- Migration: NO · Flag: none · Design impact: none · Breaking: NO (restores pre-0.1.75 behaviour for unflagged carts)
+- Rollback: revert the files
+- **Operator: none — and the manual product-flagging that 0.1.75's operator note demanded is no longer required.** Stores with `localDeliveryEnabled = true` go back to delivering whitelisted pincodes themselves automatically. Flag a product only when it must NEVER be couriered.
+
 ## [0.1.76] — 2026-07-22
 
 ### Fixed
