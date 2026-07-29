@@ -18,9 +18,19 @@ describe('ProductsService public catalog search', () => {
     expect(findMany).toHaveBeenCalledWith({
       where: {
         isActive: true,
+        // Only categories that hold active products (directly or via a child).
         OR: [
-          { name: { contains: 'fruit', mode: 'insensitive' } },
-          { slug: { contains: 'fruit', mode: 'insensitive' } }
+          { products: { some: { isActive: true } } },
+          { children: { some: { isActive: true, products: { some: { isActive: true } } } } }
+        ],
+        // Search is nested under AND so it composes with the active-products OR.
+        AND: [
+          {
+            OR: [
+              { name: { contains: 'fruit', mode: 'insensitive' } },
+              { slug: { contains: 'fruit', mode: 'insensitive' } }
+            ]
+          }
         ]
       },
       orderBy: [{ parentId: 'asc' }, { name: 'asc' }]

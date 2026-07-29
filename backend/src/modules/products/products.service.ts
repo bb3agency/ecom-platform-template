@@ -300,11 +300,22 @@ export class ProductsService {
     return this.fastify.prisma.category.findMany({
       where: {
         isActive: true,
+        // Only return categories that have active products — either directly
+        // assigned, or (for parent categories) via at least one child category
+        // that itself contains active products.
+        OR: [
+          { products: { some: { isActive: true } } },
+          { children: { some: { isActive: true, products: { some: { isActive: true } } } } }
+        ],
         ...(search
           ? {
-              OR: [
-                { name: { contains: search, mode: 'insensitive' } },
-                { slug: { contains: search, mode: 'insensitive' } }
+              AND: [
+                {
+                  OR: [
+                    { name: { contains: search, mode: 'insensitive' } },
+                    { slug: { contains: search, mode: 'insensitive' } }
+                  ]
+                }
               ]
             }
           : {})
