@@ -12,6 +12,16 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.79] — 2026-07-29
+
+### Changed
+- **Category listing hides empty categories** (`ProductsService.listCategories`): the storefront category query now returns only categories that contain at least one active product — either directly assigned, or (for parent categories) through a child category that itself has active products. Previously every active category was returned regardless of whether it had anything to show, producing empty category tiles/pages on the storefront. The existing search filter is preserved (now nested under an `AND` alongside the active-products constraint).
+
+**Propagation:**
+- Severity: NORMAL · Layers: backend (`src/modules/products/products.service.ts`)
+- Migration: NO · Flag: none · Design impact: none (fewer empty categories surface) · Breaking: NO
+- Rollback: revert the file
+
 ## [0.1.78] — 2026-07-24
 
 ### Changed
