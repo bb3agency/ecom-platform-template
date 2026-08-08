@@ -14,8 +14,9 @@ import crypto from 'node:crypto';
  *    the birthday-collision odds are negligible even at millions of orders (the DB `@unique`
  *    constraint plus a pre-insert check is the final guard).
  *
- * NOTE: GST INVOICE numbers (`INV-YYYY-#####`) intentionally stay SEQUENTIAL — Indian GST
- * rules (CGST Rule 46(b)) require consecutive invoice serials. Only the order reference is random.
+ * NOTE: GST INVOICE numbers are DERIVED from the order number (`INV-<order-ref>`, see
+ * deriveInvoiceNumber in @modules/invoices/generate-invoice) — same unguessable reference,
+ * stable across invoice regeneration, within CGST Rule 46(b)'s 16-char serial format.
  */
 
 /** Unambiguous alphabet: uppercase minus I/L/O, digits minus 0/1. */

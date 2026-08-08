@@ -12,6 +12,16 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.86] - 2026-08-09
+
+### Changed
+- **Invoice numbers are now DERIVED from the order number instead of drawn from a global sequence** (`deriveInvoiceNumber`: order `ORD-AB2C-9XYZ` → invoice `INV-AB2C-9XYZ`). The sequence consumed a fresh serial on every (re)generation — deleting a bad Invoice row to re-render it burned a number and left a gap — and the counter leaked business volume (the same reason order numbers went random). Derived numbering is idempotent (regeneration always reissues the same number), globally unique via the order-number unique constraint, and within CGST Rule 46(b)'s 16-char serial format; credit notes (`CN-<invoice>`) land at exactly 16 chars. Collision fallback: a legacy sequence-era `INV-YYYY-#####` clashing with a derived number for a legacy sequential order ref falls to the `INVA-` series; a double collision throws an actionable 422. Migration `20260810000000` drops `invoice_number_seq`; already-issued invoices keep their stored numbers (Invoice rows are immutable). BR-GST-05 amended in `BRD.md`; `ECOM_MASTER.md` + `order-number.ts` notes updated.
+
+**Propagation:**
+- Severity: NORMAL - Layers: backend (`src/modules/invoices/generate-invoice.ts` + test, `src/modules/orders/order-number.ts` comment, new prisma migration, `BRD.md`, `ECOM_MASTER.md`)
+- Migration: YES - `prisma migrate deploy` drops the now-unused `invoice_number_seq` (safe: nothing reads it after this version) - Flag: none - Design impact: none - Breaking: NO (existing invoice numbers unchanged; only newly issued numbers use the derived format)
+- Rollback: revert `generate-invoice.ts` + re-create the sequence (`CREATE SEQUENCE IF NOT EXISTS invoice_number_seq START 1`)
+
 ## [0.1.85] - 2026-08-09
 
 ### Fixed

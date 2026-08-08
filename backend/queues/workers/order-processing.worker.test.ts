@@ -745,17 +745,19 @@ describe('order-processing worker error and retry behavior', () => {
       data: { orderId: 'order_1' }
     });
 
+    // Invoice number is DERIVED from the order number (ORD-2026-00001 → INV-2026-00001),
+    // not drawn from a sequence — regeneration must reissue this exact number.
     expect(invoiceStorageAdapter.uploadInvoicePdf).toHaveBeenCalledWith(
       expect.objectContaining({
         orderId: 'order_1',
-        invoiceNumber: expect.stringMatching(/^INV-\d{4}-\d{5}$/)
+        invoiceNumber: 'INV-2026-00001'
       })
     );
     expect(state.tx.invoice.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           orderId: 'order_1',
-          invoiceNumber: expect.stringMatching(/^INV-\d{4}-\d{5}$/),
+          invoiceNumber: 'INV-2026-00001',
           pdfUrl: 'client/invoices/order_1/invoice.pdf'
         })
       })
@@ -825,7 +827,18 @@ describe('order-processing worker error and retry behavior', () => {
       readInvoicePdf: vi.fn()
     };
 
-    state.tx.invoice.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: 'invoice_1' });
+    // Args-aware stub: the generator looks up by orderId (existence check) AND by
+    // invoiceNumber (derived-number collision check) — route each `where` correctly
+    // and flip to "exists" once created, like the real unique row would.
+    let storedInvoice: { id: string; orderId: string } | null = null;
+    state.tx.invoice.findUnique.mockImplementation(
+      async (args: { where: { orderId?: string; invoiceNumber?: string } }) => {
+        if (args.where.orderId) {
+          return storedInvoice && storedInvoice.orderId === args.where.orderId ? storedInvoice : null;
+        }
+        return null; // no derived-number collision in this scenario
+      }
+    );
     state.tx.order.findUnique.mockResolvedValue({
       id: 'order_1',
       orderNumber: 'ORD-2026-00001',
@@ -859,7 +872,10 @@ describe('order-processing worker error and retry behavior', () => {
         }
       ]
     });
-    state.tx.invoice.create.mockResolvedValue(undefined);
+    state.tx.invoice.create.mockImplementation(async () => {
+      storedInvoice = { id: 'invoice_1', orderId: 'order_1' };
+      return undefined;
+    });
 
     boot(invoiceStorageAdapter);
     await state.processor?.({

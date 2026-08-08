@@ -573,8 +573,8 @@ The GST rate for each line item is taken from the product's HSN code attributes.
 **BR-GST-04 — FSSAI printed when configured (amended 2026-08-08)**
 When the FSSAI licence number is set in store settings it must appear on every invoice. FSSAI (like GSTIN) is OPTIONAL and never blocks invoice generation — when absent, the registration line is omitted from the PDF. (Original requirement blocked generation for food clients without an FSSAI; superseded because a missing registration surfaced as a masked 500 on the invoice download and stalled all invoicing.)
 
-**BR-GST-05 — Sequential, non-resetting invoice numbers**
-Invoice numbers are sequential per store and never reset. Format: `{PREFIX}-{YYYY}-{5-digit-seq}` (e.g., `FOOD-2026-00001`).
+**BR-GST-05 — Order-derived, non-resetting invoice numbers (amended 2026-08-09)**
+Invoice numbers are derived from the order number: `INV-<order-ref>` (e.g., order `ORD-AB2C-9XYZ` → invoice `INV-AB2C-9XYZ`). One invoice number per order, stable across regeneration (deleting and re-rendering an invoice reissues the same number — no gaps, no consumed serials), globally unique via the order-number unique constraint, and within CGST Rule 46(b)'s 16-character serial format (alphabets, numerals, and hyphens). (Original requirement mandated a per-store sequential counter `{PREFIX}-{YYYY}-{5-digit-seq}`; superseded because the counter consumed a serial on every regeneration and leaked business volume.)
 
 **BR-GST-06 — Credit notes on refunds**
 When a refund is processed, the system generates a credit note referencing the original invoice number, the refunded items, and the refunded amounts.
