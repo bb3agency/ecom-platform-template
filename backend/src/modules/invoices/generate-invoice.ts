@@ -292,7 +292,23 @@ export async function generateInvoiceForOrder(
     // for filling codes on products where applicable; the HSN autofill suggestions in the
     // product editor make that easy.
 
-    await tx.$executeRaw`CREATE SEQUENCE IF NOT EXISTS invoice_number_seq START 1`;
+    // The sequence normally exists via the 20260809 migration; the runtime CREATE is a
+    // back-compat fallback for databases that predate it. If the runtime role lacks
+    // CREATE on the schema (PostgreSQL 15+ revoked public CREATE by default), surface
+    // an actionable 422 instead of a masked 500 — running migrations fixes it.
+    try {
+      await tx.$executeRaw`CREATE SEQUENCE IF NOT EXISTS invoice_number_seq START 1`;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (/permission denied|must be owner|insufficient.*privilege/i.test(message)) {
+        throw new AppError(
+          ERROR_CODES.VALIDATION_ERROR,
+          'Invoice numbering is not initialized: the database role cannot create the invoice_number_seq sequence. Run the pending Prisma migrations (which create it), or grant CREATE on the schema.',
+          422
+        );
+      }
+      throw error;
+    }
     const sequenceResult = await tx.$queryRaw<Array<{ nextval: bigint }>>`SELECT nextval('invoice_number_seq')`;
     const sequenceNumber = Number(sequenceResult[0]?.nextval ?? 1n);
     const year = new Date().getFullYear();

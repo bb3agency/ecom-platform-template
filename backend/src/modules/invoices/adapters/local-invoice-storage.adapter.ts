@@ -29,8 +29,26 @@ export class LocalInvoiceStorageAdapter implements InvoiceStorageAdapter {
     const absolutePath = this.resolveAbsolutePath(storageReference);
     const parentDir = path.dirname(absolutePath);
 
-    await fs.mkdir(parentDir, { recursive: true });
-    await fs.writeFile(absolutePath, input.content);
+    try {
+      await fs.mkdir(parentDir, { recursive: true });
+      await fs.writeFile(absolutePath, input.content);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === 'EACCES' || code === 'EPERM' || code === 'EROFS' || code === 'ENOENT') {
+        // A merchant-fixable DEPLOYMENT configuration problem, not a transient server
+        // fault: the configured invoice storage root is not writable by this process.
+        // Classic cause under Docker: INVOICE_STORAGE_ROOT set (via Ops → Config) to a
+        // host path like /var/www/<client>/storage/invoices that does not exist inside
+        // the container. Throwing 422 (instead of a masked 500) lets the admin download
+        // surface show exactly what to fix.
+        throw new AppError(
+          ERROR_CODES.VALIDATION_ERROR,
+          `Invoice storage is not writable (${code} at ${this.rootDir}). Under Docker, clear INVOICE_STORAGE_ROOT in Ops → Config (invoices persist in the built-in shared volume) and restart; on a host deployment, create the directory and make it writable by the backend and worker processes.`,
+          422
+        );
+      }
+      throw error;
+    }
 
     return {
       storageReference,

@@ -12,6 +12,17 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.84] - 2026-08-09
+
+### Fixed
+- **Invoice generation failures can no longer hide behind a masked 500.** Two remaining failure modes are classified as actionable 422 config errors surfaced on the admin download button: (1) an unwritable invoice storage root (`EACCES`/`EPERM`/`EROFS`/`ENOENT` in the local storage adapter — classic cause: `INVOICE_STORAGE_ROOT` set via Ops Config to a host path that does not exist inside the containers, which overrides the 0.1.83 shared volume), and (2) a database role that cannot create `invoice_number_seq` (PostgreSQL 15+ revoked public schema CREATE). The sequence is now owned by a proper migration (`20260809000000_invoice_number_seq`, idempotent) so generation never needs schema privileges; the runtime CREATE remains as a back-compat fallback.
+
+**Propagation:**
+- Severity: NORMAL - Layers: backend (`src/modules/invoices/adapters/local-invoice-storage.adapter.ts` + new test, `src/modules/invoices/generate-invoice.ts`, new prisma migration)
+- Migration: YES - `prisma migrate deploy` picks up `invoice_number_seq` (idempotent, safe where the runtime fallback already created it) - Flag: none - Design impact: none - Breaking: NO
+- Pairs with 0.1.82 (audience-aware errors: admins see these 422 messages verbatim, customers still get a plain 404)
+- Rollback: revert the two files + migration (returns to masked 500s)
+
 ## [0.1.83] - 2026-08-08
 
 ### Fixed
