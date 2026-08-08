@@ -84,7 +84,7 @@ This checklist validates both:
   - Email: `RESEND_API_KEY` + `RESEND_FROM` (Resend runtime provider)
   - SMS: active provider key — `MSG91_AUTH_KEY` + `MSG91_SENDER_ID` + `MSG91_ROUTE` when `SMS_PROVIDER=msg91`; `FAST2SMS_API_KEY` when `SMS_PROVIDER=fast2sms`. Merchant SMS templates override defaults via `StoreSettings.smsTemplates` (DB-backed JSON field).
   - WhatsApp: `META_WHATSAPP_ACCESS_TOKEN` + `META_WHATSAPP_PHONE_NUMBER_ID` + `META_WHATSAPP_WEBHOOK_VERIFY_TOKEN` + `META_WHATSAPP_APP_SECRET` (Meta Cloud API direct)
-- [ ] Invoice storage env (`INVOICE_STORAGE_ROOT`) is valid and writable by backend/workers.
+- [ ] Invoice storage: under Docker, `INVOICE_STORAGE_ROOT` is **unset** (backend + workers share the compose named volume `<CLIENT_ID>-invoice-storage`); verify a test invoice downloads after deploy. If running on the host directly, the configured path must exist and be writable by BOTH backend and workers.
 - [ ] Authenticated invoice routes are validated end-to-end:
   - `GET /api/v1/orders/:id/invoice.pdf` (customer-owned order only)
   - `GET /api/v1/admin/orders/:id/invoice.pdf` (admin `orders:read`)

@@ -90,7 +90,7 @@ These are **operational thresholds**, not architecture changes. Canonical stack 
 | `/var/www/<client-id>/backend` | Git clone of **this** template for that client |
 | `/var/www/<client-id>/storefront` | Next.js frontend app (App Router — `TRD.md` §12.1) serving both storefront and admin routes (for example `/admin`) |
 | `/var/www/<client-id>/storage/media` | Product image files (recommended; set `MEDIA_STORAGE_ROOT`) |
-| `/var/www/<client-id>/storage/invoices` | GST invoice PDFs (set `INVOICE_STORAGE_ROOT` via Ops UI) |
+| *(docker named volume `<client-id>-invoice-storage`)* | GST invoice PDFs — backend + workers share the compose volume mounted at `/app/storage/invoices`; **leave `INVOICE_STORAGE_ROOT` unset** (a host path would not exist inside the containers and fails with EACCES) |
 | `/var/log/nginx/` | Per-site `access.log` / `error.log` if you split logs |
 
 ---
@@ -282,7 +282,7 @@ Expected:
    | Shipping | `DELHIVERY_*`, `SHIPROCKET_*`, `SHIPPING_*` | Detection is credential-based — set keys for whichever provider(s) you use; both can be active simultaneously (cheapest rate wins). `SHIPPING_PROVIDER` is ignored. At least one provider must be configured for production. |
    | Webhook security | `RAZORPAY_WEBHOOK_ALLOWLIST_CIDR`, `SHIPPING_WEBHOOK_ALLOWLIST_CIDR`, skew windows, webhook tokens | Hard-fail in production-like profiles if missing |
    | Notifications | `NOTIFY_*`, `RESEND_*`, `MSG91_*`, `FAST2SMS_API_KEY`, `META_WHATSAPP_*`, `SMS_PROVIDER` | Provider credentials; per-template channels configured in `StoreSettings` |
-   | Invoice storage | `INVOICE_STORAGE_ROOT` | Local filesystem root for invoice PDFs |
+   | Invoice storage | `INVOICE_STORAGE_ROOT` | Leave UNSET under Docker — invoice PDFs persist in the shared compose volume `<client-id>-invoice-storage` at the in-container default `/app/storage/invoices`. Only set it when running the backend directly on the host |
    | Ops security | `OPS_METRICS_TOKEN`, `OPS_METRICS_ALLOWLIST`, `REPLAY_APPROVAL_TOKEN`, `REPLAY_AUDIT_RETENTION_DAYS`, `TRUSTED_PROXY_ALLOWLIST_CIDR` | Managed via Ops UI after first invite |
 
    **Product images (Ops UI → Product Media / Cloudflare R2 — not bootstrap `.env`):**

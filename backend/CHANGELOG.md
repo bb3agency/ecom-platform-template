@@ -12,6 +12,17 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.83] - 2026-08-08
+
+### Fixed
+- **Invoice PDFs had no durable, shared storage under Docker — generation failed or files vanished.** Neither the backend nor the workers container mounted any volume: with `INVOICE_STORAGE_ROOT` pointed at a host path (as the VPS guide instructed) the path did not exist inside the containers and the non-root user got EACCES — a 500 on the on-demand download and silent dead-letters for every async generation job; unset, PDFs landed on each container's ephemeral private filesystem (lost on redeploy, unreadable across containers). Compose now mounts a shared named volume `${CLIENT_ID}-invoice-storage` at `/app/storage/invoices` in BOTH services, and the Dockerfile pre-creates the mountpoint before the chown so the volume initializes app-owned. `INVOICE_STORAGE_ROOT` should be UNSET under Docker (docs + .env.example + go-live checklist updated).
+
+**Propagation:**
+- Severity: HIGH - Layers: infra (`docker-compose.yml`, `Dockerfile`) + docs
+- Migration: YES (operational) - after the sync deploys, `docker compose up -d` recreates both containers with the volume. **If the client's Ops Config sets `INVOICE_STORAGE_ROOT`, clear it** (Ops UI → Config, OTP flow) and restart - Flag: none - Design impact: none - Breaking: NO
+- Pairs with backend-core 0.1.82 (which made storage failures surface as alertable 500s instead of masked config errors)
+- Rollback: remove the volume mounts (returns to broken-but-quiet behaviour; not recommended)
+
 ## [0.1.82] - 2026-08-08
 
 ### Fixed

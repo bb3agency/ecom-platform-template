@@ -430,7 +430,8 @@ These are stored AES-256-GCM encrypted in the `OpsConfigSecret` table and applie
 - **Default:** `30`.
 
 **`INVOICE_STORAGE_ROOT`**
-- **What:** Filesystem path where PDF GST invoices are stored. Must be writable by the process user. Only relevant when `FEATURE_GST_INVOICING_ENABLED=true`.
+- **What:** Filesystem path where PDF GST invoices are stored. Must be writable by the process user. Only relevant when GST invoicing is enabled.
+- **Under Docker (VPS): leave UNSET.** Backend + workers share the compose named volume `<CLIENT_ID>-invoice-storage` mounted at the in-container default `/app/storage/invoices`. Setting a host path (e.g. `/var/www/<client>/storage/invoices`) breaks generation — the path does not exist inside the containers and the non-root container user gets EACCES, surfacing as a 500 on the invoice download. Only set this when running the backend directly on the host, and ensure the directory is writable by BOTH the API and worker processes.
 
 **Product media (Ops UI → Product Media / Cloudflare R2)** — all keys are **DB-overlay** (encrypted in `ops_config_secret`), applied to `process.env` at API boot. **Do not** put R2 credentials in bootstrap `.env`.
 
