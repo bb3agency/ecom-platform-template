@@ -11,18 +11,25 @@ import { formatPrice } from "@/lib/format-price";
 import { formatPaymentModeLabel } from "@/lib/format-payment-mode";
 import { toast } from "@/lib/toast";
 import { EmptyState } from "@/components/shared/EmptyState";
-import { formatOrderDate, orderStatusChipClass, orderStatusLabel } from "@/lib/order-status-ui";
+import {
+  formatOrderDate,
+  isInvoiceEligibleOrderStatus,
+  orderStatusChipClass,
+  orderStatusLabel,
+} from "@/lib/order-status-ui";
+import { useStoreConfig } from "@/components/providers/StoreConfigProvider";
 
 
 export default function AccountOrdersPage() {
   const accessToken = useAuthStore((s) => s.accessToken);
+  const { gstInvoicingEnabled } = useStoreConfig();
   const [orders, setOrders] = useState<UserOrder[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [invoiceBusyId, setInvoiceBusyId] = useState<string | null>(null);
 
   async function handleDownloadInvoice(order: UserOrder) {
-    if (!accessToken || !order.invoice?.hasPdf) return;
+    if (!accessToken) return;
     setInvoiceBusyId(order.id);
     try {
       await downloadCustomerInvoicePdf(order.id, accessToken, `${order.orderNumber}-invoice.pdf`);
@@ -122,11 +129,12 @@ export default function AccountOrdersPage() {
                     {formatPrice(order.total)}
                   </p>
                   <div className="flex items-center gap-2">
-                    {order.invoice?.hasPdf ? (
+                    {gstInvoicingEnabled &&
+                    (order.invoice?.hasPdf || isInvoiceEligibleOrderStatus(order.status)) ? (
                       <button
                         type="button"
                         aria-label={`Download invoice for order ${order.orderNumber}`}
-                        className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#efe8e4] px-3 text-xs font-bold text-[#23403d] transition-colors hover:bg-[#faf3ef] disabled:opacity-50"
+                        className="inline-flex h-10 sm:h-9 items-center gap-1.5 rounded-lg border border-[#efe8e4] px-3 text-xs font-bold text-[#23403d] transition-colors hover:bg-[#faf3ef] disabled:opacity-50"
                         disabled={invoiceBusyId === order.id}
                         onClick={() => void handleDownloadInvoice(order)}
                       >
@@ -141,7 +149,7 @@ export default function AccountOrdersPage() {
                     <Link
                       href={`/orders/${order.id}`}
                       aria-label={`View order ${order.orderNumber}`}
-                      className="inline-flex h-9 items-center gap-1 rounded-lg bg-[#23403d] px-3.5 text-xs font-bold text-white transition-colors hover:bg-[#1a302e]"
+                      className="inline-flex h-10 sm:h-9 items-center gap-1 rounded-lg bg-[#23403d] px-3.5 text-xs font-bold text-white transition-colors hover:bg-[#1a302e]"
                     >
                       View
                       <ChevronRight className="size-3.5 transition-transform group-hover:translate-x-0.5" aria-hidden />
