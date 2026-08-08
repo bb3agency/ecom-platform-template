@@ -36,7 +36,12 @@ COPY --from=builder /app/scripts/lib ./scripts/lib
 # Keep this list short — these are NOT for everyday use, only for break-glass.
 COPY --from=builder /app/scripts/resume-paused-queues.js ./scripts/resume-paused-queues.js
 
-RUN addgroup -S app && adduser -S app -G app \
+# Pre-create the invoice storage mountpoint BEFORE the chown so the named volume
+# (invoice-storage in docker-compose.yml) is initialized app-owned on first mount —
+# a fresh named volume copies the image directory's ownership; without this the
+# non-root user gets EACCES writing invoice PDFs.
+RUN mkdir -p /app/storage/invoices \
+  && addgroup -S app && adduser -S app -G app \
   && chown -R app:app /app
 USER app
 

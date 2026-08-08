@@ -18,6 +18,14 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    # GST invoice/credit-note PDFs. MUST be the same volume in backend AND workers:
+    # both processes generate invoices (async job + on-demand download) and the API
+    # streams what the worker wrote. Without this mount the PDFs land on each
+    # container's ephemeral private filesystem — lost on redeploy and unreadable
+    # across containers. Leave INVOICE_STORAGE_ROOT unset under Docker (the
+    # in-container default /app/storage/invoices is this volume).
+    volumes:
+      - invoice-storage:/app/storage/invoices
     networks:
       - client-network
 
@@ -39,6 +47,9 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    # Shared with the backend service — see the note there.
+    volumes:
+      - invoice-storage:/app/storage/invoices
     networks:
       - client-network
 
@@ -101,3 +112,7 @@ networks:
 volumes:
   pg-data:
   redis-data:
+  # Persistent GST invoice/credit-note PDF storage, shared by backend + workers.
+  # Named per client so multiple client stacks on one VPS never collide.
+  invoice-storage:
+    name: ${CLIENT_ID:-ecom}-invoice-storage
