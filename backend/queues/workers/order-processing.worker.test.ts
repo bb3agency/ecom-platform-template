@@ -997,7 +997,7 @@ describe('order-processing worker error and retry behavior', () => {
     expect(sendTechnicalFailureAlert).not.toHaveBeenCalled();
   });
 
-  it('throws in production when required DB-backed seller profile fields are missing', async () => {
+  it('throws in production when the seller identity (name/address/state) is missing — GSTIN and FSSAI are optional and never block', async () => {
     const originalNodeEnv = process.env.NODE_ENV;
     process.env.NODE_ENV = 'production';
 
@@ -1021,7 +1021,7 @@ describe('order-processing worker error and retry behavior', () => {
           name: 'generate-invoice',
           data: { orderId: 'order_1' }
         })
-      ).rejects.toThrow('Missing required DB-backed configuration for invoicing');
+      ).rejects.toThrow('Invoice generation is not configured: missing store/seller name, seller address, seller state');
     } finally {
       process.env.NODE_ENV = originalNodeEnv;
     }

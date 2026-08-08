@@ -12,6 +12,27 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.82] - 2026-08-08
+
+### Fixed
+- **Invoice download 500 when GSTIN/FSSAI are not configured.** GSTIN and FSSAI are now OPTIONAL for invoice generation: the STORE_REQUIRES_FSSAI hard-block is removed (the env var is inert) and GSTIN is no longer production-mandatory — the PDF omits the registration segments when empty instead of printing placeholders (`formatRegistrationLine` in `invoice-pdf.ts`, now unit-tested). Only the seller identity (store/seller name, address, state) remains production-mandatory, and that failure is now a `VALIDATION_ERROR` (422) with actionable copy instead of a masked 500. `resolveOrGenerateInvoice` is audience-aware: admins receive the actionable message; customers never see config state (4xx config failures and the disabled-flag gate both surface as the plain 404 the endpoint returned historically) while UNEXPECTED failures (storage/renderer/DB) still rethrow so the >=500 error-handler path keeps firing technical-failure alerts.
+
+**Propagation:**
+- Severity: HIGH - Layers: backend (`src/modules/invoices/{generate-invoice,invoice-pdf}.ts` + new `invoice-pdf.test.ts`, `src/modules/orders/orders.service.ts`)
+- Migration: NO - Flag: none - Design impact: none - Breaking: NO
+- Fixes the production "Something went wrong" 500 on the Download-invoice button for merchants without a GSTIN/FSSAI. Frontend pairing: frontend-core 0.1.60 surfaces the 422 message on all admin download/print surfaces
+- Rollback: revert the three files
+
+## [0.1.81] - 2026-08-08
+
+### Changed
+- **Docs: invoice CTA contract aligned with on-demand generation (0.1.80).** (Entry backfilled — the 0.1.81 release shipped with the version bump but this changelog entry was lost to a CRLF-unaware edit.) Supersedes the "Invoice CTA must use `invoice.hasPdf` only" rule in `CLAUDE.md`, `frontend-agent-rules.md` + all synced rules copies, the NextJS integration guide, go-live checklist, dev-log template, `ECOM_MASTER`, `API_ENDPOINT_INDEX`, `ROUTE_SURFACE_COMPLETE_REFERENCE`; dated `DECISIONS.md` entry.
+
+**Propagation:**
+- Severity: LOW - Layers: docs/rules only (no runtime code)
+- Migration: NO - Flag: none - Design impact: none - Breaking: NO
+- Rollback: revert the docs
+
 ## [0.1.80] - 2026-08-08
 
 ### Added

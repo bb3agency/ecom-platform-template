@@ -13,6 +13,35 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Build an ApiError from a non-OK raw `fetch` Response by parsing the backend
+ * error envelope. For binary endpoints (invoice/label PDFs, CSV exports) that
+ * bypass `apiClient`, this preserves the backend's `error.code` and crafted
+ * message — e.g. the actionable "Invoice generation is not configured: …" copy —
+ * instead of collapsing every failure to a generic string.
+ */
+export async function parseApiErrorFromResponse(
+  response: Response,
+  fallbackMessage: string,
+): Promise<ApiError> {
+  let body: unknown = null;
+  try {
+    body = await response.json();
+  } catch {
+    body = null;
+  }
+  if (typeof body === "object" && body !== null && "error" in body) {
+    const err = (body as { error?: ApiErrorBody }).error;
+    return new ApiError(
+      err?.code ?? "UNKNOWN_ERROR",
+      err?.message ?? fallbackMessage,
+      response.status,
+      err?.details,
+    );
+  }
+  return new ApiError("UNKNOWN_ERROR", fallbackMessage, response.status);
+}
+
 export interface ApiClientOptions extends RequestInit {
   accessToken?: string | null;
   idempotencyKey?: string;

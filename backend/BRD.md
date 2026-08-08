@@ -570,8 +570,8 @@ Tax type is determined by comparing the seller's state (from store settings) wit
 **BR-GST-03 — Tax rate from product attributes**
 The GST rate for each line item is taken from the product's HSN code attributes. The default is 12% if not configured. The correct rate for each product category must be confirmed with the client's chartered accountant before go-live.
 
-**BR-GST-04 — FSSAI required for food clients**
-For food clients, the FSSAI licence number must appear on every invoice. If the FSSAI number is not set in store settings, the system must block invoice generation and alert the admin.
+**BR-GST-04 — FSSAI printed when configured (amended 2026-08-08)**
+When the FSSAI licence number is set in store settings it must appear on every invoice. FSSAI (like GSTIN) is OPTIONAL and never blocks invoice generation — when absent, the registration line is omitted from the PDF. (Original requirement blocked generation for food clients without an FSSAI; superseded because a missing registration surfaced as a masked 500 on the invoice download and stalled all invoicing.)
 
 **BR-GST-05 — Sequential, non-resetting invoice numbers**
 Invoice numbers are sequential per store and never reset. Format: `{PREFIX}-{YYYY}-{5-digit-seq}` (e.g., `FOOD-2026-00001`).
@@ -758,7 +758,7 @@ Execution evidence for this section must include:
 | AC-09 | Shipment tracking | Authenticated customer order tracking view shows correct shipment events for customer-owned orders after a Delhivery status webhook is received and processed. |
 | AC-10 | Order cancellation + refund | Admin cancels a prepaid, confirmed order. Razorpay refund is initiated automatically. Order status moves to `REFUNDED`. Customer receives cancellation SMS and email. |
 | AC-11 | Low stock alert | Setting a variant's stock quantity to 0 triggers a low-stock alert email to the admin. The variant appears in the dashboard low-stock widget. |
-| AC-12 | GST invoice accuracy | Invoice PDF contains: correct seller GSTIN and FSSAI (for food client), correct buyer state, line items with HSN codes, correct tax type (CGST+SGST for intra-state or IGST for inter-state), and grand total matching the confirmed order total exactly. |
+| AC-12 | GST invoice accuracy | Invoice PDF contains: seller GSTIN and FSSAI when configured (both optional — omitted from the PDF when absent), correct buyer state, line items with HSN codes, correct tax type (CGST+SGST for intra-state or IGST for inter-state), and grand total matching the confirmed order total exactly. |
 | AC-13 | Admin dashboard KPIs | Revenue, order count, and AOV on the dashboard match the manually calculated sum of `CONFIRMED + PROCESSING + SHIPPED + DELIVERED` orders for the selected period. |
 | AC-14 | Client isolation | Placing an order on Client 1's domain does not appear in Client 2's admin panel. Client 1's API keys and database are not accessible from Client 2's environment. |
 | AC-15 | New client deployment time | A second client can be fully deployed (from `git clone` to live HTTPS URL with working Razorpay checkout) in under 30 minutes. |

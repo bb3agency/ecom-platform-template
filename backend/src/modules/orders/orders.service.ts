@@ -986,7 +986,9 @@ export class OrdersService {
     orderId: string
   ): Promise<{ invoiceNumber: string; content: Buffer }> {
     if (!(await resolveGstInvoicingEnabled(this.fastify.prisma))) {
-      throw new AppError(ERROR_CODES.VALIDATION_ERROR, 'GST invoicing is disabled', 400);
+      // Customers never see internal config state — same 404 as a missing invoice.
+      // The admin endpoint keeps its explicit "GST invoicing is disabled" 400.
+      throw new AppError(ERROR_CODES.NOT_FOUND, 'Invoice not found', 404);
     }
 
     const order = await this.fastify.prisma.order.findFirst({
@@ -1007,7 +1009,7 @@ export class OrdersService {
       throw new AppError(ERROR_CODES.NOT_FOUND, 'Invoice not found', 404);
     }
 
-    const invoice = await this.resolveOrGenerateInvoice(order);
+    const invoice = await this.resolveOrGenerateInvoice(order, 'customer');
 
     const content = await this.invoiceStorage.readInvoicePdf(invoice.pdfUrl);
     return { invoiceNumber: invoice.invoiceNumber, content };
@@ -1024,11 +1026,14 @@ export class OrdersService {
    * an existing invoice inside its transaction and `Invoice.orderId` is unique, so
    * a lost race falls through to serving the winner's invoice.
    */
-  private async resolveOrGenerateInvoice(order: {
-    id: string;
-    status: string;
-    invoice: { invoiceNumber: string; pdfUrl: string | null } | null;
-  }): Promise<{ invoiceNumber: string; pdfUrl: string }> {
+  private async resolveOrGenerateInvoice(
+    order: {
+      id: string;
+      status: string;
+      invoice: { invoiceNumber: string; pdfUrl: string | null } | null;
+    },
+    audience: 'admin' | 'customer'
+  ): Promise<{ invoiceNumber: string; pdfUrl: string }> {
     let invoice = order.invoice;
 
     if ((!invoice || !invoice.pdfUrl) && isInvoiceEligibleOrderStatus(order.status)) {
@@ -1040,6 +1045,22 @@ export class OrdersService {
           select: { id: true }
         });
         if (!raced) {
+          // Merchant-fixable configuration problems (incomplete seller identity) surface
+          // as 4xx AppErrors from generation. Admins get the actionable message; customers
+          // must never see internal config state, so config-class failures become the same
+          // 404 the endpoint returned before on-demand generation existed. UNEXPECTED
+          // failures (storage, renderer, DB) rethrow for BOTH audiences: the global error
+          // handler is what fires the technical-failure alert on >=500 responses, so
+          // masking them here would silence real outages.
+          const isConfigError =
+            error instanceof AppError && error.statusCode >= 400 && error.statusCode < 500;
+          this.fastify.log?.[isConfigError ? 'warn' : 'error'](
+            { err: error, orderId: order.id, audience },
+            'on-demand invoice generation failed'
+          );
+          if (audience === 'customer' && isConfigError) {
+            throw new AppError(ERROR_CODES.NOT_FOUND, 'Invoice not found', 404);
+          }
           throw error;
         }
         this.fastify.log?.warn(
@@ -2902,7 +2923,7 @@ export class OrdersService {
       throw new AppError(ERROR_CODES.NOT_FOUND, 'Invoice not found', 404);
     }
 
-    const invoice = await this.resolveOrGenerateInvoice(order);
+    const invoice = await this.resolveOrGenerateInvoice(order, 'admin');
 
     const content = await this.invoiceStorage.readInvoicePdf(invoice.pdfUrl);
     return { invoiceNumber: invoice.invoiceNumber, content };

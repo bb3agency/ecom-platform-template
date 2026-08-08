@@ -130,30 +130,30 @@ export async function resolveSellerProfileOrThrow(prisma: PrismaClient): Promise
   const state = (settings?.sellerState ?? '').trim();
   const gstin = (settings?.gstin ?? '').trim();
   const fssai = (settings?.fssaiNumber ?? '').trim();
-  const requiresFssai = ['food', 'true', '1'].includes(String(process.env.STORE_REQUIRES_FSSAI ?? '').toLowerCase());
 
-  if (requiresFssai && !fssai) {
-    throw new AppError(
-      ERROR_CODES.INTERNAL_ERROR,
-      'FSSAI is required for invoice generation for food clients',
-      500
-    );
-  }
-
+  // GSTIN and FSSAI are OPTIONAL for invoice generation (2026-08-08) — neither ever
+  // blocks a PDF. When absent, the renderer omits the corresponding line instead of
+  // printing a placeholder, and STORE_REQUIRES_FSSAI no longer hard-fails generation.
+  // Previously a missing GSTIN (production) or missing FSSAI (food clients) threw a
+  // 500 that the error handler masked to "Something went wrong" — a merchant-config
+  // gap read as an outage on the invoice download button.
+  //
+  // What still blocks (production only): a truly unconfigured seller identity —
+  // no name, address, or state to print on a legal invoice header. That throws
+  // VALIDATION_ERROR (422) with actionable copy so the admin UI can show exactly
+  // what to fill in; the worker path still fails the job into retry/dead-letter.
   if (process.env.NODE_ENV === 'production') {
     const missing = [
-      !legalName ? 'StoreSettings.sellerLegalName' : null,
-      !addressLine ? 'StoreSettings.sellerAddress' : null,
-      !state ? 'StoreSettings.sellerState' : null,
-      !gstin ? 'StoreSettings.gstin' : null,
-      (!fssai && requiresFssai) ? 'StoreSettings.fssaiNumber' : null
+      !legalName ? 'store/seller name' : null,
+      !addressLine ? 'seller address' : null,
+      !state ? 'seller state' : null
     ].filter((value): value is string => value !== null);
 
     if (missing.length > 0) {
       throw new AppError(
-        ERROR_CODES.INTERNAL_ERROR,
-        `Missing required DB-backed configuration for invoicing: ${missing.join(', ')}`,
-        500
+        ERROR_CODES.VALIDATION_ERROR,
+        `Invoice generation is not configured: missing ${missing.join(', ')}. Complete the store profile in Admin → Settings → Store.`,
+        422
       );
     }
   }
@@ -162,9 +162,10 @@ export async function resolveSellerProfileOrThrow(prisma: PrismaClient): Promise
     legalName: legalName || 'Ecom Store Pvt Ltd',
     addressLine: addressLine || 'Address not configured',
     state: state || 'Unknown',
-    gstin: gstin || 'GSTIN_NOT_CONFIGURED',
-    // FSSAI is OPTIONAL (2026-07-11) — empty means the PDF simply omits the FSSAI line
-    // instead of printing a placeholder. STORE_REQUIRES_FSSAI still hard-enforces above.
+    // GSTIN and FSSAI are OPTIONAL — empty means the PDF omits the corresponding
+    // segment entirely (see formatRegistrationLine in invoice-pdf.ts); never
+    // placeholder text on a legal document.
+    gstin: gstin || '',
     fssai: fssai || '',
     storeName: (settings?.storeName ?? '').trim() || legalName || 'Ecom Store Pvt Ltd',
     logoUrl: ((settings as { logoUrl?: string | null } | null)?.logoUrl ?? '').trim() || null

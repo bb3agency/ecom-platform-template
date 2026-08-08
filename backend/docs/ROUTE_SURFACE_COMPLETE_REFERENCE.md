@@ -563,9 +563,9 @@ Harmonized System dataset (`src/modules/products/hsn-dataset.ts`, openly license
 ODC-PDDL from github.com/datasets/harmonized-system) with an Indian-trade-terms alias
 layer (ghee/jaggery/namkeen/kaaram → HS prefixes). Returns up to 10 `{code, description}`
 suggestions; digits queries match codes by prefix. No external API — works offline for
-every client. Note: product HSN and store FSSAI are **optional** — invoices render "N/A"
-for missing HSN and omit the FSSAI line; courier bookings fall back to
-`DEFAULT_SHIPPING_HSN` (2106).
+every client. Note: product HSN, store GSTIN and store FSSAI are all **optional** — invoices render
+"N/A" for missing HSN and omit the GSTIN/FSSAI segments when absent; courier bookings
+fall back to `DEFAULT_SHIPPING_HSN` (2106).
 
 ### `GET /PATCH /api/v1/admin/settings/local-delivery`
 **Merchant-fulfilled local delivery (2026-07-10).** `settings:read` / `settings:write`. Controls

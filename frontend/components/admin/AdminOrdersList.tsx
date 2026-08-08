@@ -38,6 +38,8 @@ import {
 
 import { getBrowserApiBaseUrl, resolveApiBaseUrl } from "@/lib/api-base";
 
+import { parseApiErrorFromResponse } from "@/lib/api";
+
 import { getApiErrorMessage } from "@/lib/error-messages";
 import { isInvoiceEligibleOrderStatus } from "@/lib/order-status-ui";
 import { toast } from "@/lib/toast";
@@ -176,14 +178,17 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
           credentials: "include",
         },
       );
-      if (!response.ok) throw new Error("Unable to download invoice.");
+      if (!response.ok) {
+        throw await parseApiErrorFromResponse(response, "Unable to download invoice.");
+      }
       const blob = await response.blob();
       const objectUrl = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = objectUrl;
       anchor.download = `${order.orderNumber}-invoice.pdf`;
       anchor.click();
-      URL.revokeObjectURL(objectUrl);
+      // Deferred: revoking synchronously can abort the save in Firefox/Safari.
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
     } catch (err) {
       toast.error(getApiErrorMessage(err));
     } finally {

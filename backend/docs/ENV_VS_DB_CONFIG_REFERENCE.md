@@ -492,9 +492,9 @@ Set via `PATCH /api/v1/admin/settings`. Validated at boot — missing required f
 | `logoUrl` / `contactEmail` / `contactPhone` | Branding shown in email templates |
 | `primaryNotificationChannels` | Per-template map: `{ "OrderConfirmed": "EMAIL", "OtpVerification": "SMS" }` — controls which channel is primary for each notification type |
 | `smsTemplates` | Merchant-override SMS template text per notification type |
-| `gstin` | GST invoice seller GSTIN — required when `FEATURE_GST_INVOICING_ENABLED=true` |
+| `gstin` | GST invoice seller GSTIN — OPTIONAL (2026-08-08): prints when set, omitted from the PDF when absent; never blocks generation |
 | `sellerLegalName` / `sellerAddress` / `sellerState` | Seller details on GST invoices |
-| `fssaiNumber` | FSSAI license number printed on invoices for food businesses |
+| `fssaiNumber` | FSSAI license number — OPTIONAL: prints on invoices when set, omitted when absent; never blocks generation |
 | `notifyEmailEnabled` / `notifySmsEnabled` / `notifyWhatsappEnabled` | Per-channel toggles — same as env keys but merchant-configurable via admin UI |
 
 ---

@@ -181,6 +181,20 @@ function totalsRow(label: string, value: string, muted = true) {
   );
 }
 
+/**
+ * "GSTIN: x   FSSAI: y" with each segment omitted when not configured — both
+ * registrations are OPTIONAL for invoice generation. Returns null when neither
+ * is set so the caller can drop the line entirely (no placeholders on the PDF).
+ * Exported for tests.
+ */
+export function formatRegistrationLine(seller: { gstin: string; fssai: string }): string | null {
+  const parts = [
+    seller.gstin.trim() ? `GSTIN: ${seller.gstin.trim()}` : null,
+    seller.fssai.trim() ? `FSSAI: ${seller.fssai.trim()}` : null
+  ].filter((value): value is string => value !== null);
+  return parts.length > 0 ? parts.join('   ') : null;
+}
+
 export async function renderInvoicePdfBuffer(payload: InvoicePdfPayload): Promise<Buffer> {
   const storeName = (payload.storeDisplayName ?? '').trim() || payload.seller.legalName;
   const showIgst = payload.igstPaise > 0 || payload.lineItems.some((item) => item.igstPaise > 0);
@@ -206,14 +220,11 @@ export async function renderInvoicePdfBuffer(payload: InvoicePdfPayload): Promis
           createElement(Text, { style: styles.sellerMeta }, payload.seller.legalName),
           createElement(Text, { style: styles.sellerMeta }, payload.seller.addressLine),
           createElement(Text, { style: styles.sellerMeta }, `State: ${payload.seller.state}`),
-          // FSSAI is optional — omit the segment entirely when not configured.
-          createElement(
-            Text,
-            { style: styles.sellerMeta },
-            payload.seller.fssai.trim()
-              ? `GSTIN: ${payload.seller.gstin}   FSSAI: ${payload.seller.fssai}`
-              : `GSTIN: ${payload.seller.gstin}`
-          )
+          // GSTIN and FSSAI are both optional — omit each segment (and the whole line)
+          // when not configured instead of printing placeholders.
+          ...(formatRegistrationLine(payload.seller)
+            ? [createElement(Text, { style: styles.sellerMeta }, formatRegistrationLine(payload.seller))]
+            : [])
         ),
         createElement(
           View,
@@ -305,7 +316,9 @@ export async function renderInvoicePdfBuffer(payload: InvoicePdfPayload): Promis
         createElement(
           Text,
           { style: styles.footerText },
-          `${storeName} — GSTIN ${payload.seller.gstin}`
+          payload.seller.gstin.trim()
+            ? `${storeName} — GSTIN ${payload.seller.gstin}`
+            : storeName
         ),
         createElement(
           Text,
@@ -334,13 +347,9 @@ export async function renderCreditNotePdfBuffer(payload: CreditNotePdfPayload): 
           View,
           { style: { width: '55%' } },
           createElement(Text, { style: styles.storeName }, payload.seller.legalName),
-          createElement(
-            Text,
-            { style: styles.sellerMeta },
-            payload.seller.fssai.trim()
-              ? `GSTIN: ${payload.seller.gstin}   FSSAI: ${payload.seller.fssai}`
-              : `GSTIN: ${payload.seller.gstin}`
-          )
+          ...(formatRegistrationLine(payload.seller)
+            ? [createElement(Text, { style: styles.sellerMeta }, formatRegistrationLine(payload.seller))]
+            : [])
         ),
         createElement(
           View,

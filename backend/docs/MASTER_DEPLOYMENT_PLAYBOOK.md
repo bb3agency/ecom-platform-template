@@ -2123,9 +2123,9 @@ Token: <SHIPROCKET_WEBHOOK_TOKEN>
 | `STORE_LEGAL_NAME` | Conditional | `FoodStore Pvt Ltd` | Required when `FEATURE_GST_INVOICING_ENABLED=true`. |
 | `STORE_SELLER_ADDRESS` | Conditional | `123 Main Road, Hyderabad` | Required when `FEATURE_GST_INVOICING_ENABLED=true`. |
 | `STORE_SELLER_STATE` | Conditional | `Telangana` | Required when `FEATURE_GST_INVOICING_ENABLED=true`. |
-| `STORE_SELLER_GSTIN` | Conditional | `36ABCDE1234F1Z5` | Required when `FEATURE_GST_INVOICING_ENABLED=true`. |
+| `STORE_SELLER_GSTIN` | No | `36ABCDE1234F1Z5` | **Optional (2026-08-08)** — prints on invoices when set; when absent the GSTIN line is omitted and generation proceeds. |
 | `STORE_SELLER_FSSAI` | No | `12345678901234` | FSSAI license number (food businesses only). |
-| `STORE_REQUIRES_FSSAI` | No | `false` | Set to `food` or `true` to require FSSAI license in invoice. Default: `false`. |
+| `STORE_REQUIRES_FSSAI` | No | `false` | **Deprecated (2026-08-08): no longer enforced** — FSSAI (like GSTIN) is always optional for invoice generation; when set in Store Settings it prints on the invoice, when absent the line is omitted. The variable is inert and kept only for backward compatibility of existing env files. |
 | `STORE_BUSINESS_TYPE` | No | `general` | Business type tag (used alongside `STORE_REQUIRES_FSSAI`). Default: `general`. |
 
 ### F.9 Feature flags
