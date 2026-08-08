@@ -12,6 +12,18 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.80] - 2026-08-08
+
+### Added
+- **On-demand invoice PDF generation.** `generateInvoiceForOrder` and its helpers are extracted out of the order-processing worker into a shared `src/modules/invoices/generate-invoice.ts`, and both download endpoints (`GET /orders/:id/invoice.pdf`, `GET /admin/orders/:id/invoice.pdf`) now resolve-or-generate: if the async pre-generation job has not produced a PDF yet - or dead-lettered - the endpoint generates it synchronously and streams it. Async pre-generation at order confirmation remains the primary path; this closes the window where an invoice-eligible order had no downloadable PDF. Generation is unique-race safe (concurrent requests for the same order produce one invoice), and eligibility uses a single shared status list (CONFIRMED, PROCESSING, SHIPPED, OUT_FOR_DELIVERY, DELIVERED).
+
+**Propagation:**
+- Severity: NORMAL - Layers: backend (`src/modules/invoices/generate-invoice.ts`, `src/modules/orders/orders.service.ts`, `queues/workers/order-processing.worker.ts`)
+- Migration: NO - Flag: none (respects existing `FEATURE_GST_INVOICING_ENABLED`) - Design impact: none - Breaking: NO
+- Frontend pairing: requires `frontend-core` 0.1.58 for the CTA change (see frontend CHANGELOG); backend is independently safe to take first
+- Rollback: revert the three files; the async worker path is unchanged and keeps working
+
+
 ### Added
 - **`docs/CREDENTIAL_ROTATION_RUNBOOK.md`** — recovery procedure for revoked/expired GitHub credentials, upstreamed from a real client outage (2026-08-08) in which **four independent credentials** were involved and **two failed silently**. Covers: symptom→credential table (VPS git auth, `TEMPLATE_READ_PAT`, `CORE_SYNC_PAT`, `CROSS_REPO_PAT`); PAT creation with the exact permissions each role needs; which repo each secret lives in; the SSH key model (account key vs per-repo deploy key, and why one deploy key cannot serve two repos); the HTTPS+PAT emergency fallback; and post-rotation verification for all four. Also records two traps hit during that recovery — `npm ci --prefer-offline` failing against a stale VPS registry cache, and the need to verify a regenerated lockfile against the **committed blob** rather than the working copy.
 

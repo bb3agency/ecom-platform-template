@@ -12,6 +12,22 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.58] - 2026-08-08
+
+### Changed
+- **Invoice download CTA shows on every eligible order, not only when `invoice.hasPdf`.** Customer (order history + detail) and admin (orders list rows, order detail, fulfillment panel) surfaces now show "Download invoice" for any invoice-eligible order - status CONFIRMED..DELIVERED, storefront additionally gated on `gstInvoicingEnabled` - because the download endpoints generate the PDF on demand (`backend-core` 0.1.80). Previously the button stayed hidden until async pre-generation had finished, so a freshly confirmed order looked like it had no invoice.
+  - new shared `isInvoiceEligibleOrderStatus` in `lib/order-status-ui.ts` (single source of truth; the fulfillment panel poll effect now gates on it, so terminal/REFUNDED orders stop being polled)
+  - download filename falls back to `<orderNumber>-invoice.pdf`
+  - panels/pages refresh after a first on-demand download so `hasPdf` state catches up
+  - new per-row invoice action in `AdminOrdersList`; 40px/32px touch targets on mobile for invoice/view actions, compact at `sm+`
+
+**Propagation:**
+- Severity: NORMAL - Layers: frontend core (`lib/order-status-ui.ts`, `components/admin/AdminOrderDetailPanel.tsx`, `AdminOrderFulfillmentPanel.tsx`, `AdminOrdersList.tsx`)
+- Migration: NO - Flag: none (respects `gstInvoicingEnabled` from `GET /store/config`) - Design impact: none - admin console only; storefront/account order pages are theme layer and are hand-carried per client - Breaking: NO
+- **Requires `backend-core` >= 0.1.80** - without it the CTA can surface for orders whose PDF does not exist yet and the download 404s
+- Rollback: revert the four files
+
+
 ## [0.1.57] — 2026-07-24
 
 ### Removed

@@ -14,6 +14,7 @@ import {
   paymentStatusTone,
 } from "@/lib/admin-format";
 import { getApiErrorMessage } from "@/lib/error-messages";
+import { isInvoiceEligibleOrderStatus } from "@/lib/order-status-ui";
 import { useAuthStore } from "@/stores/auth";
 
 interface AdminOrderDetailPanelProps {
@@ -49,7 +50,7 @@ export function AdminOrderDetailPanel({ orderId }: AdminOrderDetailPanelProps) {
   const address = order?.shippingAddress;
 
   async function downloadInvoice() {
-    if (!order?.invoice?.hasPdf || !accessToken) return;
+    if (!order || !accessToken) return;
     setDownloadingInvoice(true);
     try {
       const url = `${getBrowserApiBaseUrl()}/admin/orders/${orderId}/invoice.pdf`;
@@ -62,9 +63,14 @@ export function AdminOrderDetailPanel({ orderId }: AdminOrderDetailPanelProps) {
       const objectUrl = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = objectUrl;
-      anchor.download = `${order.invoice.invoiceNumber}.pdf`;
+      anchor.download = order.invoice?.invoiceNumber
+        ? `${order.invoice.invoiceNumber}.pdf`
+        : `${order.orderNumber}-invoice.pdf`;
       anchor.click();
       URL.revokeObjectURL(objectUrl);
+      // First download may have generated the invoice on demand — refresh so the
+      // invoice number shows up in the panel.
+      if (!order.invoice?.hasPdf) void load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Invoice download failed.");
     } finally {
@@ -113,7 +119,7 @@ export function AdminOrderDetailPanel({ orderId }: AdminOrderDetailPanelProps) {
             label={order.status}
             tone={orderStatusTone(order.status)}
           />
-          {order.invoice?.hasPdf ? (
+          {order.invoice?.hasPdf || isInvoiceEligibleOrderStatus(order.status) ? (
             <button
               type="button"
               disabled={downloadingInvoice}
@@ -121,7 +127,7 @@ export function AdminOrderDetailPanel({ orderId }: AdminOrderDetailPanelProps) {
               className="flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-medium hover:bg-muted/50 disabled:opacity-60"
             >
               <FileDown className="h-3.5 w-3.5" />
-              {downloadingInvoice ? "Downloading…" : "Invoice PDF"}
+              {downloadingInvoice ? "Downloading…" : "Download invoice"}
             </button>
           ) : null}
         </div>

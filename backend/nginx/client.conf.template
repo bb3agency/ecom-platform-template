@@ -7,12 +7,12 @@
 # This file is a TEMPLATE — it contains shell-style placeholders that MUST
 # be substituted before it can be installed at /etc/nginx/sites-available/.
 # Required variables:
-#   ${CLIENT_DOMAIN}     e.g. raghavaorganics.com  (no scheme, no port)
+#   ${CLIENT_DOMAIN}     e.g. yourclient.com        (no scheme, no port)
 #   ${STOREFRONT_PORT}   e.g. 3101                 (Next.js local upstream)
 #   ${BACKEND_PORT}      e.g. 3001                 (Fastify local upstream)
 #
 # Render with:
-#   export CLIENT_DOMAIN=raghavaorganics.com STOREFRONT_PORT=3101 BACKEND_PORT=3001
+#   export CLIENT_DOMAIN=yourclient.com STOREFRONT_PORT=3101 BACKEND_PORT=3001
 #   envsubst '${CLIENT_DOMAIN} ${STOREFRONT_PORT} ${BACKEND_PORT}' \
 #     < nginx/client.conf.template \
 #     | sudo tee /etc/nginx/sites-available/${CLIENT_DOMAIN} >/dev/null
