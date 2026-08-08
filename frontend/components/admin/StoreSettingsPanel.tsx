@@ -51,6 +51,12 @@ export function StoreSettingsPanel() {
   const [gstInvoicingEnabled, setGstInvoicingEnabled] = useState(false);
   const [gstToggleLoaded, setGstToggleLoaded] = useState(false);
   const [gstToggleSaving, setGstToggleSaving] = useState(false);
+  // GST BILLING toggle — whether invoices show a GST breakdown (carved out of the
+  // GST-inclusive prices) and are titled "TAX INVOICE". Off → plain "INVOICE",
+  // no tax columns. Never changes what the customer pays. Default (until the
+  // merchant sets it): on only when a GSTIN is configured.
+  const [gstBillingEnabled, setGstBillingEnabled] = useState(false);
+  const [gstBillingSaving, setGstBillingSaving] = useState(false);
 
   // Surface transient error/success as global toast popups instead of large in-panel banners.
   useEffect(() => {
@@ -62,10 +68,11 @@ export function StoreSettingsPanel() {
 
   useEffect(() => {
     let cancelled = false;
-    void api<{ gstInvoicingEnabled: boolean }>("/admin/settings/cod")
+    void api<{ gstInvoicingEnabled: boolean; gstBillingEnabled: boolean }>("/admin/settings/cod")
       .then((config) => {
         if (!cancelled) {
           setGstInvoicingEnabled(config.gstInvoicingEnabled);
+          setGstBillingEnabled(config.gstBillingEnabled);
           setGstToggleLoaded(true);
         }
       })
@@ -98,6 +105,30 @@ export function StoreSettingsPanel() {
       setError(getApiErrorMessage(err));
     } finally {
       setGstToggleSaving(false);
+    }
+  }
+
+  async function onToggleGstBilling(next: boolean) {
+    if (!canWrite || gstBillingSaving) return;
+    setGstBillingSaving(true);
+    setError(null);
+    try {
+      const res = await api<{ gstBillingEnabled: boolean }>("/admin/settings/cod", {
+        method: "PATCH",
+        idempotencyKey: createIdempotencyKey(),
+        body: JSON.stringify({ gstBillingEnabled: next }),
+      });
+      setGstBillingEnabled(res.gstBillingEnabled);
+      setSuccess(
+        res.gstBillingEnabled
+          ? "GST billing enabled — invoices show the GST included in your prices and are titled TAX INVOICE."
+          : "GST billing disabled — invoices render as a plain INVOICE with no GST breakdown.",
+      );
+      setTimeout(() => setSuccess(null), 4000);
+    } catch (err) {
+      setError(getApiErrorMessage(err));
+    } finally {
+      setGstBillingSaving(false);
     }
   }
 
@@ -405,6 +436,30 @@ export function StoreSettingsPanel() {
         {/* ------------------------------------------------------------------ */}
         {gstInvoicingEnabled ? (
           <>
+        {/* GST BILLING — whether invoices carry a GST breakdown. Presentation-only:
+            the GST shown is carved out of the GST-inclusive prices; totals never change. */}
+        <label className="flex items-start justify-between gap-4 rounded-xl border border-border bg-muted/10 p-4 sm:p-5">
+          <span className="flex items-start gap-3">
+            <span>
+              <span className="block text-sm font-medium text-foreground">GST billing on invoices</span>
+              <span className="block text-xs text-muted-foreground">
+                When on, invoices are titled TAX INVOICE and show the CGST/SGST (or IGST)
+                included in your GST-inclusive prices, carved out per line — the grand total
+                always stays exactly what the customer paid. When off, invoices render as a
+                plain INVOICE with no tax columns. Until you set it, this follows your GSTIN:
+                on when a GSTIN is filled in below, off otherwise.
+              </span>
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            className="h-5 w-5 accent-primary"
+            checked={gstBillingEnabled}
+            disabled={!canWrite || !gstToggleLoaded || gstBillingSaving}
+            onChange={(e) => void onToggleGstBilling(e.target.checked)}
+            aria-label="Enable GST billing on invoices"
+          />
+        </label>
         {/* Fail-case warning when GST invoicing is on but the seller identity is missing.
             GSTIN and FSSAI are OPTIONAL — they print on invoices when provided but never
             block generation. */}

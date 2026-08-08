@@ -254,7 +254,7 @@ export const updateInventorySettingsSchema = {
 const codSettingsShape = {
   type: 'object',
   additionalProperties: false,
-  required: ['isCodEnabled', 'cancellationWindowHours', 'mobileOtpSignupEnabled', 'reviewsEnabled', 'galleryEnabled', 'returnsEnabled', 'gstInvoicingEnabled'],
+  required: ['isCodEnabled', 'cancellationWindowHours', 'mobileOtpSignupEnabled', 'reviewsEnabled', 'galleryEnabled', 'returnsEnabled', 'gstInvoicingEnabled', 'gstBillingEnabled'],
   properties: {
     isCodEnabled: { type: 'boolean' },
     mobileOtpSignupEnabled: { type: 'boolean' },
@@ -262,6 +262,7 @@ const codSettingsShape = {
     galleryEnabled: { type: 'boolean' },
     returnsEnabled: { type: 'boolean' },
     gstInvoicingEnabled: { type: 'boolean' },
+    gstBillingEnabled: { type: 'boolean' },
     cancellationWindowHours: { type: 'integer', minimum: 1 },
     sellerState: { anyOf: [{ type: 'string', maxLength: 100 }, { type: 'null' }] }
   }
@@ -293,6 +294,7 @@ export const updateCodSettingsSchema = {
       galleryEnabled: { type: 'boolean' },
       returnsEnabled: { type: 'boolean' },
       gstInvoicingEnabled: { type: 'boolean' },
+      gstBillingEnabled: { type: 'boolean' },
       cancellationWindowHours: { type: 'integer', minimum: 1, maximum: 720 },
       sellerState: { anyOf: [{ type: 'string', maxLength: 100 }, { type: 'null' }] }
     }

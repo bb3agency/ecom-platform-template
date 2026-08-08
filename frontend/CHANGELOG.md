@@ -12,6 +12,17 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.61] - 2026-08-09
+
+### Added
+- **"GST billing on invoices" toggle in Admin → Settings → Store** (pairs with backend-core 0.1.85): controls whether invoices are titled TAX INVOICE with the carved-out GST breakdown or render as a plain INVOICE with no tax columns. Copy makes the inclusive-pricing model explicit: the grand total always equals what the customer paid. Defaults (until set) to on-when-GSTIN-configured.
+
+**Propagation:**
+- Severity: LOW - Layers: frontend core (`components/admin/StoreSettingsPanel.tsx`)
+- Migration: NO - Flag: none - Design impact: none - Breaking: NO
+- Requires: backend-core >= 0.1.85 (`gstBillingEnabled` on the COD-settings endpoint)
+- Rollback: revert the file
+
 ## [0.1.60] - 2026-08-08
 
 ### Fixed

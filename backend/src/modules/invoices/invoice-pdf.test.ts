@@ -76,6 +76,18 @@ function invoicePayload(overrides: Partial<InvoicePdfPayload['seller']>): Invoic
   };
 }
 
+describe('renderInvoicePdfBuffer GST billing modes', () => {
+  it('renders a plain INVOICE (no tax columns) when gstBilling is false', async () => {
+    const buffer = await renderInvoicePdfBuffer({ ...invoicePayload({}), gstBilling: false, cgstPaise: 0, sgstPaise: 0, igstPaise: 0 });
+    expect(buffer.subarray(0, 5).toString()).toBe('%PDF-');
+  });
+
+  it('renders a TAX INVOICE with the includes-GST breakdown when gstBilling is true', async () => {
+    const buffer = await renderInvoicePdfBuffer({ ...invoicePayload({ gstin: '36ABCDE1234F1Z5' }), gstBilling: true });
+    expect(buffer.subarray(0, 5).toString()).toBe('%PDF-');
+  });
+});
+
 describe('renderInvoicePdfBuffer with optional registrations', () => {
   it('renders a PDF when neither GSTIN nor FSSAI is configured', async () => {
     const buffer = await renderInvoicePdfBuffer(invoicePayload({}));

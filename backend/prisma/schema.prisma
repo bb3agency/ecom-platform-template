@@ -1031,6 +1031,12 @@ model StoreSettings {
   /// Merchant GST invoicing toggle. Null = inherit the FEATURE_GST_INVOICING_ENABLED env
   /// default; once the merchant sets it, the DB value is authoritative (can enable without a restart).
   gstInvoicingEnabled       Boolean?
+  /// Merchant GST BILLING toggle — whether invoices show a GST breakdown (carved out of the
+  /// GST-inclusive catalog prices) and are titled "TAX INVOICE". Null = auto: on when a GSTIN
+  /// is configured, off otherwise. Independent of gstInvoicingEnabled (which gates whether
+  /// invoice PDFs exist at all): with billing off, invoices render as a plain "INVOICE" with
+  /// no tax columns. Checkout totals are NEVER affected — catalog prices are tax-inclusive.
+  gstBillingEnabled         Boolean?
   mobileOtpSignupEnabled    Boolean  @default(false)
   cancellationWindowHours   Int      @default(24)
   notifyEmailEnabled        Boolean  @default(true)
