@@ -171,7 +171,7 @@ NEXT_PUBLIC_RAZORPAY_KEY_ID=
 **Tier 6 done when:** All active slices `[x]`. Resend email dry-run logged. Guest cart survives and merges correctly. Payment retry CTA absent for COD orders.
 
 Tier 6 contract-specific checks:
-- [ ] Invoice CTA logic uses `invoice.hasPdf` and download routes (`/orders/:id/invoice.pdf`, `/admin/orders/:id/invoice.pdf`) are verified by role context.
+- [ ] Invoice CTA shows for invoice-eligible orders (`invoice.hasPdf` or status `CONFIRMED`→`DELIVERED`, storefront gated on `gstInvoicingEnabled`) and download routes (`/orders/:id/invoice.pdf`, `/admin/orders/:id/invoice.pdf`, generate-on-demand) are verified by role context.
 
 ---
 

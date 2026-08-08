@@ -1,6 +1,65 @@
 ---
-alwaysApply: true
+trigger: always_on
 ---
+
+# E-Commerce Frontend — Antigravity Development Rules
+
+> **Activation:** Always On
+> **Scope:** All files in this workspace
+> **Usage:** Assuming sibling folders (`root/backend` and `root/frontend`), copy this file from the backend into `.agents/rules/dev-rules.md` of the frontend project.
+> **Pairs with:** The Fastify e-commerce backend template (located in the sibling `../backend` folder).
+>
+> **Lifecycle:** This is a **build-time rules file**. After development/go-live, treat `docs/CLIENT_HANDOFF_INDEX.md` and its linked Client-Main docs as primary for client-facing operations.
+
+Phase-aware documentation precedence (mandatory):
+- During build: use engineering SOP docs (for example `README.md`, `docs/MASTER_DEPLOYMENT_PLAYBOOK.md`, `starter-prompt.md`, this rules file, and related integration/build docs).
+- After development/go-live: use `docs/CLIENT_HANDOFF_INDEX.md` first, then client-main docs it links.
+- Do not present template-general SOP docs as the primary client-facing handoff baseline unless troubleshooting implementation history.
+
+Sync verification (required before release):
+
+```bash
+cp ../backend/frontend-agent-rules.md .agents/rules/dev-rules.md
+diff -u ../backend/frontend-agent-rules.md .agents/rules/dev-rules.md
+```
+
+If `diff` output is non-empty, re-sync and commit the updated `.agents/rules/dev-rules.md` in the frontend repo.
+
+---
+
+## 0. Mandatory Session-Start Protocol (run before every session)
+
+**At the start of every session, before writing any code or asking questions:**
+
+1. **Read `docs/FRONTEND_DEV_LOG.md`** (in this frontend repo). If it does not exist, tell the user to copy it from `../backend/docs/FRONTEND_DEV_LOG_TEMPLATE.md` and fill in the Project Identity section before continuing.
+2. **Identify the current tier and next incomplete slice** from the Slice Tracker.
+3. **Confirm backend `.env` bootstrap keys are correctly configured** — BEFORE running any script, verify ALL of the following in the backend `.env`.
+   > **Architecture note:** Provider API keys (Razorpay, Delhivery, Shiprocket, MSG91, Fast2SMS, Resend, Meta WhatsApp, etc.) are **NOT stored in `.env`** in production. They are stored encrypted in the `OpsConfigSecret` database table and loaded at runtime via the Ops config overlay. The `.env` file only contains **bootstrap keys** that must exist before the DB is reachable.
+   - `CLIENT_ID` is set to a client-specific slug (e.g. `raghava-organics`) — **not** `ecom` or empty. Docker container names are derived from this value (`<CLIENT_ID>-postgres`, `<CLIENT_ID>-redis`).
+   - `POSTGRES_DB` uses **underscores only** (e.g. `raghava_organics`) — **hyphens are invalid in PostgreSQL DB names** and will cause container init or migration failures.
+   - `POSTGRES_DB` and the DB name in `DATABASE_URL` **must match exactly** — mismatch means the bootstrap script creates the wrong DB.
+   - `DATABASE_URL` is **not** `ecom_template` and matches the `POSTGRES_DB` value.
+   - `REDIS_PASSWORD` is **non-empty** — blank value causes `ECONNABORTED`/`ECONNRESET` loops in ioredis on every reconnect attempt.
+   - `REDIS_URL` **embeds the same password** as `REDIS_PASSWORD` (format: `redis://:yourpassword@localhost:6379`) — a URL without password while Redis requires auth will abort all connections.
+   - `JWT_SECRET`, `JWT_REFRESH_SECRET`, `OPS_DB_ENCRYPTION_KEY` are set to unique non-placeholder values.
+   - If any of the above are wrong, STOP and fix them before proceeding. After fixing, run `docker compose down -v && docker compose up -d postgres redis` to reinitialise containers with correct values. Reference `README.md` §Local Development Quickstart Step 1 for the full annotated `.env` block.
+4. **Confirm backend is running AND healthy** — verify ALL of the following before writing frontend code:
+   - Backend server (`npm run dev:e2e`) and workers (`npm run dev:e2e:workers`) are running
+   - **Health check passes:** `curl http://localhost:3000/api/v1/health` returns `{"success":true,"data":{"status":"ok","db":"connected","redis":"connected"}}`
+   - If `db` shows `disconnected` → `DATABASE_URL` wrong or migrations not applied — re-run `npm run dev:e2e`
+   - If `redis` shows `disconnected` → `REDIS_URL`/`REDIS_PASSWORD` mismatch — fix `.env` then `docker compose down -v && docker compose up -d postgres redis`
+   - **Database is migrated:** `npx prisma migrate status --schema prisma/schema.prisma` shows "Database schema is up to date"
+   - **Feature flags are set** in backend `.env` (ask which are enabled: `FEATURE_COUPONS_ENABLED`, `FEATURE_REVIEWS_ENABLED`, `FEATURE_WISHLIST_ENABLED`, `FEATURE_GST_INVOICING_ENABLED`, `FEATURE_RESPONSE_ENVELOPE_ENABLED`). **Storefront reads flags at runtime** via `GET /store/config` (`useStoreConfig()`) — not build-time `NEXT_PUBLIC_FEATURE_*`.
+   - If backend is not fully healthy, STOP and guide the user through backend setup first per `README.md` §Local Development Quickstart
+   - **Alerting awareness:** The backend emits structured technical failure alerts via email to all active Ops + Admin users on every `catch`/`log.error` path. If the backend is misconfigured (missing Resend keys, no active Ops/Admin users), alert delivery will silently fail. Verify `RESEND_API_KEY` + `RESEND_FROM` are configured and at least one active Ops or Admin user exists in the DB.
+5. **Do not ask questions already answered in the project docs/checklists** (e.g. API URL, feature flags, or agreed delivery sequence).
+
+6. **Admin console patterns (2026-06-03):** Date filters are **per-page** via `AdminDateRangePicker` (not shell-global). Product editor maps Status → `isActive`, short description → `metaDescription`, Featured → `isFeatured`. Do not reintroduce mock customer/product labels in admin tables — use API fields (`customerName`, `productName`, etc.). See `docs/FRONTEND_DEV_LOG.md`.
+
+> This protocol is non-negotiable.
+
+---
+
 ## 1. Project Identity
 
 This is a **high-conversion e-commerce storefront** built as a headless frontend that consumes the Fastify REST API backend. Every design decision prioritizes conversion rate, performance, and premium visual quality.
@@ -991,7 +1050,7 @@ Required delivery sequence (6 tiers, strict order):
 3. **Admin read surfaces** — dashboard KPIs/charts, orders list/detail + return request queue + return request detail (`GET /admin/return-requests/:id`), global shipments (`GET /admin/shipments`, `shipments:read`) + global payments (`GET /admin/payments`, `payments:read`), inventory list + adjustment history per variant (`GET /admin/inventory/history/:variantId`), product list + categories, customer index + CRM view (customer detail includes ban fields `isBanned`/`bannedAt`/`bannedReason`; paginated order tab via `GET /admin/users/:id/orders`; admin notes list `GET /admin/users/:id/notes`), review moderation queue. Build before mutations so you have real data to validate against.
 4. **Admin mutation surfaces** — ship action (run shipping provider dry-run simultaneously), Razorpay PREPAID checkout (run Razorpay test payment dry-run simultaneously), COD checkout, cancel/refund (async — UI must show pending-refund state until worker finalises), COD collection, return request approve/reject (`PATCH /admin/return-requests/:id`), stock adjustment + bulk stock update (`POST /admin/inventory/bulk-update`, max 100 variants, full rollback on any failure), product deactivate (`DELETE /admin/products/:id` — UI label **Deactivate**) + permanent delete (`DELETE /admin/products/:id/permanent` via `AdminRowActionsMenu`; **409** if orders/reviews), product variant delete (`DELETE /admin/products/:id/variants/:variantId` — disabled in UI if last variant; backend returns 400), review hard-delete (`DELETE /admin/reviews/:id`, destructive confirmation required), customer ban (`PATCH /admin/users/:id/ban`, `users:write`, mandatory reason) + unban (`DELETE /admin/users/:id/ban`), admin notes create/delete (`POST`/`DELETE /admin/users/:id/notes`, `users:write`), settings (shipping/store/inventory/cod — notifications provider config is ops-only via `/ops/config`; admin notifications UI removed 2026-06-07), coupon lifecycle (create → edit → pause/resume → soft-delete → restore; clone via `POST .../coupons/:id/clone`; audit log per coupon via `GET .../coupons/:id/audit`; handle `RATE_LIMIT_EXCEEDED` 429 gracefully on write actions; `BUY_X_GET_Y` type hidden in forms until v2.2; deleted coupons remain visible in list with restore action — hard delete does not exist).
 5. **Reliability surfaces** — reconciliation issues, outbox dead-letter list + replay-preview + replay, inbox failures + replay-preview + replay, analytics (revenue, funnel, category breakdown, inventory alerts, notification delivery), Bull Board queue visibility.
-6. **Storefront customer journey surfaces** — catalogue (product list/detail/categories/search), cart (guest session + merge-on-login + coupon + pincode check + **`paymentMode` on delivery rates**), PREPAID checkout (full Razorpay sequence), COD checkout (gate on **`GET /store/config`.isCodEnabled**), order history/detail/tracking (cancel only **CONFIRMED/PROCESSING**; invoice CTA on **`invoice.hasPdf`**; retry payment single-call on payment page), customer auth (OTP + email + forgot-password + refresh loop + logout), user profile + addresses. Module flags via **`useStoreConfig()`** — not `NEXT_PUBLIC_FEATURE_*`. Run Resend email dry-run during checkout slice.
+6. **Storefront customer journey surfaces** — catalogue (product list/detail/categories/search), cart (guest session + merge-on-login + coupon + pincode check + **`paymentMode` on delivery rates**), PREPAID checkout (full Razorpay sequence), COD checkout (gate on **`GET /store/config`.isCodEnabled**), order history/detail/tracking (cancel only **CONFIRMED/PROCESSING**; invoice CTA on **invoice-eligible status or `invoice.hasPdf`** — download endpoints generate the PDF on demand; retry payment single-call on payment page), customer auth (OTP + email + forgot-password + refresh loop + logout), user profile + addresses. Module flags via **`useStoreConfig()`** — not `NEXT_PUBLIC_FEATURE_*`. Run Resend email dry-run during checkout slice.
 
 Non-negotiable boundaries:
 - Merchant operations stay on `/api/v1/admin/*`. Platform controls stay on `/api/v1/ops/*`.
@@ -1000,7 +1059,7 @@ Non-negotiable boundaries:
 - Ops load-shed change is a single-step action: `POST /ops/load-shed` applies immediately after OTP confirmation. There is no approval queue or separate confirm/reject step. The mode enum is `normal | reduced | emergency | maintenance`. The response carries `{ mode, updated, phase, pendingUntil }` — `phase` is non-null only when `mode === 'maintenance'` (`pending` during the 2-minute warning, `active` after the cutover).
 - **Global storefront maintenance banner:** A `MaintenanceBanner` client component must be mounted in the root layout (`app/layout.tsx`). It polls `GET /api/v1/maintenance/status` (public, rate-limit-exempt) every 10 s normally and every 5 s during `maintenance/pending`, renders a countdown to `pendingUntil` aligned with the server clock (use `status.serverTime`, never `Date.now()` alone), **does not poll on `/admin/*` or `/ops/*`**, and renders nothing while mode is `normal | reduced | emergency`. The banner is mandatory on all customer-facing surfaces — without it, the only warning shoppers get during the 2-minute window is a sudden 503 from Nginx.
 - Authoritative reference for what each admin/ops route does, what permission it requires, and what each layer cannot do: `docs/ROUTE_SURFACE_COMPLETE_REFERENCE.md`.
-- Invoice CTA state must use `invoice.hasPdf` only; never derive from guessed URL fields.
+- Invoice CTA: show when GST invoicing is enabled and the order is invoice-eligible (`invoice.hasPdf` **or** status `CONFIRMED`/`PROCESSING`/`SHIPPED`/`OUT_FOR_DELIVERY`/`DELIVERED` — the authenticated download endpoints generate the PDF on demand when missing). Never derive invoice URLs from guessed fields.
 - Invoice downloads are authenticated backend routes only:
   - Customer: `GET /api/v1/orders/:id/invoice.pdf`
   - Admin: `GET /api/v1/admin/orders/:id/invoice.pdf`
@@ -1399,7 +1458,11 @@ npx lighthouse-ci       # Core Web Vitals pass (if configured)
 
 ### Co-Development with Backend Template (mandatory)
 
-Canonical source: `CO_DEVELOPMENT_SYNC_GUIDE.md`.
+Canonical source: `CO_DEVELOPMENT_SYNC_GUIDE.md` (git mechanics) + `backend/docs/PLATFORM_VERSIONING_AND_SYNC_GUIDE.md` (the versioning + changelog + design-isolation + drift-enforcement layer: semver'd `backend-core`/`frontend-core`, `CHANGELOG.md` propagation blocks, `FEATURE_*`-flag feature differences, the `merge=ours` design layer, and the `check-core-drift` / `check-token-contract` gates).
+
+**Engine ↔ theme boundary (since `backend-core 0.1.62`):** the customer-facing **storefront + account theme** — all `app/(storefront)` pages except `checkout`, all `app/(account)` pages, and their presentation components (`components/{product,layout,storefront,marketing}/**` + the cart-page components) — is **per-client and excluded from core sync**. Edit it freely in a client for that brand's copy *and layout* — it never drifts or gets overwritten. The shared **engine** (`lib`/`stores`/`hooks`/`actions`/`types`, `components/ui`, checkout + payment, admin & ops consoles, auth, root infra) stays core; changes there go through the template + release train. **Engine code must never import a theme file** — enforced by `frontend/scripts/check-theme-boundary.mjs` in `ci:reliability-gates`. Truly bespoke pages still go in `app/(client)/**` / `components/client/**`.
+
+**Canonical change flow (automated — guide §12):** develop in any client (feature behind a `FEATURE_*` flag OFF) → cherry-pick the commits into the template → CHANGELOG + version bump + `git tag <core>-vX.Y.Z` + push. The tag fires `release-train.yml` (template) → each client's `core-sync.yml` runs `sync-core.mjs` (`npm run sync:core`), pulling only core files (design/client excluded) and opening a review PR you merge. The tag is the "ship to every client" trigger; nothing propagates before it. Existing clients (raghava, sbgs) sync via this automation, not `git merge`. Keys/secrets + new-client onboarding: guide §13/§13.1.
 
 When frontend implementation reveals a backend bug/improvement:
 - Classify change as **template-worthy** or **client-specific**.

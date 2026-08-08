@@ -286,7 +286,7 @@ All require **customer JWT**. Rate-limited by `checkoutMutation`. All write rout
 Customer view of a specific order. Owner-only (cannot view another customer's order). **Filters out `PENDING_PAYMENT` and `PAYMENT_FAILED` orders** — these are not visible on customer orders page (they never progressed to a real order). Returns order with `paymentMode` field and `invoice.hasPdf` for download eligibility.
 
 ### `GET /api/v1/orders/:id/invoice.pdf`
-Download invoice PDF for a specific order. Owner-only. Returns PDF binary with `Content-Type: application/pdf`. Only available when `invoice.hasPdf === true` on the order detail.
+Download invoice PDF for a specific order. Owner-only. Returns PDF binary with `Content-Type: application/pdf`. **Generates the invoice on demand** when the order is invoice-eligible (`CONFIRMED`/`PROCESSING`/`SHIPPED`/`OUT_FOR_DELIVERY`/`DELIVERED`) but the async `generate-invoice` job has not produced a PDF yet (or dead-lettered) — the primary path remains async pre-generation at order confirmation. `404` for pre-payment/failed/cancelled orders without an invoice; `400 VALIDATION_ERROR` when GST invoicing is disabled.
 
 ### `POST /api/v1/orders/:id/cancel`
 Customer self-service cancel. **Allowed only from `CONFIRMED` or `PROCESSING`** (not `PENDING_PAYMENT` or `PAYMENT_FAILED`). Enforces `cancellationWindowHours` from store settings. Body: `{ reason? }`. Enqueues `cancel-shipment` when a shipment AWB exists. Restores inventory (with COD guard — see `restore-inventory-on-cancel.ts`) and releases coupon reservations.
@@ -428,7 +428,7 @@ Manual stock adjustment for a variant. Body: `{ quantity, note? }`. Creates an a
 | `GET /api/v1/admin/orders/board` | Kanban-style board with counts by status column. |
 | `GET /api/v1/admin/orders/export` | CSV export of orders matching current filters. Returns file download. Passes through `loadShedGuard`. Requires `orders:export` permission. |
 | `GET /api/v1/admin/orders/:id` | Full order detail: items, pricing, payment status, shipping info, timeline. |
-| `GET /api/v1/admin/orders/:id/invoice.pdf` | Admin download of invoice PDF for any order. |
+| `GET /api/v1/admin/orders/:id/invoice.pdf` | Admin download of invoice PDF for any order. Generates on demand for invoice-eligible orders when the PDF is missing (same semantics as the customer endpoint). |
 
 ### Write routes — `orders:write` permission
 

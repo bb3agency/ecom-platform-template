@@ -27,7 +27,12 @@ import { getApiErrorMessage } from "@/lib/error-messages";
 import { formatPrice } from "@/lib/format-price";
 import { formatPaymentModeLabel } from "@/lib/format-payment-mode";
 import { shippingProviderLabel } from "@/lib/shipping-provider-labels";
-import { formatOrderDate, orderStatusChipClass, orderStatusLabel } from "@/lib/order-status-ui";
+import {
+  formatOrderDate,
+  isInvoiceEligibleOrderStatus,
+  orderStatusChipClass,
+  orderStatusLabel,
+} from "@/lib/order-status-ui";
 import { toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 import { OrderReviewPrompt } from "@/components/product/OrderReviewPrompt";
@@ -114,7 +119,7 @@ function OrderItemRow({ item }: { item: OrderLineItem }) {
 export default function AccountOrderDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
-  const { returnsEnabled } = useStoreConfig();
+  const { returnsEnabled, gstInvoicingEnabled } = useStoreConfig();
   const accessToken = useAuthStore((s) => s.accessToken);
   const [order, setOrder] = useState<OrderSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -183,10 +188,19 @@ export default function AccountOrderDetailPage() {
   };
 
   const handleDownloadInvoice = async () => {
-    if (!accessToken || !order?.invoice?.hasPdf) return;
+    if (!accessToken || !order) return;
     setDownloadingInvoice(true);
     try {
-      await downloadCustomerInvoicePdf(order.id, accessToken, `${order.invoice.invoiceNumber}.pdf`);
+      const filename = order.invoice?.invoiceNumber
+        ? `${order.invoice.invoiceNumber}.pdf`
+        : `${order.orderNumber}-invoice.pdf`;
+      await downloadCustomerInvoicePdf(order.id, accessToken, filename);
+      // First download may have generated the invoice on demand — refresh so the
+      // invoice number and issue date render in the Invoice card.
+      if (!order.invoice?.hasPdf) {
+        const result = await getMyOrder(order.id, accessToken);
+        setOrder(result);
+      }
     } catch (err) {
       toast.error(getApiErrorMessage(err));
     } finally {
@@ -301,7 +315,8 @@ export default function AccountOrderDetailPage() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            {order.invoice?.hasPdf ? (
+            {gstInvoicingEnabled &&
+            (order.invoice?.hasPdf || isInvoiceEligibleOrderStatus(order.status)) ? (
               <Button
                 type="button"
                 variant="outline"
@@ -365,10 +380,11 @@ export default function AccountOrderDetailPage() {
         icon={<Receipt className="size-4" aria-hidden />}
         title="Invoice"
         action={
-          order.invoice?.hasPdf ? (
+          gstInvoicingEnabled &&
+          (order.invoice?.hasPdf || isInvoiceEligibleOrderStatus(order.status)) ? (
             <button
               type="button"
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#efe8e4] px-3 text-xs font-bold text-[#23403d] transition-colors hover:bg-[#faf3ef] disabled:opacity-50"
+              className="inline-flex h-10 sm:h-8 items-center gap-1.5 rounded-lg border border-[#efe8e4] px-3 text-xs font-bold text-[#23403d] transition-colors hover:bg-[#faf3ef] disabled:opacity-50"
               disabled={downloadingInvoice}
               onClick={() => void handleDownloadInvoice()}
             >

@@ -1039,7 +1039,7 @@ PCI scope, caller-class JSON minimisation (public vs customer vs admin vs ops), 
 | GET | `/api/v1/admin/orders/board` | Kanban board grouped by status (CONFIRMED/PROCESSING/SHIPPED/DELIVERED/CANCELLED); up to 100 orders per column with `canShipNow` + `shippingMode` per card |
 | GET | `/api/v1/admin/orders/export` | Export filtered orders as CSV (`orders:export`) |
 | GET | `/api/v1/admin/orders/:id` | Full order detail + payment + shipment timeline + invoice metadata + `canShipNow`/`shipBlockReason`/`shippingMode` |
-| GET | `/api/v1/admin/orders/:id/invoice.pdf` | Admin invoice PDF download for any order (`orders:read`; gated by `invoice.hasPdf`) |
+| GET | `/api/v1/admin/orders/:id/invoice.pdf` | Admin invoice PDF download for any order (`orders:read`; generates the PDF on demand for invoice-eligible orders when missing) |
 | GET | `/api/v1/admin/orders/:id/timeline` | Status-transition audit trail for the order (`orders:read`) |
 | PATCH | `/api/v1/admin/orders/:id/status` | Manually update order status |
 | POST | `/api/v1/admin/orders/:id/ship` | Trigger shipment booking via active shipping provider |

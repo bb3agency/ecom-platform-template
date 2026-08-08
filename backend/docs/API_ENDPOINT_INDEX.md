@@ -80,7 +80,7 @@ Identity boundary contract (critical):
 | POST | `/api/v1/payments/prepare-checkout` | Prepare PREPAID checkout (new flow) | Customer auth + idempotency; returns `{ checkoutSessionId, razorpayOrderId, amount, currency }` |
 | POST | `/api/v1/payments/confirm-prepaid` | Confirm PREPAID payment (new flow) | Customer auth + idempotency; creates order in CONFIRMED state |
 | GET | `/api/v1/orders/:id` | Customer order detail | Owner-only; filters out PENDING_PAYMENT/PAYMENT_FAILED on customer pages |
-| GET | `/api/v1/orders/:id/invoice.pdf` | Customer invoice PDF | Owner-only PDF |
+| GET | `/api/v1/orders/:id/invoice.pdf` | Customer invoice PDF | Owner-only PDF; generates on demand for invoice-eligible orders |
 | POST | `/api/v1/orders/:id/cancel` | Customer order cancel | Idempotency guarded; CONFIRMED+ only |
 | POST | `/api/v1/payments/retry` | Retry failed payment (old flow) | Customer flow; for PAYMENT_FAILED orders only |
 | GET | `/api/v1/shipping/track/:awb` | Track shipment | Customer auth |
@@ -159,7 +159,7 @@ Admin UI should be served under `/admin/*` in the frontend and call `/api/v1/adm
 | GET | `/api/v1/admin/orders/board` | Pipeline/kanban board |
 | GET | `/api/v1/admin/orders/export` | CSV export; query: `from`, `to`, `status`, `search`, **`paymentMode`** |
 | GET | `/api/v1/admin/orders/:id` | Order detail |
-| GET | `/api/v1/admin/orders/:id/invoice.pdf` | Invoice download |
+| GET | `/api/v1/admin/orders/:id/invoice.pdf` | Invoice download (generates on demand when missing) |
 | PATCH | `/api/v1/admin/orders/:id/status` | Status update — base guard: `orders:write`; setting status to `REFUNDED` additionally requires `orders:refund` (enforced in handler) |
 | PATCH | `/api/v1/admin/orders/:id/items` | Update order line items (quantities / adjustments) — `orders:write` |
 | POST | `/api/v1/admin/orders/:id/ship` | Manual shipment booking |

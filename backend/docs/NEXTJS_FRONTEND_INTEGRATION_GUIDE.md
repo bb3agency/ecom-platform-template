@@ -39,7 +39,7 @@ Public, no auth. Returns only customer-safe fields:
 - Provider: `StoreConfigProvider` in `app/(storefront)/layout.tsx`; hooks via `useStoreConfig()`.
 - **Fail-closed:** When fetch fails, `configAvailable: false` — disable COD, coupons, wishlist, and block checkout until config loads.
 
-**Invoice download (customer + admin):** Use `order.invoice?.hasPdf === true` from `GET /orders/:id` — not `gstInvoicingEnabled` and not a direct `pdfUrl` field.
+**Invoice download (customer + admin):** Show the CTA when the order is invoice-eligible — `order.invoice?.hasPdf === true` **or** status in `CONFIRMED`/`PROCESSING`/`SHIPPED`/`OUT_FOR_DELIVERY`/`DELIVERED` (storefront additionally gates on `useStoreConfig().gstInvoicingEnabled`). The authenticated download endpoints generate the PDF on demand when it is missing. Never read a direct `pdfUrl` field.
 
 **Admin nav:** Coupons and Reviews nav items are always shown so merchants can moderate/configure even when storefront modules are disabled via feature flags.
 
@@ -559,7 +559,7 @@ When `FEATURE_REVIEWS_ENABLED=false`, `/reviews/recent` and `/reviews/product/:s
 
 Invoice response contract notes:
 - Order payload invoice metadata now uses `invoice.hasPdf` (boolean) instead of exposing direct `pdfUrl`.
-- Frontend should show download CTA only when `invoice?.hasPdf === true`.
+- Frontend shows the download CTA when `invoice?.hasPdf === true` **or** the order status is invoice-eligible (`CONFIRMED`/`PROCESSING`/`SHIPPED`/`OUT_FOR_DELIVERY`/`DELIVERED`, storefront gated on `gstInvoicingEnabled`); the download endpoints generate the PDF on demand when missing.
 - Admin invoice download uses `GET /api/v1/admin/orders/:id/invoice.pdf` with standard admin auth/permissions.
 
 **COD flow:** when `paymentMode: 'COD'` is sent, the backend checks `isCodEnabled` in store settings, skips the Razorpay payment step, and returns the order already in `CONFIRMED` status. Do **not** call `/payments/initiate` for COD orders — it will fail with `VALIDATION_ERROR`. After COD create, backend enqueues **`process-order-update`** (worker) so **OrderConfirmed** email + invoice generation match the PREPAID path.
