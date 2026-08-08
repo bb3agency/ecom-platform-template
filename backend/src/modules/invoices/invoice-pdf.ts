@@ -43,6 +43,14 @@ export type InvoicePdfPayload = {
   storeDisplayName?: string;
   /** Pre-fetched store logo bytes (PNG/JPG only). Optional — header renders text-only without it. */
   logo?: { data: Buffer; format: 'png' | 'jpg' } | null;
+  /**
+   * GST billing mode. true → "TAX INVOICE" with per-line GST columns and an
+   * "Includes CGST/SGST (or IGST)" breakdown carved out of the GST-INCLUSIVE prices
+   * (the grand total always equals the order total the customer actually paid).
+   * false → plain "INVOICE": no tax columns, no GST rows. Defaults to true for
+   * backward compatibility with callers predating the toggle.
+   */
+  gstBilling?: boolean;
 };
 
 export type CreditNotePdfPayload = {
@@ -198,6 +206,7 @@ export function formatRegistrationLine(seller: { gstin: string; fssai: string })
 export async function renderInvoicePdfBuffer(payload: InvoicePdfPayload): Promise<Buffer> {
   const storeName = (payload.storeDisplayName ?? '').trim() || payload.seller.legalName;
   const showIgst = payload.igstPaise > 0 || payload.lineItems.some((item) => item.igstPaise > 0);
+  const gstBilling = payload.gstBilling !== false;
 
   const doc = createElement(
     Document,
@@ -229,7 +238,7 @@ export async function renderInvoicePdfBuffer(payload: InvoicePdfPayload): Promis
         createElement(
           View,
           { style: { width: '40%' } },
-          createElement(Text, { style: styles.docTitle }, 'TAX INVOICE'),
+          createElement(Text, { style: styles.docTitle }, gstBilling ? 'TAX INVOICE' : 'INVOICE'),
           metaLine('Invoice No.', payload.invoiceNumber),
           metaLine('Order No.', payload.orderNumber),
           metaLine('Date', formatIssuedDate(payload.issuedAtIso))
@@ -257,7 +266,8 @@ export async function renderInvoicePdfBuffer(payload: InvoicePdfPayload): Promis
         )
       ),
 
-      // Items table.
+      // Items table. GST columns only exist in GST-billing mode; the values are the
+      // tax portion CARVED OUT of the GST-inclusive line amount, never added on top.
       createElement(
         View,
         { style: styles.tableHeader },
@@ -266,9 +276,13 @@ export async function renderInvoicePdfBuffer(payload: InvoicePdfPayload): Promis
         createElement(Text, { style: [styles.th, styles.colQty] }, 'Qty'),
         createElement(Text, { style: [styles.th, styles.colRate] }, 'Unit Price'),
         createElement(Text, { style: [styles.th, styles.colTotal] }, 'Amount'),
-        createElement(Text, { style: [styles.th, styles.colCgst] }, 'CGST'),
-        createElement(Text, { style: [styles.th, styles.colSgst] }, 'SGST'),
-        createElement(Text, { style: [styles.th, styles.colIgst] }, 'IGST')
+        ...(gstBilling
+          ? [
+              createElement(Text, { style: [styles.th, styles.colCgst] }, 'CGST'),
+              createElement(Text, { style: [styles.th, styles.colSgst] }, 'SGST'),
+              createElement(Text, { style: [styles.th, styles.colIgst] }, 'IGST')
+            ]
+          : [])
       ),
       ...payload.lineItems.map((item, index) =>
         createElement(
@@ -279,13 +293,19 @@ export async function renderInvoicePdfBuffer(payload: InvoicePdfPayload): Promis
           createElement(Text, { style: [styles.td, styles.colQty] }, String(item.quantity)),
           createElement(Text, { style: [styles.td, styles.colRate] }, formatPaise(item.unitPricePaise)),
           createElement(Text, { style: [styles.td, styles.colTotal] }, formatPaise(item.lineTotalPaise)),
-          createElement(Text, { style: [styles.tdMuted, styles.colCgst] }, formatPaise(item.cgstPaise)),
-          createElement(Text, { style: [styles.tdMuted, styles.colSgst] }, formatPaise(item.sgstPaise)),
-          createElement(Text, { style: [styles.tdMuted, styles.colIgst] }, formatPaise(item.igstPaise))
+          ...(gstBilling
+            ? [
+                createElement(Text, { style: [styles.tdMuted, styles.colCgst] }, formatPaise(item.cgstPaise)),
+                createElement(Text, { style: [styles.tdMuted, styles.colSgst] }, formatPaise(item.sgstPaise)),
+                createElement(Text, { style: [styles.tdMuted, styles.colIgst] }, formatPaise(item.igstPaise))
+              ]
+            : [])
         )
       ),
 
-      // Totals.
+      // Totals. The grand total is ALWAYS what the customer actually paid; in GST-billing
+      // mode the tax is shown as "Includes …" (carved out of the inclusive prices), never
+      // as an additional charge on top.
       createElement(
         View,
         { style: styles.totalsWrap },
@@ -295,18 +315,26 @@ export async function renderInvoicePdfBuffer(payload: InvoicePdfPayload): Promis
           totalsRow('Subtotal', formatPaise(payload.subtotalPaise)),
           totalsRow('Delivery / Shipping', formatPaise(payload.shippingPaise)),
           ...(payload.discountPaise > 0 ? [totalsRow('Discount', `- ${formatPaise(payload.discountPaise)}`)] : []),
-          ...(!showIgst
-            ? [totalsRow('CGST', formatPaise(payload.cgstPaise)), totalsRow('SGST', formatPaise(payload.sgstPaise))]
-            : [totalsRow('IGST', formatPaise(payload.igstPaise))]),
           createElement(
             View,
             { style: [styles.totalsRow, styles.grandRule] },
             createElement(Text, { style: styles.grandLabel }, 'Grand Total'),
             createElement(Text, { style: styles.grandValue }, formatPaise(payload.totalPaise))
-          )
+          ),
+          ...(gstBilling
+            ? !showIgst
+              ? [
+                  totalsRow('Includes CGST', formatPaise(payload.cgstPaise)),
+                  totalsRow('Includes SGST', formatPaise(payload.sgstPaise))
+                ]
+              : [totalsRow('Includes IGST', formatPaise(payload.igstPaise))]
+            : [])
         )
       ),
 
+      ...(gstBilling
+        ? [createElement(Text, { style: styles.amountWords }, 'All prices are inclusive of GST.')]
+        : []),
       createElement(Text, { style: styles.amountWords }, `Amount in words: ${payload.amountInWords}`),
 
       // Footer.

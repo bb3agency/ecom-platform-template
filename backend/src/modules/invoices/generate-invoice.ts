@@ -59,6 +59,13 @@ export type SellerProfile = {
   storeName: string;
   /** Store logo URL (StoreSettings.logoUrl); rendered on the invoice when fetchable PNG/JPG. */
   logoUrl: string | null;
+  /**
+   * Effective GST billing mode: merchant toggle (StoreSettings.gstBillingEnabled) when
+   * set, else auto — on when a GSTIN is configured. When true the invoice is a
+   * "TAX INVOICE" with the GST portion carved out of the GST-INCLUSIVE prices; when
+   * false it renders as a plain "INVOICE" with no tax columns. Never changes totals.
+   */
+  gstBillingEnabled: boolean;
 };
 
 /**
@@ -120,7 +127,8 @@ export async function resolveSellerProfileOrThrow(prisma: PrismaClient): Promise
           sellerAddress: true,
           sellerState: true,
           gstin: true,
-          fssaiNumber: true
+          fssaiNumber: true,
+          gstBillingEnabled: true
         }
       })
     : null;
@@ -130,6 +138,7 @@ export async function resolveSellerProfileOrThrow(prisma: PrismaClient): Promise
   const state = (settings?.sellerState ?? '').trim();
   const gstin = (settings?.gstin ?? '').trim();
   const fssai = (settings?.fssaiNumber ?? '').trim();
+  const gstBillingSetting = (settings as { gstBillingEnabled?: boolean | null } | null)?.gstBillingEnabled;
 
   // GSTIN and FSSAI are OPTIONAL for invoice generation (2026-08-08) — neither ever
   // blocks a PDF. When absent, the renderer omits the corresponding line instead of
@@ -168,8 +177,36 @@ export async function resolveSellerProfileOrThrow(prisma: PrismaClient): Promise
     gstin: gstin || '',
     fssai: fssai || '',
     storeName: (settings?.storeName ?? '').trim() || legalName || 'Ecom Store Pvt Ltd',
-    logoUrl: ((settings as { logoUrl?: string | null } | null)?.logoUrl ?? '').trim() || null
+    logoUrl: ((settings as { logoUrl?: string | null } | null)?.logoUrl ?? '').trim() || null,
+    // Merchant toggle wins when set; auto default = GST billing on only when a GSTIN exists.
+    gstBillingEnabled: gstBillingSetting ?? Boolean(gstin)
   };
+}
+
+/**
+ * GST split for a GST-INCLUSIVE line amount (Indian B2C catalog prices include GST).
+ * The tax is CARVED OUT of the amount, never added on top — so per-line
+ * taxable + tax always equals the amount the customer paid for that line:
+ *   taxable = round(amount × 100 / (100 + rate)); tax = amount − taxable.
+ * Intra-state splits the tax into CGST + SGST (SGST takes the rounding remainder);
+ * inter-state puts it all in IGST. rate <= 0 → whole amount taxable, zero tax.
+ * Exported for tests.
+ */
+export function computeInclusiveGstSplit(
+  lineTotalPaise: number,
+  ratePercent: number,
+  isInterState: boolean
+): { taxableValuePaise: number; cgstPaise: number; sgstPaise: number; igstPaise: number } {
+  if (ratePercent <= 0) {
+    return { taxableValuePaise: lineTotalPaise, cgstPaise: 0, sgstPaise: 0, igstPaise: 0 };
+  }
+  const taxableValuePaise = Math.round((lineTotalPaise * 100) / (100 + ratePercent));
+  const tax = lineTotalPaise - taxableValuePaise;
+  if (isInterState) {
+    return { taxableValuePaise, cgstPaise: 0, sgstPaise: 0, igstPaise: tax };
+  }
+  const cgstPaise = Math.round(tax / 2);
+  return { taxableValuePaise, cgstPaise, sgstPaise: tax - cgstPaise, igstPaise: 0 };
 }
 
 const oneToNineteen = [
@@ -317,13 +354,17 @@ export async function generateInvoiceForOrder(
     const sellerState = sellerProfile.state;
     const buyerState = (shippingAddress.state ?? 'Unknown').trim();
     const isInterState = sellerState.toLowerCase() !== buyerState.toLowerCase();
+    // GST is CARVED OUT of the GST-inclusive line amounts, never added on top —
+    // the invoice's grand total must always equal the order total the customer
+    // actually paid at checkout (which never adds tax). With GST billing off, the
+    // rates/taxes are zeroed and the renderer produces a plain "INVOICE".
+    const gstBilling = sellerProfile.gstBillingEnabled;
     const lineItems: InvoiceLineItem[] = order.items.map((item: InvoiceOrderItem): InvoiceLineItem => {
       const attributes = item.variant?.product?.attributes ?? null;
-      const taxRatePercent = resolveLineItemGstRatePercent(item.variant?.gstRatePercent, attributes);
-      const lineTax = Math.round((item.totalPrice * taxRatePercent) / 100);
-      const cgst = isInterState ? 0 : Math.round(lineTax / 2);
-      const sgst = isInterState ? 0 : lineTax - cgst;
-      const igst = isInterState ? lineTax : 0;
+      const taxRatePercent = gstBilling
+        ? resolveLineItemGstRatePercent(item.variant?.gstRatePercent, attributes)
+        : 0;
+      const split = computeInclusiveGstSplit(item.totalPrice, taxRatePercent, isInterState);
       return {
         name: item.productName,
         hsnCode: resolveInvoiceHsnCode({
@@ -334,9 +375,9 @@ export async function generateInvoiceForOrder(
         unitPricePaise: item.unitPrice,
         lineTotalPaise: item.totalPrice,
         taxRatePercent,
-        cgstPaise: cgst,
-        sgstPaise: sgst,
-        igstPaise: igst
+        cgstPaise: split.cgstPaise,
+        sgstPaise: split.sgstPaise,
+        igstPaise: split.igstPaise
       };
     });
 
@@ -372,7 +413,8 @@ export async function generateInvoiceForOrder(
       cgstPaise,
       sgstPaise,
       igstPaise,
-      amountInWords
+      amountInWords,
+      gstBilling
     });
 
     const uploaded = await invoiceStorageAdapter.uploadInvoicePdf({

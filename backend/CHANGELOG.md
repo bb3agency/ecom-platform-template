@@ -12,6 +12,20 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.85] - 2026-08-09
+
+### Fixed
+- **Invoice GST math was incoherent: CGST/SGST printed as if additive while the grand total never included them.** Catalog prices are GST-INCLUSIVE (checkout never adds tax), so the invoice now CARVES the GST out of the inclusive amounts — `computeInclusiveGstSplit` (unit-tested: taxable = amount×100/(100+rate), tax = amount−taxable, CGST/SGST split with SGST taking the rounding remainder, IGST inter-state) — and the totals box shows "Includes CGST/SGST (or IGST)" under a grand total that always equals what the customer paid.
+
+### Added
+- **Merchant "GST billing" toggle** (`StoreSettings.gstBillingEnabled`, migration `20260809010000`): when ON the invoice is a "TAX INVOICE" with the per-line GST columns and includes-GST breakdown; when OFF it renders as a plain "INVOICE" with no tax columns. Null = auto: on when a GSTIN is configured. Exposed on the COD-settings endpoint (`GET/PATCH /admin/settings/cod`, new required response field `gstBillingEnabled`).
+
+**Propagation:**
+- Severity: NORMAL - Layers: backend (`generate-invoice.ts`, `invoice-pdf.ts`, settings service/schemas, prisma migration + schema)
+- Migration: YES - `gstBillingEnabled` column (nullable, no backfill needed) - Flag: none (runtime StoreSettings toggle) - Design impact: none - Breaking: NO (response gains a field; body accepts an optional new key)
+- Frontend pairing: frontend-core 0.1.61 adds the admin toggle UI
+- Rollback: revert files + drop the column
+
 ## [0.1.84] - 2026-08-09
 
 ### Fixed
