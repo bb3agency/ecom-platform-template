@@ -752,8 +752,14 @@ Safety note: run `contract:admin` only against a controlled non-production targe
 
 ## 19. Failure patterns (quick diagnosis)
 
+> 🔑 **Expired/revoked GitHub tokens** are their own failure class — deploys dying at
+> `git pull`, `core-drift` failing on the template remote, or core-sync PRs opening with
+> no CI. See [`CREDENTIAL_ROTATION_RUNBOOK.md`](CREDENTIAL_ROTATION_RUNBOOK.md) for the
+> symptom→credential table and rotation steps.
+
 | Symptom | Likely cause |
 | --- | --- |
+| Deploy fails at "Sync monorepo root via git pull": `remote: Invalid username or token` | VPS git credential expired/revoked — see [`CREDENTIAL_ROTATION_RUNBOOK.md`](CREDENTIAL_ROTATION_RUNBOOK.md) §4 (SSH account key, no expiry) |
 | Webhook **401** spikes | Wrong `RAZORPAY_WEBHOOK_SECRET` / shipping provider token; clock skew; allowlist mismatch |
 | Payments stuck **PENDING_PAYMENT** | Workers down; Redis down; queue failure — check workers logs and Bull Board |
 | **502** from Nginx | Backend container not listening on `BACKEND_PORT` |
@@ -1098,6 +1104,7 @@ If you currently deploy under `/srv/...`, standardize to `/var/www/...` on the n
 2. `TRD.md` — §3 infrastructure, §4.2 plugin order, §7 API and webhooks, §10 queues  
 3. `BRD.md` — §12 Phase 6 acceptance (maps to `docs/CLIENT_GO_LIVE_VALIDATION_GUIDE.md`)  
 4. `docs/GITHUB_CD_SELF_HOSTED_RUNNER_GUIDE.md` — **push-to-deploy** (one runner per client repo; Phase 7.6)  
+4b. `docs/CREDENTIAL_ROTATION_RUNBOOK.md` — **when GitHub tokens are revoked/expired**: symptom→credential table (VPS git auth, `TEMPLATE_READ_PAT`, `CORE_SYNC_PAT`, `CROSS_REPO_PAT` — two fail silently), PAT permissions, SSH-key model, post-rotation verification  
 5. Repo: `docker-compose.yml`, `Dockerfile`, `nginx/client.conf.template`, `.env.example`, `src/main.ts`, `queues/workers/`
 6. `docs/THIRD_PARTY_INTEGRATIONS_SETUP_AND_KEY_MANAGEMENT_GUIDE.md` + `docs/CLIENT_INTEGRATION_CREDENTIAL_REGISTER_TEMPLATE.md` — provider setup, dry-run, rotation, compromise drill, and evidence register
 

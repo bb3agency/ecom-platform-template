@@ -437,7 +437,9 @@ bash scripts/vps-deploy.sh /var/www/<client-id>/backend "$(git rev-parse HEAD)"
 
 The script is identical to what the runner executes — it pulls latest `main`, rebuilds containers, runs Prisma migrations, re-renders `nginx/client.conf.template` via `envsubst` and reloads nginx if drift is detected, prunes Docker images, trims BuildKit cache, and reports readiness. The only thing the manual path doesn't give you is the CI gate (typecheck + unit + e2e + security + reliability gates must pass before auto-deploy fires; manual deploy will happily ship whatever HEAD points at). For that reason, **prefer push-to-main auto-deploy as the default**; manual deploy is the escape hatch.
 
-If `git pull` inside the script prompts for credentials, your VPS user's git credential helper isn't configured. GitHub deprecated password auth in 2021 — use a Personal Access Token (PAT) stored via `git config --global credential.helper store` or switch the remote to SSH with a deploy key (`docs/CLIENT_VPS_SETUP_GUIDE.md §22` covers both).
+If `git pull` inside the script prompts for credentials or fails with `remote: Invalid username or token`, the VPS user's git auth is broken or the token expired. **Preferred fix: SSH** — an account-level key on the GitHub account never expires and works across every client repo on a shared VPS (a *deploy* key is limited to one repo). Full procedure — symptom→credential table, PAT permissions, the three Actions secrets, and verification — is in [`docs/CREDENTIAL_ROTATION_RUNBOOK.md`](docs/CREDENTIAL_ROTATION_RUNBOOK.md).
+
+⚠️ If you must fall back to HTTPS+PAT, **embed the credential in the remote URL** (`git remote set-url origin https://<user>:<PAT>@github.com/<org>/<repo>.git`). Rewriting `~/.git-credentials` has been observed *not* to take effect even with `credential.helper store` configured globally — do not assume the helper path works.
 
 ### Quality Pipeline
 
