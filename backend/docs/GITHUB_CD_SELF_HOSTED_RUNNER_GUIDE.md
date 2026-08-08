@@ -244,8 +244,18 @@ Use when you need a redeploy without a new commit. Prefer `git revert` + `git pu
 
 ## Troubleshooting
 
+> 🔑 **Auth/token failures** — deploy failing at `git pull` with `Invalid username or token`,
+> `core-drift` failing to wire the template remote, or core-sync PRs opening with no CI:
+> see **[`CREDENTIAL_ROTATION_RUNBOOK.md`](CREDENTIAL_ROTATION_RUNBOOK.md)**. It maps each
+> symptom to the exact credential (VPS git auth, `TEMPLATE_READ_PAT`, `CORE_SYNC_PAT`,
+> `CROSS_REPO_PAT`), lists PAT permissions, and gives post-rotation verification.
+> **Two of those four fail silently.**
+
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
+| Deploy fails at `git pull`: `remote: Invalid username or token` | VPS git credential expired/revoked | [`CREDENTIAL_ROTATION_RUNBOOK.md`](CREDENTIAL_ROTATION_RUNBOOK.md) §4 — prefer an SSH account key (no expiry). Note `~/.git-credentials` may not take effect; embed the credential in the remote URL instead |
+| SSH remote fails: `ERROR: Repository not found` (repo exists) | Key is a **repo-scoped deploy key**; GitHub allows one repo per key | Runbook §4 — account-level key, or one deploy key per repo with a `Host` alias |
+| `npm ci` on VPS: `No matching version found for <pkg>@<ver>` (version exists publicly) | `npm ci --prefer-offline` trusting stale cached registry metadata | `npm cache clean --force` on the VPS, then re-run the deploy (runbook §6) |
 | No workflows on push | Workflows not at **repo root** `.github/workflows/` | Add root workflows for monorepo; push to `main` |
 | CI runs, deploy never starts | `VPS_DEPLOY_ENABLED` not `true` or not a **Variable** | Fix repo Variables |
 | Deploy fails with `Missing required secrets: VPS_CLIENT_PATH ...` | Paths were added as **Variables** instead of **Secrets** | Move `VPS_CLIENT_PATH`/`VPS_FRONTEND_PATH` to repo **Secrets**; keep only booleans/labels in Variables |

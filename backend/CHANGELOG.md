@@ -12,6 +12,20 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+### Added
+- **`docs/CREDENTIAL_ROTATION_RUNBOOK.md`** — recovery procedure for revoked/expired GitHub credentials, upstreamed from a real client outage (2026-08-08) in which **four independent credentials** were involved and **two failed silently**. Covers: symptom→credential table (VPS git auth, `TEMPLATE_READ_PAT`, `CORE_SYNC_PAT`, `CROSS_REPO_PAT`); PAT creation with the exact permissions each role needs; which repo each secret lives in; the SSH key model (account key vs per-repo deploy key, and why one deploy key cannot serve two repos); the HTTPS+PAT emergency fallback; and post-rotation verification for all four. Also records two traps hit during that recovery — `npm ci --prefer-offline` failing against a stale VPS registry cache, and the need to verify a regenerated lockfile against the **committed blob** rather than the working copy.
+
+  Two findings worth surfacing because they cost hours: rewriting `~/.git-credentials` does **not** take effect on at least one VPS despite `credential.helper store` being configured globally (embed the credential in the remote URL instead), and `CORE_SYNC_PAT`/`CROSS_REPO_PAT` failures are invisible — a core PR can merge unvalidated, or a tagged core release can reach zero clients, with nothing going red.
+
+  Pointers wired from `docs/GITHUB_CD_SELF_HOSTED_RUNNER_GUIDE.md` (troubleshooting table, 3 new rows), `docs/CLIENT_VPS_SETUP_GUIDE.md` (§19 failure patterns + §21 doc map), and `README.md` — the last of which previously recommended the `~/.git-credentials` path that does not work.
+
+**Propagation:**
+- Severity: NORMAL · Layers: docs only (`backend/docs/**`, `backend/README.md`) — **no code, no runtime behaviour**
+- Migration: NO · Flag: none · Design impact: none · Breaking: NO
+- **Not core-synced:** `backend/docs/**` is not in `core-manifest.json` `backendCore.include`, so this does **not** reach existing client repos via core-sync. New clients inherit it on clone. To give an existing client the runbook, copy it into `docs/clients/<client-id>/CREDENTIAL_ROTATION_RUNBOOK.md` and fill in that client's VPS values (sbgs + raghava-organics already have their copies).
+- No version bump or tag: a docs-only change should not signal a core code release to clients.
+- Rollback: delete the file and revert the pointer edits
+
 ## [0.1.79] — 2026-07-29
 
 ### Changed
