@@ -7,6 +7,7 @@ import { AdminStatusBadge } from "@/components/admin/AdminStatusBadge";
 import { useAuthenticatedApi } from "@/hooks/use-authenticated-api";
 import type { AdminOrderDetailFull } from "@/lib/admin-api";
 import { getBrowserApiBaseUrl } from "@/lib/api-base";
+import { parseApiErrorFromResponse } from "@/lib/api";
 import {
   formatAdminDate,
   formatPaise,
@@ -58,7 +59,9 @@ export function AdminOrderDetailPanel({ orderId }: AdminOrderDetailPanelProps) {
         headers: { Authorization: `Bearer ${accessToken}` },
         credentials: "include",
       });
-      if (!response.ok) throw new Error("Unable to download invoice.");
+      if (!response.ok) {
+        throw await parseApiErrorFromResponse(response, "Unable to download invoice.");
+      }
       const blob = await response.blob();
       const objectUrl = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
@@ -67,12 +70,13 @@ export function AdminOrderDetailPanel({ orderId }: AdminOrderDetailPanelProps) {
         ? `${order.invoice.invoiceNumber}.pdf`
         : `${order.orderNumber}-invoice.pdf`;
       anchor.click();
-      URL.revokeObjectURL(objectUrl);
+      // Deferred: revoking synchronously can abort the save in Firefox/Safari.
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
       // First download may have generated the invoice on demand — refresh so the
       // invoice number shows up in the panel.
       if (!order.invoice?.hasPdf) void load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Invoice download failed.");
+      setError(getApiErrorMessage(err));
     } finally {
       setDownloadingInvoice(false);
     }

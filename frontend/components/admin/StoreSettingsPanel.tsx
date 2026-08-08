@@ -136,8 +136,11 @@ export function StoreSettingsPanel() {
         method: "PATCH",
         idempotencyKey: createIdempotencyKey(),
         body: JSON.stringify({
-          gstin: gstin.trim() || undefined,
-          fssaiNumber: fssaiNumber.trim() || undefined,
+          // Empty string CLEARS the column (both registrations are optional and must be
+          // removable — e.g. a surrendered GSTIN); undefined would silently keep the old
+          // value while the UI shows the field as empty.
+          gstin: gstin.trim(),
+          fssaiNumber: fssaiNumber.trim(),
           sellerLegalName: sellerLegalName.trim() || undefined,
           sellerAddress: sellerAddress.trim() || undefined,
           sellerState: sellerState.trim() ? sellerState.trim() : null,
@@ -381,7 +384,8 @@ export function StoreSettingsPanel() {
               <span className="block text-sm font-medium text-foreground">GST invoicing</span>
               <span className="block text-xs text-muted-foreground">
                 When on, a GST tax invoice PDF is generated for every new order and offered to
-                the customer and admin. Requires GSTIN and full seller details below (FSSAI optional).
+                the customer and admin. Requires the seller details below (name, address, state);
+                GSTIN and FSSAI are optional and print only when provided.
                 Takes effect immediately — no restart.
               </span>
             </span>
@@ -401,15 +405,16 @@ export function StoreSettingsPanel() {
         {/* ------------------------------------------------------------------ */}
         {gstInvoicingEnabled ? (
           <>
-        {/* Fail-case warning when GST invoicing is on but required fields are missing.
-            FSSAI is OPTIONAL — it prints on invoices when provided but never blocks them. */}
-        {loaded && (!gstin.trim() || missingSellerDetails) && (
+        {/* Fail-case warning when GST invoicing is on but the seller identity is missing.
+            GSTIN and FSSAI are OPTIONAL — they print on invoices when provided but never
+            block generation. */}
+        {loaded && missingSellerDetails && (
           <div className="flex min-w-0 items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3.5 text-xs text-amber-800 overflow-hidden">
             <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-amber-600" aria-hidden />
             <span>
-              <strong>GST invoicing is enabled</strong> but required invoice fields are missing.
-              Invoice PDF generation will fail until GSTIN, seller legal name, address, and
-              operating state are filled in. (FSSAI is optional.)
+              <strong>GST invoicing is enabled</strong> but the seller identity is incomplete.
+              Invoice PDF generation will fail until seller legal name, address, and operating
+              state are filled in. (GSTIN and FSSAI are optional.)
             </span>
           </div>
         )}

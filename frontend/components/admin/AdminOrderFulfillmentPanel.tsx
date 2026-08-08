@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { useAuthenticatedApi } from "@/hooks/use-authenticated-api";
 import { getBrowserApiBaseUrl } from "@/lib/api-base";
-import { ApiError } from "@/lib/api";
+import { parseApiErrorFromResponse } from "@/lib/api";
 import { createIdempotencyKey } from "@/lib/idempotency";
 import { notifyAdminDataChanged } from "@/lib/admin-data-refresh";
 import { getApiErrorMessageWithHint, getOpsErrorDetail } from "@/lib/error-messages";
@@ -182,8 +182,8 @@ export function AdminOrderFulfillmentPanel({
   // refreshed. Poll a handful of times so the button self-enables the moment the PDF
   // lands. Each detail fetch also triggers the backend's invoice self-heal re-enqueue,
   // so orders whose generation job previously failed regenerate automatically. A stuck
-  // invoice after that means the store GST profile (name, address, state, GSTIN) is
-  // incomplete — HSN/FSSAI are optional and never block generation.
+  // invoice after that means the seller identity (store/seller name, address, state) is
+  // incomplete — GSTIN, HSN and FSSAI are all optional and never block generation.
   useEffect(() => {
     if (!detail || detail.id !== selectedOrderId) return;
     if (detail.invoice?.hasPdf) return;
@@ -386,18 +386,7 @@ export function AdminOrderFulfillmentPanel({
         credentials: "include",
       });
       if (!response.ok) {
-        let body: unknown = null;
-        try { body = await response.json(); } catch { body = null; }
-        if (typeof body === "object" && body !== null && "error" in body) {
-          const err = (body as { error?: { code?: string; message?: string; details?: unknown } }).error;
-          throw new ApiError(
-            err?.code ?? "UNKNOWN_ERROR",
-            err?.message ?? "Unable to download invoice.",
-            response.status,
-            err?.details as never,
-          );
-        }
-        throw new ApiError("UNKNOWN_ERROR", "Unable to download invoice.", response.status);
+        throw await parseApiErrorFromResponse(response, "Unable to download invoice.");
       }
       const blob = await response.blob();
       const objectUrl = URL.createObjectURL(blob);
@@ -407,7 +396,8 @@ export function AdminOrderFulfillmentPanel({
         ? `${detail.invoice.invoiceNumber}.pdf`
         : `${detail.orderNumber}-invoice.pdf`;
       anchor.click();
-      URL.revokeObjectURL(objectUrl);
+      // Deferred: revoking synchronously can abort the save in Firefox/Safari.
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
       // First download may have generated the invoice on demand — refresh so the
       // invoice number shows in the panel.
       if (!detail.invoice?.hasPdf) {
@@ -439,7 +429,7 @@ export function AdminOrderFulfillmentPanel({
         credentials: "include",
       });
       if (!response.ok) {
-        throw new ApiError("UNKNOWN_ERROR", "Unable to load invoice for printing.", response.status);
+        throw await parseApiErrorFromResponse(response, "Unable to load invoice for printing.");
       }
       const blob = await response.blob();
       const objectUrl = URL.createObjectURL(new Blob([blob], { type: "application/pdf" }));
@@ -856,7 +846,7 @@ export function AdminOrderFulfillmentPanel({
                 title={
                   detail.invoice?.hasPdf
                     ? "Opens the GST invoice PDF in a new tab, ready to print and pack with the order"
-                    : "Opens the GST invoice PDF (generated on the spot if needed), ready to print and pack with the order. If it fails, complete the store GST profile (legal name, address, state, GSTIN) in Admin → Settings → Store. HSN and FSSAI are optional."
+                    : "Opens the GST invoice PDF (generated on the spot if needed), ready to print and pack with the order. If it fails, complete the seller details (legal name, address, state) in Admin → Settings → Store. GSTIN, HSN and FSSAI are optional."
                 }
                 primary
               />

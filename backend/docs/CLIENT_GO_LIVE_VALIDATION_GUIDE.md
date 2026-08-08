@@ -114,7 +114,7 @@ Map each test to evidence (screenshot, request log, admin UI export). Criteria r
 | **AC-10A** | Deferred refund behavior visibility | Admin/API response after requesting `REFUNDED` can still show pre-refund status until refund worker confirms provider refund and updates final order status |
 | **AC-16** | Merchant ship notifications | On admin ship action, merchant receives SMS (when SMS enabled) and WhatsApp message (only when WhatsApp enabled) |
 | **AC-11** | Low stock alert | Setting variant quantity to **0** triggers low-stock alert email + dashboard low-stock widget visibility |
-| **AC-12** | GST invoice accuracy | PDF: buyer state, GSTIN, FSSAI if food, HSN lines, correct tax split, total matches order (**paise**) |
+| **AC-12** | GST invoice accuracy | PDF: buyer state, GSTIN/FSSAI when configured (optional — omitted when absent), HSN lines, correct tax split, total matches order (**paise**) |
 | **AC-13** | Dashboard KPIs | Revenue / orders / AOV match manual sum for statuses **CONFIRMED + PROCESSING + SHIPPED + DELIVERED** |
 | **AC-14** | Client isolation | Cross-client negative tests — order on domain A **not** visible on client B admin, and client A API keys/database are inaccessible from client B environment |
 | **AC-15** | Second client deploy time | Second stack from **`git clone`** to live HTTPS with **working Razorpay checkout** **&lt; 30 min** (`ECOM_MASTER.md` timing table) |
@@ -140,7 +140,7 @@ Map each test to evidence (screenshot, request log, admin UI export). Criteria r
 | AC-10A | Timeline proof that refund request acceptance can precede final `REFUNDED` state, plus eventual worker/provider-confirmed convergence to `REFUNDED` |
 | AC-16 | Admin ship action log + merchant SMS delivery proof; if WhatsApp enabled, merchant WhatsApp delivery proof |
 | AC-11 | Inventory update to quantity `0` + alert email + dashboard low-stock widget screenshot |
-| AC-12 | GST PDF sample (redacted if needed) proving buyer state, GSTIN/HSN/tax split/total accuracy |
+| AC-12 | GST PDF sample (redacted if needed) proving buyer state, HSN/tax split/total accuracy (+ GSTIN/FSSAI lines when configured) |
 | AC-13 | KPI totals export/manual roll-up sheet matching dashboard values |
 | AC-14 | Cross-client access-denied evidence for data, API keys, and database connectivity paths |
 | AC-15 | Timestamped deployment checklist proving second stack ready in `< 30 min` with proof of a working Razorpay checkout transaction |

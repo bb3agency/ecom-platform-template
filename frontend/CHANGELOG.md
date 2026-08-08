@@ -12,6 +12,28 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.60] - 2026-08-08
+
+### Fixed
+- **Admin invoice download/print surfaces now show the backend's actionable error instead of a generic string.** New `parseApiErrorFromResponse` in `lib/api.ts` builds an `ApiError` from raw binary-endpoint fetch responses; `AdminOrderDetailPanel`, `AdminOrdersList`, both fulfillment-panel invoice paths (download + print) and the customer `downloadCustomerInvoicePdf` all use it (removes two hand-rolled envelope parsers), so the backend-core 0.1.82 config message reaches the admin. Store Settings: GSTIN/FSSAI copy updated to optional; the missing-fields warning triggers only on missing seller identity; clearing GSTIN/FSSAI now actually clears them (empty string was previously coerced to `undefined`, silently keeping the old value). Object-URL revocation on downloads deferred 60s (synchronous revoke can abort the save in Firefox/Safari).
+
+**Propagation:**
+- Severity: NORMAL - Layers: frontend core (`lib/{api,orders-api}.ts`, `components/admin/{AdminOrderDetailPanel,AdminOrdersList,AdminOrderFulfillmentPanel,StoreSettingsPanel}.tsx`)
+- Migration: NO - Flag: none - Design impact: none - Breaking: NO
+- Requires: backend-core >= 0.1.82 for the 422 config error (older backends return masked 500s, which display as the generic fallback)
+- Rollback: revert the six files
+
+## [0.1.59] - 2026-08-08
+
+### Changed
+- **Baseline account order pages adopt the eligible-status invoice CTA** (entry backfilled — the 0.1.59 release shipped with the version bump but this changelog entry was lost to a CRLF-unaware edit). `app/(account)/orders/page.tsx` + `orders/[id]/page.tsx`: button shows for `gstInvoicingEnabled && (invoice.hasPdf || CONFIRMED..DELIVERED)`, filename fallback, refetch after first on-demand download, 40px mobile touch targets. Existing clients hand-carried (raghava #142, sbgs #152); new clients clone the correct baseline.
+
+**Propagation:**
+- Severity: LOW - Layers: template baseline account pages (theme layer, outside the sync manifest) + rules copies
+- Migration: NO - Flag: none - Design impact: none for existing clients - Breaking: NO
+- Requires: backend-core >= 0.1.80
+- Rollback: revert the two pages
+
 ## [0.1.58] - 2026-08-08
 
 ### Changed

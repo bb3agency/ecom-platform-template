@@ -21,7 +21,10 @@ command -v jq >/dev/null || { echo "ℹ️  jq not installed — skipping design
 
 missing=0
 check_token() {
-  local tok="$1"
+  # Strip a trailing CR — Windows jq builds emit CRLF line endings, which used to
+  # poison the grep pattern (`--font-sans\r` can never match) and report tokens
+  # as missing on Windows dev machines while passing on Linux CI.
+  local tok="${1%$'\r'}"
   # A token is satisfied if it is DEFINED (e.g. `--primary:` ) anywhere in globals.css.
   if ! grep -qE "(^|[^A-Za-z-])${tok}[[:space:]]*:" "$CSS"; then
     echo "  MISSING: $tok"

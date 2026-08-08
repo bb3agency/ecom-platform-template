@@ -1,6 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { featureFlags } from '@config/feature-flags';
+import { AppError } from '@common/errors/app-error';
+import { ERROR_CODES } from '@common/errors/error-codes';
 import * as generateInvoiceModule from '@modules/invoices/generate-invoice';
 import { OrdersService } from './orders.service';
 
@@ -99,6 +101,24 @@ describe('OrdersService adminGetInvoicePdf', () => {
     const service = new OrdersService(fastify);
 
     await expect(service.adminGetInvoicePdf('order_1')).rejects.toThrow('renderer exploded');
+  });
+
+  it('passes the actionable config VALIDATION_ERROR through to admins', async () => {
+    const fastify = makeFastify({ id: 'order_1', status: 'CONFIRMED', invoice: null }, null);
+    generateInvoiceMock.mockRejectedValue(
+      new AppError(
+        ERROR_CODES.VALIDATION_ERROR,
+        'Invoice generation is not configured: missing seller address. Complete the store profile in Admin → Settings → Store.',
+        422
+      )
+    );
+    const service = new OrdersService(fastify);
+
+    await expect(service.adminGetInvoicePdf('order_1')).rejects.toMatchObject({
+      statusCode: 422,
+      code: ERROR_CODES.VALIDATION_ERROR,
+      message: expect.stringContaining('Complete the store profile')
+    });
   });
 
   it('returns invoiceNumber and content buffer when invoice exists', async () => {
