@@ -1,6 +1,6 @@
 {
   "name": "frontend",
-  "version": "0.1.57",
+  "version": "0.1.58",
   "private": true,
   "scripts": {
     "predev": "node scripts/ensure-backend-dev.mjs",
@@ -47,5 +47,9 @@
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^4.1.8"
+  },
+  "overrides": {
+    "eslint-import-resolver-typescript": "3.7.0",
+    "unrs-resolver": "npm:oxc-resolver@1.1.2"
   }
 }

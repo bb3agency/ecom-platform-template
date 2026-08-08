@@ -4,7 +4,7 @@ import Link from "next/link";
 
 import { useCallback, useEffect, useState } from "react";
 
-import { Eye, Search, SlidersHorizontal } from "lucide-react";
+import { Eye, FileDown, Loader2, Search, SlidersHorizontal } from "lucide-react";
 
 import { AdminPagination } from "@/components/admin/AdminPagination";
 
@@ -36,9 +36,11 @@ import {
   orderStatusTone,
 } from "@/lib/admin-format";
 
-import { resolveApiBaseUrl } from "@/lib/api-base";
+import { getBrowserApiBaseUrl, resolveApiBaseUrl } from "@/lib/api-base";
 
 import { getApiErrorMessage } from "@/lib/error-messages";
+import { isInvoiceEligibleOrderStatus } from "@/lib/order-status-ui";
+import { toast } from "@/lib/toast";
 
 import { useAuthStore } from "@/stores/auth";
 import { useAdminShell } from "@/contexts/admin-shell-context";
@@ -160,6 +162,34 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
   const [sortOrder, setSortOrder] = useState("newest");
 
   const [selectedIds, setSelectedIds] = useState<Record<string, boolean>>({});
+  const [invoiceBusyId, setInvoiceBusyId] = useState<string | null>(null);
+
+  async function downloadRowInvoice(order: AdminOrderListItem) {
+    if (!accessToken || invoiceBusyId) return;
+    setInvoiceBusyId(order.id);
+    try {
+      // Generated on demand by the backend when the PDF does not exist yet.
+      const response = await fetch(
+        `${getBrowserApiBaseUrl()}/admin/orders/${order.id}/invoice.pdf`,
+        {
+          headers: { Authorization: `Bearer ${accessToken}` },
+          credentials: "include",
+        },
+      );
+      if (!response.ok) throw new Error("Unable to download invoice.");
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.download = `${order.orderNumber}-invoice.pdf`;
+      anchor.click();
+      URL.revokeObjectURL(objectUrl);
+    } catch (err) {
+      toast.error(getApiErrorMessage(err));
+    } finally {
+      setInvoiceBusyId(null);
+    }
+  }
 
   useEffect(() => {
     if (from !== undefined) {
@@ -529,14 +559,32 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
                       />
                     </td>
                     <td className="px-3 py-3 text-right">
-                      <Link
-                        href={`/admin/orders/${order.id}`}
-                        className="inline-flex items-center justify-center rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
-                        title="View order"
-                        aria-label={`View order ${order.orderNumber}`}
-                      >
-                        <Eye className="h-4 w-4" aria-hidden="true" />
-                      </Link>
+                      <div className="inline-flex items-center gap-0.5">
+                        {isInvoiceEligibleOrderStatus(order.status) ? (
+                          <button
+                            type="button"
+                            className="inline-flex items-center justify-center rounded-md p-2 text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground disabled:opacity-50 sm:p-1.5"
+                            title="Download invoice"
+                            aria-label={`Download invoice for order ${order.orderNumber}`}
+                            disabled={invoiceBusyId !== null}
+                            onClick={() => void downloadRowInvoice(order)}
+                          >
+                            {invoiceBusyId === order.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                            ) : (
+                              <FileDown className="h-4 w-4" aria-hidden="true" />
+                            )}
+                          </button>
+                        ) : null}
+                        <Link
+                          href={`/admin/orders/${order.id}`}
+                          className="inline-flex items-center justify-center rounded-md p-2 text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground sm:p-1.5"
+                          title="View order"
+                          aria-label={`View order ${order.orderNumber}`}
+                        >
+                          <Eye className="h-4 w-4" aria-hidden="true" />
+                        </Link>
+                      </div>
                     </td>
                   </tr>
                 ))}

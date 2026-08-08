@@ -32,6 +32,10 @@ import { createPaymentProvider } from '@modules/payments/payment-provider';
 import { createShippingAdapterForProvider } from '@modules/shipping/shipping-provider';
 import { createInvoiceStorageProvider } from '@modules/invoices/invoice-storage-provider';
 import {
+  generateInvoiceForOrder,
+  isInvoiceEligibleOrderStatus
+} from '@modules/invoices/generate-invoice';
+import {
   sendNotificationFailureAlert,
   sendTechnicalFailureAlert,
   type NotificationFailureChannel
@@ -988,6 +992,8 @@ export class OrdersService {
     const order = await this.fastify.prisma.order.findFirst({
       where: { id: orderId, userId },
       select: {
+        id: true,
+        status: true,
         invoice: {
           select: {
             invoiceNumber: true,
@@ -997,12 +1003,61 @@ export class OrdersService {
       }
     });
 
-    if (!order || !order.invoice || !order.invoice.pdfUrl) {
+    if (!order) {
       throw new AppError(ERROR_CODES.NOT_FOUND, 'Invoice not found', 404);
     }
 
-    const content = await this.invoiceStorage.readInvoicePdf(order.invoice.pdfUrl);
-    return { invoiceNumber: order.invoice.invoiceNumber, content };
+    const invoice = await this.resolveOrGenerateInvoice(order);
+
+    const content = await this.invoiceStorage.readInvoicePdf(invoice.pdfUrl);
+    return { invoiceNumber: invoice.invoiceNumber, content };
+  }
+
+  /**
+   * Resolve an order's invoice for download, generating it on demand when missing.
+   *
+   * The primary path stays the async `generate-invoice` job enqueued at order
+   * confirmation — in the normal case the PDF already exists and this just returns
+   * it. The synchronous fallback covers a download clicked before that job ran (or
+   * after it dead-lettered), so the "Download invoice" button works for every
+   * invoice-eligible order. Safe under concurrent clicks: generation re-checks for
+   * an existing invoice inside its transaction and `Invoice.orderId` is unique, so
+   * a lost race falls through to serving the winner's invoice.
+   */
+  private async resolveOrGenerateInvoice(order: {
+    id: string;
+    status: string;
+    invoice: { invoiceNumber: string; pdfUrl: string | null } | null;
+  }): Promise<{ invoiceNumber: string; pdfUrl: string }> {
+    let invoice = order.invoice;
+
+    if ((!invoice || !invoice.pdfUrl) && isInvoiceEligibleOrderStatus(order.status)) {
+      try {
+        await generateInvoiceForOrder(this.fastify.prisma, order.id, this.invoiceStorage);
+      } catch (error) {
+        const raced = await this.fastify.prisma.invoice.findUnique({
+          where: { orderId: order.id },
+          select: { id: true }
+        });
+        if (!raced) {
+          throw error;
+        }
+        this.fastify.log?.warn(
+          { err: error, orderId: order.id },
+          'concurrent invoice generation race — serving existing invoice'
+        );
+      }
+      invoice = await this.fastify.prisma.invoice.findUnique({
+        where: { orderId: order.id },
+        select: { invoiceNumber: true, pdfUrl: true }
+      });
+    }
+
+    if (!invoice || !invoice.pdfUrl) {
+      throw new AppError(ERROR_CODES.NOT_FOUND, 'Invoice not found', 404);
+    }
+
+    return { invoiceNumber: invoice.invoiceNumber, pdfUrl: invoice.pdfUrl };
   }
 
   async cancelMyOrder(userId: string, orderId: string, input?: CancelOrderInput) {
@@ -2735,16 +2790,9 @@ export class OrdersService {
     // fixes itself the moment the admin opens it. Redis NX throttles the enqueue so
     // polling can't spam the queue; no fixed jobId (a failed BullMQ job with the same
     // id would silently swallow retries).
-    const invoiceEligibleStatuses: OrderStatus[] = [
-      OrderStatus.CONFIRMED,
-      OrderStatus.PROCESSING,
-      OrderStatus.SHIPPED,
-      OrderStatus.OUT_FOR_DELIVERY,
-      OrderStatus.DELIVERED
-    ];
     if (
       !order.invoice &&
-      invoiceEligibleStatuses.includes(order.status) &&
+      isInvoiceEligibleOrderStatus(order.status) &&
       (await resolveGstInvoicingEnabled(this.fastify.prisma))
     ) {
       try {
@@ -2839,6 +2887,8 @@ export class OrdersService {
     const order = await this.fastify.prisma.order.findUnique({
       where: { id: orderId },
       select: {
+        id: true,
+        status: true,
         invoice: {
           select: {
             invoiceNumber: true,
@@ -2848,12 +2898,14 @@ export class OrdersService {
       }
     });
 
-    if (!order || !order.invoice || !order.invoice.pdfUrl) {
+    if (!order) {
       throw new AppError(ERROR_CODES.NOT_FOUND, 'Invoice not found', 404);
     }
 
-    const content = await this.invoiceStorage.readInvoicePdf(order.invoice.pdfUrl);
-    return { invoiceNumber: order.invoice.invoiceNumber, content };
+    const invoice = await this.resolveOrGenerateInvoice(order);
+
+    const content = await this.invoiceStorage.readInvoicePdf(invoice.pdfUrl);
+    return { invoiceNumber: invoice.invoiceNumber, content };
   }
 
   async adminUpdateOrderStatus(orderId: string, input: UpdateOrderStatusInput) {

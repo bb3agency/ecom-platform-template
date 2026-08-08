@@ -32,3 +32,21 @@ export function formatOrderDate(iso: string): string {
     date,
   );
 }
+
+/**
+ * Statuses for which a GST invoice can exist — or be generated on demand by the
+ * invoice download endpoints (mirrors backend INVOICE_ELIGIBLE_ORDER_STATUSES).
+ * The download button is shown for these statuses even before `invoice.hasPdf`
+ * flips true: clicking it triggers backend generation and streams the PDF.
+ */
+export const INVOICE_ELIGIBLE_ORDER_STATUSES = [
+  "CONFIRMED",
+  "PROCESSING",
+  "SHIPPED",
+  "OUT_FOR_DELIVERY",
+  "DELIVERED",
+] as const;
+
+export function isInvoiceEligibleOrderStatus(status: string): boolean {
+  return (INVOICE_ELIGIBLE_ORDER_STATUSES as readonly string[]).includes(status);
+}

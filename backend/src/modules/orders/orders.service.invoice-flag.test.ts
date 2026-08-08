@@ -1,7 +1,15 @@
 import type { FastifyInstance } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { featureFlags } from '@config/feature-flags';
+import * as generateInvoiceModule from '@modules/invoices/generate-invoice';
 import { OrdersService } from './orders.service';
+
+vi.mock('@modules/invoices/generate-invoice', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@modules/invoices/generate-invoice')>();
+  return { ...actual, generateInvoiceForOrder: vi.fn() };
+});
+
+const generateInvoiceMock = vi.mocked(generateInvoiceModule.generateInvoiceForOrder);
 
 describe('OrdersService invoice PDF feature flag', () => {
   const originalGstFlag = featureFlags.gstInvoicing;
@@ -101,5 +109,52 @@ describe('OrdersService getMyInvoicePdf', () => {
         where: { id: 'order_1', userId: 'user_1' }
       })
     );
+  });
+
+  it('generates the invoice on demand when missing for an eligible order', async () => {
+    generateInvoiceMock.mockReset();
+    const fastify = {
+      prisma: {
+        order: {
+          findFirst: vi.fn().mockResolvedValue({ id: 'order_1', status: 'DELIVERED', invoice: null })
+        },
+        invoice: {
+          findUnique: vi.fn().mockResolvedValue({
+            invoiceNumber: 'INV-2026-00099',
+            pdfUrl: '/storage/invoices/INV-2026-00099.pdf'
+          })
+        }
+      },
+      log: { warn: vi.fn() }
+    } as unknown as FastifyInstance;
+    const service = new OrdersService(fastify);
+
+    const pdfBuffer = Buffer.from('%PDF-1.4 on demand');
+    vi.spyOn(
+      service as unknown as { invoiceStorage: { readInvoicePdf: (url: string) => Promise<Buffer> } },
+      'invoiceStorage',
+      'get'
+    ).mockReturnValue({ readInvoicePdf: vi.fn().mockResolvedValue(pdfBuffer) });
+
+    const result = await service.getMyInvoicePdf('user_1', 'order_1');
+
+    expect(generateInvoiceMock).toHaveBeenCalledWith(fastify.prisma, 'order_1', expect.anything());
+    expect(result.invoiceNumber).toBe('INV-2026-00099');
+    expect(result.content).toEqual(pdfBuffer);
+  });
+
+  it('does not attempt generation for a pre-payment order', async () => {
+    generateInvoiceMock.mockReset();
+    const fastify = {
+      prisma: {
+        order: {
+          findFirst: vi.fn().mockResolvedValue({ id: 'order_1', status: 'PENDING_PAYMENT', invoice: null })
+        }
+      }
+    } as unknown as FastifyInstance;
+    const service = new OrdersService(fastify);
+
+    await expect(service.getMyInvoicePdf('user_1', 'order_1')).rejects.toMatchObject({ statusCode: 404 });
+    expect(generateInvoiceMock).not.toHaveBeenCalled();
   });
 });

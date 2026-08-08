@@ -22,6 +22,7 @@ import { ApiError } from "@/lib/api";
 import { createIdempotencyKey } from "@/lib/idempotency";
 import { notifyAdminDataChanged } from "@/lib/admin-data-refresh";
 import { getApiErrorMessageWithHint, getOpsErrorDetail } from "@/lib/error-messages";
+import { isInvoiceEligibleOrderStatus } from "@/lib/order-status-ui";
 import { toast } from "@/lib/toast";
 import { shippingProviderLabel } from "@/lib/shipping-provider-labels";
 import { ADMIN_PERMISSIONS, hasAdminPermission } from "@/lib/permissions";
@@ -186,8 +187,9 @@ export function AdminOrderFulfillmentPanel({
   useEffect(() => {
     if (!detail || detail.id !== selectedOrderId) return;
     if (detail.invoice?.hasPdf) return;
-    // Only orders past payment can have an invoice; skip pre-payment states.
-    if (["PENDING_PAYMENT", "PAYMENT_FAILED", "CANCELLED"].includes(detail.status)) return;
+    // Only invoice-eligible orders can gain an invoice (matches the backend's
+    // generation + self-heal gate) — polling any other status never resolves.
+    if (!isInvoiceEligibleOrderStatus(detail.status)) return;
     let cancelled = false;
     let attempts = 0;
     const timer = setInterval(() => {
@@ -374,7 +376,7 @@ export function AdminOrderFulfillmentPanel({
   };
 
   const downloadInvoice = async () => {
-    if (!selectedOrderId || !detail?.invoice?.hasPdf || !accessToken) return;
+    if (!selectedOrderId || !detail || !accessToken) return;
     const url = `${getBrowserApiBaseUrl()}/admin/orders/${selectedOrderId}/invoice.pdf`;
     setBusyAction("invoice");
     setError(null);
@@ -401,9 +403,21 @@ export function AdminOrderFulfillmentPanel({
       const objectUrl = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = objectUrl;
-      anchor.download = `${detail.invoice.invoiceNumber}.pdf`;
+      anchor.download = detail.invoice?.invoiceNumber
+        ? `${detail.invoice.invoiceNumber}.pdf`
+        : `${detail.orderNumber}-invoice.pdf`;
       anchor.click();
       URL.revokeObjectURL(objectUrl);
+      // First download may have generated the invoice on demand — refresh so the
+      // invoice number shows in the panel.
+      if (!detail.invoice?.hasPdf) {
+        try {
+          const fresh = await api<AdminOrderDetail>(`/admin/orders/${selectedOrderId}`);
+          setDetail(fresh);
+        } catch {
+          /* non-fatal — the polling effect refreshes shortly */
+        }
+      }
     } catch (err) {
       setError(getApiErrorMessageWithHint(err));
     } finally {
@@ -415,7 +429,7 @@ export function AdminOrderFulfillmentPanel({
   // bill packed with the order. Falls back to a download when the popup is blocked
   // (common on mobile).
   const printInvoice = async () => {
-    if (!selectedOrderId || !detail?.invoice?.hasPdf || !accessToken) return;
+    if (!selectedOrderId || !detail || !accessToken) return;
     const url = `${getBrowserApiBaseUrl()}/admin/orders/${selectedOrderId}/invoice.pdf`;
     setBusyAction("print-invoice");
     setError(null);
@@ -433,7 +447,9 @@ export function AdminOrderFulfillmentPanel({
       if (!win) {
         const anchor = document.createElement("a");
         anchor.href = objectUrl;
-        anchor.download = `${detail.invoice.invoiceNumber}.pdf`;
+        anchor.download = detail.invoice?.invoiceNumber
+          ? `${detail.invoice.invoiceNumber}.pdf`
+          : `${detail.orderNumber}-invoice.pdf`;
         document.body.appendChild(anchor);
         anchor.click();
         anchor.remove();
@@ -832,12 +848,15 @@ export function AdminOrderFulfillmentPanel({
                 sublabel="GST bill, print-ready"
                 icon={<Printer className="h-4 w-4" />}
                 busy={busyAction === "print-invoice"}
-                disabled={!detail.invoice?.hasPdf || busyAction !== null}
+                disabled={
+                  (!detail.invoice?.hasPdf && !isInvoiceEligibleOrderStatus(detail.status)) ||
+                  busyAction !== null
+                }
                 onClick={() => void printInvoice()}
                 title={
                   detail.invoice?.hasPdf
                     ? "Opens the GST invoice PDF in a new tab, ready to print and pack with the order"
-                    : "Generating the invoice… this enables automatically in a few seconds. If it never enables, complete the store GST profile (legal name, address, state, GSTIN) in Admin → Settings → Store. HSN and FSSAI are optional."
+                    : "Opens the GST invoice PDF (generated on the spot if needed), ready to print and pack with the order. If it fails, complete the store GST profile (legal name, address, state, GSTIN) in Admin → Settings → Store. HSN and FSSAI are optional."
                 }
                 primary
               />
@@ -969,7 +988,8 @@ export function AdminOrderFulfillmentPanel({
                 }
               />
             ) : null}
-            {detail?.invoice?.hasPdf ? (
+            {detail?.invoice?.hasPdf ||
+            (detail && isInvoiceEligibleOrderStatus(detail.status)) ? (
               <SecondaryButton
                 icon={<FileDown className="h-3.5 w-3.5" />}
                 label="Download invoice"
