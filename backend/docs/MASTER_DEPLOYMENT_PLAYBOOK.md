@@ -2255,6 +2255,24 @@ When you decide to upgrade a core dependency:
 
 ## Appendix H: Common Setup Troubleshooting
 
+### H.0 Admin file upload returns 500 and **nothing appears in the API logs**
+
+**Symptom:** An admin upload (store logo, product/category image, gallery, CSV product import) fails with HTTP 500. The browser shows a generic "Something went wrong". `docker compose logs backend` shows **no error, and no request line at all** for that route. Small files may succeed, which makes it look intermittent.
+
+**Cause:** The request never reached the backend — **Nginx** rejected it. Routes matched by the generic `location ~ ^/api/v1/admin/` block carry `auth_request /_maintenance_gate`, which forces Nginx to buffer the whole request body before running the gate subrequest; that fails for `multipart/form-data` and Nginx returns 500 itself.
+
+**Diagnosis (30 seconds):** the absence of a request line in the API log *is* the diagnosis — if the app had produced the 500, it would have logged it (the global error handler logs every unhandled error). Confirm with `sudo tail -50 /var/log/nginx/error.log` at the time of the failed upload.
+
+**Solution:**
+1. Make sure the route is in the upload-exemption location in `nginx/client.conf.template`:
+   ```nginx
+   location ~ ^/api/v1/admin/(.+/images?/upload|gallery|settings/store/logo|products/import-csv)$ {
+   ```
+   (CI guards this: `src/common/plugins/multipart-nginx-coverage.test.ts` fails the build when a multipart route is not covered.)
+2. **Render and reload Nginx on the VPS** — template changes do NOT auto-apply unless `NGINX_AUTO_RELOAD=1` is set on the runner. Full procedure: `CLIENT_VPS_SETUP_GUIDE.md` §11.1.
+
+**Related:** `HARDENING_HISTORY.md` → *[2026-08-09] Admin multipart uploads rejected at the edge*.
+
 ### H.1 Prisma connects to `ecom_template` instead of client DB
 
 **Symptom:** When running `npx prisma migrate dev`, the output says:

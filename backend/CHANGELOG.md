@@ -12,6 +12,17 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.91] - 2026-08-09
+
+### Changed
+- **Docs + agent rules capture the multipart/Nginx edge requirement** (docs-only; no runtime change). `CLIENT_VPS_SETUP_GUIDE.md` §11.1 gains the upload-exemption rule and the exact render+install+reload procedure for a live VPS (template lives under `backend/`, live vhosts have no `.conf` extension, `envsubst` is mandatory, back up + `nginx -t` before reload). `MASTER_DEPLOYMENT_PLAYBOOK.md` gains troubleshooting entry **H.0 — "Admin file upload returns 500 and nothing appears in the API logs"**, whose diagnosis is precisely the *absence* of a log line. `HARDENING_HISTORY.md` records the incident, the three occurrences, and the reusable "mystery 500" diagnostic playbook. `ROUTE_SURFACE_COMPLETE_REFERENCE.md` flags the edge requirement above the upload routes. The agent rules file (`frontend-agent-rules.md` + all mirrored IDE copies) gains a mandatory step so an agent adding a multipart endpoint updates the Nginx regex in the same change.
+
+**Propagation:**
+- Severity: LOW (documentation) - Layers: docs + agent rules (`docs/CLIENT_VPS_SETUP_GUIDE.md`, `docs/MASTER_DEPLOYMENT_PLAYBOOK.md`, `docs/HARDENING_HISTORY.md`, `docs/ROUTE_SURFACE_COMPLETE_REFERENCE.md`, `frontend-agent-rules.md`, root `CLAUDE.md` + `.agents`/`.cursor`/`.devin` mirrors)
+- Migration: NO - Flag: none - Design impact: none - Breaking: NO
+- Pairs with 0.1.90 (the code + CI guard for the same defect)
+- Rollback: revert the docs
+
 ## [0.1.90] - 2026-08-09
 
 ### Fixed

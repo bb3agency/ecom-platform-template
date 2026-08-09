@@ -151,6 +151,31 @@ Mandatory minimum rules:
 - **NEVER** create API route handlers (`route.ts`) for data that can be fetched in Server Components.
 - Do not implement payment/shipping provider webhook receivers in frontend `app/api/*` for this template; provider webhooks terminate at backend `/api/v1/*/webhook` endpoints.
 
+### Adding a FILE-UPLOAD (multipart) admin endpoint — mandatory edge step
+
+Any new admin route that accepts `multipart/form-data` MUST be added to the Nginx
+upload-exemption location in `backend/nginx/client.conf.template`:
+
+```nginx
+location ~ ^/api/v1/admin/(.+/images?/upload|gallery|settings/store/logo|products/import-csv)$ {
+```
+
+Routes matched by the generic `^/api/v1/admin/` block carry `auth_request
+/_maintenance_gate`, which forces Nginx to buffer the whole request body before the gate
+subrequest runs. For multipart that fails and **Nginx returns 500 before the request
+reaches the backend** — so there is nothing in the API logs and the browser only shows
+"Something went wrong" (small files sometimes slip through, so it looks intermittent).
+This has bitten the platform three times (image uploads, store-logo upload, CSV import).
+
+- CI enforces it: `backend/src/common/plugins/multipart-nginx-coverage.test.ts` fails the
+  build when a multipart route is not covered. Fix the regex; never weaken the test.
+- Nginx changes do NOT auto-apply on deploy unless `NGINX_AUTO_RELOAD=1` is set on the
+  runner — after merging, render + reload on each VPS (`docs/CLIENT_VPS_SETUP_GUIDE.md`
+  §11.1). A green deploy does not mean the edge config is live.
+- Debugging rule of thumb: a 500 with **no request line in the API log** is an edge/proxy
+  fault, not an application fault.
+
+
 ### Folder Structure
 ```
 app/

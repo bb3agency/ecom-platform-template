@@ -531,6 +531,31 @@ bash docs/clients/<client-id>/scripts/phase7.5-nginx-tls-preflight.sh
 > sudo nginx -t && sudo systemctl reload nginx
 > ```
 
+> **CRITICAL (August 2026) — every admin FILE-UPLOAD route must be in the upload-exemption location.** Routes matched by the generic `location ~ ^/api/v1/admin/` block carry `auth_request /_maintenance_gate`, which forces Nginx to buffer the **entire request body** before running the gate subrequest. For `multipart/form-data` that fails and **Nginx returns 500 before the request ever reaches the backend** — so there is **nothing in the API logs** and the browser only shows a generic "Something went wrong" (small files sometimes slip through, making it look intermittent). Upload routes must therefore match the earlier, more specific location, which skips `auth_request` and streams the body (`proxy_request_buffering off`); auth is still enforced by the backend (JWT + write permission + load-shed):
+>
+> ```nginx
+> location ~ ^/api/v1/admin/(.+/images?/upload|gallery|settings/store/logo|products/import-csv)$ {
+> ```
+>
+> This has bitten the platform three times: product/category/gallery image uploads (May 2026), the store-logo upload (backend-core 0.1.89, Aug 2026), and `POST /admin/products/import-csv`, which had been failing silently since it shipped and was only found when the guard below was written. **Coverage is now asserted in CI** by `backend/src/common/plugins/multipart-nginx-coverage.test.ts` — it scans every `*.routes.ts` for handlers reading a multipart body and fails the build if the Nginx regex does not cover one. If that test fails, add the route to the regex; do not weaken the test.
+>
+> **Applying an Nginx change to a live VPS (it is NOT automatic):** `vps-deploy.sh` only logs a drift warning unless `NGINX_AUTO_RELOAD=1` is set on the runner. Manual procedure — note the template lives under `backend/` in a client repo, live vhost filenames have **no `.conf` extension**, and the file must be rendered (see the envsubst block above) before installing:
+>
+> ```bash
+> cd /var/www/<client>/backend
+> D=$(grep -E '^STOREFRONT_URL=' .env | head -1 | cut -d= -f2- | sed -E 's,^https?://,,; s,/.*$,,')
+> SP=$(grep -E '^STOREFRONT_PORT=' .env | head -1 | cut -d= -f2-)
+> BP=$(grep -E '^BACKEND_PORT=' .env | head -1 | cut -d= -f2-); BP=${BP:-3001}
+> T=$(mktemp); L=/etc/nginx/sites-available/$D
+> CLIENT_DOMAIN=$D STOREFRONT_PORT=$SP BACKEND_PORT=$BP \
+>   envsubst '${CLIENT_DOMAIN} ${STOREFRONT_PORT} ${BACKEND_PORT}' < nginx/client.conf.template > "$T"
+> grep -qE '\$\{[A-Z_]+\}' "$T" && echo "ABORT: unrendered placeholders" || {
+>   sudo diff -u "$L" "$T"; sudo cp "$L" "$L.bak-$(date +%F-%H%M)"; sudo cp "$T" "$L"
+>   sudo nginx -t && sudo systemctl reload nginx; }
+> ```
+>
+> Recommended: grant the runner passwordless `sudo cp` / `nginx -t` / `systemctl reload nginx` and set `NGINX_AUTO_RELOAD=1`, so edge-config drift cannot silently outlive a deploy.
+
 1. Start from repo **`nginx/client.conf.template`** — it encodes **`TRD.md` §3.5** edge limits:
    - HTTP → HTTPS **301**
    - **TLSv1.2** and **TLSv1.3** only, `ssl_prefer_server_ciphers on`
