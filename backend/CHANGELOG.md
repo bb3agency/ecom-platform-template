@@ -12,6 +12,20 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.93] - 2026-08-10
+
+### Fixed
+- **The deploy script has never been able to find the live nginx vhost on any client VPS.** `resolve_nginx_live_conf` matched only filenames ending in `.conf` — in its candidate list AND in its `server_name` fallback greps — but Debian/Ubuntu's nginx convention, which both live client boxes use, has **no extension** (`/etc/nginx/sites-available/raghavaorganics.com`). Resolution therefore always fell through to the "first deploy" default `<domain>.conf`, a path that does not exist, so **every deploy logged "first deploy?" and silently skipped the nginx sync entirely** — which is why the 0.1.90 upload-exemption fix deployed green without ever reaching the edge. Worse, with `NGINX_AUTO_RELOAD=1` (new default in 0.1.92) the script would have CREATED `<domain>.conf` and symlinked it into `sites-enabled`, leaving two server blocks for the same `server_name` beside the real vhost. Matching is now extension-agnostic in both the candidate list and the discovery greps, and the genuine-first-deploy default follows whatever convention the box already uses.
+
+### Changed
+- Resolution moved to `scripts/lib/resolve-nginx-live-conf.sh` (honours `NGINX_ROOT`) so it is unit-testable, and covered by `src/common/plugins/nginx-conf-resolver.test.ts` — real bash against real directory fixtures, including the exact live-VPS layout (extension-less vhosts + `.bak` siblings + a `sites-enabled` entry), `.conf`-convention boxes, project-named files, `server_name` discovery of oddly-named files, a near-miss domain, and both first-deploy defaults.
+
+**Propagation:**
+- Severity: **HIGH** (nginx sync was a silent no-op fleet-wide; the 0.1.92 auto-reload default would have created duplicate vhosts) - Layers: backend (`scripts/vps-deploy.sh`, new `scripts/lib/resolve-nginx-live-conf.sh`, new test)
+- Migration: NO - Flag: none - Design impact: none - Breaking: NO
+- **Deploy note:** the first deploy carrying this fix is the one that finally applies pending `nginx/client.conf.template` changes — expect "Nginx config drift detected" then "Nginx reload succeeded" in its log (a backup is taken first, and a failed `nginx -t` restores it).
+- Rollback: revert the files (nginx sync silently stops working again)
+
 ## [0.1.92] - 2026-08-10
 
 ### Fixed
