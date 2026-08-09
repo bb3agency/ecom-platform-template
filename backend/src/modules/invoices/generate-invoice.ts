@@ -3,8 +3,9 @@ import { AppError } from '@common/errors/app-error';
 import { ERROR_CODES } from '@common/errors/error-codes';
 import { type InvoiceStorageAdapter } from '@common/interfaces/invoice-storage.interface';
 import { renderInvoicePdfBuffer, type InvoiceLineItem } from '@modules/invoices/invoice-renderer';
-import { resolveGstInvoicingEnabled } from '@common/invoicing/gst-invoicing-flag';
+import { featureFlags } from '@config/feature-flags';
 import {
+  INVOICE_HSN_MISSING_LABEL,
   resolveInvoiceHsnCode,
   resolveLineItemGstRatePercent
 } from '@common/shipping/product-tax-fields';
@@ -182,7 +183,8 @@ export async function resolveSellerProfileOrThrow(prisma: PrismaClient): Promise
           sellerState: true,
           gstin: true,
           fssaiNumber: true,
-          gstBillingEnabled: true
+          gstBillingEnabled: true,
+          gstInvoicingEnabled: true
         }
       })
     : null;
@@ -193,6 +195,9 @@ export async function resolveSellerProfileOrThrow(prisma: PrismaClient): Promise
   const gstin = (settings?.gstin ?? '').trim();
   const fssai = (settings?.fssaiNumber ?? '').trim();
   const gstBillingSetting = (settings as { gstBillingEnabled?: boolean | null } | null)?.gstBillingEnabled;
+  const gstInvoicingSetting = (settings as { gstInvoicingEnabled?: boolean | null } | null)
+    ?.gstInvoicingEnabled;
+  const gstInvoicingFlag = gstInvoicingSetting ?? featureFlags.gstInvoicing;
 
   // GSTIN and FSSAI are OPTIONAL for invoice generation (2026-08-08) — neither ever
   // blocks a PDF. When absent, the renderer omits the corresponding line instead of
@@ -235,8 +240,12 @@ export async function resolveSellerProfileOrThrow(prisma: PrismaClient): Promise
     logoBytes: resolveStoredLogoBytes(
       (settings as { logoData?: Uint8Array | Buffer | null } | null)?.logoData ?? null
     ),
-    // Merchant toggle wins when set; auto default = GST billing on only when a GSTIN exists.
-    gstBillingEnabled: gstBillingSetting ?? Boolean(gstin)
+    // GST appears on the invoice only when BOTH switches allow it:
+    //  • the GST-invoicing master flag (StoreSettings.gstInvoicingEnabled, else the
+    //    FEATURE_GST_INVOICING_ENABLED env default) — turning it off now yields a plain
+    //    INVOICE instead of blocking invoicing entirely, and
+    //  • the GST-billing toggle (merchant setting; auto-default = on when a GSTIN exists).
+    gstBillingEnabled: gstInvoicingFlag && (gstBillingSetting ?? Boolean(gstin))
   };
 }
 
@@ -280,6 +289,119 @@ export function computeInclusiveGstSplit(
   }
   const cgstPaise = Math.round(tax / 2);
   return { taxableValuePaise, cgstPaise, sgstPaise: tax - cgstPaise, igstPaise: 0 };
+}
+
+/**
+ * Largest-remainder apportionment of `amountPaise` across `weights`, so the parts sum
+ * to EXACTLY `amountPaise` (no rounding drift). Zero total weight → everything on the
+ * first part.
+ */
+function apportion(amountPaise: number, weights: number[]): number[] {
+  const totalWeight = weights.reduce((sum, w) => sum + w, 0);
+  if (weights.length === 0) return [];
+  if (totalWeight <= 0) {
+    return weights.map((_, index) => (index === 0 ? amountPaise : 0));
+  }
+  const exact = weights.map((w) => (amountPaise * w) / totalWeight);
+  const floors = exact.map((value) => Math.floor(value));
+  let remainder = amountPaise - floors.reduce((sum, value) => sum + value, 0);
+  // Hand the leftover paise to the largest fractional parts first.
+  const order = exact
+    .map((value, index) => ({ index, frac: value - Math.floor(value) }))
+    .sort((a, b) => b.frac - a.frac);
+  const result = [...floors];
+  for (const { index } of order) {
+    if (remainder <= 0) break;
+    result[index] = (result[index] ?? 0) + 1;
+    remainder -= 1;
+  }
+  return result;
+}
+
+export type InvoiceTaxLineInput = {
+  name: string;
+  hsnCode: string;
+  quantity: number;
+  unitPricePaise: number;
+  lineTotalPaise: number;
+  taxRatePercent: number;
+};
+
+/**
+ * Build the invoice's tax lines so that **every rupee the customer paid sits inside the
+ * tax base**, and the printed rows reconcile exactly with the grand total:
+ *
+ *   Σ(row taxable + row CGST + row SGST + row IGST) === subtotal − discount + shipping
+ *
+ * Two corrections over the naive per-item carve (2026-08-10):
+ *  1. **Delivery/shipping is taxable.** Under GST a delivery charge is part of a composite
+ *     supply and attracts the rate of the PRINCIPAL supply — it is not tax-free. It was
+ *     previously excluded, so an invoice with shipping under-declared its tax. Shipping is
+ *     emitted as its own row, classified (HSN + rate) after the largest item line.
+ *  2. **Order-level discount reduces the taxable consideration**, apportioned across item
+ *     rows in proportion to their value. Tax was previously carved from the pre-discount
+ *     amount, over-declaring it. Rows therefore print their NET (post-discount) amount,
+ *     which is what was actually charged for those goods.
+ *
+ * Amounts remain GST-INCLUSIVE throughout: the tax is carved out of what was charged, never
+ * added on top, so the grand total never changes. With GST billing off every rate is 0, so
+ * this degrades to a plain itemisation with no tax.
+ */
+export function buildInvoiceTaxLines(input: {
+  items: InvoiceTaxLineInput[];
+  shippingPaise: number;
+  discountPaise: number;
+  isInterState: boolean;
+}): InvoiceLineItem[] {
+  const { items, isInterState } = input;
+  const shippingPaise = Math.max(0, Math.round(input.shippingPaise || 0));
+  const itemsGross = items.reduce((sum, item) => sum + item.lineTotalPaise, 0);
+  // Never discount more than the goods are worth (a coupon can't create negative value).
+  const discountPaise = Math.min(Math.max(0, Math.round(input.discountPaise || 0)), itemsGross);
+  const discountShares = apportion(
+    discountPaise,
+    items.map((item) => item.lineTotalPaise)
+  );
+
+  const rows: InvoiceLineItem[] = items.map((item, index) => {
+    const netPaise = item.lineTotalPaise - (discountShares[index] ?? 0);
+    const split = computeInclusiveGstSplit(netPaise, item.taxRatePercent, isInterState);
+    return {
+      name: item.name,
+      hsnCode: item.hsnCode,
+      quantity: item.quantity,
+      unitPricePaise: item.unitPricePaise,
+      lineTotalPaise: netPaise,
+      taxRatePercent: item.taxRatePercent,
+      cgstPaise: split.cgstPaise,
+      sgstPaise: split.sgstPaise,
+      igstPaise: split.igstPaise
+    };
+  });
+
+  if (shippingPaise > 0) {
+    // Composite supply: the delivery charge follows the classification and rate of the
+    // principal (highest-value) item line. With no item lines it stays untaxed.
+    const principal = items.reduce<InvoiceTaxLineInput | null>(
+      (best, item) => (best === null || item.lineTotalPaise > best.lineTotalPaise ? item : best),
+      null
+    );
+    const shippingRate = principal?.taxRatePercent ?? 0;
+    const split = computeInclusiveGstSplit(shippingPaise, shippingRate, isInterState);
+    rows.push({
+      name: 'Delivery / Shipping',
+      hsnCode: principal?.hsnCode ?? INVOICE_HSN_MISSING_LABEL,
+      quantity: 1,
+      unitPricePaise: shippingPaise,
+      lineTotalPaise: shippingPaise,
+      taxRatePercent: shippingRate,
+      cgstPaise: split.cgstPaise,
+      sgstPaise: split.sgstPaise,
+      igstPaise: split.igstPaise
+    });
+  }
+
+  return rows;
 }
 
 const oneToNineteen = [
@@ -398,26 +520,26 @@ async function renderInvoicePdfContent(
   const buyerState = (shippingAddress.state ?? 'Unknown').trim();
   const isInterState = sellerState.toLowerCase() !== buyerState.toLowerCase();
   const gstBilling = sellerProfile.gstBillingEnabled;
-  const lineItems: InvoiceLineItem[] = order.items.map((item: InvoiceOrderItem): InvoiceLineItem => {
-    const attributes = item.variant?.product?.attributes ?? null;
-    const taxRatePercent = gstBilling
-      ? resolveLineItemGstRatePercent(item.variant?.gstRatePercent, attributes)
-      : 0;
-    const split = computeInclusiveGstSplit(item.totalPrice, taxRatePercent, isInterState);
-    return {
-      name: item.productName,
-      hsnCode: resolveInvoiceHsnCode({
-        variantHsnCode: item.variant?.hsnCode,
-        productAttributes: attributes
-      }),
-      quantity: item.quantity,
-      unitPricePaise: item.unitPrice,
-      lineTotalPaise: item.totalPrice,
-      taxRatePercent,
-      cgstPaise: split.cgstPaise,
-      sgstPaise: split.sgstPaise,
-      igstPaise: split.igstPaise
-    };
+  const lineItems = buildInvoiceTaxLines({
+    items: order.items.map((item: InvoiceOrderItem) => {
+      const attributes = item.variant?.product?.attributes ?? null;
+      return {
+        name: item.productName,
+        hsnCode: resolveInvoiceHsnCode({
+          variantHsnCode: item.variant?.hsnCode,
+          productAttributes: attributes
+        }),
+        quantity: item.quantity,
+        unitPricePaise: item.unitPrice,
+        lineTotalPaise: item.totalPrice,
+        taxRatePercent: gstBilling
+          ? resolveLineItemGstRatePercent(item.variant?.gstRatePercent, attributes)
+          : 0
+      };
+    }),
+    shippingPaise: order.shippingCharge,
+    discountPaise: order.discountAmount,
+    isInterState
   });
 
   const cgstPaise = lineItems.reduce((sum, item) => sum + item.cgstPaise, 0);
@@ -511,10 +633,8 @@ export async function generateInvoiceForOrder(
   orderId: string,
   invoiceStorageAdapter: InvoiceStorageAdapter
 ): Promise<void> {
-  if (!(await resolveGstInvoicingEnabled(prisma))) {
-    return;
-  }
-
+  // NOT gated on the GST flag — every order gets a document. With GST off it renders as
+  // a plain "INVOICE" with no tax columns (see SellerProfile.gstBillingEnabled).
   const sellerProfile = await resolveSellerProfileOrThrow(prisma);
   // Fetched OUTSIDE the transaction — a slow logo host must never hold a DB tx open.
   const invoiceLogo = await resolveInvoiceLogo(sellerProfile);

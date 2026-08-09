@@ -14,7 +14,6 @@ import {
   resolveSellerProfileOrThrow,
   type ShippingAddress
 } from '@modules/invoices/generate-invoice';
-import { resolveGstInvoicingEnabled } from '@common/invoicing/gst-invoicing-flag';
 import { finalizeCouponUsageForOrder, releaseCouponUsageForOrder } from '@common/coupons/coupon-usage';
 import { releaseReservationsForOrder } from '@common/orders/release-reservations';
 
@@ -888,11 +887,11 @@ async function handleProcessOrderUpdate(
     });
   }
 
-  if (await resolveGstInvoicingEnabled(prisma)) {
-    await enqueueOutboxOrQueue(prisma, 'orderProcessing', 'generate-invoice', {
-      orderId: sideEffectsTarget.id
-    }, orderProcessingQueue, `generate-invoice-${sideEffectsTarget.id}`);
-  }
+  // Always enqueued (2026-08-10): every confirmed order gets a document. The GST flag
+  // only decides whether it renders as a TAX INVOICE or a plain INVOICE.
+  await enqueueOutboxOrQueue(prisma, 'orderProcessing', 'generate-invoice', {
+    orderId: sideEffectsTarget.id
+  }, orderProcessingQueue, `generate-invoice-${sideEffectsTarget.id}`);
 
   await enqueueOutboxOrQueue(prisma, 'analytics', 'record-event', {
     eventType: ANALYTICS_EVENT_TYPE.PURCHASE,
@@ -1081,10 +1080,8 @@ async function generateCreditNoteForOrder(
   data: GenerateCreditNoteJobData,
   invoiceStorageAdapter: InvoiceStorageAdapter
 ): Promise<void> {
-  if (!(await resolveGstInvoicingEnabled(prisma))) {
-    return;
-  }
-
+  // Credit notes follow the invoice: not gated on the GST flag, since the underlying
+  // invoice always exists. GST columns follow SellerProfile.gstBillingEnabled.
   const sellerProfile = await resolveSellerProfileOrThrow(prisma);
   // Fetched OUTSIDE the transaction — a slow logo host must never hold a DB tx open.
   const creditNoteLogo = await resolveInvoiceLogo(sellerProfile);

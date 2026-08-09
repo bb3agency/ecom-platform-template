@@ -12,6 +12,23 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.92] - 2026-08-10
+
+### Fixed
+- **Turning GST invoicing OFF no longer disables invoicing entirely.** The flag hard-gated generation, the queue enqueue, the self-heal path, and BOTH download endpoints (customer 404, admin `400 "GST invoicing is disabled"`), so a merchant switching it off lost every invoice — including for orders already placed. The flag now controls only the DOCUMENT: on → "TAX INVOICE" with the GST breakdown, off → plain "INVOICE" with no tax columns. Every order keeps a downloadable invoice either way (a customer is always entitled to a bill). `SellerProfile.gstBillingEnabled` is now `gstInvoicingFlag && (merchantToggle ?? hasGstin)`; the two old flag-gate tests are inverted into regression guards.
+- **GST was under-declared: the delivery charge was excluded from the tax base.** Under GST a delivery charge is part of a composite supply and attracts the rate of the PRINCIPAL supply — it is not tax-free. An invoice with ₹1,400 of goods + ₹167.70 delivery carved tax from ₹1,400 only. Shipping is now its own line row, classified (HSN + rate) after the largest item line.
+- **GST was over-declared when an order carried a discount:** tax was carved from the pre-discount amount. The order-level discount is now apportioned across item rows (largest-remainder, exact to the paise) and rows print their NET amount — the consideration actually charged.
+- New `buildInvoiceTaxLines()` guarantees the invariant **Σ(row taxable + CGST + SGST + IGST) === subtotal − discount + shipping**, property-swept across rates 5/12/18/28 and awkward shipping/discount amounts. Amounts stay GST-INCLUSIVE: tax is carved out, never added, so the grand total never moves.
+
+### Changed
+- **`NGINX_AUTO_RELOAD` now defaults to `1`** in `deploy.yml` (override per client with repository variable `NGINX_AUTO_RELOAD=0`), so an edge-config fix can no longer merge, deploy green, and silently not be live. `vps-deploy.sh` is hardened for that default: non-interactive `sudo -n` only (a runner without the grants degrades to the warning path instead of hanging or failing an otherwise-healthy deploy), a timestamped backup is taken before overwriting, and a failed `nginx -t` now **restores the backup** before failing — previously it left a broken vhost in place to detonate on the next unrelated reload.
+
+**Propagation:**
+- Severity: **HIGH** (invoicing lost when the GST toggle is off; tax figures wrong when shipping or discounts are present) - Layers: backend (`gst-invoicing-flag.ts`, `generate-invoice.ts`, `orders.service.ts`, `order-processing.worker.ts`, `scripts/vps-deploy.sh`, `.github/workflows/deploy.yml`, tests)
+- Migration: NO - Flag: none - Design impact: none - Breaking: NO for API shape. **Behavioural:** invoices now exist for every order regardless of the GST flag, and invoices generated from now on include shipping in the tax base. Already-issued invoices are immutable and unchanged; delete the `Invoice` row to re-render one under the same number.
+- Frontend pairing: frontend-core 0.1.65
+- Rollback: revert the files
+
 ## [0.1.91] - 2026-08-09
 
 ### Changed

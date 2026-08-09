@@ -25,23 +25,28 @@ describe('OrdersService invoice PDF feature flag', () => {
     featureFlags.gstInvoicing = originalGstFlag;
   });
 
-  it('rejects customer invoice download with a plain 404 when GST invoicing is disabled (no config leak)', async () => {
-    const findFirst = vi.fn();
+  // Regression guard (2026-08-10, inverted): the GST flag used to hard-gate BOTH download
+  // endpoints (customer 404, admin 400 "GST invoicing is disabled"), so a merchant turning
+  // GST off lost invoicing entirely. The flag now only decides TAX INVOICE vs plain
+  // INVOICE — the download must keep working, so these endpoints must still look the order up.
+  it('still serves the customer invoice download when GST invoicing is disabled', async () => {
+    const findFirst = vi.fn().mockResolvedValue(null);
     const service = new OrdersService({
       prisma: {
         order: { findFirst }
       }
     } as unknown as FastifyInstance);
 
+    // 404 here is "no such order for this user" — reached only because the flag no longer
+    // short-circuits ahead of the lookup.
     await expect(service.getMyInvoicePdf('user_1', 'order_1')).rejects.toMatchObject({
-      statusCode: 404,
-      message: 'Invoice not found'
+      statusCode: 404
     });
-    expect(findFirst).not.toHaveBeenCalled();
+    expect(findFirst).toHaveBeenCalled();
   });
 
-  it('rejects admin invoice download when GST invoicing is disabled', async () => {
-    const findUnique = vi.fn();
+  it('still serves the admin invoice download when GST invoicing is disabled', async () => {
+    const findUnique = vi.fn().mockResolvedValue(null);
     const service = new OrdersService({
       prisma: {
         order: { findUnique }
@@ -49,10 +54,9 @@ describe('OrdersService invoice PDF feature flag', () => {
     } as unknown as FastifyInstance);
 
     await expect(service.adminGetInvoicePdf('order_1')).rejects.toMatchObject({
-      statusCode: 400,
-      message: 'GST invoicing is disabled'
+      statusCode: 404
     });
-    expect(findUnique).not.toHaveBeenCalled();
+    expect(findUnique).toHaveBeenCalled();
   });
 });
 

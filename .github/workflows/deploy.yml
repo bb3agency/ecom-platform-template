@@ -95,6 +95,17 @@ jobs:
         env:
           VPS_CLIENT_PATH: ${{ secrets.VPS_CLIENT_PATH }}
           COMMIT_SHA: ${{ github.event.workflow_run.head_sha || inputs.commit_sha || github.sha }}
+          # Keep the live nginx vhost in step with nginx/client.conf.template on every
+          # deploy. Without this the deploy only LOGS drift, so an edge-config fix can
+          # merge, deploy green, and still not be live — exactly how the admin upload
+          # exemption stayed missing (see HARDENING_HISTORY 2026-08-09). The script
+          # renders with envsubst, runs `nginx -t`, and only then reloads; a failed test
+          # aborts the deploy rather than shipping a broken config. Requires passwordless
+          # sudo for cp/nginx/systemctl on the runner (CLIENT_VPS_SETUP_GUIDE §22) — when
+          # those grants are missing the script falls back to the warning-only path, so
+          # setting this is safe even on a not-yet-granted runner.
+          # Override per client with repository variable NGINX_AUTO_RELOAD=0.
+          NGINX_AUTO_RELOAD: ${{ vars.NGINX_AUTO_RELOAD || '1' }}
         run: |
           bash "$VPS_CLIENT_PATH/scripts/vps-deploy.sh" "$VPS_CLIENT_PATH" "$COMMIT_SHA"
 

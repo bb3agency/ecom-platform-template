@@ -119,7 +119,7 @@ function OrderItemRow({ item }: { item: OrderLineItem }) {
 export default function AccountOrderDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
-  const { returnsEnabled, gstInvoicingEnabled } = useStoreConfig();
+  const { returnsEnabled } = useStoreConfig();
   const accessToken = useAuthStore((s) => s.accessToken);
   const [order, setOrder] = useState<OrderSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -315,8 +315,7 @@ export default function AccountOrderDetailPage() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            {gstInvoicingEnabled &&
-            (order.invoice?.hasPdf || isInvoiceEligibleOrderStatus(order.status)) ? (
+            {order.invoice?.hasPdf || isInvoiceEligibleOrderStatus(order.status) ? (
               <Button
                 type="button"
                 variant="outline"
@@ -380,8 +379,7 @@ export default function AccountOrderDetailPage() {
         icon={<Receipt className="size-4" aria-hidden />}
         title="Invoice"
         action={
-          gstInvoicingEnabled &&
-          (order.invoice?.hasPdf || isInvoiceEligibleOrderStatus(order.status)) ? (
+          order.invoice?.hasPdf || isInvoiceEligibleOrderStatus(order.status) ? (
             <button
               type="button"
               className="inline-flex h-10 sm:h-8 items-center gap-1.5 rounded-lg border border-[#efe8e4] px-3 text-xs font-bold text-[#23403d] transition-colors hover:bg-[#faf3ef] disabled:opacity-50"

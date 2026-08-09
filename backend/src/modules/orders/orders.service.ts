@@ -43,7 +43,6 @@ import {
 } from '@modules/notifications/notification-failure-alert';
 import { CheckoutRiskService } from './checkout-risk.service';
 import { SettingsService } from '@modules/settings/settings.service';
-import { resolveGstInvoicingEnabled } from '@common/invoicing/gst-invoicing-flag';
 import { recordCheckoutPath, recordWebhookEvent } from '@common/observability/metrics';
 import { isStorefrontCouponsEnabled } from '@common/coupons/coupons-feature';
 import { assertCouponWithinUsageLimits, finalizeCouponUsageForOrder, releaseCouponUsageForOrder, type CouponLimitClient } from '@common/coupons/coupon-usage';
@@ -986,11 +985,9 @@ export class OrdersService {
     userId: string,
     orderId: string
   ): Promise<{ invoiceNumber: string; content: Buffer }> {
-    if (!(await resolveGstInvoicingEnabled(this.fastify.prisma))) {
-      // Customers never see internal config state — same 404 as a missing invoice.
-      // The admin endpoint keeps its explicit "GST invoicing is disabled" 400.
-      throw new AppError(ERROR_CODES.NOT_FOUND, 'Invoice not found', 404);
-    }
+    // NOT gated on the GST flag (2026-08-10): every order has a downloadable document.
+    // With GST off it is a plain "INVOICE" with no tax columns — a customer is always
+    // entitled to a bill, so turning GST off must never remove the download.
 
     const order = await this.fastify.prisma.order.findFirst({
       where: { id: orderId, userId },
@@ -2867,11 +2864,7 @@ export class OrdersService {
     // fixes itself the moment the admin opens it. Redis NX throttles the enqueue so
     // polling can't spam the queue; no fixed jobId (a failed BullMQ job with the same
     // id would silently swallow retries).
-    if (
-      !order.invoice &&
-      isInvoiceEligibleOrderStatus(order.status) &&
-      (await resolveGstInvoicingEnabled(this.fastify.prisma))
-    ) {
+    if (!order.invoice && isInvoiceEligibleOrderStatus(order.status)) {
       try {
         const claimed = await this.fastify.redis.set(`invoice:requeue:${order.id}`, '1', 'EX', 300, 'NX');
         if (claimed === 'OK') {
@@ -2957,9 +2950,8 @@ export class OrdersService {
   }
 
   async adminGetInvoicePdf(orderId: string): Promise<{ invoiceNumber: string; content: Buffer }> {
-    if (!(await resolveGstInvoicingEnabled(this.fastify.prisma))) {
-      throw new AppError(ERROR_CODES.VALIDATION_ERROR, 'GST invoicing is disabled', 400);
-    }
+    // NOT gated on the GST flag (2026-08-10) — see getMyInvoicePdf. Turning GST invoicing
+    // off switches the document to a plain "INVOICE"; it never blocks the download.
 
     const order = await this.fastify.prisma.order.findUnique({
       where: { id: orderId },

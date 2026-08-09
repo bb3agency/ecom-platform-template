@@ -17,12 +17,10 @@ import {
   orderStatusChipClass,
   orderStatusLabel,
 } from "@/lib/order-status-ui";
-import { useStoreConfig } from "@/components/providers/StoreConfigProvider";
 
 
 export default function AccountOrdersPage() {
   const accessToken = useAuthStore((s) => s.accessToken);
-  const { gstInvoicingEnabled } = useStoreConfig();
   const [orders, setOrders] = useState<UserOrder[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -129,8 +127,7 @@ export default function AccountOrdersPage() {
                     {formatPrice(order.total)}
                   </p>
                   <div className="flex items-center gap-2">
-                    {gstInvoicingEnabled &&
-                    (order.invoice?.hasPdf || isInvoiceEligibleOrderStatus(order.status)) ? (
+                    {order.invoice?.hasPdf || isInvoiceEligibleOrderStatus(order.status) ? (
                       <button
                         type="button"
                         aria-label={`Download invoice for order ${order.orderNumber}`}
