@@ -92,11 +92,20 @@ export function isInvoiceEligibleOrderStatus(status: string): boolean {
  * Best-effort fetch of the store logo for the invoice header. Any failure (timeout,
  * non-image, unsupported format) returns null — the invoice renders text-only.
  * react-pdf embeds only PNG/JPG, so other formats are skipped by magic-byte sniff.
+ *
+ * Accepts an absolute http(s) URL or a SITE-RELATIVE path (`/images/logo.png`),
+ * resolved against STOREFRONT_URL — so a merchant can point at an asset already
+ * served by their own storefront without knowing the full domain.
  */
 export async function fetchInvoiceLogo(
   logoUrl: string | null
 ): Promise<{ data: Buffer; format: 'png' | 'jpg' } | null> {
-  const url = (logoUrl ?? '').trim();
+  let url = (logoUrl ?? '').trim();
+  if (url.startsWith('/') && !url.startsWith('//')) {
+    const base = (process.env.STOREFRONT_URL ?? '').trim().replace(/\/+$/, '');
+    if (!base) return null;
+    url = `${base}${url}`;
+  }
   if (!/^https?:\/\//i.test(url)) return null;
   try {
     const controller = new AbortController();

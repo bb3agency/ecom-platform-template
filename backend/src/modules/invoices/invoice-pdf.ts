@@ -68,6 +68,10 @@ export type CreditNotePdfPayload = {
   buyer: {
     fullName: string;
   };
+  /** Customer-facing store/brand name shown in the header (falls back to seller legal name). */
+  storeDisplayName?: string;
+  /** Pre-fetched store logo bytes (PNG/JPG only). Optional — header renders text-only without it. */
+  logo?: { data: Buffer; format: 'png' | 'jpg' } | null;
 };
 
 // Neutral, print-friendly palette (invoice must read cleanly in B/W print too).
@@ -89,7 +93,10 @@ const styles = StyleSheet.create({
 
   // ── Header ──────────────────────────────────────────────────────────────
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  logo: { width: 44, height: 44, objectFit: 'contain', marginBottom: 6 },
+  // Brand block: logo pinned at the FAR LEFT, identity text stacked beside it.
+  brandRow: { flexDirection: 'row', alignItems: 'flex-start' },
+  logo: { width: 54, height: 54, objectFit: 'contain', marginRight: 12 },
+  brandText: { flexGrow: 1, flexShrink: 1 },
   storeName: { fontSize: 17, fontFamily: 'Helvetica-Bold', marginBottom: 2 },
   sellerMeta: { fontSize: 8.5, color: MUTED, lineHeight: 1.5 },
   docTitle: { fontSize: 11, fontFamily: 'Helvetica-Bold', letterSpacing: 2, color: MUTED, textAlign: 'right', marginBottom: 6 },
@@ -215,25 +222,29 @@ export async function renderInvoicePdfBuffer(payload: InvoicePdfPayload): Promis
       Page,
       { size: 'A4', style: styles.page },
 
-      // Header: brand identity left, invoice meta right.
+      // Header: brand identity left (logo at the far left, text beside it), invoice meta right.
       createElement(
         View,
         { style: styles.headerRow },
         createElement(
           View,
-          { style: { width: '55%' } },
+          { style: [styles.brandRow, { width: '55%' }] },
           ...(payload.logo
             ? [createElement(Image, { style: styles.logo, src: { data: payload.logo.data, format: payload.logo.format } })]
             : []),
-          createElement(Text, { style: styles.storeName }, storeName),
-          createElement(Text, { style: styles.sellerMeta }, payload.seller.legalName),
-          createElement(Text, { style: styles.sellerMeta }, payload.seller.addressLine),
-          createElement(Text, { style: styles.sellerMeta }, `State: ${payload.seller.state}`),
-          // GSTIN and FSSAI are both optional — omit each segment (and the whole line)
-          // when not configured instead of printing placeholders.
-          ...(formatRegistrationLine(payload.seller)
-            ? [createElement(Text, { style: styles.sellerMeta }, formatRegistrationLine(payload.seller))]
-            : [])
+          createElement(
+            View,
+            { style: styles.brandText },
+            createElement(Text, { style: styles.storeName }, storeName),
+            createElement(Text, { style: styles.sellerMeta }, payload.seller.legalName),
+            createElement(Text, { style: styles.sellerMeta }, payload.seller.addressLine),
+            createElement(Text, { style: styles.sellerMeta }, `State: ${payload.seller.state}`),
+            // GSTIN and FSSAI are both optional — omit each segment (and the whole line)
+            // when not configured instead of printing placeholders.
+            ...(formatRegistrationLine(payload.seller)
+              ? [createElement(Text, { style: styles.sellerMeta }, formatRegistrationLine(payload.seller))]
+              : [])
+          )
         ),
         createElement(
           View,
@@ -362,22 +373,32 @@ export async function renderInvoicePdfBuffer(payload: InvoicePdfPayload): Promis
 }
 
 export async function renderCreditNotePdfBuffer(payload: CreditNotePdfPayload): Promise<Buffer> {
+  const creditStoreName = (payload.storeDisplayName ?? '').trim() || payload.seller.legalName;
   const doc = createElement(
     Document,
     null,
     createElement(
       Page,
       { size: 'A4', style: styles.page },
+      // Same brand block as the invoice: logo at the far left, identity text beside it.
       createElement(
         View,
         { style: styles.headerRow },
         createElement(
           View,
-          { style: { width: '55%' } },
-          createElement(Text, { style: styles.storeName }, payload.seller.legalName),
-          ...(formatRegistrationLine(payload.seller)
-            ? [createElement(Text, { style: styles.sellerMeta }, formatRegistrationLine(payload.seller))]
-            : [])
+          { style: [styles.brandRow, { width: '55%' }] },
+          ...(payload.logo
+            ? [createElement(Image, { style: styles.logo, src: { data: payload.logo.data, format: payload.logo.format } })]
+            : []),
+          createElement(
+            View,
+            { style: styles.brandText },
+            createElement(Text, { style: styles.storeName }, creditStoreName),
+            createElement(Text, { style: styles.sellerMeta }, payload.seller.legalName),
+            ...(formatRegistrationLine(payload.seller)
+              ? [createElement(Text, { style: styles.sellerMeta }, formatRegistrationLine(payload.seller))]
+              : [])
+          )
         ),
         createElement(
           View,

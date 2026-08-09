@@ -27,12 +27,14 @@ import {
   adminReorderProductImagesSchema,
   adminDeleteProductImageSchema,
   adminHsnSuggestionsSchema,
+  adminGstRateSuggestionSchema,
   getProductBySlugSchema,
   listCategoriesSchema,
   listProductsByCategorySchema,
   listProductsSchema
 } from './products.schemas';
 import { suggestHsnCodes } from './hsn-suggest';
+import { suggestGstRateForHsn } from './gst-rate-suggest';
 import { ProductsService } from './products.service';
 import { AppError } from '@common/errors/app-error';
 import { ERROR_CODES } from '@common/errors/error-codes';
@@ -419,7 +421,37 @@ export async function registerProductsRoutes(fastify: FastifyInstance): Promise<
     },
     async (request) => {
       const { q } = request.query as { q: string };
-      return { items: suggestHsnCodes(q) };
+      // Each suggestion carries the vendored CBIC GST 2.0 rate for its code so the
+      // editor can autofill HSN + GST rate in one click (suggestion-only; the
+      // admin confirms — see gst-rate-dataset.ts).
+      return {
+        items: suggestHsnCodes(q).map((item) => {
+          const rate = suggestGstRateForHsn(item.code);
+          return {
+            ...item,
+            gstRatePercent: rate?.ratePercent ?? null,
+            gstRateNote: rate?.note ?? null
+          };
+        })
+      };
+    }
+  );
+
+  // GST rate suggestion for an HSN code the admin already typed/holds — pure
+  // in-memory longest-prefix lookup over the vendored CBIC GST 2.0 rate rules
+  // (no external API, works offline). Suggestion only; never auto-applied.
+  fastify.get(
+    '/api/v1/admin/products/gst-rate-suggestion',
+    {
+      schema: adminGstRateSuggestionSchema,
+      preHandler: [...adminGuard, adminPermissionGuard('products:read')],
+      config: {
+        rateLimit: routeRateLimitProfiles.adminRead
+      }
+    },
+    async (request) => {
+      const { hsn } = request.query as { hsn: string };
+      return { suggestion: suggestGstRateForHsn(hsn) };
     }
   );
 

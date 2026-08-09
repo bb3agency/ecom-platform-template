@@ -12,6 +12,18 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.62] - 2026-08-09
+
+### Added
+- **"Invoice Logo URL" field in Admin → Settings → Store** (pairs with backend-core 0.1.88): sets `StoreSettings.logoUrl`, printed at the top-left of every invoice and credit note. Accepts a full URL or a site-relative path (`/images/logo.png`, resolved against the storefront domain by the backend); PNG/JPG only; live preview under the input; clearing the field removes the logo (sends `null`). Uses a raw `<img>` for the preview (same pattern as AdminSearchPanel) because the URL is merchant-supplied and outside `next/image` remotePatterns.
+- **GST-rate autofill in the admin product editor** (create + edit; pairs with backend-core 0.1.88): HSN suggestion chips now show a "N% GST" badge and one click fills BOTH the HSN and GST Rate fields; typing/holding an HSN (≥4 digits) fetches a debounced rate suggestion rendered as an "Apply N% (HSN xxxx)" chip with the CBIC qualifier note ("5% pre-packaged & labelled; 0% loose" etc.) and a verify-with-your-CA hint — suggestion-only, the field stays fully editable. A live **inclusive-price breakup** line under the GST Rate field shows "₹1400 = base ₹1333.33 + GST ₹66.67 (5%)" so merchants see the price they set is what customers pay, with GST carved out on the invoice. Default GST rate for new products is now 5% (12% is a dead slab since GST 2.0, 22 Sept 2025).
+
+**Propagation:**
+- Severity: NORMAL - Layers: frontend core (`components/admin/StoreSettingsPanel.tsx`, `components/admin/AdminProductEditor.tsx`)
+- Migration: NO - Flag: none - Design impact: none (token-styled) - Breaking: NO
+- Requires: backend-core >= 0.1.88 (`logoUrl` nullable on `PATCH /admin/settings/store`; `gst-rate-suggestion` route; enriched `hsn-suggestions` response)
+- Rollback: revert the files
+
 ## [0.1.61] - 2026-08-09
 
 ### Added

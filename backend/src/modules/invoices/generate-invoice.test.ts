@@ -1,5 +1,68 @@
-import { describe, expect, it } from 'vitest';
-import { computeInclusiveGstSplit, deriveInvoiceNumber } from './generate-invoice';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { computeInclusiveGstSplit, deriveInvoiceNumber, fetchInvoiceLogo } from './generate-invoice';
+
+// 1x1 transparent PNG — valid magic bytes for the sniffer.
+const TINY_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+  'base64'
+);
+
+describe('fetchInvoiceLogo — URL resolution and format sniffing', () => {
+  const originalStorefrontUrl = process.env.STOREFRONT_URL;
+  const fetchMock = vi.fn();
+
+  beforeEach(() => {
+    fetchMock.mockReset();
+    vi.stubGlobal('fetch', fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    if (originalStorefrontUrl === undefined) {
+      delete process.env.STOREFRONT_URL;
+    } else {
+      process.env.STOREFRONT_URL = originalStorefrontUrl;
+    }
+  });
+
+  function okResponse(bytes: Buffer) {
+    return {
+      ok: true,
+      arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
+    };
+  }
+
+  it('resolves a site-relative path against STOREFRONT_URL', async () => {
+    process.env.STOREFRONT_URL = 'https://www.example-store.com/';
+    fetchMock.mockResolvedValue(okResponse(TINY_PNG));
+
+    const logo = await fetchInvoiceLogo('/images/logo.png');
+
+    expect(fetchMock).toHaveBeenCalledWith('https://www.example-store.com/images/logo.png', expect.anything());
+    expect(logo).toMatchObject({ format: 'png' });
+  });
+
+  it('returns null for a relative path when STOREFRONT_URL is not configured', async () => {
+    delete process.env.STOREFRONT_URL;
+
+    expect(await fetchInvoiceLogo('/images/logo.png')).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects protocol-relative URLs (no scheme smuggling)', async () => {
+    process.env.STOREFRONT_URL = 'https://www.example-store.com';
+
+    expect(await fetchInvoiceLogo('//evil.example/logo.png')).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('fetches absolute URLs directly and rejects non-image bytes', async () => {
+    fetchMock.mockResolvedValue(okResponse(Buffer.from('<html>not an image</html>')));
+
+    expect(await fetchInvoiceLogo('https://cdn.example.com/logo.png')).toBeNull();
+    expect(fetchMock).toHaveBeenCalledWith('https://cdn.example.com/logo.png', expect.anything());
+  });
+});
 
 describe('deriveInvoiceNumber — order-derived, idempotent invoice numbering', () => {
   it('maps the random order reference onto the INV- series', () => {

@@ -563,9 +563,25 @@ Harmonized System dataset (`src/modules/products/hsn-dataset.ts`, openly license
 ODC-PDDL from github.com/datasets/harmonized-system) with an Indian-trade-terms alias
 layer (ghee/jaggery/namkeen/kaaram → HS prefixes). Returns up to 10 `{code, description}`
 suggestions; digits queries match codes by prefix. No external API — works offline for
-every client. Note: product HSN, store GSTIN and store FSSAI are all **optional** — invoices render
-"N/A" for missing HSN and omit the GSTIN/FSSAI segments when absent; courier bookings
-fall back to `DEFAULT_SHIPPING_HSN` (2106).
+every client. v2 (2026-08-09): plural/singular-insensitive matching, single-token
+alias-key prefix matching (half-typed "cardam" already suggests), a much larger
+regional-terms alias map, and each suggestion now also carries `gstRatePercent` +
+`gstRateNote` from the vendored CBIC GST 2.0 rate rules (null when uncovered) so the
+editor fills HSN + GST rate in one click. Note: product HSN, store GSTIN and store
+FSSAI are all **optional** — invoices render "N/A" for missing HSN and omit the
+GSTIN/FSSAI segments when absent; courier bookings fall back to
+`DEFAULT_SHIPPING_HSN` (2106).
+
+### `GET /api/v1/admin/products/gst-rate-suggestion`
+**Suggested GST rate for an HSN code (2026-08-09).** `products:read`. Query `hsn` =
+2-15 digit code. Longest-prefix lookup over the vendored CBIC GST 2.0 rate rules
+(`src/modules/products/gst-rate-dataset.ts` — hand-curated from Notification
+9/2025-CT(Rate) effective 22 Sept 2025; slabs 0/5/18/40 + 3% precious metals). Returns
+`{suggestion: {ratePercent, note, matchedPrefix} | null}` — null when no rule covers the
+code (never guesses). **Suggestion-only**: many rates hinge on qualifiers the code alone
+cannot capture (pre-packaged & labelled vs loose, apparel/footwear price bands), which
+`note` carries; the admin confirms and the product's stored rate is what invoices use.
+No external API — the dataset is updated via core releases like the HSN dataset.
 
 ### `GET /PATCH /api/v1/admin/settings/local-delivery`
 **Merchant-fulfilled local delivery (2026-07-10).** `settings:read` / `settings:write`. Controls

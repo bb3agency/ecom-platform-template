@@ -160,7 +160,7 @@ export const updateStoreProfileSchema = {
     properties: {
       storeName: { type: 'string', maxLength: 150 },
       websiteUrl: { type: 'string', maxLength: 1000 },
-      logoUrl: { type: 'string', maxLength: 1000 },
+      logoUrl: { anyOf: [{ type: 'string', maxLength: 1000 }, { type: 'null' }] },
       contactEmail: { type: 'string', format: 'email', maxLength: 200 },
       contactPhone: { type: 'string', maxLength: 30 },
       gstin: { type: 'string', maxLength: 30 },
