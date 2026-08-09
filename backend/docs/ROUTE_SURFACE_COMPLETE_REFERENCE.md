@@ -572,6 +572,13 @@ FSSAI are all **optional** — invoices render "N/A" for missing HSN and omit th
 GSTIN/FSSAI segments when absent; courier bookings fall back to
 `DEFAULT_SHIPPING_HSN` (2106).
 
+> **EDGE REQUIREMENT for every multipart route below.** Admin upload endpoints must appear in
+> the Nginx upload-exemption location (`nginx/client.conf.template`), otherwise `auth_request`
+> body-buffering makes **Nginx 500 the request before it reaches the backend** — with no API log
+> line at all. Covered today: product/category images, gallery, `settings/store/logo`,
+> `products/import-csv`. Enforced by `src/common/plugins/multipart-nginx-coverage.test.ts`; see
+> `CLIENT_VPS_SETUP_GUIDE.md` §11.1 for how to actually apply an Nginx change on a live VPS.
+
 ### `POST /DELETE /api/v1/admin/settings/store/logo` + `GET /api/v1/store/logo`
 **Invoice/brand logo upload (2026-08-09).** POST (`settings:write`, multipart `file`) stores
 the logo IN the `StoreSettings` row (`logoData`/`logoMimeType`, migration `20260811000000`):

@@ -6,6 +6,24 @@ This document preserves detailed hardening history for engineering traceability.
 
 ---
 
+**[2026-08-09] Admin multipart uploads rejected at the edge — invisible 500s (backend-core 0.1.90):**
+
+Root cause: routes matched by the generic `location ~ ^/api/v1/admin/` block in `nginx/client.conf.template` carry `auth_request /_maintenance_gate`. `auth_request` forces Nginx to buffer the entire request body before issuing the gate subrequest; for `multipart/form-data` that fails and **Nginx returns 500 itself — the request never reaches the backend**. Consequence: no request line and no error in the API logs, a generic "Something went wrong" in the browser, and (because small bodies sometimes slip through) an apparently intermittent failure. An exemption `location` that skips `auth_request` and sets `proxy_request_buffering off` already existed for image uploads, but it was a hand-maintained regex.
+
+What broke: `POST /api/v1/admin/settings/store/logo` shipped in 0.1.89 without being added to the exemption, so the invoice-logo upload was 100% broken in production. Writing the guard below immediately surfaced a second, unreported case: `POST /api/v1/admin/products/import-csv` had never been in the exemption and had been silently failing since it shipped.
+
+Fixes:
+1. **Exemption regex extended** to `^/api/v1/admin/(.+/images?/upload|gallery|settings/store/logo|products/import-csv)$`.
+2. **CI drift guard** `src/common/plugins/multipart-nginx-coverage.test.ts` — scans every `*.routes.ts`, finds handlers that read a multipart body (`request.isMultipart()/parts()/file()`), and asserts each route is covered by the Nginx regex (and that ordinary admin routes are *not* exempted). This failure mode leaves no trace in application logs, so it must be caught at build time.
+3. **Error-handler no longer masks framework client faults.** Errors raised by Fastify/plugins (multipart `FST_REQ_FILE_TOO_LARGE`, content-type parser faults, malformed bodies) carry an accurate 4xx `statusCode` but are not `AppError`s — they fell through to the generic 500 branch, returning the wrong status, a useless message, **and raising a false technical-failure alert**. They now return their real status with a safe whitelisted message (413 for too-large), log at `warn`, and fire no alert. Framework **5xx** errors are still masked and still alert.
+4. **Upload route hardening:** multipart read failures are caught and classified (413/400) instead of escaping as unhandled 500s.
+
+Operational lesson: Nginx config is outside the core-sync flow. `vps-deploy.sh` only warns about drift unless `NGINX_AUTO_RELOAD=1` is set on the runner, so an edge fix can merge, deploy green, and still not be live. Setting `NGINX_AUTO_RELOAD=1` (with the matching passwordless sudo grants) is the durable fix; the manual render+reload procedure is in `CLIENT_VPS_SETUP_GUIDE.md` §11.1.
+
+Diagnostic playbook that isolated this (reusable for any "mystery 500"): (a) curl the live route to prove the deployed code is current — an application 404 message vs `"Route not found"` distinguishes route-exists from route-missing; (b) reproduce the route in a `fastify.inject` harness using the **real** global error handler and real multipart plugin; (c) verify Fastify `bodyLimit` does not apply to multipart (it does not); (d) exercise the DB write against a throwaway Postgres; (e) when every application-layer link is green, **suspect the proxy**.
+
+---
+
 **Order, payment, coupon, shipping, and storefront integration hardening — June 10, 2026 (pass 2):**
 
 Root cause / gaps addressed: (1) Storefront feature flags and COD/min-order were build-time or admin-only — toggling backend `FEATURE_*` or DB settings did not reach customer UI without redeploy. (2) Coupon usage limits ignored in-flight checkout orders in `PAYMENT_FAILED`, allowing reuse before worker finalization. (3) Guest coupon Redis increment failures were fail-open. (4) Stale invalid coupons remained on cart reads. (5) Checkout showed static/free shipping while COD vs PREPAID rates differ. (6) `createOrder` shipping TOCTOU vs cart preview. (7) Cancel paths did not enqueue provider shipment cancel or guard COD inventory restore before worker deduction. (8) `payment.captured` webhook + `PAYMENT_FAILED` order was rejected by worker CAS. (9) `retryPayment` did not restore cart reservations for `PAYMENT_FAILED` / `PENDING_PAYMENT`. (10) Reconciliation auto-heal for refunds did not restore inventory; stale abandoned checkouts did not release coupon links; `ORDER_SHIPPED_WITHOUT_SHIPMENT` was incorrectly in default auto-heal set. (11) COD worker failure left coupon reservations and sent no cancel notifications. (12) Frontend cancel UI allowed `PENDING_PAYMENT`; retry payment ran twice; invoice UI used build-time GST flag instead of `invoice.hasPdf`.
