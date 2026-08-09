@@ -168,8 +168,8 @@ export function StoreSettingsPanel() {
       setGstInvoicingEnabled(res.gstInvoicingEnabled);
       setSuccess(
         res.gstInvoicingEnabled
-          ? "GST invoicing enabled. Invoices will be generated for new orders."
-          : "GST invoicing disabled. New orders will not generate invoices.",
+          ? "GST invoicing enabled. Invoices are issued as TAX INVOICES with a GST breakdown."
+          : "GST invoicing disabled. Invoices are still issued for every order — as a plain INVOICE with no GST.",
       );
       setTimeout(() => setSuccess(null), 4000);
     } catch (err) {
@@ -658,8 +658,10 @@ export function StoreSettingsPanel() {
             <span>
               <span className="block text-sm font-medium text-foreground">GST invoicing</span>
               <span className="block text-xs text-muted-foreground">
-                When on, a GST tax invoice PDF is generated for every new order and offered to
-                the customer and admin. Requires the seller details below (name, address, state);
+                Controls what the invoice looks like, not whether it exists: on = a
+                &ldquo;TAX INVOICE&rdquo; with the GST breakdown; off = a plain
+                &ldquo;INVOICE&rdquo; with no tax columns. Every order gets a downloadable
+                invoice either way. Requires the seller details below (name, address, state);
                 GSTIN and FSSAI are optional and print only when provided.
                 Takes effect immediately — no restart.
               </span>
@@ -775,9 +777,10 @@ export function StoreSettingsPanel() {
           </>
         ) : (
           <p className="text-sm text-muted-foreground">
-            GSTIN &amp; FSSAI fields are hidden because GST invoicing is turned off above. Turn it
-            on to enter your tax details and start generating invoices. Your store address is
-            still saved and shown on the storefront regardless.
+            GSTIN &amp; FSSAI fields are hidden because GST invoicing is turned off above.
+            Invoices are still generated for every order — as a plain INVOICE with no GST
+            breakdown. Turn GST invoicing on to enter your tax details and issue TAX INVOICES.
+            Your store address is saved and shown on the storefront either way.
           </p>
         )}
 

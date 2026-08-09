@@ -448,20 +448,23 @@ if [ -f "$NGINX_TEMPLATE" ]; then
 
     if [ ! -f "$NGINX_LIVE" ]; then
       log "Nginx live config $NGINX_LIVE does not exist yet (first deploy?)."
-      if [ "${NGINX_AUTO_RELOAD:-0}" = "1" ]; then
+      if [ "${NGINX_AUTO_RELOAD:-0}" = "1" ] && sudo -n true 2>/dev/null; then
         log "NGINX_AUTO_RELOAD=1 — installing initial rendered config"
-        sudo cp "$NGINX_RENDERED" "$NGINX_LIVE"
+        sudo -n cp "$NGINX_RENDERED" "$NGINX_LIVE"
         # Ensure the new config is enabled when we created a new
         # /sites-available file on first deploy.
         if [[ "$NGINX_LIVE" == /etc/nginx/sites-available/* ]]; then
-          sudo ln -sfn "$NGINX_LIVE" "/etc/nginx/sites-enabled/$NGINX_LIVE_BASENAME"
+          sudo -n ln -sfn "$NGINX_LIVE" "/etc/nginx/sites-enabled/$NGINX_LIVE_BASENAME"
         fi
-        if sudo nginx -t >/dev/null 2>&1; then
-          sudo systemctl reload nginx && log "Nginx reload succeeded."
+        if sudo -n nginx -t >/dev/null 2>&1; then
+          sudo -n systemctl reload nginx && log "Nginx reload succeeded."
         else
-          sudo nginx -t || true
+          # No previous config to restore on a first install — remove the broken file
+          # so nginx cannot pick it up on an unrelated reload later.
+          sudo -n rm -f "/etc/nginx/sites-enabled/$NGINX_LIVE_BASENAME" 2>/dev/null || true
+          sudo -n nginx -t || true
           rm -f "$NGINX_RENDERED"
-          fail "Nginx config test failed after installing rendered template."
+          fail "Nginx config test failed after installing rendered template (site left disabled)."
         fi
       else
         log "Leaving rendered file at $NGINX_RENDERED for manual install:"
@@ -470,16 +473,32 @@ if [ -f "$NGINX_TEMPLATE" ]; then
     elif ! cmp -s "$NGINX_RENDERED" "$NGINX_LIVE"; then
       log "Nginx config drift detected: rendered template differs from $NGINX_LIVE"
       if [ "${NGINX_AUTO_RELOAD:-0}" = "1" ]; then
-        log "NGINX_AUTO_RELOAD=1 — syncing rendered template to live and reloading nginx"
-        sudo cp "$NGINX_RENDERED" "$NGINX_LIVE"
-        if sudo nginx -t >/dev/null 2>&1; then
-          sudo systemctl reload nginx
-          log "Nginx reload succeeded."
+        # Non-interactive sudo only. A runner without the passwordless grants must
+        # degrade to the warning path — never hang on a password prompt and never
+        # fail an otherwise-healthy deploy just because the edge cannot be synced.
+        if ! sudo -n true 2>/dev/null; then
+          log "WARNING: NGINX_AUTO_RELOAD=1 but this runner has no passwordless sudo."
+          log "Live nginx config is STALE. Sync manually on this VPS:"
+          log "  sudo cp $NGINX_RENDERED $NGINX_LIVE && sudo nginx -t && sudo systemctl reload nginx"
+          log "Grant sudo for cp/nginx/systemctl (CLIENT_VPS_SETUP_GUIDE §22) to automate this."
         else
-          log "Nginx config test FAILED after sync — investigate before next deploy"
-          sudo nginx -t || true
-          rm -f "$NGINX_RENDERED"
-          fail "Nginx config test failed. Live config at $NGINX_LIVE was overwritten but nginx not reloaded — restore from .bak if needed."
+          log "NGINX_AUTO_RELOAD=1 — syncing rendered template to live and reloading nginx"
+          # Always keep a restorable copy: the rollback below depends on it.
+          NGINX_BACKUP="${NGINX_LIVE}.bak-$(date +%Y%m%d-%H%M%S)"
+          sudo -n cp "$NGINX_LIVE" "$NGINX_BACKUP" && log "Backed up live config to $NGINX_BACKUP"
+          sudo -n cp "$NGINX_RENDERED" "$NGINX_LIVE"
+          if sudo -n nginx -t >/dev/null 2>&1; then
+            sudo -n systemctl reload nginx
+            log "Nginx reload succeeded."
+          else
+            # Restore FIRST — a broken vhost left in place would take the site down on
+            # the next unrelated nginx reload, long after this deploy log is forgotten.
+            log "Nginx config test FAILED after sync — restoring previous config"
+            sudo -n cp "$NGINX_BACKUP" "$NGINX_LIVE" && log "Restored $NGINX_LIVE from $NGINX_BACKUP"
+            sudo -n nginx -t || true
+            rm -f "$NGINX_RENDERED"
+            fail "Nginx config test failed; live config restored from backup and nginx NOT reloaded. Fix nginx/client.conf.template before the next deploy."
+          fi
         fi
       else
         log "WARNING: live nginx config is stale. Run on this VPS to sync:"

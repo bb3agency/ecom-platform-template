@@ -12,6 +12,18 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.65] - 2026-08-10
+
+### Fixed
+- **Customer invoice buttons no longer disappear when GST invoicing is off** (pairs with backend-core 0.1.92): every order has a downloadable invoice — a plain INVOICE when GST is off — so the account order list and order detail gate the button on `invoice.hasPdf || isInvoiceEligibleOrderStatus(status)` only. (Theme layer: hand-carried per client.)
+- **Admin → Settings → Store GST toggle copy corrected.** It previously promised "New orders will not generate invoices", which is no longer true and misled the merchant into thinking invoicing was off. It now states what the switch actually does: TAX INVOICE with a GST breakdown vs a plain INVOICE, with every order invoiced either way. The hidden-GSTIN explainer and the save toast say the same.
+
+**Propagation:**
+- Severity: NORMAL - Layers: frontend core (`components/admin/StoreSettingsPanel.tsx`) + THEME (`app/(account)/orders/page.tsx`, `app/(account)/orders/[id]/page.tsx` — per-client, hand-carry)
+- Migration: NO - Flag: none - Design impact: none - Breaking: NO
+- Requires: backend-core >= 0.1.92 (downloads no longer gated on the GST flag)
+- Rollback: revert the files
+
 ## [0.1.64] - 2026-08-09
 
 ### Fixed
