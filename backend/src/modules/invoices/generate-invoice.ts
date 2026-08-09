@@ -23,6 +23,9 @@ import {
  * Generation is idempotent per order: the transaction re-checks for an existing
  * `Invoice` row, and `Invoice.orderId` is unique, so a concurrent duplicate run
  * fails the insert instead of double-issuing an invoice number for the order.
+ * The invoice NUMBER is idempotent too — derived from the order number (see
+ * deriveInvoiceNumber), so deleting an Invoice row and regenerating reissues the
+ * exact same number instead of consuming a fresh serial.
  */
 
 export type ShippingAddress = {
@@ -184,6 +187,22 @@ export async function resolveSellerProfileOrThrow(prisma: PrismaClient): Promise
 }
 
 /**
+ * Invoice number derived from the order number: `ORD-AB2C-9XYZ` → `INV-AB2C-9XYZ`.
+ *
+ * Why derived, not sequential (2026-08-09): a global counter consumes a fresh number on
+ * every (re)generation — deleting a bad Invoice row to re-render it burned a serial and
+ * left a gap, and the counter itself leaked business volume. Deriving from the order
+ * reference makes numbering IDEMPOTENT (regenerating an order's invoice always reissues
+ * the same number), globally unique (order numbers are unique), and within CGST Rule
+ * 46(b)'s 16-character limit (alphabets, numerals, and "-" are permitted; `INV-` + the
+ * 9-char order ref = 13 chars; legacy `ORD-YYYY-#####` refs map to 14 chars).
+ */
+export function deriveInvoiceNumber(orderNumber: string): string {
+  const ref = orderNumber.replace(/^ORD-/, '');
+  return `INV-${ref}`;
+}
+
+/**
  * GST split for a GST-INCLUSIVE line amount (Indian B2C catalog prices include GST).
  * The tax is CARVED OUT of the amount, never added on top — so per-line
  * taxable + tax always equals the amount the customer paid for that line:
@@ -329,27 +348,31 @@ export async function generateInvoiceForOrder(
     // for filling codes on products where applicable; the HSN autofill suggestions in the
     // product editor make that easy.
 
-    // The sequence normally exists via the 20260809 migration; the runtime CREATE is a
-    // back-compat fallback for databases that predate it. If the runtime role lacks
-    // CREATE on the schema (PostgreSQL 15+ revoked public CREATE by default), surface
-    // an actionable 422 instead of a masked 500 — running migrations fixes it.
-    try {
-      await tx.$executeRaw`CREATE SEQUENCE IF NOT EXISTS invoice_number_seq START 1`;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (/permission denied|must be owner|insufficient.*privilege/i.test(message)) {
+    // Invoice number is DERIVED from the order number (see deriveInvoiceNumber) — no
+    // sequence, no gaps, idempotent regeneration. The only collision surface is a
+    // pre-existing sequence-era invoice (`INV-YYYY-#####`) clashing with a derived
+    // number for a legacy sequential order ref (`ORD-YYYY-#####`). If that ever
+    // happens, fall back to the `INVA-` series (multiple series are permitted under
+    // CGST Rule 46(b)); a second collision is impossible in practice and throws.
+    let invoiceNumber = deriveInvoiceNumber(order.orderNumber);
+    const numberTakenByOtherOrder = await tx.invoice.findUnique({
+      where: { invoiceNumber },
+      select: { orderId: true }
+    });
+    if (numberTakenByOtherOrder && numberTakenByOtherOrder.orderId !== order.id) {
+      invoiceNumber = `INVA-${order.orderNumber.replace(/^ORD-/, '')}`;
+      const fallbackTaken = await tx.invoice.findUnique({
+        where: { invoiceNumber },
+        select: { orderId: true }
+      });
+      if (fallbackTaken && fallbackTaken.orderId !== order.id) {
         throw new AppError(
           ERROR_CODES.VALIDATION_ERROR,
-          'Invoice numbering is not initialized: the database role cannot create the invoice_number_seq sequence. Run the pending Prisma migrations (which create it), or grant CREATE on the schema.',
+          `Invoice number collision for order ${order.orderNumber}: both derived series are already issued to other orders. Resolve the conflicting Invoice rows before regenerating.`,
           422
         );
       }
-      throw error;
     }
-    const sequenceResult = await tx.$queryRaw<Array<{ nextval: bigint }>>`SELECT nextval('invoice_number_seq')`;
-    const sequenceNumber = Number(sequenceResult[0]?.nextval ?? 1n);
-    const year = new Date().getFullYear();
-    const invoiceNumber = `INV-${year}-${String(sequenceNumber).padStart(5, '0')}`;
     const shippingAddress = (order.shippingAddress ?? {}) as ShippingAddress;
     const sellerState = sellerProfile.state;
     const buyerState = (shippingAddress.state ?? 'Unknown').trim();

@@ -1207,7 +1207,7 @@ PCI scope, caller-class JSON minimisation (public vs customer vs admin vs ops), 
 ### 🧾 GST Invoicing Module
 - Invoice generated automatically on order confirmation, attached to confirmation email
 - PDF contains: GSTIN, FSSAI number (food), HSN codes, CGST+SGST / IGST breakdown, invoice number
-- Invoice number format: `FOOD-2026-00001` — sequential per store, configurable
+- Invoice number format: `INV-<order-ref>` (e.g. `INV-AB2C-9XYZ`) — derived from the order number, stable across regeneration, no sequential counter (BR-GST-05 as amended 2026-08-09)
 - Generated in worker context with React PDF renderer (`@react-pdf/renderer`) using an Invoicely-style composition pattern, stored on local filesystem
 - Authenticated download routes:
   - Customer: `GET /api/v1/orders/:id/invoice.pdf`

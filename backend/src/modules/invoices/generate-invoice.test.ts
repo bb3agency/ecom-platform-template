@@ -1,5 +1,28 @@
 import { describe, expect, it } from 'vitest';
-import { computeInclusiveGstSplit } from './generate-invoice';
+import { computeInclusiveGstSplit, deriveInvoiceNumber } from './generate-invoice';
+
+describe('deriveInvoiceNumber — order-derived, idempotent invoice numbering', () => {
+  it('maps the random order reference onto the INV- series', () => {
+    expect(deriveInvoiceNumber('ORD-AB2C-9XYZ')).toBe('INV-AB2C-9XYZ');
+  });
+
+  it('maps legacy sequential order numbers without double-prefixing', () => {
+    expect(deriveInvoiceNumber('ORD-2026-00039')).toBe('INV-2026-00039');
+  });
+
+  it('is deterministic — regenerating an invoice reissues the same number', () => {
+    expect(deriveInvoiceNumber('ORD-QRST-2345')).toBe(deriveInvoiceNumber('ORD-QRST-2345'));
+  });
+
+  it('stays within the CGST Rule 46(b) 16-character serial limit for both formats', () => {
+    expect(deriveInvoiceNumber('ORD-AB2C-9XYZ').length).toBeLessThanOrEqual(16);
+    expect(deriveInvoiceNumber('ORD-2026-00039').length).toBeLessThanOrEqual(16);
+  });
+
+  it('keeps an unprefixed reference intact rather than mangling it', () => {
+    expect(deriveInvoiceNumber('AB2C-9XYZ')).toBe('INV-AB2C-9XYZ');
+  });
+});
 
 describe('computeInclusiveGstSplit — GST carved out of GST-inclusive amounts', () => {
   it('splits an intra-state 12% line so taxable + tax equals exactly what was paid', () => {
