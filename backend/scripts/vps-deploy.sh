@@ -36,6 +36,10 @@ EXPECTED_SHA="${2:?COMMIT_SHA argument is required}"
 HEALTH_RETRIES=90
 HEALTH_INTERVAL=2
 
+# Directory of THIS script — used to source helpers from scripts/lib/. Resolved before
+# any `cd`, so it stays correct regardless of the runner's working directory.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 log() { echo "[deploy] $(date -u '+%Y-%m-%dT%H:%M:%SZ') $*"; }
 fail() { echo "[deploy] ERROR: $*" >&2; exit 1; }
 
@@ -312,39 +316,14 @@ NGINX_MAINTENANCE_DST="/etc/nginx/maintenance/maintenance.html"
 # If we sync the rendered template to the wrong filename, nginx keeps serving
 # the stale active file and maintenance-mode fixes never go live (exactly the
 # "still seeing bare nginx 503 page" failure mode).
-resolve_nginx_live_conf() {
-  local domain="$1"
-  local project="$2"
-  local file=""
-
-  # Fast path: check explicit expected filenames first.
-  for candidate in \
-    "/etc/nginx/sites-enabled/${project}.conf" \
-    "/etc/nginx/sites-available/${project}.conf" \
-    "/etc/nginx/sites-enabled/${domain}.conf" \
-    "/etc/nginx/sites-available/${domain}.conf"; do
-    if [ -f "$candidate" ]; then
-      echo "$candidate"
-      return 0
-    fi
-  done
-
-  # Fallback: discover by server_name in enabled configs first (authoritative),
-  # then in available configs.
-  file="$(grep -lE "server_name[[:space:]].*\\b${domain}\\b" /etc/nginx/sites-enabled/*.conf 2>/dev/null | head -1 || true)"
-  if [ -n "$file" ] && [ -f "$file" ]; then
-    echo "$file"
-    return 0
-  fi
-  file="$(grep -lE "server_name[[:space:]].*\\b${domain}\\b" /etc/nginx/sites-available/*.conf 2>/dev/null | head -1 || true)"
-  if [ -n "$file" ] && [ -f "$file" ]; then
-    echo "$file"
-    return 0
-  fi
-
-  # First deploy / unknown layout: default to a deterministic domain-based path.
-  echo "/etc/nginx/sites-available/${domain}.conf"
-}
+# Vhost path resolution lives in scripts/lib/ so it can be unit-tested against real
+# directory fixtures — it silently mis-resolved for months (see that file's header).
+# shellcheck source=lib/resolve-nginx-live-conf.sh
+if [ -f "$SCRIPT_DIR/lib/resolve-nginx-live-conf.sh" ]; then
+  . "$SCRIPT_DIR/lib/resolve-nginx-live-conf.sh"
+else
+  fail "Missing $SCRIPT_DIR/lib/resolve-nginx-live-conf.sh (required for nginx vhost resolution)"
+fi
 NGINX_LIVE="$(resolve_nginx_live_conf "$NGINX_DOMAIN" "$COMPOSE_PROJECT")"
 NGINX_LIVE_BASENAME="$(basename "$NGINX_LIVE")"
 log "Resolved nginx live config target: $NGINX_LIVE (domain=$NGINX_DOMAIN, project=$COMPOSE_PROJECT)"
