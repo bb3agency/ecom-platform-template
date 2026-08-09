@@ -229,6 +229,59 @@ describe('global error handler', () => {
     expect(body.error.details.retryAfterSeconds).toBe(1);
   });
 
+  it('surfaces framework/plugin CLIENT faults with their real 4xx status instead of a masked 500', async () => {
+    // Regression guard: Fastify- and plugin-raised errors (multipart file-too-large,
+    // content-type parser faults) are not AppErrors. They used to fall through to the
+    // generic 500 branch, so an oversized upload reported "Something went wrong" AND
+    // raised a false internal-outage alert — untraceable from the client side.
+    const app = Fastify();
+    await registerGlobalErrorHandler(app);
+
+    app.get('/api/v1/too-large', async () => {
+      const error = new Error('request file too large, please check multipart config') as Error & {
+        statusCode: number;
+        code: string;
+      };
+      error.statusCode = 413;
+      error.code = 'FST_REQ_FILE_TOO_LARGE';
+      throw error;
+    });
+
+    const response = await app.inject({ method: 'GET', url: '/api/v1/too-large' });
+
+    expect(response.statusCode).toBe(413);
+    const body = response.json() as {
+      error: { code: string; message: string; details: Record<string, unknown> };
+    };
+    expect(body.error.code).toBe(ERROR_CODES.VALIDATION_ERROR);
+    expect(body.error.message).toContain('too large');
+    expect(body.error.details.hintKey).toBe('payload_too_large');
+    // The framework's raw message (which names internal limits) is never forwarded.
+    expect(body.error.message).not.toContain('multipart config');
+
+    await app.close();
+  });
+
+  it('still masks framework 5xx faults as a generic 500', async () => {
+    const app = Fastify();
+    await registerGlobalErrorHandler(app);
+
+    app.get('/api/v1/upstream-broke', async () => {
+      const error = new Error('socket hang up') as Error & { statusCode: number };
+      error.statusCode = 502;
+      throw error;
+    });
+
+    const response = await app.inject({ method: 'GET', url: '/api/v1/upstream-broke' });
+
+    expect(response.statusCode).toBe(500);
+    const body = response.json() as { error: { code: string; message: string } };
+    expect(body.error.code).toBe(ERROR_CODES.INTERNAL_ERROR);
+    expect(body.error.message).not.toContain('socket hang up');
+
+    await app.close();
+  });
+
   it('keeps kind/hintKey on 4xx responses (client contract unchanged)', async () => {
     const app = Fastify();
     await registerGlobalErrorHandler(app);

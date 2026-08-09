@@ -37,6 +37,48 @@ function sanitizeUnexpectedError(error: ValidationError): Record<string, unknown
   };
 }
 
+/**
+ * Safe, actionable message for a CLIENT-fault error raised by Fastify itself or a
+ * plugin (multipart, content-type parsers). These carry an accurate 4xx statusCode
+ * but are not AppErrors, so before this mapping existed they fell through to the
+ * generic 500 — turning "file too large" or "unsupported media type" into an
+ * untraceable "Something went wrong" with a false internal-outage alert.
+ * Whitelisted codes only; anything unrecognized gets a neutral sentence (never the
+ * framework's raw message, which can name internal limits/paths).
+ */
+function frameworkClientErrorMessage(error: ValidationError): string {
+  switch (error.code) {
+    case 'FST_REQ_FILE_TOO_LARGE':
+    case 'FST_ERR_CTP_BODY_TOO_LARGE':
+      return 'The uploaded file is too large. Choose a smaller file and try again.';
+    case 'FST_PARTS_LIMIT':
+    case 'FST_FILES_LIMIT':
+    case 'FST_FIELDS_LIMIT':
+      return 'Too many parts in the upload. Send a single file and try again.';
+    case 'FST_INVALID_MULTIPART_CONTENT_TYPE':
+    case 'FST_ERR_CTP_INVALID_MEDIA_TYPE':
+      return 'Unsupported content type for this endpoint.';
+    case 'FST_ERR_CTP_EMPTY_JSON_BODY':
+    case 'FST_ERR_CTP_INVALID_JSON_BODY':
+      return 'The request body could not be parsed.';
+    default:
+      return 'The request could not be processed. Review the request and try again.';
+  }
+}
+
+function frameworkClientErrorHint(error: ValidationError): string {
+  switch (error.code) {
+    case 'FST_REQ_FILE_TOO_LARGE':
+    case 'FST_ERR_CTP_BODY_TOO_LARGE':
+      return 'payload_too_large';
+    case 'FST_INVALID_MULTIPART_CONTENT_TYPE':
+    case 'FST_ERR_CTP_INVALID_MEDIA_TYPE':
+      return 'unsupported_media_type';
+    default:
+      return 'request_rejected';
+  }
+}
+
 function normalizedValidationFields(validation: unknown): Array<{ field: string; rule: string; message: string }> {
   if (!Array.isArray(validation)) {
     return [];
@@ -221,6 +263,37 @@ export async function registerGlobalErrorHandler(fastify: FastifyInstance): Prom
               retryable: true,
               retryAfterSeconds: 60,
               remediation: 'Wait and retry with exponential backoff.'
+            }
+          }
+        });
+        return;
+      }
+
+      // CLIENT faults raised by Fastify/plugins (multipart limits, content-type parser,
+      // malformed body) carry a real 4xx statusCode. Honour it instead of masking as a
+      // 500: nothing is broken server-side, so no technical-failure alert fires and the
+      // caller gets an actionable status + safe message. The raw error is logged (warn).
+      const frameworkStatus = typeof error.statusCode === 'number' ? error.statusCode : 0;
+      if (frameworkStatus >= 400 && frameworkStatus < 500) {
+        maybeTrackCheckoutFailure(request);
+        fastify.log.warn(
+          {
+            error: redactSensitiveData(sanitizeUnexpectedError(error)),
+            request: { id: request.id, method: request.method, url: request.url }
+          },
+          'Client request rejected by framework/plugin'
+        );
+        reply.status(frameworkStatus).send({
+          success: false,
+          error: {
+            code: ERROR_CODES.VALIDATION_ERROR,
+            message: frameworkClientErrorMessage(error),
+            statusCode: frameworkStatus,
+            details: {
+              kind: 'validation',
+              hintKey: frameworkClientErrorHint(error),
+              retryable: false,
+              remediation: 'Review the request and try again.'
             }
           }
         });
