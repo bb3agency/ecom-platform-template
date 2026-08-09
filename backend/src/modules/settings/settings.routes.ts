@@ -141,10 +141,25 @@ export async function registerSettingsRoutes(fastify: FastifyInstance): Promise<
         );
       }
       let buffer: Buffer | null = null;
-      for await (const part of request.parts()) {
-        if (part.type === 'file' && (part.fieldname === 'file' || part.fieldname === 'logo')) {
-          buffer = await part.toBuffer();
+      try {
+        for await (const part of request.parts()) {
+          if (part.type === 'file' && (part.fieldname === 'file' || part.fieldname === 'logo')) {
+            buffer = await part.toBuffer();
+          }
         }
+      } catch (error) {
+        // Multipart-layer faults (file over the plugin limit, malformed body, aborted
+        // upload) are CLIENT faults with actionable fixes — never let them reach the
+        // unhandled branch, which would report a masked 500 and raise a false outage alert.
+        const code = (error as { code?: string }).code;
+        request.log.warn({ err: error, code }, 'store logo multipart read failed');
+        throw new AppError(
+          ERROR_CODES.VALIDATION_ERROR,
+          code === 'FST_REQ_FILE_TOO_LARGE'
+            ? 'The logo file is too large to upload. Use an image under 2 MB.'
+            : 'The logo upload could not be read. Re-select the file and try again.',
+          code === 'FST_REQ_FILE_TOO_LARGE' ? 413 : 400
+        );
       }
       if (!buffer) {
         throw new AppError(ERROR_CODES.VALIDATION_ERROR, 'No logo file provided', 400);

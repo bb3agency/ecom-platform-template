@@ -12,6 +12,19 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.64] - 2026-08-09
+
+### Fixed
+- **Oversized brand logos blew up the settings page layout.** The preview rendered a merchant-supplied `<img>` with only utility max-width classes, so a multi-megapixel logo (one client's is 7.5 MB) could drive the panel's width from its intrinsic size — the reported "viewport issue" (huge empty area, content pushed out of view). The preview now lives in a fixed 56×56 box with `overflow-hidden` + `object-contain`, and a failed load falls back to a placeholder instead of a broken half-rendered element.
+- **Logo uploads are now right-sized before they leave the browser.** Target is 512 px on the longest side (the invoice prints the logo ~54 pt ≈ 0.75 in, so this is already ~2× what 300 DPI needs): a 7.5 MB brand PNG becomes tens of KB. Aspect ratio is always preserved; PNG stays PNG (transparency intact) and only falls back to JPEG if the lossless result still exceeds the cap. Undecodable images now report a clear message instead of being uploaded for the server to reject.
+- **Upload errors surface the real reason** (the backend's actionable 4xx message) instead of a blanket "Something went wrong"; a successful upload also clears any legacy URL-mode logo from the form state.
+
+**Propagation:**
+- Severity: NORMAL - Layers: frontend core (`components/admin/StoreSettingsPanel.tsx`)
+- Migration: NO - Flag: none - Design impact: none - Breaking: NO
+- Requires: backend-core >= 0.1.90 (nginx upload exemption — without it the upload 500s at the proxy)
+- Rollback: revert the file
+
 ## [0.1.63] - 2026-08-09
 
 ### Changed

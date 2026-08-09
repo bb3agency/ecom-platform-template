@@ -25,51 +25,60 @@ import { BRAND_LOGO_SRC } from "@/lib/constants";
 
 // Server-side cap for the stored logo (matches STORE_LOGO_MAX_BYTES on the backend).
 const LOGO_MAX_UPLOAD_BYTES = 2 * 1024 * 1024;
-// Downscale threshold — logos larger than this on the longest side are resized
-// client-side before upload (original aspect ratio always preserved).
-const LOGO_MAX_DIMENSION = 1600;
+/**
+ * Target size for the stored logo. The invoice prints it ~54pt tall (≈0.75 inch), so
+ * 512px on the longest side is already ~2× what a 300 DPI print needs — anything
+ * larger is pure weight. Brand PNGs are routinely multi-megabyte (one client's is
+ * 7.5 MB), which is why the picked file is normalised here rather than shipped as-is.
+ */
+const LOGO_TARGET_MAX_DIMENSION = 512;
+
+/** Client-side input problem (bad/undecodable image) — its message is safe to show as-is. */
+class LogoInputError extends Error {}
 
 /**
- * Prepare a picked/fetched logo for upload: keep ORIGINAL bytes (ratio + quality)
- * whenever they already fit; only when the image is oversized (dimension or bytes)
- * redraw it on a canvas at a reduced size — PNG stays PNG (lossless, keeps
- * transparency), JPEG re-encodes at quality 0.85. Falls back to the original blob
- * if decoding fails (the server re-validates by magic bytes anyway).
+ * Normalise a picked/fetched logo for upload: preserve the ORIGINAL ASPECT RATIO
+ * always, downscale to a print-appropriate size when larger, and keep PNG (lossless,
+ * transparency intact) unless the result still exceeds the cap — then fall back to a
+ * lightly-compressed JPEG. Small images that already fit are uploaded byte-for-byte.
+ * Returns null when the image cannot be decoded, so the caller can report a clear
+ * message instead of shipping something the server will reject.
  */
-async function prepareLogoForUpload(source: Blob): Promise<Blob> {
+async function prepareLogoForUpload(source: Blob): Promise<Blob | null> {
   const isPng = source.type === "image/png";
+  let bitmap: ImageBitmap;
   try {
-    const bitmap = await createImageBitmap(source);
+    bitmap = await createImageBitmap(source);
+  } catch {
+    // Undecodable (not an image, or too large for the decoder) — only pass through
+    // when it is already small enough for the server to validate and reject clearly.
+    return source.size <= LOGO_MAX_UPLOAD_BYTES ? source : null;
+  }
+  try {
     const longest = Math.max(bitmap.width, bitmap.height);
-    const withinDimension = longest <= LOGO_MAX_DIMENSION;
-    const withinBytes = source.size <= LOGO_MAX_UPLOAD_BYTES;
-    if (withinDimension && withinBytes) {
-      bitmap.close();
+    if (longest <= LOGO_TARGET_MAX_DIMENSION && source.size <= LOGO_MAX_UPLOAD_BYTES) {
       return source;
     }
-    const scale = withinDimension ? 1 : LOGO_MAX_DIMENSION / longest;
+    const scale = Math.min(1, LOGO_TARGET_MAX_DIMENSION / longest);
     const width = Math.max(1, Math.round(bitmap.width * scale));
     const height = Math.max(1, Math.round(bitmap.height * scale));
     const canvas = document.createElement("canvas");
     canvas.width = width;
     canvas.height = height;
     const ctx = canvas.getContext("2d");
-    if (!ctx) {
-      bitmap.close();
-      return source;
-    }
+    if (!ctx) return source.size <= LOGO_MAX_UPLOAD_BYTES ? source : null;
     ctx.drawImage(bitmap, 0, 0, width, height);
-    bitmap.close();
     const toBlob = (type: string, quality?: number) =>
       new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, quality));
-    // PNG first for PNG sources (transparency); if the lossless re-encode is still
-    // over the cap, a slightly-compressed JPEG is the pragmatic fallback.
-    const preferred = await toBlob(isPng ? "image/png" : "image/jpeg", isPng ? undefined : 0.85);
+    // PNG first for PNG sources (keeps transparency); canvas PNG output is
+    // unoptimised, so fall back to JPEG if it somehow still exceeds the cap.
+    const preferred = await toBlob(isPng ? "image/png" : "image/jpeg", isPng ? undefined : 0.9);
     if (preferred && preferred.size <= LOGO_MAX_UPLOAD_BYTES) return preferred;
     const jpeg = await toBlob("image/jpeg", 0.85);
-    return jpeg ?? preferred ?? source;
-  } catch {
-    return source;
+    if (jpeg && jpeg.size <= LOGO_MAX_UPLOAD_BYTES) return jpeg;
+    return null;
+  } finally {
+    bitmap.close();
   }
 }
 
@@ -100,6 +109,8 @@ export function StoreSettingsPanel() {
   const [hasUploadedLogo, setHasUploadedLogo] = useState(false);
   const [logoBusy, setLogoBusy] = useState<null | "upload" | "storefront" | "remove">(null);
   const [logoBust, setLogoBust] = useState(0);
+  // A broken preview must never leave a half-rendered box in the layout.
+  const [logoPreviewFailed, setLogoPreviewFailed] = useState(false);
   const [facebookUrl, setFacebookUrl] = useState("");
   const [instagramUrl, setInstagramUrl] = useState("");
   const [loaded, setLoaded] = useState(false);
@@ -198,21 +209,29 @@ export function StoreSettingsPanel() {
     setError(null);
     try {
       const prepared = await prepareLogoForUpload(blob);
-      if (prepared.size > LOGO_MAX_UPLOAD_BYTES) {
-        throw new Error("Logo is too large even after compression — please use an image under 2 MB.");
+      if (!prepared) {
+        throw new LogoInputError(
+          "That image could not be prepared for upload. Use a PNG or JPG logo under 2 MB.",
+        );
       }
+      const preparedType = prepared.type || blob.type || "image/png";
+      const uploadName = preparedType === "image/jpeg" ? fileName.replace(/\.[^.]+$/, "") + ".jpg" : fileName;
       const form = new FormData();
-      form.append("file", new File([prepared], fileName, { type: prepared.type || blob.type }));
+      form.append("file", new File([prepared], uploadName, { type: preparedType }));
       await api<{ hasUploadedLogo: boolean }>("/admin/settings/store/logo", {
         method: "POST",
         body: form,
       });
       setHasUploadedLogo(true);
+      setLogoUrl("");
       setLogoBust(Date.now());
+      setLogoPreviewFailed(false);
       setSuccess("Logo saved — it will print on every invoice and credit note.");
       setTimeout(() => setSuccess(null), 4000);
     } catch (err) {
-      setError(err instanceof Error && err.message.startsWith("Logo") ? err.message : getApiErrorMessage(err));
+      // Client-side input problems carry their own actionable text; anything else is
+      // an API error whose backend message (4xx) is already actionable.
+      setError(err instanceof LogoInputError ? err.message : getApiErrorMessage(err));
     } finally {
       setLogoBusy(null);
     }
@@ -225,11 +244,17 @@ export function StoreSettingsPanel() {
     try {
       // Same-origin public asset (BRAND_LOGO_SRC, the logo the storefront header shows).
       const response = await fetch(BRAND_LOGO_SRC);
-      if (!response.ok) throw new Error("Could not load the storefront logo asset.");
-      const blob = await response.blob();
-      await uploadLogoBlob(blob, "storefront", BRAND_LOGO_SRC.split("/").pop() || "logo.png");
+      const contentType = response.headers.get("content-type") ?? "";
+      if (!response.ok || !contentType.startsWith("image/")) {
+        // A missing asset returns the SPA's HTML 404 page — uploading that would fail
+        // server-side validation with a confusing message, so name the real problem.
+        throw new LogoInputError(
+          `The storefront logo asset (${BRAND_LOGO_SRC}) could not be loaded. Upload the logo file instead.`,
+        );
+      }
+      await uploadLogoBlob(await response.blob(), "storefront", BRAND_LOGO_SRC.split("/").pop() || "logo.png");
     } catch (err) {
-      setError(getApiErrorMessage(err));
+      setError(err instanceof LogoInputError ? err.message : getApiErrorMessage(err));
     }
   }
 
@@ -249,6 +274,7 @@ export function StoreSettingsPanel() {
         setLogoUrl("");
       }
       setHasUploadedLogo(false);
+      setLogoPreviewFailed(false);
       setSuccess("Logo removed — invoices will use a text-only header.");
       setTimeout(() => setSuccess(null), 4000);
     } catch (err) {
@@ -500,28 +526,30 @@ export function StoreSettingsPanel() {
               <div className="grid min-w-0 grid-cols-1 gap-1.5 text-sm font-medium text-foreground sm:col-span-2">
                 Invoice Logo
                 <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-background/50 p-3">
-                  {hasUploadedLogo ? (
-                    /* Served from the backend row (not a next/image remote pattern) — mirrors
-                       exactly the bytes the PDF renderer embeds. */
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={`${process.env.NEXT_PUBLIC_API_BASE_URL}/store/logo?v=${logoBust}`}
-                      alt="Invoice logo preview"
-                      className="h-14 max-w-28 rounded-md border border-border object-contain bg-background p-1"
-                    />
-                  ) : logoUrl.trim() ? (
-                    /* Legacy URL-mode logo (pre-upload releases) still previews until replaced. */
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={logoUrl.trim()}
-                      alt="Invoice logo preview (URL mode)"
-                      className="h-14 max-w-28 rounded-md border border-border object-contain bg-background p-1"
-                    />
-                  ) : (
-                    <span className="flex h-14 w-14 items-center justify-center rounded-md border border-dashed border-border text-[10px] font-normal text-muted-foreground">
-                      No logo
-                    </span>
-                  )}
+                  {/* Fixed-size preview box: the image is merchant-supplied and can be huge
+                      (multi-megapixel brand PNGs), so the box owns the dimensions and clips —
+                      never the intrinsic image size driving the panel layout. */}
+                  <span className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-background">
+                    {(hasUploadedLogo || logoUrl.trim()) && !logoPreviewFailed ? (
+                      /* Merchant-supplied bytes served by the API (or a legacy URL) — outside
+                         next/image remotePatterns, so a plain img is required here. */
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={
+                          hasUploadedLogo
+                            ? `${process.env.NEXT_PUBLIC_API_BASE_URL}/store/logo?v=${logoBust}`
+                            : logoUrl.trim()
+                        }
+                        alt="Invoice logo preview"
+                        className="max-h-full max-w-full object-contain p-1"
+                        onError={() => setLogoPreviewFailed(true)}
+                      />
+                    ) : (
+                      <span className="text-[10px] font-normal text-muted-foreground">
+                        {logoPreviewFailed ? "?" : "No logo"}
+                      </span>
+                    )}
+                  </span>
                   {canWrite ? (
                     <div className="flex min-w-0 flex-wrap items-center gap-2">
                       <button

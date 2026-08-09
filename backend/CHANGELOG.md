@@ -12,6 +12,24 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.90] - 2026-08-09
+
+### Fixed
+- **Store-logo upload 500'd before the request ever reached the backend — nginx, not the API.** Routes under the generic `^/api/v1/admin/` nginx block carry `auth_request /_maintenance_gate`, which forces nginx to buffer the entire request body before running the subrequest; for multipart uploads that fails and nginx returns 500 (small files happen to slip through). `POST /admin/settings/store/logo` did not match the upload-exemption location, so both "Use storefront logo" and file picking failed with an untraceable "Something went wrong" and **no API log line at all**. The exemption regex now covers it.
+- **`POST /admin/products/import-csv` had the identical latent defect** (found by the new drift guard, not by report): bulk CSV product import was silently 500-ing at nginx for anything but a tiny file. Now exempted too.
+- **Framework/plugin CLIENT faults are no longer masked as 500s.** Fastify- and plugin-raised errors (multipart file-too-large, content-type parser faults, malformed bodies) carry an accurate 4xx `statusCode` but are not `AppError`s, so they fell through to the generic 500 branch — wrong status, useless message, **and a false internal-outage alert**. The handler now honours 4xx statuses with a safe whitelisted message (`FST_REQ_FILE_TOO_LARGE` → 413 "The uploaded file is too large…"), logs at `warn`, and fires no alert; 5xx-class framework errors are still masked and still alert.
+- **Logo upload route hardening**: multipart read failures are caught and classified (413 for over-limit, 400 for unreadable) instead of escaping as unhandled 500s.
+
+### Added
+- **CI drift guard `multipart-nginx-coverage.test.ts`**: scans every `*.routes.ts` for handlers that read a multipart body and asserts each is covered by the nginx upload-exemption regex (and that ordinary admin routes are NOT). This class of bug is invisible in application logs, so it is now caught at build time — it is what surfaced the CSV-import defect.
+
+**Propagation:**
+- Severity: **HIGH** (admin uploads broken in production) - Layers: backend (`nginx/client.conf.template`, `src/common/errors/error-handler.ts`, `src/modules/settings/settings.routes.ts`, new + updated tests)
+- Migration: NO - Flag: none - Design impact: none - Breaking: NO
+- **DEPLOY ACTION REQUIRED:** `nginx/client.conf.template` changes do NOT auto-apply. Either deploy with `NGINX_AUTO_RELOAD=1`, or on the VPS copy the rendered template to the live vhost and `nginx -t && systemctl reload nginx`. Until nginx is reloaded, admin uploads keep failing regardless of the app version.
+- Frontend pairing: frontend-core 0.1.64 (right-sized logo upload + layout-safe preview)
+- Rollback: revert the files (uploads break again)
+
 ## [0.1.89] - 2026-08-09
 
 ### Added
