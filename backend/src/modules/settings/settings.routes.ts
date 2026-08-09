@@ -7,6 +7,7 @@ import { idempotencyOnSend, idempotencyPreHandler } from '@common/idempotency/id
 import { routeRateLimitProfiles } from '@common/rate-limit/rate-limit-policies';
 import { loadShedGuard } from '@common/reliability/load-shed.guard';
 import {
+  deleteStoreLogoSchema,
   getCodSettingsSchema,
   getBoxPresetsSchema,
   getInventorySettingsSchema,
@@ -21,9 +22,13 @@ import {
   updateLocalDeliverySettingsSchema,
   updateNotificationSettingsSchema,
   updateShippingSettingsSchema,
-  updateStoreProfileSchema
+  updateStoreProfileSchema,
+  uploadStoreLogoSchema,
+  serveStoreLogoSchema
 } from './settings.schemas';
 import { SettingsService } from './settings.service';
+import { AppError } from '@common/errors/app-error';
+import { ERROR_CODES } from '@common/errors/error-codes';
 
 export async function registerSettingsRoutes(fastify: FastifyInstance): Promise<void> {
   const settingsService = new SettingsService(fastify);
@@ -39,6 +44,28 @@ export async function registerSettingsRoutes(fastify: FastifyInstance): Promise<
       config: { rateLimit: routeRateLimitProfiles.catalogRead }
     },
     async () => settingsService.getPublicStoreConfig()
+  );
+
+  // Public store logo — serves the UPLOADED logo bytes from the StoreSettings row.
+  // Registered unconditionally (unlike /media/products/* it does not depend on the
+  // media storage provider). Short cache: the merchant can replace the logo any
+  // time; the admin panel busts with ?v=.
+  fastify.get(
+    '/api/v1/store/logo',
+    {
+      schema: serveStoreLogoSchema,
+      config: { rateLimit: routeRateLimitProfiles.catalogRead }
+    },
+    async (_request, reply) => {
+      const logo = await settingsService.getStoreLogo();
+      if (!logo) {
+        throw new AppError(ERROR_CODES.NOT_FOUND, 'No store logo uploaded', 404);
+      }
+      reply
+        .header('Content-Type', logo.mimeType)
+        .header('Cache-Control', 'public, max-age=300');
+      return reply.send(logo.data);
+    }
   );
 
   fastify.addHook('onSend', async (request, reply, payload) => {
@@ -92,6 +119,50 @@ export async function registerSettingsRoutes(fastify: FastifyInstance): Promise<
       }
     },
     async (request) => settingsService.updateStoreProfile(request.body as never)
+  );
+
+  // Invoice/brand logo upload — multipart file, stored in the StoreSettings row
+  // (PNG/JPG only, magic-byte validated, 2MB cap). Wins over logoUrl on invoices.
+  fastify.post(
+    '/api/v1/admin/settings/store/logo',
+    {
+      schema: uploadStoreLogoSchema,
+      preHandler: [...adminGuard, adminPermissionGuard('settings:write'), loadShedGuard],
+      config: {
+        rateLimit: routeRateLimitProfiles.adminWrite
+      }
+    },
+    async (request) => {
+      if (!request.isMultipart()) {
+        throw new AppError(
+          ERROR_CODES.VALIDATION_ERROR,
+          'Logo upload requires multipart/form-data',
+          400
+        );
+      }
+      let buffer: Buffer | null = null;
+      for await (const part of request.parts()) {
+        if (part.type === 'file' && (part.fieldname === 'file' || part.fieldname === 'logo')) {
+          buffer = await part.toBuffer();
+        }
+      }
+      if (!buffer) {
+        throw new AppError(ERROR_CODES.VALIDATION_ERROR, 'No logo file provided', 400);
+      }
+      return settingsService.uploadStoreLogo(buffer);
+    }
+  );
+
+  fastify.delete(
+    '/api/v1/admin/settings/store/logo',
+    {
+      schema: deleteStoreLogoSchema,
+      preHandler: [...adminGuard, adminPermissionGuard('settings:write'), loadShedGuard],
+      config: {
+        rateLimit: routeRateLimitProfiles.adminWrite
+      }
+    },
+    async () => settingsService.deleteStoreLogo()
   );
 
   fastify.get(

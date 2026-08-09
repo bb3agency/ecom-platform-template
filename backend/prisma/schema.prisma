@@ -1017,6 +1017,11 @@ model StoreSettings {
   storeName                 String?
   websiteUrl                String?
   logoUrl                   String?
+  // Uploaded invoice/brand logo stored in-row (small PNG/JPG). Takes precedence
+  // over logoUrl; survives redeploys with zero storage plumbing and lets the PDF
+  // renderer read bytes directly (no HTTP fetch from inside the container).
+  logoData                  Bytes?
+  logoMimeType              String?
   contactEmail              String?
   contactPhone              String?
   gstin                     String?

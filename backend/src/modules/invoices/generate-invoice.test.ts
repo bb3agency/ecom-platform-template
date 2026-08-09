@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { computeInclusiveGstSplit, deriveInvoiceNumber, fetchInvoiceLogo } from './generate-invoice';
+import {
+  computeInclusiveGstSplit,
+  deriveInvoiceNumber,
+  fetchInvoiceLogo,
+  resolveInvoiceLogo,
+  sniffLogoImageFormat,
+  type SellerProfile
+} from './generate-invoice';
 
 // 1x1 transparent PNG — valid magic bytes for the sniffer.
 const TINY_PNG = Buffer.from(
@@ -61,6 +68,72 @@ describe('fetchInvoiceLogo — URL resolution and format sniffing', () => {
 
     expect(await fetchInvoiceLogo('https://cdn.example.com/logo.png')).toBeNull();
     expect(fetchMock).toHaveBeenCalledWith('https://cdn.example.com/logo.png', expect.anything());
+  });
+});
+
+describe('resolveInvoiceLogo — uploaded in-row bytes win over logoUrl', () => {
+  const fetchMock = vi.fn();
+
+  beforeEach(() => {
+    fetchMock.mockReset();
+    vi.stubGlobal('fetch', fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function sellerProfile(overrides: Partial<SellerProfile>): SellerProfile {
+    return {
+      legalName: 'Test Store Pvt Ltd',
+      addressLine: 'Street 1, Hyderabad',
+      state: 'Telangana',
+      gstin: '',
+      fssai: '',
+      storeName: 'Test Store',
+      logoUrl: null,
+      logoBytes: null,
+      gstBillingEnabled: true,
+      ...overrides
+    };
+  }
+
+  it('returns the uploaded bytes without any network fetch', async () => {
+    const logo = await resolveInvoiceLogo(
+      sellerProfile({
+        logoBytes: { data: TINY_PNG, format: 'png' },
+        logoUrl: 'https://cdn.example.com/should-not-be-fetched.png'
+      })
+    );
+    expect(logo).toEqual({ data: TINY_PNG, format: 'png' });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the logoUrl fetch when nothing is uploaded', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      arrayBuffer: async () => TINY_PNG.buffer.slice(TINY_PNG.byteOffset, TINY_PNG.byteOffset + TINY_PNG.byteLength)
+    });
+
+    const logo = await resolveInvoiceLogo(
+      sellerProfile({ logoUrl: 'https://cdn.example.com/logo.png' })
+    );
+    expect(logo).toMatchObject({ format: 'png' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns null when neither an upload nor a URL is configured', async () => {
+    expect(await resolveInvoiceLogo(sellerProfile({}))).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('sniffLogoImageFormat', () => {
+  it('detects PNG and JPEG by magic bytes and rejects everything else', () => {
+    expect(sniffLogoImageFormat(TINY_PNG)).toBe('png');
+    expect(sniffLogoImageFormat(Buffer.concat([Buffer.from([0xff, 0xd8]), Buffer.alloc(8)]))).toBe('jpg');
+    expect(sniffLogoImageFormat(Buffer.from('<svg xmlns="…"></svg>'))).toBeNull();
+    expect(sniffLogoImageFormat(Buffer.alloc(2))).toBeNull();
   });
 });
 

@@ -572,6 +572,20 @@ FSSAI are all **optional** — invoices render "N/A" for missing HSN and omit th
 GSTIN/FSSAI segments when absent; courier bookings fall back to
 `DEFAULT_SHIPPING_HSN` (2106).
 
+### `POST /DELETE /api/v1/admin/settings/store/logo` + `GET /api/v1/store/logo`
+**Invoice/brand logo upload (2026-08-09).** POST (`settings:write`, multipart `file`) stores
+the logo IN the `StoreSettings` row (`logoData`/`logoMimeType`, migration `20260811000000`):
+PNG/JPG only (magic-byte validated — declared mime is never trusted), 2MB cap
+(`STORE_LOGO_MAX_BYTES`). Original bytes kept as-is — original ratio and quality; the admin
+UI downscales oversized images client-side before upload (canvas, longest side ≤1600px,
+JPEG q0.85 fallback). DELETE clears both columns. `GET /api/v1/store/logo` (public,
+catalogRead rate profile, `Cache-Control: max-age=300`, `?v=` cache-buster) serves the
+stored bytes for the admin preview — registered unconditionally, independent of the media
+storage provider (works on R2 clients). Invoice/credit-note rendering prefers the stored
+bytes (`SellerProfile.logoBytes`, read straight from the row — no HTTP fetch) over the
+legacy `logoUrl` mode, which remains API-supported as fallback. `GET/PATCH
+/admin/settings/store` responses now carry `hasUploadedLogo`.
+
 ### `GET /api/v1/admin/products/gst-rate-suggestion`
 **Suggested GST rate for an HSN code (2026-08-09).** `products:read`. Query `hsn` =
 2-15 digit code. Longest-prefix lookup over the vendored CBIC GST 2.0 rate rules

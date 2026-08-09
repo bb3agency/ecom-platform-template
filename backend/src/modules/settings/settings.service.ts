@@ -33,6 +33,7 @@ import {
 } from '@common/shipping/local-delivery';
 import { AppError } from '@common/errors/app-error';
 import { ERROR_CODES } from '@common/errors/error-codes';
+import { STORE_LOGO_MAX_BYTES, sniffLogoImageFormat } from '@modules/invoices/generate-invoice';
 
 export class SettingsService {
   private static readonly singletonKey = 'default';
@@ -196,6 +197,7 @@ export class SettingsService {
         storeName: true,
         websiteUrl: true,
         logoUrl: true,
+        logoMimeType: true,
         contactEmail: true,
         contactPhone: true,
         gstin: true,
@@ -212,6 +214,7 @@ export class SettingsService {
       storeName: settings?.storeName ?? null,
       websiteUrl: settings?.websiteUrl ?? null,
       logoUrl: settings?.logoUrl ?? null,
+      hasUploadedLogo: Boolean(settings?.logoMimeType),
       contactEmail: settings?.contactEmail ?? null,
       contactPhone: settings?.contactPhone ?? null,
       gstin: settings?.gstin ?? null,
@@ -222,6 +225,79 @@ export class SettingsService {
       facebookUrl: settings?.facebookUrl ?? null,
       instagramUrl: settings?.instagramUrl ?? null
     };
+  }
+
+  /**
+   * Store an uploaded invoice/brand logo IN THE DATABASE ROW (small PNG/JPG only,
+   * validated by magic bytes — never the declared mime type). Original bytes are
+   * kept as-is: original ratio and quality, no server-side re-encode (the admin UI
+   * downscales oversized images client-side before upload). The uploaded logo
+   * takes precedence over any configured logoUrl on invoices and credit notes.
+   */
+  async uploadStoreLogo(buffer: Buffer): Promise<{ hasUploadedLogo: boolean }> {
+    if (buffer.length === 0) {
+      throw new AppError(ERROR_CODES.VALIDATION_ERROR, 'Logo file is empty', 400);
+    }
+    if (buffer.length > STORE_LOGO_MAX_BYTES) {
+      throw new AppError(
+        ERROR_CODES.VALIDATION_ERROR,
+        `Logo must be ${STORE_LOGO_MAX_BYTES / (1024 * 1024)} MB or smaller`,
+        400
+      );
+    }
+    const format = sniffLogoImageFormat(buffer);
+    if (!format) {
+      throw new AppError(
+        ERROR_CODES.VALIDATION_ERROR,
+        'Logo must be a PNG or JPG image (SVG/WebP cannot be embedded in the invoice PDF)',
+        400
+      );
+    }
+
+    const defaultPickupPincode = await this.resolveDefaultPickupPincodeForCreate();
+    // Fresh ArrayBuffer-backed copy — Prisma's Bytes input type rejects Buffer's
+    // ArrayBufferLike backing under strict TS.
+    const logoData = new Uint8Array(buffer);
+    await this.fastify.prisma.storeSettings.upsert({
+      where: { singletonKey: SettingsService.singletonKey },
+      update: {
+        logoData,
+        logoMimeType: format === 'png' ? 'image/png' : 'image/jpeg'
+      },
+      create: {
+        singletonKey: SettingsService.singletonKey,
+        pickupPincode: defaultPickupPincode,
+        defaultLowStockThreshold: 5,
+        logoData,
+        logoMimeType: format === 'png' ? 'image/png' : 'image/jpeg'
+      },
+      select: { id: true }
+    });
+    return { hasUploadedLogo: true };
+  }
+
+  /** Remove the uploaded logo (invoices fall back to logoUrl, else text-only). */
+  async deleteStoreLogo(): Promise<{ hasUploadedLogo: boolean }> {
+    await this.fastify.prisma.storeSettings.updateMany({
+      where: { singletonKey: SettingsService.singletonKey },
+      data: { logoData: null, logoMimeType: null }
+    });
+    return { hasUploadedLogo: false };
+  }
+
+  /** Uploaded logo bytes for the public serve route (null when none uploaded). */
+  async getStoreLogo(): Promise<{ data: Buffer; mimeType: string } | null> {
+    const settings = await this.fastify.prisma.storeSettings.findUnique({
+      where: { singletonKey: SettingsService.singletonKey },
+      select: { logoData: true, logoMimeType: true }
+    });
+    if (!settings?.logoData || settings.logoData.length === 0 || !settings.logoMimeType) {
+      return null;
+    }
+    const data = Buffer.isBuffer(settings.logoData)
+      ? settings.logoData
+      : Buffer.from(settings.logoData);
+    return { data, mimeType: settings.logoMimeType };
   }
 
   async updateStoreProfile(input: UpdateStoreProfileInput): Promise<StoreProfileResponse> {
@@ -263,6 +339,7 @@ export class SettingsService {
         storeName: true,
         websiteUrl: true,
         logoUrl: true,
+        logoMimeType: true,
         contactEmail: true,
         contactPhone: true,
         gstin: true,
@@ -279,6 +356,7 @@ export class SettingsService {
       storeName: updated.storeName,
       websiteUrl: updated.websiteUrl,
       logoUrl: updated.logoUrl,
+      hasUploadedLogo: Boolean(updated.logoMimeType),
       contactEmail: updated.contactEmail,
       contactPhone: updated.contactPhone,
       gstin: updated.gstin,

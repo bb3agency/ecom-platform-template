@@ -1,4 +1,4 @@
-import { standardAdminErrorResponses } from '@common/errors/error-response.schema';
+import { standardAdminErrorResponses, standardErrorResponses } from '@common/errors/error-response.schema';
 
 const emptyParamsSchema = {
   type: 'object',
@@ -36,11 +36,12 @@ const shippingSettingsSchema = {
 const storeProfileSchema = {
   type: 'object',
   additionalProperties: false,
-  required: ['storeName', 'websiteUrl', 'logoUrl', 'contactEmail', 'contactPhone', 'gstin', 'fssaiNumber', 'sellerLegalName', 'sellerAddress', 'sellerState'],
+  required: ['storeName', 'websiteUrl', 'logoUrl', 'hasUploadedLogo', 'contactEmail', 'contactPhone', 'gstin', 'fssaiNumber', 'sellerLegalName', 'sellerAddress', 'sellerState'],
   properties: {
     storeName: { anyOf: [{ type: 'string', maxLength: 150 }, { type: 'null' }] },
     websiteUrl: { anyOf: [{ type: 'string', maxLength: 1000 }, { type: 'null' }] },
     logoUrl: { anyOf: [{ type: 'string', maxLength: 1000 }, { type: 'null' }] },
+    hasUploadedLogo: { type: 'boolean' },
     contactEmail: { anyOf: [{ type: 'string', maxLength: 200 }, { type: 'null' }] },
     contactPhone: { anyOf: [{ type: 'string', maxLength: 30 }, { type: 'null' }] },
     gstin: { anyOf: [{ type: 'string', maxLength: 30 }, { type: 'null' }] },
@@ -137,6 +138,50 @@ export const updateShippingSettingsSchema = {
   },
   response: {
     200: shippingSettingsSchema,
+    ...standardAdminErrorResponses
+  }
+} as const;
+
+export const serveStoreLogoSchema = {
+  params: emptyParamsSchema,
+  querystring: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      // Cache-buster set by the admin panel after an upload; ignored server-side.
+      v: { type: 'string', maxLength: 40 }
+    }
+  },
+  response: {
+    200: { type: 'string', contentEncoding: 'binary', contentMediaType: 'image/*' },
+    ...standardErrorResponses
+  }
+} as const;
+
+const storeLogoStateSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['hasUploadedLogo'],
+  properties: {
+    hasUploadedLogo: { type: 'boolean' }
+  }
+} as const;
+
+// Multipart upload — no JSON body schema (fastify-multipart streams the parts).
+export const uploadStoreLogoSchema = {
+  params: emptyParamsSchema,
+  querystring: emptyQuerystringSchema,
+  response: {
+    200: storeLogoStateSchema,
+    ...standardAdminErrorResponses
+  }
+} as const;
+
+export const deleteStoreLogoSchema = {
+  params: emptyParamsSchema,
+  querystring: emptyQuerystringSchema,
+  response: {
+    200: storeLogoStateSchema,
     ...standardAdminErrorResponses
   }
 } as const;

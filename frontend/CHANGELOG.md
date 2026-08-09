@@ -12,6 +12,17 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.63] - 2026-08-09
+
+### Changed
+- **Invoice logo is now a FILE UPLOAD, not a URL field** (Admin → Settings → Store; pairs with backend-core 0.1.89). Three controls replace the URL input: **"Use storefront logo"** (one click copies the same `BRAND_LOGO_SRC` asset the site header shows — the sanctioned design-layer read), **Upload file** (PNG/JPG picker), and **Remove** (also clears any legacy URL-mode value). Images keep their original aspect ratio and quality; only oversized files (>1600px longest side or >2MB) are downscaled client-side on a canvas before upload (PNG stays lossless PNG, JPEG re-encodes at q0.85). Preview renders the exact stored bytes via the public `GET /store/logo` route with a cache-buster. Legacy URL-mode logos keep previewing until replaced.
+
+**Propagation:**
+- Severity: NORMAL - Layers: frontend core (`components/admin/StoreSettingsPanel.tsx`, `lib/admin-api.ts` [`hasUploadedLogo`])
+- Migration: NO - Flag: none - Design impact: none (reads the design-layer `BRAND_LOGO_SRC` export — present in every client's `lib/constants.ts`) - Breaking: NO
+- Requires: backend-core >= 0.1.89 (upload/delete/serve routes + `hasUploadedLogo`)
+- Rollback: revert the files
+
 ## [0.1.62] - 2026-08-09
 
 ### Added

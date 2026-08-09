@@ -63,6 +63,11 @@ export type SellerProfile = {
   /** Store logo URL (StoreSettings.logoUrl); rendered on the invoice when fetchable PNG/JPG. */
   logoUrl: string | null;
   /**
+   * Uploaded logo stored in-row (StoreSettings.logoData, via the admin upload).
+   * Takes precedence over logoUrl — read straight from the DB row, no HTTP fetch.
+   */
+  logoBytes: { data: Buffer; format: 'png' | 'jpg' } | null;
+  /**
    * Effective GST billing mode: merchant toggle (StoreSettings.gstBillingEnabled) when
    * set, else auto — on when a GSTIN is configured. When true the invoice is a
    * "TAX INVOICE" with the GST portion carved out of the GST-INCLUSIVE prices; when
@@ -86,6 +91,25 @@ export const INVOICE_ELIGIBLE_ORDER_STATUSES = [
 
 export function isInvoiceEligibleOrderStatus(status: string): boolean {
   return (INVOICE_ELIGIBLE_ORDER_STATUSES as readonly string[]).includes(status);
+}
+
+/** Logo size cap shared by the admin upload and the URL fetch path. */
+export const STORE_LOGO_MAX_BYTES = 2 * 1024 * 1024;
+
+/**
+ * Magic-byte sniff for the two formats react-pdf can embed. Returns null for
+ * anything else (SVG, WebP, HTML error pages…). Trust bytes, never the
+ * caller-supplied mime type.
+ */
+export function sniffLogoImageFormat(bytes: Buffer): 'png' | 'jpg' | null {
+  if (bytes.length < 8) return null;
+  if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) {
+    return 'png';
+  }
+  if (bytes[0] === 0xff && bytes[1] === 0xd8) {
+    return 'jpg';
+  }
+  return null;
 }
 
 /**
@@ -114,17 +138,33 @@ export async function fetchInvoiceLogo(
     clearTimeout(timer);
     if (!response.ok) return null;
     const bytes = Buffer.from(await response.arrayBuffer());
-    if (bytes.length < 8 || bytes.length > 2 * 1024 * 1024) return null;
-    if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) {
-      return { data: bytes, format: 'png' };
-    }
-    if (bytes[0] === 0xff && bytes[1] === 0xd8) {
-      return { data: bytes, format: 'jpg' };
-    }
-    return null;
+    if (bytes.length > STORE_LOGO_MAX_BYTES) return null;
+    const format = sniffLogoImageFormat(bytes);
+    return format ? { data: bytes, format } : null;
   } catch {
     return null;
   }
+}
+
+/**
+ * The logo to embed for this seller: the UPLOADED in-row logo wins (original
+ * bytes — original ratio and quality, no re-encode, no network); a configured
+ * logoUrl is the fallback. Null → text-only header.
+ */
+export async function resolveInvoiceLogo(
+  sellerProfile: SellerProfile
+): Promise<{ data: Buffer; format: 'png' | 'jpg' } | null> {
+  return sellerProfile.logoBytes ?? fetchInvoiceLogo(sellerProfile.logoUrl);
+}
+
+/** Stored logo bytes → embeddable logo, format re-verified by magic bytes. */
+function resolveStoredLogoBytes(
+  logoData: Uint8Array | Buffer | null
+): { data: Buffer; format: 'png' | 'jpg' } | null {
+  if (!logoData || logoData.length === 0) return null;
+  const data = Buffer.isBuffer(logoData) ? logoData : Buffer.from(logoData);
+  const format = sniffLogoImageFormat(data);
+  return format ? { data, format } : null;
 }
 
 export async function resolveSellerProfileOrThrow(prisma: PrismaClient): Promise<SellerProfile> {
@@ -135,6 +175,8 @@ export async function resolveSellerProfileOrThrow(prisma: PrismaClient): Promise
         select: {
           storeName: true,
           logoUrl: true,
+          logoData: true,
+          logoMimeType: true,
           sellerLegalName: true,
           sellerAddress: true,
           sellerState: true,
@@ -190,6 +232,9 @@ export async function resolveSellerProfileOrThrow(prisma: PrismaClient): Promise
     fssai: fssai || '',
     storeName: (settings?.storeName ?? '').trim() || legalName || 'Ecom Store Pvt Ltd',
     logoUrl: ((settings as { logoUrl?: string | null } | null)?.logoUrl ?? '').trim() || null,
+    logoBytes: resolveStoredLogoBytes(
+      (settings as { logoData?: Uint8Array | Buffer | null } | null)?.logoData ?? null
+    ),
     // Merchant toggle wins when set; auto default = GST billing on only when a GSTIN exists.
     gstBillingEnabled: gstBillingSetting ?? Boolean(gstin)
   };
@@ -436,7 +481,7 @@ export async function regenerateInvoicePdfForOrder(
   }
 
   const sellerProfile = await resolveSellerProfileOrThrow(prisma);
-  const invoiceLogo = await fetchInvoiceLogo(sellerProfile.logoUrl);
+  const invoiceLogo = await resolveInvoiceLogo(sellerProfile);
 
   const order = await prisma.order.findUnique({
     where: { id: orderId },
@@ -472,7 +517,7 @@ export async function generateInvoiceForOrder(
 
   const sellerProfile = await resolveSellerProfileOrThrow(prisma);
   // Fetched OUTSIDE the transaction — a slow logo host must never hold a DB tx open.
-  const invoiceLogo = await fetchInvoiceLogo(sellerProfile.logoUrl);
+  const invoiceLogo = await resolveInvoiceLogo(sellerProfile);
 
   await prisma.$transaction(async (tx) => {
     const existingInvoice = await tx.invoice.findUnique({
