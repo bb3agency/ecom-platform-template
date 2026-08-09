@@ -9,7 +9,7 @@ import { type InvoiceStorageAdapter } from '@common/interfaces/invoice-storage.i
 import { createInvoiceStorageProvider } from '@modules/invoices/invoice-storage-provider';
 import { renderCreditNotePdfBuffer } from '@modules/invoices/invoice-renderer';
 import {
-  fetchInvoiceLogo,
+  resolveInvoiceLogo,
   generateInvoiceForOrder,
   resolveSellerProfileOrThrow,
   type ShippingAddress
@@ -1087,7 +1087,7 @@ async function generateCreditNoteForOrder(
 
   const sellerProfile = await resolveSellerProfileOrThrow(prisma);
   // Fetched OUTSIDE the transaction — a slow logo host must never hold a DB tx open.
-  const creditNoteLogo = await fetchInvoiceLogo(sellerProfile.logoUrl);
+  const creditNoteLogo = await resolveInvoiceLogo(sellerProfile);
 
   await prisma.$transaction(async (tx) => {
     const originalInvoice = await tx.invoice.findUnique({

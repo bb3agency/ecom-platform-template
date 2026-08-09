@@ -12,6 +12,17 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.89] - 2026-08-09
+
+### Added
+- **Invoice logo file UPLOAD, stored in the database row** (`StoreSettings.logoData`/`logoMimeType`, migration `20260811000000`) — replaces the URL-paste UX. `POST /api/v1/admin/settings/store/logo` (multipart, `settings:write`): PNG/JPG only via magic-byte sniff (declared mime never trusted), 2MB cap; original bytes stored as-is (original ratio + quality — the admin UI downscales oversized images client-side, so the server never re-encodes). `DELETE` clears. Public `GET /api/v1/store/logo` serves the stored bytes for the admin preview — registered unconditionally (independent of the media storage provider, works on R2 clients). Invoice AND credit-note rendering prefer the stored bytes (`SellerProfile.logoBytes` — read straight from the row the seller-profile query already makes, zero HTTP fetch, no STOREFRONT_URL/hairpin dependency); legacy `logoUrl` remains the fallback. `GET/PATCH /admin/settings/store` responses gain `hasUploadedLogo`.
+
+**Propagation:**
+- Severity: NORMAL - Layers: backend (`settings` module service/routes/schemas/types, `generate-invoice.ts` [`sniffLogoImageFormat`/`resolveInvoiceLogo`/`STORE_LOGO_MAX_BYTES`], `order-processing.worker.ts`, `admin-endpoint-policy-registry.ts`, prisma schema + migration, tests)
+- Migration: YES - two nullable columns, no backfill - Flag: none - Design impact: none - Breaking: NO (`hasUploadedLogo` is additive; logoUrl mode unchanged)
+- Frontend pairing: frontend-core 0.1.63 replaces the URL field with Upload / Use-storefront-logo / Remove controls
+- Rollback: revert files + drop the two columns
+
 ## [0.1.88] - 2026-08-09
 
 ### Added

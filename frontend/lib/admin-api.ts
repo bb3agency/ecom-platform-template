@@ -962,6 +962,8 @@ export interface AdminStoreProfile {
   storeName: string | null;
   websiteUrl: string | null;
   logoUrl: string | null;
+  /** True when a logo file has been uploaded (stored server-side; wins over logoUrl). */
+  hasUploadedLogo: boolean;
   contactEmail: string | null;
   contactPhone: string | null;
   gstin: string | null;

@@ -17,7 +17,61 @@ import {
   Lock,
   Loader2,
   ReceiptText,
+  Sparkles,
+  Trash2,
+  Upload,
 } from "lucide-react";
+import { BRAND_LOGO_SRC } from "@/lib/constants";
+
+// Server-side cap for the stored logo (matches STORE_LOGO_MAX_BYTES on the backend).
+const LOGO_MAX_UPLOAD_BYTES = 2 * 1024 * 1024;
+// Downscale threshold — logos larger than this on the longest side are resized
+// client-side before upload (original aspect ratio always preserved).
+const LOGO_MAX_DIMENSION = 1600;
+
+/**
+ * Prepare a picked/fetched logo for upload: keep ORIGINAL bytes (ratio + quality)
+ * whenever they already fit; only when the image is oversized (dimension or bytes)
+ * redraw it on a canvas at a reduced size — PNG stays PNG (lossless, keeps
+ * transparency), JPEG re-encodes at quality 0.85. Falls back to the original blob
+ * if decoding fails (the server re-validates by magic bytes anyway).
+ */
+async function prepareLogoForUpload(source: Blob): Promise<Blob> {
+  const isPng = source.type === "image/png";
+  try {
+    const bitmap = await createImageBitmap(source);
+    const longest = Math.max(bitmap.width, bitmap.height);
+    const withinDimension = longest <= LOGO_MAX_DIMENSION;
+    const withinBytes = source.size <= LOGO_MAX_UPLOAD_BYTES;
+    if (withinDimension && withinBytes) {
+      bitmap.close();
+      return source;
+    }
+    const scale = withinDimension ? 1 : LOGO_MAX_DIMENSION / longest;
+    const width = Math.max(1, Math.round(bitmap.width * scale));
+    const height = Math.max(1, Math.round(bitmap.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      bitmap.close();
+      return source;
+    }
+    ctx.drawImage(bitmap, 0, 0, width, height);
+    bitmap.close();
+    const toBlob = (type: string, quality?: number) =>
+      new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, quality));
+    // PNG first for PNG sources (transparency); if the lossless re-encode is still
+    // over the cap, a slightly-compressed JPEG is the pragmatic fallback.
+    const preferred = await toBlob(isPng ? "image/png" : "image/jpeg", isPng ? undefined : 0.85);
+    if (preferred && preferred.size <= LOGO_MAX_UPLOAD_BYTES) return preferred;
+    const jpeg = await toBlob("image/jpeg", 0.85);
+    return jpeg ?? preferred ?? source;
+  } catch {
+    return source;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // These two values are deployment-time configuration set by the platform admin
@@ -41,6 +95,11 @@ export function StoreSettingsPanel() {
   const [contactPhone, setContactPhone] = useState("");
   const [contactEmail, setContactEmail] = useState("");
   const [logoUrl, setLogoUrl] = useState("");
+  // Uploaded invoice/brand logo (stored server-side in StoreSettings; wins over
+  // any legacy logoUrl). logoBust cache-busts the preview after each upload.
+  const [hasUploadedLogo, setHasUploadedLogo] = useState(false);
+  const [logoBusy, setLogoBusy] = useState<null | "upload" | "storefront" | "remove">(null);
+  const [logoBust, setLogoBust] = useState(0);
   const [facebookUrl, setFacebookUrl] = useState("");
   const [instagramUrl, setInstagramUrl] = useState("");
   const [loaded, setLoaded] = useState(false);
@@ -133,6 +192,72 @@ export function StoreSettingsPanel() {
     }
   }
 
+  async function uploadLogoBlob(blob: Blob, busy: "upload" | "storefront", fileName: string) {
+    if (!canWrite || logoBusy) return;
+    setLogoBusy(busy);
+    setError(null);
+    try {
+      const prepared = await prepareLogoForUpload(blob);
+      if (prepared.size > LOGO_MAX_UPLOAD_BYTES) {
+        throw new Error("Logo is too large even after compression — please use an image under 2 MB.");
+      }
+      const form = new FormData();
+      form.append("file", new File([prepared], fileName, { type: prepared.type || blob.type }));
+      await api<{ hasUploadedLogo: boolean }>("/admin/settings/store/logo", {
+        method: "POST",
+        body: form,
+      });
+      setHasUploadedLogo(true);
+      setLogoBust(Date.now());
+      setSuccess("Logo saved — it will print on every invoice and credit note.");
+      setTimeout(() => setSuccess(null), 4000);
+    } catch (err) {
+      setError(err instanceof Error && err.message.startsWith("Logo") ? err.message : getApiErrorMessage(err));
+    } finally {
+      setLogoBusy(null);
+    }
+  }
+
+  /** One-click: pull the storefront's own brand logo (same asset the site header uses). */
+  async function onUseStorefrontLogo() {
+    if (!canWrite || logoBusy) return;
+    setError(null);
+    try {
+      // Same-origin public asset (BRAND_LOGO_SRC, the logo the storefront header shows).
+      const response = await fetch(BRAND_LOGO_SRC);
+      if (!response.ok) throw new Error("Could not load the storefront logo asset.");
+      const blob = await response.blob();
+      await uploadLogoBlob(blob, "storefront", BRAND_LOGO_SRC.split("/").pop() || "logo.png");
+    } catch (err) {
+      setError(getApiErrorMessage(err));
+    }
+  }
+
+  async function onRemoveLogo() {
+    if (!canWrite || logoBusy) return;
+    setLogoBusy("remove");
+    setError(null);
+    try {
+      await api<{ hasUploadedLogo: boolean }>("/admin/settings/store/logo", { method: "DELETE" });
+      // Also clear any legacy URL-mode logo so "remove" really means text-only invoices.
+      if (logoUrl.trim()) {
+        await api<AdminStoreProfile>("/admin/settings/store", {
+          method: "PATCH",
+          idempotencyKey: createIdempotencyKey(),
+          body: JSON.stringify({ logoUrl: null }),
+        });
+        setLogoUrl("");
+      }
+      setHasUploadedLogo(false);
+      setSuccess("Logo removed — invoices will use a text-only header.");
+      setTimeout(() => setSuccess(null), 4000);
+    } catch (err) {
+      setError(getApiErrorMessage(err));
+    } finally {
+      setLogoBusy(null);
+    }
+  }
+
   useEffect(() => {
     let cancelled = false;
     void api<AdminStoreProfile>("/admin/settings/store")
@@ -146,6 +271,7 @@ export function StoreSettingsPanel() {
           setContactPhone(result.contactPhone ?? "");
           setContactEmail(result.contactEmail ?? "");
           setLogoUrl(result.logoUrl ?? "");
+          setHasUploadedLogo(result.hasUploadedLogo === true);
           setFacebookUrl(result.facebookUrl ?? "");
           setInstagramUrl(result.instagramUrl ?? "");
           setLoaded(true);
@@ -182,8 +308,8 @@ export function StoreSettingsPanel() {
           // null clears the link (hides the footer icon); undefined would leave it unchanged.
           facebookUrl: facebookUrl.trim() ? facebookUrl.trim() : null,
           instagramUrl: instagramUrl.trim() ? instagramUrl.trim() : null,
-          // null clears the logo (invoices render text-only again).
-          logoUrl: logoUrl.trim() ? logoUrl.trim() : null,
+          // logoUrl is intentionally NOT sent here — the logo is managed by the
+          // upload/remove controls above (legacy URL values are cleared by Remove).
         }),
       });
       setSuccess("Store settings saved successfully.");
@@ -371,35 +497,91 @@ export function StoreSettingsPanel() {
                 </span>
               </label>
 
-              <label className="grid min-w-0 grid-cols-1 gap-1.5 text-sm font-medium text-foreground sm:col-span-2">
-                Invoice Logo URL
-                <input
-                  type="text"
-                  inputMode="url"
-                  placeholder="/images/logo.png or https://yourstore.com/logo.png"
-                  maxLength={1000}
-                  className={inputClass}
-                  value={logoUrl}
-                  onChange={(e) => setLogoUrl(e.target.value)}
-                  disabled={!canWrite}
-                />
+              <div className="grid min-w-0 grid-cols-1 gap-1.5 text-sm font-medium text-foreground sm:col-span-2">
+                Invoice Logo
+                <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-background/50 p-3">
+                  {hasUploadedLogo ? (
+                    /* Served from the backend row (not a next/image remote pattern) — mirrors
+                       exactly the bytes the PDF renderer embeds. */
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={`${process.env.NEXT_PUBLIC_API_BASE_URL}/store/logo?v=${logoBust}`}
+                      alt="Invoice logo preview"
+                      className="h-14 max-w-28 rounded-md border border-border object-contain bg-background p-1"
+                    />
+                  ) : logoUrl.trim() ? (
+                    /* Legacy URL-mode logo (pre-upload releases) still previews until replaced. */
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={logoUrl.trim()}
+                      alt="Invoice logo preview (URL mode)"
+                      className="h-14 max-w-28 rounded-md border border-border object-contain bg-background p-1"
+                    />
+                  ) : (
+                    <span className="flex h-14 w-14 items-center justify-center rounded-md border border-dashed border-border text-[10px] font-normal text-muted-foreground">
+                      No logo
+                    </span>
+                  )}
+                  {canWrite ? (
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void onUseStorefrontLogo()}
+                        disabled={logoBusy !== null}
+                        className="flex h-9 items-center gap-1.5 rounded-lg border border-border bg-muted px-3 text-xs font-semibold transition-colors hover:bg-primary/10 hover:text-primary disabled:opacity-50 cursor-pointer"
+                        aria-label="Use the storefront's brand logo on invoices"
+                      >
+                        {logoBusy === "storefront" ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Sparkles className="h-3.5 w-3.5" />
+                        )}
+                        Use storefront logo
+                      </button>
+                      <label className="flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border border-border bg-muted px-3 text-xs font-semibold transition-colors hover:bg-primary/10 hover:text-primary">
+                        {logoBusy === "upload" ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Upload className="h-3.5 w-3.5" />
+                        )}
+                        Upload file
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg"
+                          className="sr-only"
+                          disabled={logoBusy !== null}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            e.target.value = "";
+                            if (file) void uploadLogoBlob(file, "upload", file.name);
+                          }}
+                        />
+                      </label>
+                      {hasUploadedLogo || logoUrl.trim() ? (
+                        <button
+                          type="button"
+                          onClick={() => void onRemoveLogo()}
+                          disabled={logoBusy !== null}
+                          className="flex h-9 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50 cursor-pointer"
+                          aria-label="Remove the invoice logo"
+                        >
+                          {logoBusy === "remove" ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-3.5 w-3.5" />
+                          )}
+                          Remove
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
                 <span className="text-xs font-normal text-muted-foreground">
-                  Direct link to your logo image — PNG or JPG only. Printed at the top-left of
-                  every invoice and credit note. A path like{" "}
-                  <code className="font-mono text-[10px]">/images/logo.png</code> uses your own
-                  storefront; leave blank for a text-only header.
+                  Printed at the top-left of every invoice and credit note in its original
+                  proportions. PNG or JPG; large images are lightly compressed automatically.
+                  &ldquo;Use storefront logo&rdquo; copies the same logo your site header shows.
                 </span>
-                {logoUrl.trim() ? (
-                  /* Merchant-supplied URL outside next.config remotePatterns — next/image would
-                     hard-fail on it. This preview mirrors exactly what the PDF renderer fetches. */
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={logoUrl.trim()}
-                    alt="Invoice logo preview"
-                    className="mt-1 h-14 w-14 rounded-md border border-border object-contain bg-background/50 p-1"
-                  />
-                ) : null}
-              </label>
+              </div>
 
               <label className="grid min-w-0 grid-cols-1 gap-1.5 text-sm font-medium text-foreground">
                 Facebook Link
