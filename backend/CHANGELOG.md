@@ -12,6 +12,17 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.87] - 2026-08-09
+
+### Fixed
+- **An Invoice row whose stored PDF vanished from storage 404ed ("Invoice file not found") forever** — on-demand generation only triggers when NO row exists, so a lost file (container filesystem replaced before the 0.1.83 shared volume existed, host migration, manual delete) permanently bricked that order's download for both customer and admin. Downloads now SELF-HEAL: on a missing-file 404 the endpoint re-renders the PDF under the row's already-issued invoice number (`regenerateInvoicePdfForOrder` — the row is the legal record; the file is just a rendering of it), updates `pdfUrl`, and streams the fresh copy. Re-render uses current order data + store settings, so totals cannot drift (immutable order fields) while presentation follows the current GST-billing mode — a wrong-era PDF heals to the corrected layout on next download. Audience rules unchanged: admins see actionable 4xx config errors, customers get a plain 404, unexpected failures rethrow so ≥500 alerting fires. The render step is now shared (`renderInvoicePdfContent`) between first-time generation and self-heal.
+
+**Propagation:**
+- Severity: NORMAL - Layers: backend (`src/modules/invoices/generate-invoice.ts`, `src/modules/orders/orders.service.ts`, tests)
+- Migration: NO - Flag: none - Design impact: none - Breaking: NO
+- Pairs with 0.1.86 (stable derived numbers make re-rendering under the same serial exact) and 0.1.85 (healed PDFs pick up the corrected inclusive-GST math)
+- Rollback: revert the two files (returns to permanent 404 on lost files)
+
 ## [0.1.86] - 2026-08-09
 
 ### Changed

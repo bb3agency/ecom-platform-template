@@ -33,7 +33,8 @@ import { createShippingAdapterForProvider } from '@modules/shipping/shipping-pro
 import { createInvoiceStorageProvider } from '@modules/invoices/invoice-storage-provider';
 import {
   generateInvoiceForOrder,
-  isInvoiceEligibleOrderStatus
+  isInvoiceEligibleOrderStatus,
+  regenerateInvoicePdfForOrder
 } from '@modules/invoices/generate-invoice';
 import {
   sendNotificationFailureAlert,
@@ -1011,8 +1012,63 @@ export class OrdersService {
 
     const invoice = await this.resolveOrGenerateInvoice(order, 'customer');
 
-    const content = await this.invoiceStorage.readInvoicePdf(invoice.pdfUrl);
+    const content = await this.readInvoicePdfSelfHealing(order.id, invoice, 'customer');
     return { invoiceNumber: invoice.invoiceNumber, content };
+  }
+
+  /**
+   * Read the stored invoice PDF, self-healing a missing file: an Invoice row whose
+   * PDF vanished from storage (container filesystem replaced before the shared
+   * volume existed, host migration, manual delete) is re-rendered under its
+   * already-issued invoice number instead of 404ing forever — the row is the legal
+   * record; the file is just a rendering of it. Config-class regeneration failures
+   * follow the same audience rules as resolveOrGenerateInvoice: admins see the
+   * actionable 4xx, customers get a plain 404; unexpected failures rethrow so the
+   * >=500 error-handler alerting fires.
+   */
+  private async readInvoicePdfSelfHealing(
+    orderId: string,
+    invoice: { invoiceNumber: string; pdfUrl: string },
+    audience: 'admin' | 'customer'
+  ): Promise<Buffer> {
+    try {
+      return await this.invoiceStorage.readInvoicePdf(invoice.pdfUrl);
+    } catch (readError) {
+      const missingFile = readError instanceof AppError && readError.statusCode === 404;
+      if (!missingFile) {
+        throw readError;
+      }
+      this.fastify.log?.warn(
+        { orderId, invoiceNumber: invoice.invoiceNumber },
+        'stored invoice PDF missing — re-rendering under the issued invoice number'
+      );
+      try {
+        const regenerated = await regenerateInvoicePdfForOrder(
+          this.fastify.prisma,
+          orderId,
+          this.invoiceStorage
+        );
+        if (!regenerated) {
+          // No Invoice row after all — genuine 404 (row deleted between resolve and read).
+          throw readError;
+        }
+        return await this.invoiceStorage.readInvoicePdf(regenerated.pdfUrl);
+      } catch (error) {
+        if (error === readError) {
+          throw readError;
+        }
+        const isConfigError =
+          error instanceof AppError && error.statusCode >= 400 && error.statusCode < 500;
+        this.fastify.log?.[isConfigError ? 'warn' : 'error'](
+          { err: error, orderId, audience },
+          'invoice PDF self-heal regeneration failed'
+        );
+        if (audience === 'customer' && isConfigError) {
+          throw new AppError(ERROR_CODES.NOT_FOUND, 'Invoice not found', 404);
+        }
+        throw error;
+      }
+    }
   }
 
   /**
@@ -2925,7 +2981,7 @@ export class OrdersService {
 
     const invoice = await this.resolveOrGenerateInvoice(order, 'admin');
 
-    const content = await this.invoiceStorage.readInvoicePdf(invoice.pdfUrl);
+    const content = await this.readInvoicePdfSelfHealing(order.id, invoice, 'admin');
     return { invoiceNumber: invoice.invoiceNumber, content };
   }
 

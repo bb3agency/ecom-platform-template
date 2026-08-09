@@ -8,10 +8,11 @@ import { OrdersService } from './orders.service';
 
 vi.mock('@modules/invoices/generate-invoice', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@modules/invoices/generate-invoice')>();
-  return { ...actual, generateInvoiceForOrder: vi.fn() };
+  return { ...actual, generateInvoiceForOrder: vi.fn(), regenerateInvoicePdfForOrder: vi.fn() };
 });
 
 const generateInvoiceMock = vi.mocked(generateInvoiceModule.generateInvoiceForOrder);
+const regenerateInvoiceMock = vi.mocked(generateInvoiceModule.regenerateInvoicePdfForOrder);
 
 describe('OrdersService invoice PDF feature flag', () => {
   const originalGstFlag = featureFlags.gstInvoicing;
@@ -181,6 +182,78 @@ describe('OrdersService getMyInvoicePdf', () => {
       log: { warn: vi.fn(), error: vi.fn() }
     } as unknown as FastifyInstance;
     const service = new OrdersService(fastify);
+
+    await expect(service.getMyInvoicePdf('user_1', 'order_1')).rejects.toMatchObject({
+      statusCode: 404,
+      message: 'Invoice not found'
+    });
+  });
+
+  it('self-heals a missing stored PDF for customers, reusing the issued invoice number', async () => {
+    regenerateInvoiceMock.mockReset();
+    const fastify = {
+      prisma: {
+        order: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'order_1',
+            status: 'DELIVERED',
+            invoice: { invoiceNumber: 'INV-2026-00001', pdfUrl: 'client/invoices/order_1/INV-2026-00001.pdf' }
+          })
+        }
+      },
+      log: { warn: vi.fn(), error: vi.fn() }
+    } as unknown as FastifyInstance;
+    const service = new OrdersService(fastify);
+
+    const healedBuffer = Buffer.from('%PDF-1.4 healed');
+    const readMock = vi
+      .fn()
+      .mockRejectedValueOnce(new AppError(ERROR_CODES.NOT_FOUND, 'Invoice file not found', 404))
+      .mockResolvedValueOnce(healedBuffer);
+    vi.spyOn(
+      service as unknown as { invoiceStorage: { readInvoicePdf: (url: string) => Promise<Buffer> } },
+      'invoiceStorage',
+      'get'
+    ).mockReturnValue({ readInvoicePdf: readMock });
+    regenerateInvoiceMock.mockResolvedValue({
+      invoiceNumber: 'INV-2026-00001',
+      pdfUrl: 'client/invoices/order_1/INV-2026-00001.pdf'
+    });
+
+    const result = await service.getMyInvoicePdf('user_1', 'order_1');
+
+    expect(regenerateInvoiceMock).toHaveBeenCalledWith(fastify.prisma, 'order_1', expect.anything());
+    expect(result.invoiceNumber).toBe('INV-2026-00001');
+    expect(result.content).toEqual(healedBuffer);
+  });
+
+  it('never leaks self-heal config errors to customers — missing file + config failure surfaces as 404', async () => {
+    regenerateInvoiceMock.mockReset();
+    const fastify = {
+      prisma: {
+        order: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'order_1',
+            status: 'DELIVERED',
+            invoice: { invoiceNumber: 'INV-001', pdfUrl: 'client/invoices/order_1/INV-001.pdf' }
+          })
+        }
+      },
+      log: { warn: vi.fn(), error: vi.fn() }
+    } as unknown as FastifyInstance;
+    const service = new OrdersService(fastify);
+
+    const readMock = vi
+      .fn()
+      .mockRejectedValue(new AppError(ERROR_CODES.NOT_FOUND, 'Invoice file not found', 404));
+    vi.spyOn(
+      service as unknown as { invoiceStorage: { readInvoicePdf: (url: string) => Promise<Buffer> } },
+      'invoiceStorage',
+      'get'
+    ).mockReturnValue({ readInvoicePdf: readMock });
+    regenerateInvoiceMock.mockRejectedValue(
+      new AppError(ERROR_CODES.VALIDATION_ERROR, 'Invoice storage is not writable (EACCES).', 422)
+    );
 
     await expect(service.getMyInvoicePdf('user_1', 'order_1')).rejects.toMatchObject({
       statusCode: 404,

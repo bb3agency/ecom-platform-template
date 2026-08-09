@@ -293,6 +293,165 @@ function convertIndianNumberToWords(value: number): string {
   return `${convertIndianNumberToWords(crores)} Crore${remainder ? ` ${convertIndianNumberToWords(remainder)}` : ''}`;
 }
 
+/** Order shape needed to render an invoice PDF (subset of the Prisma include below). */
+type LoadedInvoiceOrder = {
+  id: string;
+  orderNumber: string;
+  shippingAddress: Prisma.JsonValue | null;
+  subtotal: number;
+  shippingCharge: number;
+  discountAmount: number;
+  total: number;
+  items: InvoiceOrderItem[];
+};
+
+const INVOICE_ORDER_INCLUDE = {
+  user: {
+    select: { email: true }
+  },
+  items: {
+    include: {
+      variant: {
+        select: {
+          hsnCode: true,
+          gstRatePercent: true,
+          product: {
+            select: {
+              attributes: true
+            }
+          }
+        }
+      }
+    }
+  }
+} as const;
+
+/**
+ * Pure render step shared by first-time generation and self-heal regeneration:
+ * builds the line items (GST carved out of the GST-inclusive amounts — never
+ * added on top), totals, and amount-in-words, and returns the PDF buffer.
+ * With GST billing off, rates/taxes are zeroed and the renderer produces a
+ * plain "INVOICE" instead of a "TAX INVOICE". Never changes totals.
+ */
+async function renderInvoicePdfContent(
+  order: LoadedInvoiceOrder,
+  sellerProfile: SellerProfile,
+  invoiceLogo: Awaited<ReturnType<typeof fetchInvoiceLogo>>,
+  invoiceNumber: string
+): Promise<Buffer> {
+  const shippingAddress = (order.shippingAddress ?? {}) as ShippingAddress;
+  const sellerState = sellerProfile.state;
+  const buyerState = (shippingAddress.state ?? 'Unknown').trim();
+  const isInterState = sellerState.toLowerCase() !== buyerState.toLowerCase();
+  const gstBilling = sellerProfile.gstBillingEnabled;
+  const lineItems: InvoiceLineItem[] = order.items.map((item: InvoiceOrderItem): InvoiceLineItem => {
+    const attributes = item.variant?.product?.attributes ?? null;
+    const taxRatePercent = gstBilling
+      ? resolveLineItemGstRatePercent(item.variant?.gstRatePercent, attributes)
+      : 0;
+    const split = computeInclusiveGstSplit(item.totalPrice, taxRatePercent, isInterState);
+    return {
+      name: item.productName,
+      hsnCode: resolveInvoiceHsnCode({
+        variantHsnCode: item.variant?.hsnCode,
+        productAttributes: attributes
+      }),
+      quantity: item.quantity,
+      unitPricePaise: item.unitPrice,
+      lineTotalPaise: item.totalPrice,
+      taxRatePercent,
+      cgstPaise: split.cgstPaise,
+      sgstPaise: split.sgstPaise,
+      igstPaise: split.igstPaise
+    };
+  });
+
+  const cgstPaise = lineItems.reduce((sum, item) => sum + item.cgstPaise, 0);
+  const sgstPaise = lineItems.reduce((sum, item) => sum + item.sgstPaise, 0);
+  const igstPaise = lineItems.reduce((sum, item) => sum + item.igstPaise, 0);
+  const amountInWords = amountPaiseToIndianWords(order.total);
+
+  return renderInvoicePdfBuffer({
+    storeDisplayName: sellerProfile.storeName,
+    logo: invoiceLogo,
+    invoiceNumber,
+    orderNumber: order.orderNumber,
+    issuedAtIso: new Date().toISOString(),
+    seller: {
+      legalName: sellerProfile.legalName,
+      addressLine: sellerProfile.addressLine,
+      state: sellerState,
+      gstin: sellerProfile.gstin,
+      fssai: sellerProfile.fssai
+    },
+    buyer: {
+      fullName: shippingAddress.fullName ?? 'Customer',
+      addressLine: [shippingAddress.line1, shippingAddress.line2, shippingAddress.city].filter(Boolean).join(', '),
+      state: buyerState,
+      pincode: shippingAddress.pincode ?? 'N/A'
+    },
+    lineItems,
+    subtotalPaise: order.subtotal,
+    shippingPaise: order.shippingCharge,
+    discountPaise: order.discountAmount,
+    totalPaise: order.total,
+    cgstPaise,
+    sgstPaise,
+    igstPaise,
+    amountInWords,
+    gstBilling
+  });
+}
+
+/**
+ * Self-heal for an order that already HAS an Invoice row but whose stored PDF is
+ * missing (storage loss: wiped/replaced container filesystem before the shared
+ * volume existed, host migration, manual delete). Re-renders the PDF under the
+ * row's already-issued invoice number — the legal serial never changes — and
+ * points pdfUrl at the fresh storage reference. Renders with CURRENT order data
+ * and store settings (totals are immutable order fields, so amounts cannot
+ * drift; presentation follows the current GST-billing mode). Returns null when
+ * the order has no Invoice row (callers fall back to full generation).
+ */
+export async function regenerateInvoicePdfForOrder(
+  prisma: PrismaClient,
+  orderId: string,
+  invoiceStorageAdapter: InvoiceStorageAdapter
+): Promise<{ invoiceNumber: string; pdfUrl: string } | null> {
+  const existingInvoice = await prisma.invoice.findUnique({
+    where: { orderId },
+    select: { id: true, invoiceNumber: true }
+  });
+  if (!existingInvoice) {
+    return null;
+  }
+
+  const sellerProfile = await resolveSellerProfileOrThrow(prisma);
+  const invoiceLogo = await fetchInvoiceLogo(sellerProfile.logoUrl);
+
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: INVOICE_ORDER_INCLUDE
+  });
+  if (!order) {
+    return null;
+  }
+
+  const content = await renderInvoicePdfContent(order, sellerProfile, invoiceLogo, existingInvoice.invoiceNumber);
+  const uploaded = await invoiceStorageAdapter.uploadInvoicePdf({
+    orderId: order.id,
+    invoiceNumber: existingInvoice.invoiceNumber,
+    content
+  });
+
+  await prisma.invoice.update({
+    where: { id: existingInvoice.id },
+    data: { pdfUrl: uploaded.storageReference }
+  });
+
+  return { invoiceNumber: existingInvoice.invoiceNumber, pdfUrl: uploaded.storageReference };
+}
+
 export async function generateInvoiceForOrder(
   prisma: PrismaClient,
   orderId: string,
@@ -316,26 +475,7 @@ export async function generateInvoiceForOrder(
 
     const order = await tx.order.findUnique({
       where: { id: orderId },
-      include: {
-        user: {
-          select: { email: true }
-        },
-        items: {
-          include: {
-            variant: {
-              select: {
-                hsnCode: true,
-                gstRatePercent: true,
-                product: {
-                  select: {
-                    attributes: true
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
+      include: INVOICE_ORDER_INCLUDE
     });
     if (!order) {
       return;
@@ -373,72 +513,7 @@ export async function generateInvoiceForOrder(
         );
       }
     }
-    const shippingAddress = (order.shippingAddress ?? {}) as ShippingAddress;
-    const sellerState = sellerProfile.state;
-    const buyerState = (shippingAddress.state ?? 'Unknown').trim();
-    const isInterState = sellerState.toLowerCase() !== buyerState.toLowerCase();
-    // GST is CARVED OUT of the GST-inclusive line amounts, never added on top —
-    // the invoice's grand total must always equal the order total the customer
-    // actually paid at checkout (which never adds tax). With GST billing off, the
-    // rates/taxes are zeroed and the renderer produces a plain "INVOICE".
-    const gstBilling = sellerProfile.gstBillingEnabled;
-    const lineItems: InvoiceLineItem[] = order.items.map((item: InvoiceOrderItem): InvoiceLineItem => {
-      const attributes = item.variant?.product?.attributes ?? null;
-      const taxRatePercent = gstBilling
-        ? resolveLineItemGstRatePercent(item.variant?.gstRatePercent, attributes)
-        : 0;
-      const split = computeInclusiveGstSplit(item.totalPrice, taxRatePercent, isInterState);
-      return {
-        name: item.productName,
-        hsnCode: resolveInvoiceHsnCode({
-          variantHsnCode: item.variant?.hsnCode,
-          productAttributes: attributes
-        }),
-        quantity: item.quantity,
-        unitPricePaise: item.unitPrice,
-        lineTotalPaise: item.totalPrice,
-        taxRatePercent,
-        cgstPaise: split.cgstPaise,
-        sgstPaise: split.sgstPaise,
-        igstPaise: split.igstPaise
-      };
-    });
-
-    const cgstPaise = lineItems.reduce((sum, item) => sum + item.cgstPaise, 0);
-    const sgstPaise = lineItems.reduce((sum, item) => sum + item.sgstPaise, 0);
-    const igstPaise = lineItems.reduce((sum, item) => sum + item.igstPaise, 0);
-    const amountInWords = amountPaiseToIndianWords(order.total);
-
-    const content = await renderInvoicePdfBuffer({
-      storeDisplayName: sellerProfile.storeName,
-      logo: invoiceLogo,
-      invoiceNumber,
-      orderNumber: order.orderNumber,
-      issuedAtIso: new Date().toISOString(),
-      seller: {
-        legalName: sellerProfile.legalName,
-        addressLine: sellerProfile.addressLine,
-        state: sellerState,
-        gstin: sellerProfile.gstin,
-        fssai: sellerProfile.fssai
-      },
-      buyer: {
-        fullName: shippingAddress.fullName ?? 'Customer',
-        addressLine: [shippingAddress.line1, shippingAddress.line2, shippingAddress.city].filter(Boolean).join(', '),
-        state: buyerState,
-        pincode: shippingAddress.pincode ?? 'N/A'
-      },
-      lineItems,
-      subtotalPaise: order.subtotal,
-      shippingPaise: order.shippingCharge,
-      discountPaise: order.discountAmount,
-      totalPaise: order.total,
-      cgstPaise,
-      sgstPaise,
-      igstPaise,
-      amountInWords,
-      gstBilling
-    });
+    const content = await renderInvoicePdfContent(order, sellerProfile, invoiceLogo, invoiceNumber);
 
     const uploaded = await invoiceStorageAdapter.uploadInvoicePdf({
       orderId: order.id,
