@@ -8,10 +8,11 @@ import { OrdersService } from './orders.service';
 
 vi.mock('@modules/invoices/generate-invoice', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@modules/invoices/generate-invoice')>();
-  return { ...actual, generateInvoiceForOrder: vi.fn() };
+  return { ...actual, generateInvoiceForOrder: vi.fn(), regenerateInvoicePdfForOrder: vi.fn() };
 });
 
 const generateInvoiceMock = vi.mocked(generateInvoiceModule.generateInvoiceForOrder);
+const regenerateInvoiceMock = vi.mocked(generateInvoiceModule.regenerateInvoicePdfForOrder);
 
 function makeFastify(orderResult: unknown, invoiceResult: unknown = null): FastifyInstance {
   return {
@@ -38,6 +39,7 @@ describe('OrdersService adminGetInvoicePdf', () => {
   beforeEach(() => {
     featureFlags.gstInvoicing = true;
     generateInvoiceMock.mockReset();
+    regenerateInvoiceMock.mockReset();
   });
 
   it('throws 404 when order does not exist', async () => {
@@ -118,6 +120,81 @@ describe('OrdersService adminGetInvoicePdf', () => {
       statusCode: 422,
       code: ERROR_CODES.VALIDATION_ERROR,
       message: expect.stringContaining('Complete the store profile')
+    });
+  });
+
+  it('self-heals a missing stored PDF by re-rendering under the issued invoice number', async () => {
+    const fastify = makeFastify({
+      id: 'order_1',
+      status: 'DELIVERED',
+      invoice: { invoiceNumber: 'INV-2026-00001', pdfUrl: 'client/invoices/order_1/INV-2026-00001.pdf' }
+    });
+    const service = new OrdersService(fastify);
+    const healedBuffer = Buffer.from('%PDF-1.4 re-rendered');
+    const readMock = vi
+      .fn()
+      .mockRejectedValueOnce(new AppError(ERROR_CODES.NOT_FOUND, 'Invoice file not found', 404))
+      .mockResolvedValueOnce(healedBuffer);
+    vi.spyOn(
+      service as unknown as { invoiceStorage: { readInvoicePdf: (url: string) => Promise<Buffer> } },
+      'invoiceStorage',
+      'get'
+    ).mockReturnValue({ readInvoicePdf: readMock });
+    regenerateInvoiceMock.mockResolvedValue({
+      invoiceNumber: 'INV-2026-00001',
+      pdfUrl: 'client/invoices/order_1/INV-2026-00001.pdf'
+    });
+
+    const result = await service.adminGetInvoicePdf('order_1');
+
+    expect(regenerateInvoiceMock).toHaveBeenCalledWith(fastify.prisma, 'order_1', expect.anything());
+    expect(result.invoiceNumber).toBe('INV-2026-00001');
+    expect(result.content).toEqual(healedBuffer);
+    expect(readMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('throws 404 when the file is missing and the invoice row no longer exists', async () => {
+    const fastify = makeFastify({
+      id: 'order_1',
+      status: 'DELIVERED',
+      invoice: { invoiceNumber: 'INV-001', pdfUrl: 'client/invoices/order_1/INV-001.pdf' }
+    });
+    const service = new OrdersService(fastify);
+    const readMock = vi
+      .fn()
+      .mockRejectedValue(new AppError(ERROR_CODES.NOT_FOUND, 'Invoice file not found', 404));
+    vi.spyOn(
+      service as unknown as { invoiceStorage: { readInvoicePdf: (url: string) => Promise<Buffer> } },
+      'invoiceStorage',
+      'get'
+    ).mockReturnValue({ readInvoicePdf: readMock });
+    regenerateInvoiceMock.mockResolvedValue(null);
+
+    await expect(service.adminGetInvoicePdf('order_1')).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it('passes actionable config errors from self-heal regeneration through to admins', async () => {
+    const fastify = makeFastify({
+      id: 'order_1',
+      status: 'DELIVERED',
+      invoice: { invoiceNumber: 'INV-001', pdfUrl: 'client/invoices/order_1/INV-001.pdf' }
+    });
+    const service = new OrdersService(fastify);
+    const readMock = vi
+      .fn()
+      .mockRejectedValue(new AppError(ERROR_CODES.NOT_FOUND, 'Invoice file not found', 404));
+    vi.spyOn(
+      service as unknown as { invoiceStorage: { readInvoicePdf: (url: string) => Promise<Buffer> } },
+      'invoiceStorage',
+      'get'
+    ).mockReturnValue({ readInvoicePdf: readMock });
+    regenerateInvoiceMock.mockRejectedValue(
+      new AppError(ERROR_CODES.VALIDATION_ERROR, 'Invoice storage is not writable (EACCES at /app/storage/invoices).', 422)
+    );
+
+    await expect(service.adminGetInvoicePdf('order_1')).rejects.toMatchObject({
+      statusCode: 422,
+      code: ERROR_CODES.VALIDATION_ERROR
     });
   });
 
