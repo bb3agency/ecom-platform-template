@@ -108,6 +108,41 @@ describe('renderInvoicePdfBuffer with optional registrations', () => {
   });
 });
 
+// 1x1 transparent PNG — enough for react-pdf to embed as a real image.
+const TINY_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+  'base64'
+);
+
+describe('brand logo in the header', () => {
+  it('renders the invoice with a logo at the left of the header', async () => {
+    const buffer = await renderInvoicePdfBuffer({
+      ...invoicePayload({ gstin: '36ABCDE1234F1Z5' }),
+      logo: { data: TINY_PNG, format: 'png' }
+    });
+    expect(buffer.subarray(0, 5).toString()).toBe('%PDF-');
+    // An embedded image object must exist in the PDF (text-only renders have none).
+    expect(buffer.toString('latin1')).toContain('/Image');
+  });
+
+  it('renders the credit note with the same logo treatment', async () => {
+    const buffer = await renderCreditNotePdfBuffer({
+      creditNoteNumber: 'CN-INV-AB2C-9XYZ',
+      originalInvoiceNumber: 'INV-AB2C-9XYZ',
+      orderNumber: 'ORD-AB2C-9XYZ',
+      issuedAtIso: '2026-08-09T00:00:00.000Z',
+      reason: 'Order cancelled',
+      refundAmountPaise: 95000,
+      seller: { legalName: 'Test Store Pvt Ltd', gstin: '', fssai: '' },
+      buyer: { fullName: 'A Customer' },
+      storeDisplayName: 'Test Store',
+      logo: { data: TINY_PNG, format: 'png' }
+    });
+    expect(buffer.subarray(0, 5).toString()).toBe('%PDF-');
+    expect(buffer.toString('latin1')).toContain('/Image');
+  });
+});
+
 describe('renderCreditNotePdfBuffer with optional registrations', () => {
   it('renders a credit note when neither GSTIN nor FSSAI is configured', async () => {
     const buffer = await renderCreditNotePdfBuffer({

@@ -7,13 +7,21 @@ import { ERROR_CODES } from '@common/errors/error-codes';
 
 export const INVOICE_HSN_MISSING_LABEL = 'N/A';
 
+/**
+ * Fallback GST rate for products that never set one. 5% is the modal GST 2.0 rate
+ * for packaged food/FMCG (this platform's client base). The previous default of
+ * 12% became a DEAD SLAB on 22 Sept 2025 — GST 2.0 abolished 12% and 28% for
+ * goods, leaving 0/5/18/40 (+3% precious metals, transitional 28%+cess tobacco).
+ */
+const DEFAULT_GST_RATE_PERCENT = 5;
+
 export function readGstRatePercentFromProductAttributes(attributes: unknown): number {
   if (!attributes || typeof attributes !== 'object' || Array.isArray(attributes)) {
-    return 12;
+    return DEFAULT_GST_RATE_PERCENT;
   }
   const rawRate = (attributes as Record<string, unknown>).gstRate;
   if (typeof rawRate !== 'number') {
-    return 12;
+    return DEFAULT_GST_RATE_PERCENT;
   }
   if (rawRate > 0 && rawRate < 1) {
     return Math.round(rawRate * 100);

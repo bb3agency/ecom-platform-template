@@ -880,8 +880,47 @@ export const adminHsnSuggestionsSchema = {
             required: ['code', 'description'],
             properties: {
               code: { type: 'string', minLength: 4, maxLength: 8 },
-              description: { type: 'string', maxLength: 500 }
+              description: { type: 'string', maxLength: 500 },
+              // Suggested GST rate for the code from the vendored CBIC GST 2.0
+              // rules — null when no rule covers it. Suggestion only; the admin
+              // confirms (rates can hinge on pre-packaged/price-band qualifiers
+              // carried in gstRateNote).
+              gstRatePercent: { type: ['number', 'null'] },
+              gstRateNote: { type: ['string', 'null'], maxLength: 300 }
             }
+          }
+        }
+      }
+    },
+    ...standardAdminErrorResponses
+  }
+} as const;
+
+export const adminGstRateSuggestionSchema = {
+  params: emptyParamsSchema,
+  querystring: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['hsn'],
+    properties: {
+      // HSN code (2-15 digits) to suggest the GST rate for.
+      hsn: { type: 'string', minLength: 2, maxLength: 15, pattern: '^[0-9]+$' }
+    }
+  },
+  response: {
+    200: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['suggestion'],
+      properties: {
+        suggestion: {
+          type: ['object', 'null'],
+          additionalProperties: false,
+          required: ['ratePercent', 'note', 'matchedPrefix'],
+          properties: {
+            ratePercent: { type: 'number' },
+            note: { type: ['string', 'null'], maxLength: 300 },
+            matchedPrefix: { type: 'string', maxLength: 15 }
           }
         }
       }

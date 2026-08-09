@@ -9,8 +9,10 @@ import {
 } from './product-tax-fields';
 
 describe('product-tax-fields', () => {
-  it('reads gst rate from product attributes with 12% default', () => {
-    expect(readGstRatePercentFromProductAttributes(null)).toBe(12);
+  it('reads gst rate from product attributes with 5% default', () => {
+    // Default fallback is 5% — the modal GST 2.0 slab for packaged food (12% was
+    // abolished on 22 Sept 2025 and must never be the default again).
+    expect(readGstRatePercentFromProductAttributes(null)).toBe(5);
     expect(readGstRatePercentFromProductAttributes({ gstRate: 5 })).toBe(5);
   });
 

@@ -568,7 +568,7 @@ A GST invoice PDF is generated automatically for every confirmed order. It is at
 Tax type is determined by comparing the seller's state (from store settings) with the buyer's delivery state. Intra-state transactions use CGST + SGST (split equally). Inter-state transactions use IGST.
 
 **BR-GST-03 — Tax rate from product attributes**
-The GST rate for each line item is taken from the product's HSN code attributes. The default is 12% if not configured. The correct rate for each product category must be confirmed with the client's chartered accountant before go-live.
+The GST rate for each line item is taken from the product's HSN code attributes. The default is 5% if not configured (amended 2026-08-09 — the former 12% default became a dead slab when GST 2.0 abolished 12%/28% on 22 Sept 2025; 5% is the modal rate for packaged food/FMCG). The admin product editor suggests the rate from the vendored CBIC GST 2.0 rules keyed by HSN prefix (suggestion-only — qualifiers like pre-packaged vs loose and price bands are surfaced as notes). The correct rate for each product category must be confirmed with the client's chartered accountant before go-live.
 
 **BR-GST-04 — FSSAI printed when configured (amended 2026-08-08)**
 When the FSSAI licence number is set in store settings it must appear on every invoice. FSSAI (like GSTIN) is OPTIONAL and never blocks invoice generation — when absent, the registration line is omitted from the PDF. (Original requirement blocked generation for food clients without an FSSAI; superseded because a missing registration surfaced as a masked 500 on the invoice download and stalled all invoicing.)

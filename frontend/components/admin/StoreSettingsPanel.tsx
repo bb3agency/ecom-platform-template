@@ -40,6 +40,7 @@ export function StoreSettingsPanel() {
   const [sellerState, setSellerState] = useState("");
   const [contactPhone, setContactPhone] = useState("");
   const [contactEmail, setContactEmail] = useState("");
+  const [logoUrl, setLogoUrl] = useState("");
   const [facebookUrl, setFacebookUrl] = useState("");
   const [instagramUrl, setInstagramUrl] = useState("");
   const [loaded, setLoaded] = useState(false);
@@ -144,6 +145,7 @@ export function StoreSettingsPanel() {
           setSellerState(result.sellerState ?? "");
           setContactPhone(result.contactPhone ?? "");
           setContactEmail(result.contactEmail ?? "");
+          setLogoUrl(result.logoUrl ?? "");
           setFacebookUrl(result.facebookUrl ?? "");
           setInstagramUrl(result.instagramUrl ?? "");
           setLoaded(true);
@@ -180,6 +182,8 @@ export function StoreSettingsPanel() {
           // null clears the link (hides the footer icon); undefined would leave it unchanged.
           facebookUrl: facebookUrl.trim() ? facebookUrl.trim() : null,
           instagramUrl: instagramUrl.trim() ? instagramUrl.trim() : null,
+          // null clears the logo (invoices render text-only again).
+          logoUrl: logoUrl.trim() ? logoUrl.trim() : null,
         }),
       });
       setSuccess("Store settings saved successfully.");
@@ -365,6 +369,36 @@ export function StoreSettingsPanel() {
                   State where the business is registered — also used for GST place-of-supply on
                   invoices.
                 </span>
+              </label>
+
+              <label className="grid min-w-0 grid-cols-1 gap-1.5 text-sm font-medium text-foreground sm:col-span-2">
+                Invoice Logo URL
+                <input
+                  type="text"
+                  inputMode="url"
+                  placeholder="/images/logo.png or https://yourstore.com/logo.png"
+                  maxLength={1000}
+                  className={inputClass}
+                  value={logoUrl}
+                  onChange={(e) => setLogoUrl(e.target.value)}
+                  disabled={!canWrite}
+                />
+                <span className="text-xs font-normal text-muted-foreground">
+                  Direct link to your logo image — PNG or JPG only. Printed at the top-left of
+                  every invoice and credit note. A path like{" "}
+                  <code className="font-mono text-[10px]">/images/logo.png</code> uses your own
+                  storefront; leave blank for a text-only header.
+                </span>
+                {logoUrl.trim() ? (
+                  /* Merchant-supplied URL outside next.config remotePatterns — next/image would
+                     hard-fail on it. This preview mirrors exactly what the PDF renderer fetches. */
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={logoUrl.trim()}
+                    alt="Invoice logo preview"
+                    className="mt-1 h-14 w-14 rounded-md border border-border object-contain bg-background/50 p-1"
+                  />
+                ) : null}
               </label>
 
               <label className="grid min-w-0 grid-cols-1 gap-1.5 text-sm font-medium text-foreground">

@@ -206,13 +206,26 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
   const [tagsText, setTagsText] = useState("");
   const [isFeatured, setIsFeatured] = useState(false);
   const [isLocalDeliveryOnly, setIsLocalDeliveryOnly] = useState(false);
-  const [gstRate, setGstRate] = useState("12");
+  // Default 5% — the modal GST 2.0 slab for packaged food/FMCG (12% was abolished
+  // on 22 Sept 2025 and no longer exists as a rate).
+  const [gstRate, setGstRate] = useState("5");
   const [hsnCode, setHsnCode] = useState("");
   // HSN autofill: suggestions from the backend's vendored WCO Harmonized System
   // dataset, queried with the product name (or typed digits). Click-to-fill.
-  const [hsnSuggestions, setHsnSuggestions] = useState<Array<{ code: string; description: string }>>([]);
+  // Each suggestion also carries the CBIC GST 2.0 rate for its code (when known)
+  // so one click fills HSN + GST rate together.
+  const [hsnSuggestions, setHsnSuggestions] = useState<
+    Array<{ code: string; description: string; gstRatePercent: number | null; gstRateNote: string | null }>
+  >([]);
   const [hsnSuggestLoading, setHsnSuggestLoading] = useState(false);
   const [hsnSuggestQueried, setHsnSuggestQueried] = useState(false);
+  // Live GST-rate suggestion for the HSN currently in the field (debounced fetch).
+  // Suggestion-only: shown as an Apply chip with the qualifier note, never forced.
+  const [rateSuggestion, setRateSuggestion] = useState<{
+    ratePercent: number;
+    note: string | null;
+    forHsn: string;
+  } | null>(null);
 
   const [createVariants, setCreateVariants] = useState<VariantDraft[]>([
     emptyVariant(),
@@ -274,7 +287,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
       setTagsText(normalized.tags.join(", "));
       setIsFeatured(normalized.isFeatured);
       setIsLocalDeliveryOnly(normalized.isLocalDeliveryOnly === true);
-      setGstRate(String(normalized.attributes?.gstRate ?? 12));
+      setGstRate(String(normalized.attributes?.gstRate ?? 5));
       setHsnCode(resolveAdminProductHsnCode(normalized));
       // Map isActive → Status dropdown: true = "Active", false = "Draft"
       setStatus(normalized.isActive ? "Active" : "Draft");
@@ -338,6 +351,39 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
       setSlug(slugify(name));
     }
   }, [isCreate, name, slugTouched]);
+
+  // GST-rate autofill: whenever the HSN field holds a plausible code, fetch the
+  // suggested rate (debounced) from the vendored CBIC GST 2.0 rules. Rendered as
+  // an Apply chip under the GST Rate field — suggestion only, never auto-applied.
+  useEffect(() => {
+    if (!gstInvoicingEnabled) return;
+    const hsn = hsnCode.trim();
+    if (hsn.length < 4) {
+      setRateSuggestion(null);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void api<{ suggestion: { ratePercent: number; note: string | null } | null }>(
+        `/admin/products/gst-rate-suggestion?hsn=${encodeURIComponent(hsn.slice(0, 15))}`,
+      )
+        .then((res) => {
+          if (cancelled) return;
+          setRateSuggestion(
+            res.suggestion
+              ? { ratePercent: res.suggestion.ratePercent, note: res.suggestion.note, forHsn: hsn }
+              : null,
+          );
+        })
+        .catch(() => {
+          if (!cancelled) setRateSuggestion(null);
+        });
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [api, gstInvoicingEnabled, hsnCode]);
 
   async function saveCoreFields() {
     if (!canWrite) return;
@@ -1428,20 +1474,65 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
               </label>
 
               {gstInvoicingEnabled ? (
-                <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">
-                  <label className="grid min-w-0 grid-cols-1 gap-1.5 text-sm font-medium text-foreground">
-                    GST Rate (%)
-                    <input
-                      type="number"
-                      min={0}
-                      max={100}
-                      step={1}
-                      className={inputClass}
-                      value={gstRate}
-                      onChange={(event) => setGstRate(event.target.value)}
-                      disabled={!canWrite}
-                    />
-                  </label>
+                <div className="grid min-w-0 grid-cols-1 gap-1.5">
+                  <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">
+                    <label className="grid min-w-0 grid-cols-1 gap-1.5 text-sm font-medium text-foreground">
+                      GST Rate (%)
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        step="any"
+                        className={inputClass}
+                        value={gstRate}
+                        onChange={(event) => setGstRate(event.target.value)}
+                        disabled={!canWrite}
+                      />
+                    </label>
+                  </div>
+                  {canWrite && rateSuggestion && String(rateSuggestion.ratePercent) !== gstRate.trim() ? (
+                    <div className="flex flex-wrap items-center gap-1.5 rounded-lg bg-sky-500/10 p-2">
+                      <button
+                        type="button"
+                        onClick={() => setGstRate(String(rateSuggestion.ratePercent))}
+                        className="flex h-7 items-center gap-1.5 rounded-full border border-border bg-muted px-2.5 text-xs font-semibold transition-colors hover:bg-primary/10 hover:text-primary cursor-pointer"
+                        aria-label={`Apply suggested GST rate ${rateSuggestion.ratePercent}% for HSN ${rateSuggestion.forHsn}`}
+                      >
+                        <Sparkles className="h-3.5 w-3.5" />
+                        Apply {rateSuggestion.ratePercent}% (HSN {rateSuggestion.forHsn})
+                      </button>
+                      {rateSuggestion.note ? (
+                        <span className="min-w-0 text-[11px] normal-case font-normal text-muted-foreground">
+                          {rateSuggestion.note}. Verify with your CA.
+                        </span>
+                      ) : (
+                        <span className="text-[11px] normal-case font-normal text-muted-foreground">
+                          Per CBIC GST 2.0 schedules — verify with your CA.
+                        </span>
+                      )}
+                    </div>
+                  ) : null}
+                  {(() => {
+                    // Catalog prices are GST-INCLUSIVE: the invoice carves the GST out
+                    // of the price, never adds it on top. Show the live breakup so the
+                    // admin sees exactly what the entered price is made of.
+                    const priceRupees = Number.parseFloat(
+                      (isCreate ? createVariants[0]?.pricePaise ?? "" : editPrimaryPrice).trim(),
+                    );
+                    const rate = Number.parseFloat(gstRate.trim());
+                    if (!Number.isFinite(priceRupees) || priceRupees <= 0 || !Number.isFinite(rate) || rate <= 0) {
+                      return null;
+                    }
+                    const base = (priceRupees * 100) / (100 + rate);
+                    const gst = priceRupees - base;
+                    return (
+                      <p className="text-[11px] normal-case font-normal text-muted-foreground">
+                        Price is GST-inclusive: ₹{priceRupees.toFixed(2)} = base ₹{base.toFixed(2)} + GST ₹
+                        {gst.toFixed(2)} ({rate}%). The invoice shows this split; customers always pay exactly the
+                        price you set.
+                      </p>
+                    );
+                  })()}
                 </div>
               ) : null}
 
@@ -1478,7 +1569,14 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                         if (query.length < 2) return;
                         setHsnSuggestLoading(true);
                         setHsnSuggestQueried(true);
-                        void api<{ items: Array<{ code: string; description: string }> }>(
+                        void api<{
+                          items: Array<{
+                            code: string;
+                            description: string;
+                            gstRatePercent: number | null;
+                            gstRateNote: string | null;
+                          }>;
+                        }>(
                           `/admin/products/hsn-suggestions?q=${encodeURIComponent(query.slice(0, 160))}`,
                         )
                           .then((res) => setHsnSuggestions(res.items))
@@ -1500,7 +1598,9 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                     {hsnSuggestions.length > 0 ? (
                       <div className="rounded-lg bg-sky-500/10 p-2.5">
                         <p className="mb-1.5 text-xs font-medium text-sky-700">
-                          Click a suggestion to fill the HSN field
+                          {gstInvoicingEnabled
+                            ? "Click a suggestion to fill the HSN + GST rate fields"
+                            : "Click a suggestion to fill the HSN field"}
                         </p>
                         <div className="flex flex-wrap gap-1.5">
                           {hsnSuggestions.map((s) => (
@@ -1509,16 +1609,27 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                               type="button"
                               onClick={() => {
                                 setHsnCode(s.code);
+                                // One-click autofill: the suggestion carries the CBIC
+                                // GST 2.0 rate for its code — fill it too (still fully
+                                // editable; the qualifier note shows under the field).
+                                if (gstInvoicingEnabled && s.gstRatePercent !== null) {
+                                  setGstRate(String(s.gstRatePercent));
+                                }
                                 setHsnSuggestions([]);
                                 setHsnSuggestQueried(false);
                               }}
                               className="flex max-w-full items-center gap-2 rounded-full border border-border bg-muted px-2.5 py-1 text-left text-xs transition-colors hover:bg-primary/10 hover:text-primary cursor-pointer"
-                              title={s.description}
+                              title={s.gstRateNote ? `${s.description} — ${s.gstRateNote}` : s.description}
                             >
                               <span className="shrink-0 font-mono font-semibold">{s.code}</span>
                               <span className="min-w-0 truncate normal-case font-normal text-muted-foreground">
                                 {s.description}
                               </span>
+                              {gstInvoicingEnabled && s.gstRatePercent !== null ? (
+                                <span className="shrink-0 rounded-full bg-sky-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700">
+                                  {s.gstRatePercent}% GST
+                                </span>
+                              ) : null}
                             </button>
                           ))}
                         </div>

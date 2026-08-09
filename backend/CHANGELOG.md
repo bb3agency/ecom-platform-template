@@ -12,6 +12,22 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.88] - 2026-08-09
+
+### Added
+- **Store logo on invoices and credit notes, anchored at the far LEFT of the header** (brand row: logo beside the identity text, 54pt, contain-fit). Logo comes from `StoreSettings.logoUrl`; `fetchInvoiceLogo` now also accepts a SITE-RELATIVE path (`/images/logo.png`) resolved against `STOREFRONT_URL`, so merchants can point at an asset already served by their storefront — protocol-relative URLs (`//host/…`) are rejected, PNG/JPG magic-byte sniff and 2MB cap unchanged, any fetch failure still renders text-only. Credit notes now carry the same brand block (`CreditNotePdfPayload.storeDisplayName`/`logo`, passed by the order-processing worker, fetched outside the DB transaction). `PATCH /admin/settings/store` `logoUrl` now accepts `null` to clear (was string-only — the logo could never be removed).
+- **Suggested GST rate per HSN code — vendored CBIC GST 2.0 rate rules** (`gst-rate-dataset.ts` + `suggestGstRateForHsn`, hand-curated from Notification 9/2025-CT(Rate) effective 22 Sept 2025; no official machine-readable feed exists, so the dataset ships in core like the WCO HSN dataset and updates via core releases). Longest-prefix lookup, 0/5/18/40 slabs (+3% precious metals); qualifier-dependent rates carry a `note` ("5% pre-packaged & labelled; 0% loose", apparel price bands). New route `GET /api/v1/admin/products/gst-rate-suggestion?hsn=` (`products:read`); `GET …/hsn-suggestions` items now also carry `gstRatePercent`/`gstRateNote` (nullable) so the editor fills HSN + GST rate in one click. Suggestion-only — never auto-applied server-side.
+- **HSN suggestions v2**: plural/singular-insensitive matching ("Laddus" → laddu), single-token alias-key prefix matching (half-typed "cardam" already suggests cardamom), and a ~3× larger Indian/regional-terms alias map (dairy, sweets, snacks, spices, staples, personal care, household — incl. Telugu/Hindi trade terms like avakaya, bellam, atukulu, karpura).
+
+### Fixed
+- **Default GST rate fallback was the dead 12% slab** — GST 2.0 abolished 12%/28% on 22 Sept 2025. Products without an explicit rate now fall back to **5%** (the modal slab for packaged food/FMCG) in `readGstRatePercentFromProductAttributes`; BR-GST-03 amended. Products with an explicitly stored rate are unaffected.
+
+**Propagation:**
+- Severity: NORMAL - Layers: backend (`generate-invoice.ts`, `invoice-pdf.ts`, `order-processing.worker.ts`, settings schema/types, `products` module: new gst-rate-dataset/suggest + route + schema, `admin-endpoint-policy-registry.ts`, `product-tax-fields.ts`, `BRD.md`, `ROUTE_SURFACE_COMPLETE_REFERENCE.md`, tests)
+- Migration: NO - Flag: none (logo renders only when set; rate suggestions are read-only) - Design impact: none - Breaking: NO (additive response fields; fallback-rate change only affects products that never set a rate — 12% was not a legal rate anymore)
+- Frontend pairing: frontend-core 0.1.62 adds the Admin → Settings → Store "Invoice Logo URL" field and the product editor GST-rate autofill + inclusive-price breakup
+- Rollback: revert the files
+
 ## [0.1.87] - 2026-08-09
 
 ### Fixed

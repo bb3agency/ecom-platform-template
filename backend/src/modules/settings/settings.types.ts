@@ -34,7 +34,7 @@ export type StoreProfileResponse = {
 export type UpdateStoreProfileInput = {
   storeName?: string;
   websiteUrl?: string;
-  logoUrl?: string;
+  logoUrl?: string | null;
   contactEmail?: string;
   contactPhone?: string;
   gstin?: string;
