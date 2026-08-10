@@ -432,7 +432,8 @@ async function renderInvoicePdfContent(
           : 0
       };
     }),
-    shippingPaise: order.shippingCharge,
+    // Delivery/shipping is intentionally NOT in the tax base and NOT an item row —
+    // it is billed untaxed in the totals section only (merchant policy 2026-08-10).
     discountPaise: order.discountAmount,
     isInterState
   });
@@ -470,7 +471,8 @@ async function renderInvoicePdfContent(
     sgstPaise,
     igstPaise,
     amountInWords,
-    gstBilling
+    gstBilling,
+    isInterState
   });
 }
 

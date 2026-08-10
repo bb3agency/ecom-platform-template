@@ -86,6 +86,25 @@ describe('renderInvoicePdfBuffer GST billing modes', () => {
     const buffer = await renderInvoicePdfBuffer({ ...invoicePayload({ gstin: '36ABCDE1234F1Z5' }), gstBilling: true });
     expect(buffer.subarray(0, 5).toString()).toBe('%PDF-');
   });
+
+  it('renders the inter-state layout (single IGST column) when isInterState is true', async () => {
+    const payload = invoicePayload({ gstin: '36ABCDE1234F1Z5' });
+    const buffer = await renderInvoicePdfBuffer({
+      ...payload,
+      gstBilling: true,
+      isInterState: true,
+      lineItems: payload.lineItems.map((item) => ({
+        ...item,
+        cgstPaise: 0,
+        sgstPaise: 0,
+        igstPaise: 10800
+      })),
+      cgstPaise: 0,
+      sgstPaise: 0,
+      igstPaise: 10800
+    });
+    expect(buffer.subarray(0, 5).toString()).toBe('%PDF-');
+  });
 });
 
 describe('renderInvoicePdfBuffer with optional registrations', () => {

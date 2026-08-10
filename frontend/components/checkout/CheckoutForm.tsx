@@ -933,8 +933,9 @@ export function CheckoutForm() {
             </p>
           )}
           {/* Included-GST breakup — shown only when the merchant has GST billing on.
-              Prices are GST-inclusive, so this is carved OUT of the total (which
-              never changes): CGST+SGST within the store's state, IGST otherwise. */}
+              Prices are GST-inclusive, so this is carved OUT of the goods total
+              (which never changes): CGST+SGST within the store's state, IGST
+              otherwise. Delivery/shipping is untaxed and not part of the breakup. */}
           {hasShippingQuote &&
             taxBreakup &&
             taxBreakup.cgstPaise + taxBreakup.sgstPaise + taxBreakup.igstPaise > 0 && (

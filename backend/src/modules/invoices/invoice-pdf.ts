@@ -44,13 +44,20 @@ export type InvoicePdfPayload = {
   /** Pre-fetched store logo bytes (PNG/JPG only). Optional — header renders text-only without it. */
   logo?: { data: Buffer; format: 'png' | 'jpg' } | null;
   /**
-   * GST billing mode. true → "TAX INVOICE" with per-line GST columns and an
-   * "Includes CGST/SGST (or IGST)" breakdown carved out of the GST-INCLUSIVE prices
-   * (the grand total always equals the order total the customer actually paid).
-   * false → plain "INVOICE": no tax columns, no GST rows. Defaults to true for
-   * backward compatibility with callers predating the toggle.
+   * GST billing mode. true → "TAX INVOICE": per-row GST rate, ex-GST unit price,
+   * taxable value, and the tax columns for the supply type; totals stack as
+   * Taxable + CGST/SGST (or IGST) + untaxed Delivery = Grand Total (which always
+   * equals the order total the customer actually paid — tax is carved out of the
+   * GST-inclusive prices, never added on top). false → plain "INVOICE": no tax
+   * columns. Defaults to true for backward compatibility with callers predating
+   * the toggle.
    */
   gstBilling?: boolean;
+  /**
+   * Supply classification: true → IGST column, false → CGST+SGST columns.
+   * When omitted, inferred from whether any IGST amount is present (legacy callers).
+   */
+  isInterState?: boolean;
 };
 
 export type CreditNotePdfPayload = {
@@ -133,14 +140,31 @@ const styles = StyleSheet.create({
   tdMuted: { fontSize: 8.5, color: MUTED },
   right: { textAlign: 'right' },
 
-  colName: { width: '28%' },
-  colHsn: { width: '10%' },
-  colQty: { width: '6%', textAlign: 'right' },
-  colRate: { width: '13%', textAlign: 'right' },
-  colTotal: { width: '14%', textAlign: 'right' },
-  colCgst: { width: '9.5%', textAlign: 'right' },
-  colSgst: { width: '9.5%', textAlign: 'right' },
-  colIgst: { width: '10%', textAlign: 'right' },
+  // Plain (non-GST) layout.
+  colName: { width: '40%' },
+  colHsn: { width: '14%' },
+  colQty: { width: '8%', textAlign: 'right' },
+  colRate: { width: '19%', textAlign: 'right' },
+  colTotal: { width: '19%', textAlign: 'right' },
+  // GST layout, intra-state (CGST + SGST columns).
+  giName: { width: '20%' },
+  giHsn: { width: '10%' },
+  giRate: { width: '7%', textAlign: 'right' },
+  giQty: { width: '5%', textAlign: 'right' },
+  giUnit: { width: '12%', textAlign: 'right' },
+  giTaxable: { width: '13%', textAlign: 'right' },
+  giCgst: { width: '10.5%', textAlign: 'right' },
+  giSgst: { width: '10.5%', textAlign: 'right' },
+  giTotal: { width: '12%', textAlign: 'right' },
+  // GST layout, inter-state (single IGST column).
+  geName: { width: '23%' },
+  geHsn: { width: '11%' },
+  geRate: { width: '7%', textAlign: 'right' },
+  geQty: { width: '5%', textAlign: 'right' },
+  geUnit: { width: '13%', textAlign: 'right' },
+  geTaxable: { width: '14%', textAlign: 'right' },
+  geIgst: { width: '13%', textAlign: 'right' },
+  geTotal: { width: '14%', textAlign: 'right' },
 
   // ── Totals ──────────────────────────────────────────────────────────────
   totalsWrap: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 14 },
@@ -212,7 +236,9 @@ export function formatRegistrationLine(seller: { gstin: string; fssai: string })
 
 export async function renderInvoicePdfBuffer(payload: InvoicePdfPayload): Promise<Buffer> {
   const storeName = (payload.storeDisplayName ?? '').trim() || payload.seller.legalName;
-  const showIgst = payload.igstPaise > 0 || payload.lineItems.some((item) => item.igstPaise > 0);
+  const showIgst =
+    payload.isInterState ??
+    (payload.igstPaise > 0 || payload.lineItems.some((item) => item.igstPaise > 0));
   const gstBilling = payload.gstBilling !== false;
 
   const doc = createElement(
@@ -277,75 +303,120 @@ export async function renderInvoicePdfBuffer(payload: InvoicePdfPayload): Promis
         )
       ),
 
-      // Items table. GST columns only exist in GST-billing mode; the values are the
-      // tax portion CARVED OUT of the GST-inclusive line amount, never added on top.
-      createElement(
-        View,
-        { style: styles.tableHeader },
-        createElement(Text, { style: [styles.th, styles.colName] }, 'Item'),
-        createElement(Text, { style: [styles.th, styles.colHsn] }, 'HSN'),
-        createElement(Text, { style: [styles.th, styles.colQty] }, 'Qty'),
-        createElement(Text, { style: [styles.th, styles.colRate] }, 'Unit Price'),
-        createElement(Text, { style: [styles.th, styles.colTotal] }, 'Amount'),
-        ...(gstBilling
-          ? [
-              createElement(Text, { style: [styles.th, styles.colCgst] }, 'CGST'),
-              createElement(Text, { style: [styles.th, styles.colSgst] }, 'SGST'),
-              createElement(Text, { style: [styles.th, styles.colIgst] }, 'IGST')
-            ]
-          : [])
-      ),
-      ...payload.lineItems.map((item, index) =>
-        createElement(
+      // Items table (goods only — delivery/shipping is billed untaxed in the totals
+      // section, never as an item row). In GST-billing mode the sample-invoice layout
+      // applies: per-row GST rate, ex-GST unit price, taxable value, then the tax
+      // columns relevant to the supply (CGST+SGST intra-state, IGST inter-state), and
+      // the row total = taxable + tax = what the customer actually paid for that line.
+      gstBilling
+        ? createElement(
+            View,
+            { style: styles.tableHeader },
+            createElement(Text, { style: [styles.th, showIgst ? styles.geName : styles.giName] }, 'Item'),
+            createElement(Text, { style: [styles.th, showIgst ? styles.geHsn : styles.giHsn] }, 'HSN'),
+            createElement(Text, { style: [styles.th, showIgst ? styles.geRate : styles.giRate] }, 'GST %'),
+            createElement(Text, { style: [styles.th, showIgst ? styles.geQty : styles.giQty] }, 'Qty'),
+            createElement(Text, { style: [styles.th, showIgst ? styles.geUnit : styles.giUnit] }, 'Unit Price'),
+            createElement(Text, { style: [styles.th, showIgst ? styles.geTaxable : styles.giTaxable] }, 'Taxable'),
+            ...(showIgst
+              ? [createElement(Text, { style: [styles.th, styles.geIgst] }, 'IGST')]
+              : [
+                  createElement(Text, { style: [styles.th, styles.giCgst] }, 'CGST'),
+                  createElement(Text, { style: [styles.th, styles.giSgst] }, 'SGST')
+                ]),
+            createElement(Text, { style: [styles.th, showIgst ? styles.geTotal : styles.giTotal] }, 'Total')
+          )
+        : createElement(
+            View,
+            { style: styles.tableHeader },
+            createElement(Text, { style: [styles.th, styles.colName] }, 'Item'),
+            createElement(Text, { style: [styles.th, styles.colHsn] }, 'HSN'),
+            createElement(Text, { style: [styles.th, styles.colQty] }, 'Qty'),
+            createElement(Text, { style: [styles.th, styles.colRate] }, 'Unit Price'),
+            createElement(Text, { style: [styles.th, styles.colTotal] }, 'Amount')
+          ),
+      ...payload.lineItems.map((item, index) => {
+        if (!gstBilling) {
+          return createElement(
+            View,
+            { style: styles.tableRow, key: `${item.name}-${index}` },
+            createElement(Text, { style: [styles.td, styles.colName] }, item.name),
+            createElement(Text, { style: [styles.tdMuted, styles.colHsn] }, item.hsnCode),
+            createElement(Text, { style: [styles.td, styles.colQty] }, String(item.quantity)),
+            createElement(Text, { style: [styles.td, styles.colRate] }, formatPaise(item.unitPricePaise)),
+            createElement(Text, { style: [styles.td, styles.colTotal] }, formatPaise(item.lineTotalPaise))
+          );
+        }
+        // Taxable value is authoritative (sums reconcile exactly); the ex-GST unit
+        // price is taxable/qty rounded for display only.
+        const taxablePaise = item.lineTotalPaise - item.cgstPaise - item.sgstPaise - item.igstPaise;
+        const unitExGstPaise = item.quantity > 0 ? Math.round(taxablePaise / item.quantity) : taxablePaise;
+        return createElement(
           View,
           { style: styles.tableRow, key: `${item.name}-${index}` },
-          createElement(Text, { style: [styles.td, styles.colName] }, item.name),
-          createElement(Text, { style: [styles.tdMuted, styles.colHsn] }, item.hsnCode),
-          createElement(Text, { style: [styles.td, styles.colQty] }, String(item.quantity)),
-          createElement(Text, { style: [styles.td, styles.colRate] }, formatPaise(item.unitPricePaise)),
-          createElement(Text, { style: [styles.td, styles.colTotal] }, formatPaise(item.lineTotalPaise)),
-          ...(gstBilling
-            ? [
-                createElement(Text, { style: [styles.tdMuted, styles.colCgst] }, formatPaise(item.cgstPaise)),
-                createElement(Text, { style: [styles.tdMuted, styles.colSgst] }, formatPaise(item.sgstPaise)),
-                createElement(Text, { style: [styles.tdMuted, styles.colIgst] }, formatPaise(item.igstPaise))
-              ]
-            : [])
-        )
-      ),
+          createElement(Text, { style: [styles.td, showIgst ? styles.geName : styles.giName] }, item.name),
+          createElement(Text, { style: [styles.tdMuted, showIgst ? styles.geHsn : styles.giHsn] }, item.hsnCode),
+          createElement(Text, { style: [styles.tdMuted, showIgst ? styles.geRate : styles.giRate] }, `${item.taxRatePercent}%`),
+          createElement(Text, { style: [styles.td, showIgst ? styles.geQty : styles.giQty] }, String(item.quantity)),
+          createElement(Text, { style: [styles.td, showIgst ? styles.geUnit : styles.giUnit] }, formatPaise(unitExGstPaise)),
+          createElement(Text, { style: [styles.td, showIgst ? styles.geTaxable : styles.giTaxable] }, formatPaise(taxablePaise)),
+          ...(showIgst
+            ? [createElement(Text, { style: [styles.tdMuted, styles.geIgst] }, formatPaise(item.igstPaise))]
+            : [
+                createElement(Text, { style: [styles.tdMuted, styles.giCgst] }, formatPaise(item.cgstPaise)),
+                createElement(Text, { style: [styles.tdMuted, styles.giSgst] }, formatPaise(item.sgstPaise))
+              ]),
+          createElement(Text, { style: [styles.td, showIgst ? styles.geTotal : styles.giTotal] }, formatPaise(item.lineTotalPaise))
+        );
+      }),
 
-      // Totals. The grand total is ALWAYS what the customer actually paid; in GST-billing
-      // mode the tax is shown as "Includes …" (carved out of the inclusive prices), never
-      // as an additional charge on top.
+      // Totals. The grand total is ALWAYS what the customer actually paid. In GST-billing
+      // mode the stack sums visibly: Taxable Value + CGST + SGST (or IGST) + untaxed
+      // Delivery/Shipping = Grand Total. Item rows are already net of any discount.
       createElement(
         View,
         { style: styles.totalsWrap },
         createElement(
           View,
           { style: styles.totalsBox },
-          totalsRow('Subtotal', formatPaise(payload.subtotalPaise)),
-          totalsRow('Delivery / Shipping', formatPaise(payload.shippingPaise)),
-          ...(payload.discountPaise > 0 ? [totalsRow('Discount', `- ${formatPaise(payload.discountPaise)}`)] : []),
+          ...(gstBilling
+            ? [
+                ...(payload.discountPaise > 0
+                  ? [totalsRow('Discount (applied to items)', `- ${formatPaise(payload.discountPaise)}`)]
+                  : []),
+                totalsRow(
+                  'Taxable Value',
+                  formatPaise(
+                    payload.lineItems.reduce(
+                      (sum, item) => sum + item.lineTotalPaise - item.cgstPaise - item.sgstPaise - item.igstPaise,
+                      0
+                    )
+                  )
+                ),
+                ...(!showIgst
+                  ? [
+                      totalsRow('CGST', formatPaise(payload.cgstPaise)),
+                      totalsRow('SGST', formatPaise(payload.sgstPaise))
+                    ]
+                  : [totalsRow('IGST', formatPaise(payload.igstPaise))]),
+                totalsRow('Delivery / Shipping (untaxed)', formatPaise(payload.shippingPaise))
+              ]
+            : [
+                totalsRow('Subtotal', formatPaise(payload.subtotalPaise)),
+                totalsRow('Delivery / Shipping', formatPaise(payload.shippingPaise)),
+                ...(payload.discountPaise > 0
+                  ? [totalsRow('Discount', `- ${formatPaise(payload.discountPaise)}`)]
+                  : [])
+              ]),
           createElement(
             View,
             { style: [styles.totalsRow, styles.grandRule] },
             createElement(Text, { style: styles.grandLabel }, 'Grand Total'),
             createElement(Text, { style: styles.grandValue }, formatPaise(payload.totalPaise))
-          ),
-          ...(gstBilling
-            ? !showIgst
-              ? [
-                  totalsRow('Includes CGST', formatPaise(payload.cgstPaise)),
-                  totalsRow('Includes SGST', formatPaise(payload.sgstPaise))
-                ]
-              : [totalsRow('Includes IGST', formatPaise(payload.igstPaise))]
-            : [])
+          )
         )
       ),
 
-      ...(gstBilling
-        ? [createElement(Text, { style: styles.amountWords }, 'All prices are inclusive of GST.')]
-        : []),
       createElement(Text, { style: styles.amountWords }, `Amount in words: ${payload.amountInWords}`),
 
       // Footer.

@@ -12,6 +12,17 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.67] - 2026-08-10
+
+### Changed
+- **Checkout tax breakup now reconciles against the goods total** (pairs with backend-core 0.1.95): delivery/shipping is untaxed and excluded from the tax base by merchant policy, so `taxable + CGST/SGST/IGST === items − discount`. No visual change — the card renders whatever the backend sends; type docs and comments updated to match the new contract.
+
+**Propagation:**
+- Severity: LOW - Layers: frontend core (`types/cart.ts`, `components/checkout/CheckoutForm.tsx` — comments/contract docs only)
+- Migration: NO - Flag: none - Design impact: none - Breaking: NO
+- Requires: backend-core >= 0.1.95 for goods-only breakup semantics (renders older backends' values unchanged)
+- Rollback: revert the files
+
 ## [0.1.66] - 2026-08-10
 
 ### Added

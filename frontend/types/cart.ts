@@ -44,8 +44,9 @@ export interface Cart {
 }
 
 /**
- * GST carved OUT of the GST-inclusive payable total (items − discount + shipping).
- * Display-only: taxable + CGST + SGST + IGST === payable total, which never changes.
+ * GST carved OUT of the GST-inclusive GOODS total (items − discount). Delivery/
+ * shipping is untaxed and excluded from the tax base. Display-only:
+ * taxable + CGST + SGST + IGST === goods total, and totals never change.
  * Present only when the merchant has GST billing enabled. Intra-state → CGST+SGST;
  * inter-state → IGST (classified from the store's pickup pincode vs the buyer's).
  */

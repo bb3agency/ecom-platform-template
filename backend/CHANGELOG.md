@@ -12,6 +12,18 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.95] - 2026-08-10
+
+### Changed
+- **Delivery/shipping is no longer taxed and no longer appears as an invoice item row** (explicit merchant policy, reverting 0.1.92's composite-supply treatment). The delivery charge is an untaxed pass-through shown only in the totals section; the tax base everywhere (invoice AND checkout breakup) is goods only: `Σ(taxable + CGST + SGST + IGST) === items gross − discount`. `buildOrderGstTaxLines` drops its `shippingPaise` input; the delivery-rates `taxBreakup` reconciles against the goods total. If statutory composite-supply treatment is ever required, confirm with the client's CA before reinstating.
+- **TAX INVOICE table redesigned to the standard trade format** (modelled on a real workshop invoice the merchant supplied): each goods row shows HSN, GST rate %, qty, **ex-GST unit price**, **taxable value**, the tax columns for the supply type (CGST+SGST within state, a single IGST column out of state — never both sets), and the row total (taxable + tax = what the customer paid for the line). Totals stack sums visibly: Taxable Value + CGST/SGST (or IGST) + Delivery/Shipping (untaxed) = Grand Total. The old presentation double-read: GST-inclusive unit prices alongside separate GST columns. Renderer takes an explicit `isInterState` (falls back to the has-IGST heuristic). Plain (non-GST) invoices are unchanged.
+- Invoice numbering: intentionally NOT renumbering pre-derived-scheme invoices — legacy `INV-YYYY-#####` rows keep their issued numbers (merchant decision 2026-08-10); only orders invoiced after 0.1.86 use the derived `INV-<order-ref>` format. Both formats coexist by design.
+
+**Propagation:**
+- Severity: NORMAL - Layers: backend (`common/gst/inclusive-gst.ts`, `modules/invoices/{generate-invoice,invoice-pdf}.ts`, `modules/cart/cart.service.ts`, tests) — pairs with frontend-core 0.1.67 (checkout breakup copy)
+- Migration: NO - Flag: existing GST billing toggle - Design impact: invoice PDF layout only - Breaking: NO (`taxBreakup` shape unchanged; its sum now equals the goods total instead of goods+shipping)
+- Rollback: revert the files
+
 ### Fixed
 - **Propagation gap documented + closed by hand:** the 0.1.92 `NGINX_AUTO_RELOAD` default lived in the template's `deploy.yml`, but `.github/workflows/**` is NOT part of `core-manifest.json` and client deploy workflows genuinely diverge per client — so the default never reached any client, and the 0.1.93 deploys resolved the vhost and detected drift yet still took the warning-only path. The env block was hand-carried into both client repos on 2026-08-10 (raghava `80bac03`, sbgs `6bc7a00`). **Rule: a change to any `.github/workflows/*` file must be hand-carried to every client repo** — the release train does not deliver it.
 

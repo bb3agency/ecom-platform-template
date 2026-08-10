@@ -61,9 +61,6 @@ function apportion(amountPaise: number, weights: number[]): number[] {
   return result;
 }
 
-/** Row label used when shipping is emitted with no classifiable principal line. */
-export const GST_HSN_MISSING_LABEL = 'N/A';
-
 export type GstTaxLineInput = {
   name: string;
   hsnCode: string;
@@ -80,20 +77,20 @@ export type GstTaxLine = GstTaxLineInput & {
 };
 
 /**
- * Build the order's tax lines so that **every rupee the customer paid sits inside the
- * tax base**, and the rows reconcile exactly with the grand total:
+ * Build the order's GOODS tax lines, reconciling exactly with what was charged
+ * for the goods:
  *
- *   Σ(row taxable + row CGST + row SGST + row IGST) === subtotal − discount + shipping
+ *   Σ(row taxable + row CGST + row SGST + row IGST) === items gross − discount
  *
- * Two corrections over the naive per-item carve (2026-08-10):
- *  1. **Delivery/shipping is taxable.** Under GST a delivery charge is part of a composite
- *     supply and attracts the rate of the PRINCIPAL supply — it is not tax-free. It was
- *     previously excluded, so an invoice with shipping under-declared its tax. Shipping is
- *     emitted as its own row, classified (HSN + rate) after the largest item line.
+ * Rules (2026-08-10, merchant billing policy):
+ *  1. **Delivery/shipping is NEVER taxed and is NEVER a line row.** The delivery
+ *     charge is billed as an untaxed pass-through in the totals section only —
+ *     it must not appear in the items table like a product. (This deliberately
+ *     supersedes the earlier composite-supply treatment; confirm slab treatment
+ *     with the client's CA if that ever needs to change.)
  *  2. **Order-level discount reduces the taxable consideration**, apportioned across item
- *     rows in proportion to their value. Tax was previously carved from the pre-discount
- *     amount, over-declaring it. Rows therefore print their NET (post-discount) amount,
- *     which is what was actually charged for those goods.
+ *     rows in proportion to their value (largest-remainder, exact to the paise). Rows
+ *     therefore carry their NET (post-discount) amount — what was actually charged.
  *
  * Amounts remain GST-INCLUSIVE throughout: the tax is carved out of what was charged, never
  * added on top, so the grand total never changes. With GST billing off every rate is 0, so
@@ -101,12 +98,10 @@ export type GstTaxLine = GstTaxLineInput & {
  */
 export function buildOrderGstTaxLines(input: {
   items: GstTaxLineInput[];
-  shippingPaise: number;
   discountPaise: number;
   isInterState: boolean;
 }): GstTaxLine[] {
   const { items, isInterState } = input;
-  const shippingPaise = Math.max(0, Math.round(input.shippingPaise || 0));
   const itemsGross = items.reduce((sum, item) => sum + item.lineTotalPaise, 0);
   // Never discount more than the goods are worth (a coupon can't create negative value).
   const discountPaise = Math.min(Math.max(0, Math.round(input.discountPaise || 0)), itemsGross);
@@ -115,7 +110,7 @@ export function buildOrderGstTaxLines(input: {
     items.map((item) => item.lineTotalPaise)
   );
 
-  const rows: GstTaxLine[] = items.map((item, index) => {
+  return items.map((item, index) => {
     const netPaise = item.lineTotalPaise - (discountShares[index] ?? 0);
     const split = computeInclusiveGstSplit(netPaise, item.taxRatePercent, isInterState);
     return {
@@ -130,30 +125,6 @@ export function buildOrderGstTaxLines(input: {
       igstPaise: split.igstPaise
     };
   });
-
-  if (shippingPaise > 0) {
-    // Composite supply: the delivery charge follows the classification and rate of the
-    // principal (highest-value) item line. With no item lines it stays untaxed.
-    const principal = items.reduce<GstTaxLineInput | null>(
-      (best, item) => (best === null || item.lineTotalPaise > best.lineTotalPaise ? item : best),
-      null
-    );
-    const shippingRate = principal?.taxRatePercent ?? 0;
-    const split = computeInclusiveGstSplit(shippingPaise, shippingRate, isInterState);
-    rows.push({
-      name: 'Delivery / Shipping',
-      hsnCode: principal?.hsnCode ?? GST_HSN_MISSING_LABEL,
-      quantity: 1,
-      unitPricePaise: shippingPaise,
-      lineTotalPaise: shippingPaise,
-      taxRatePercent: shippingRate,
-      cgstPaise: split.cgstPaise,
-      sgstPaise: split.sgstPaise,
-      igstPaise: split.igstPaise
-    });
-  }
-
-  return rows;
 }
 
 export type GstBreakupTotals = {
