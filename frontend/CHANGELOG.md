@@ -12,6 +12,24 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.66] - 2026-08-10
+
+### Added
+- **Checkout order summary shows the included-GST breakup** (pairs with backend-core 0.1.94). Once a delivery pincode is entered and the merchant has GST billing on, the summary renders a "Tax breakup (included in total)" card: taxable value + CGST/SGST for within-state orders or IGST for out-of-state (classified server-side from the store pickup pincode vs the delivery pincode). Amounts are carved OUT of the GST-inclusive total — the payable total never changes. With GST billing off, nothing renders (current behaviour). `DeliveryTaxBreakup` type added to `types/cart.ts`.
+
+### Changed
+- Admin → Settings → Store: GST-billing toggle copy now explains that it drives the checkout breakup as well as the invoice, and that within/out-of-state is auto-classified from the pickup pincode.
+- (Theme note: `CheckoutForm.tsx` is core and token-styled; the new card auto-adopts each client's theme.)
+
+### Fixed
+- **THEME (hand-carry per client): PDP gallery dropped images beyond the sixth.** `ProductGallery` sliced the thumbnail strip to 6 while the platform allows 8 images per product, so images 7–8 uploaded fine but never rendered. Also keyed thumbnails by `url+index` — two rows sharing one asset URL collided as React keys and silently dropped a thumbnail. Fixed in the template theme and applied to each client's own gallery variant.
+
+**Propagation:**
+- Severity: NORMAL - Layers: frontend core (`components/checkout/CheckoutForm.tsx`, `types/cart.ts`, `components/admin/StoreSettingsPanel.tsx`)
+- Migration: NO - Flag: driven by backend `taxBreakup` presence (merchant GST billing toggle) — no frontend flag - Design impact: none (token-styled) - Breaking: NO
+- Requires: backend-core >= 0.1.94 (`taxBreakup` on delivery-rates; harmless against older backends — field simply absent)
+- Rollback: revert the files
+
 ## [0.1.65] - 2026-08-10
 
 ### Fixed

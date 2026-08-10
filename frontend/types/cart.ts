@@ -43,10 +43,27 @@ export interface Cart {
   };
 }
 
+/**
+ * GST carved OUT of the GST-inclusive payable total (items − discount + shipping).
+ * Display-only: taxable + CGST + SGST + IGST === payable total, which never changes.
+ * Present only when the merchant has GST billing enabled. Intra-state → CGST+SGST;
+ * inter-state → IGST (classified from the store's pickup pincode vs the buyer's).
+ */
+export interface DeliveryTaxBreakup {
+  gstBillingEnabled: boolean;
+  isInterState: boolean;
+  taxableAmountPaise: number;
+  cgstPaise: number;
+  sgstPaise: number;
+  igstPaise: number;
+}
+
 export interface DeliveryRates {
   pincode: string;
   shippingCharge: number;
   estimatedDays: number;
+  /** Included-GST breakdown — absent when GST billing is off. */
+  taxBreakup?: DeliveryTaxBreakup;
   /** Backend-selected provider — LOCAL = merchant-fulfilled local delivery (whitelisted pincode). */
   selectedShippingProvider?: "DELHIVERY" | "SHIPROCKET" | "LOCAL";
   /** Shiprocket courier company ID for the quoted rate — must be passed back to lock AWB to the same courier. */

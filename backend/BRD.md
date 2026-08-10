@@ -564,8 +564,11 @@ Usage limits count in-flight checkout orders in `PENDING_PAYMENT` and `PAYMENT_F
 **BR-GST-01 — Invoice on every confirmed order**
 A GST invoice PDF is generated automatically for every confirmed order. It is attached to the order confirmation email sent to the customer.
 
-**BR-GST-02 — Tax type by state comparison**
-Tax type is determined by comparing the seller's state (from store settings) with the buyer's delivery state. Intra-state transactions use CGST + SGST (split equally). Inter-state transactions use IGST.
+**BR-GST-02 — Tax type by pincode classification (amended 2026-08-10)**
+Tax type is determined by classifying the supply as intra- or inter-state from PINCODES: the admin's pickup pincode (store shipping settings) against the buyer's delivery pincode, via a vendored 3-digit PIN-prefix → state/UT dataset (ClearTax/India Post pattern). Typed state names only disambiguate genuinely shared prefixes (e.g. 244 UP/Uttarakhand, 682 Kerala/Lakshadweep) or act as the fallback when a pincode cannot be mapped. Intra-state transactions use CGST + SGST (split equally); inter-state transactions use IGST. (Original requirement compared raw typed state strings, which misclassified "TS" vs "Telangana" as inter-state.)
+
+**BR-GST-02a — Checkout tax breakup (added 2026-08-10)**
+When GST billing is enabled, the checkout summary shows the same carve-out the invoice prints: taxable value + CGST/SGST (intra) or IGST (inter), carved OUT of the GST-inclusive payable total (items − discount + shipping) — the payable total itself never changes (e.g. ₹600 at 5% → base ₹600×100/105, tax = the remainder). When GST billing is disabled, the catalog price IS the billed base price and no tax rows appear anywhere (checkout or invoice).
 
 **BR-GST-03 — Tax rate from product attributes**
 The GST rate for each line item is taken from the product's HSN code attributes. The default is 5% if not configured (amended 2026-08-09 — the former 12% default became a dead slab when GST 2.0 abolished 12%/28% on 22 Sept 2025; 5% is the modal rate for packaged food/FMCG). The admin product editor suggests the rate from the vendored CBIC GST 2.0 rules keyed by HSN prefix (suggestion-only — qualifiers like pre-packaged vs loose and price bands are surfaced as notes). The correct rate for each product category must be confirmed with the client's chartered accountant before go-live.

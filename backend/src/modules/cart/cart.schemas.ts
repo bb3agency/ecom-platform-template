@@ -268,7 +268,32 @@ export const deliveryRatesSchema = {
           enum: ['DELHIVERY', 'SHIPROCKET', 'LOCAL'],
           maxLength: 20
         },
-        courierCompanyId: { type: 'integer', minimum: 1 }
+        courierCompanyId: { type: 'integer', minimum: 1 },
+        // Present only when GST billing is enabled: the GST carved out of the
+        // GST-INCLUSIVE payable total (items − discount + shipping). Display-only —
+        // taxable + CGST + SGST + IGST always equals the payable total, which never
+        // changes. Intra-state → CGST+SGST; inter-state → IGST (classified from the
+        // admin pickup pincode vs the buyer's pincode).
+        taxBreakup: {
+          type: 'object',
+          additionalProperties: false,
+          required: [
+            'gstBillingEnabled',
+            'isInterState',
+            'taxableAmountPaise',
+            'cgstPaise',
+            'sgstPaise',
+            'igstPaise'
+          ],
+          properties: {
+            gstBillingEnabled: { type: 'boolean' },
+            isInterState: { type: 'boolean' },
+            taxableAmountPaise: { type: 'integer', minimum: 0, maximum: 1000000000 },
+            cgstPaise: { type: 'integer', minimum: 0, maximum: 1000000000 },
+            sgstPaise: { type: 'integer', minimum: 0, maximum: 1000000000 },
+            igstPaise: { type: 'integer', minimum: 0, maximum: 1000000000 }
+          }
+        }
       }
     },
     ...standardErrorResponses

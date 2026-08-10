@@ -23,6 +23,10 @@ import {
   resolveLocalDeliverySettings
 } from '@common/shipping/local-delivery';
 import { classifyLocalDeliverySplit } from '@common/shipping/local-delivery-split';
+import { resolveLineItemGstRatePercent } from '@common/shipping/product-tax-fields';
+import { buildOrderGstTaxLines, summarizeGstTaxLines } from '@common/gst/inclusive-gst';
+import { resolveGstCheckoutContext } from '@common/gst/gst-billing';
+import { classifyInterStateSupply } from '@common/gst/pincode-state';
 import { sendTechnicalFailureAlert } from '@modules/notifications/notification-failure-alert';
 import { AddCartItemInput, ApplyCouponInput, UpdateCartItemInput } from './cart.types';
 
@@ -64,6 +68,9 @@ const CART_ITEM_PRODUCT_SELECT = {
   // Drives fulfilment-channel classification (see common/shipping/local-delivery-split.ts)
   // and lets the storefront badge local-delivery-only lines in the cart.
   isLocalDeliveryOnly: true,
+  // Legacy per-product GST rate fallback for the checkout tax breakup
+  // (resolveLineItemGstRatePercent) — never serialized to clients.
+  attributes: true,
   images: {
     orderBy: { sortOrder: 'asc' as const },
     take: 1,
@@ -674,8 +681,27 @@ export class CartService {
       );
     }
 
+    // GST breakup shown alongside the quote (display-only: prices are GST-INCLUSIVE,
+    // the tax is carved out of the payable total, which never moves). Resolved once
+    // per quote; any failure degrades to "no breakup" — it must never block a quote.
+    const discountForTax = couponsEnabledForLocal
+      ? this.calculateDiscount(subtotal, cart.coupon, cart.items)
+      : 0;
+    const taxProfile = await this.resolveDeliveryTaxProfile(pincode);
+    const buildTaxBreakup = (shippingChargePaise: number, opts?: { forceIntraState?: boolean }) =>
+      taxProfile
+        ? this.buildDeliveryTaxBreakup({
+            items: cart.items,
+            discountPaise: discountForTax,
+            shippingPaise: shippingChargePaise,
+            // Merchant-fulfilled local delivery is same-city by construction.
+            isInterState: opts?.forceIntraState ? false : taxProfile.isInterState
+          })
+        : null;
+
     if (plan.mode === 'ALL_LOCAL') {
       const quote = localQuote!;
+      const taxBreakup = buildTaxBreakup(quote.shippingChargePaise, { forceIntraState: true });
       // Persist so checkout consumes the exact same fee (shown rate == charged rate).
       await this.persistShippingQuote(userId, sessionToken, cart.id, pincode, paymentMode, {
         provider: 'LOCAL',
@@ -686,7 +712,8 @@ export class CartService {
         pincode,
         shippingCharge: quote.shippingChargePaise,
         estimatedDays: quote.estimatedDays,
-        selectedShippingProvider: 'LOCAL' as const
+        selectedShippingProvider: 'LOCAL' as const,
+        ...(taxBreakup ? { taxBreakup } : {})
       };
     }
 
@@ -720,7 +747,8 @@ export class CartService {
         estimatedDays: result.estimatedDays,
         ...(result.courierCompanyId != null ? { courierCompanyId: result.courierCompanyId } : {})
       });
-      return result;
+      const taxBreakup = buildTaxBreakup(result.shippingCharge);
+      return { ...result, ...(taxBreakup ? { taxBreakup } : {}) };
     }
 
     // Noop fallback — no providers configured at all
@@ -738,10 +766,79 @@ export class CartService {
       usingNoop: true,
       paymentMode
     });
+    const noopTaxBreakup = buildTaxBreakup(noopQuote.shippingChargePaise);
     return {
       pincode,
       shippingCharge: noopQuote.shippingChargePaise,
-      estimatedDays: noopQuote.estimatedDays
+      estimatedDays: noopQuote.estimatedDays,
+      ...(noopTaxBreakup ? { taxBreakup: noopTaxBreakup } : {})
+    };
+  }
+
+  /**
+   * Seller-side GST context for the checkout tax breakup: null when GST billing is
+   * off OR anything fails — a tax DISPLAY must never block a delivery quote.
+   * Intra vs inter-state comes from the admin pickup pincode vs the buyer's
+   * pincode (see @common/gst/pincode-state); the seller's typed state is only the
+   * fallback signal.
+   */
+  private async resolveDeliveryTaxProfile(buyerPincode: string): Promise<{ isInterState: boolean } | null> {
+    try {
+      const context = await resolveGstCheckoutContext(this.fastify.prisma);
+      if (!context.gstBillingEnabled) {
+        return null;
+      }
+      const { isInterState } = classifyInterStateSupply({
+        seller: { pincode: context.sellerPincode, stateName: context.sellerStateName },
+        buyer: { pincode: buyerPincode, stateName: null }
+      });
+      return { isInterState };
+    } catch (error) {
+      this.fastify.log?.warn({ err: error }, 'GST breakup context resolution failed; omitting tax breakup');
+      return null;
+    }
+  }
+
+  /**
+   * Carve the included GST out of what the customer will actually pay
+   * (items − discount + shipping) using the same math as the invoice PDF, so the
+   * checkout summary and the invoice always reconcile. taxable + CGST + SGST +
+   * IGST === payable total; the payable total itself never changes.
+   */
+  private buildDeliveryTaxBreakup(input: {
+    items: Array<{
+      quantity: number;
+      priceSnapshot: number;
+      variant: { gstRatePercent: number; product: { attributes: Prisma.JsonValue } | null };
+    }>;
+    discountPaise: number;
+    shippingPaise: number;
+    isInterState: boolean;
+  }) {
+    const lines = buildOrderGstTaxLines({
+      items: input.items.map((item) => ({
+        name: '',
+        hsnCode: '',
+        quantity: item.quantity,
+        unitPricePaise: item.priceSnapshot,
+        lineTotalPaise: item.priceSnapshot * item.quantity,
+        taxRatePercent: resolveLineItemGstRatePercent(
+          item.variant.gstRatePercent,
+          item.variant.product?.attributes ?? null
+        )
+      })),
+      shippingPaise: input.shippingPaise,
+      discountPaise: input.discountPaise,
+      isInterState: input.isInterState
+    });
+    const totals = summarizeGstTaxLines(lines);
+    return {
+      gstBillingEnabled: true as const,
+      isInterState: input.isInterState,
+      taxableAmountPaise: totals.taxableAmountPaise,
+      cgstPaise: totals.cgstPaise,
+      sgstPaise: totals.sgstPaise,
+      igstPaise: totals.igstPaise
     };
   }
 

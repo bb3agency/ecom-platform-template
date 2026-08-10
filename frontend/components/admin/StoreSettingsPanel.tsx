@@ -192,8 +192,8 @@ export function StoreSettingsPanel() {
       setGstBillingEnabled(res.gstBillingEnabled);
       setSuccess(
         res.gstBillingEnabled
-          ? "GST billing enabled — invoices show the GST included in your prices and are titled TAX INVOICE."
-          : "GST billing disabled — invoices render as a plain INVOICE with no GST breakdown.",
+          ? "GST billing enabled — checkout and invoices show the GST included in your prices; invoices are titled TAX INVOICE."
+          : "GST billing disabled — your price is billed as-is: no GST rows at checkout, and invoices render as a plain INVOICE.",
       );
       setTimeout(() => setSuccess(null), 4000);
     } catch (err) {
@@ -687,13 +687,16 @@ export function StoreSettingsPanel() {
         <label className="flex items-start justify-between gap-4 rounded-xl border border-border bg-muted/10 p-4 sm:p-5">
           <span className="flex items-start gap-3">
             <span>
-              <span className="block text-sm font-medium text-foreground">GST billing on invoices</span>
+              <span className="block text-sm font-medium text-foreground">GST billing</span>
               <span className="block text-xs text-muted-foreground">
-                When on, invoices are titled TAX INVOICE and show the CGST/SGST (or IGST)
+                When on, the checkout summary and invoices show the CGST/SGST (or IGST)
                 included in your GST-inclusive prices, carved out per line — the grand total
-                always stays exactly what the customer paid. When off, invoices render as a
-                plain INVOICE with no tax columns. Until you set it, this follows your GSTIN:
-                on when a GSTIN is filled in below, off otherwise.
+                always stays exactly what the customer paid, and invoices are titled TAX
+                INVOICE. Within-state vs out-of-state is classified automatically from your
+                pickup pincode (Shipping settings) against the customer&apos;s delivery
+                pincode. When off, your price is billed as-is with no tax rows anywhere and
+                invoices render as a plain INVOICE. Until you set it, this follows your
+                GSTIN: on when a GSTIN is filled in below, off otherwise.
               </span>
             </span>
           </span>
