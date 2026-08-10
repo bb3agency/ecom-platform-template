@@ -7,6 +7,7 @@ import { AdminStatusBadge } from "@/components/admin/AdminStatusBadge";
 import { useAuthenticatedApi } from "@/hooks/use-authenticated-api";
 import type { AdminOrderDetailFull } from "@/lib/admin-api";
 import { getBrowserApiBaseUrl } from "@/lib/api-base";
+import { resolveDownloadFilename } from "@/lib/download-filename";
 import { parseApiErrorFromResponse } from "@/lib/api";
 import {
   formatAdminDate,
@@ -66,9 +67,12 @@ export function AdminOrderDetailPanel({ orderId }: AdminOrderDetailPanelProps) {
       const objectUrl = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = objectUrl;
-      anchor.download = order.invoice?.invoiceNumber
-        ? `${order.invoice.invoiceNumber}.pdf`
-        : `${order.orderNumber}-invoice.pdf`;
+      anchor.download = resolveDownloadFilename(
+        response,
+        order.invoice?.invoiceNumber
+          ? `${order.invoice.invoiceNumber}.pdf`
+          : `${order.orderNumber}-invoice.pdf`,
+      );
       anchor.click();
       // Deferred: revoking synchronously can abort the save in Firefox/Safari.
       setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);

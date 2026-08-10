@@ -38,7 +38,13 @@ export async function registerCorsPlugin(fastify: FastifyInstance): Promise<void
   await fastify.register(cors, {
     origin: origins.length > 0 ? origins : false,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
-    credentials: true
+    credentials: true,
+    // Attachment downloads (invoice/credit-note PDFs, CSV exports) carry the
+    // authoritative filename in Content-Disposition. Browsers hide response
+    // headers from cross-origin JS unless they are explicitly exposed, and the
+    // storefront reads this one so a saved invoice is named after the invoice
+    // number inside it rather than a guess from possibly-stale client state.
+    exposedHeaders: ['content-disposition']
   });
 }
 

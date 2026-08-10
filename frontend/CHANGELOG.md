@@ -12,6 +12,17 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.68] - 2026-08-10
+
+### Fixed
+- **A downloaded invoice was saved under a name that did not match the invoice number inside the PDF.** Every download built its own filename from the order payload in React state, which is stale exactly when it matters: on the FIRST download of an order whose invoice is generated on demand the state still holds `invoice: null`, so the file was named after the ORDER (`ORD-…-invoice.pdf`) while the PDF carried `INV-…`; after an invoice row is deleted and re-issued the state holds the previous number; and both order LIST screens never had an invoice number at all, so they always used the order-number form. New `lib/download-filename.ts` reads the authoritative name from the response's `Content-Disposition` (path-traversal- and control-character-sanitised, RFC 5987 aware, falls back to the caller's guess when the header is unreadable) and all five invoice download paths use it — customer helper `downloadCustomerInvoicePdf` (which both account theme pages call, so they need no change), admin order list, admin order detail, and both admin fulfilment paths (download + print fallback).
+
+**Propagation:**
+- Severity: NORMAL - Layers: frontend core (`lib/download-filename.ts` new + test, `lib/orders-api.ts`, `components/admin/{AdminOrdersList,AdminOrderDetailPanel,AdminOrderFulfillmentPanel}.tsx`) — **no THEME change needed**: the account pages route through the shared helper
+- Migration: NO - Flag: none - Design impact: none - Breaking: NO
+- Requires: backend-core >= 0.1.97 on cross-origin deployments (exposes `content-disposition`); same-origin storefronts work with any backend
+- Rollback: revert the files (filenames go back to being guessed client-side)
+
 ## [0.1.67] - 2026-08-10
 
 ### Changed
