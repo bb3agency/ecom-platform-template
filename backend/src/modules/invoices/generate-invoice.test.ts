@@ -89,6 +89,7 @@ describe('resolveInvoiceLogo — uploaded in-row bytes win over logoUrl', () => 
       legalName: 'Test Store Pvt Ltd',
       addressLine: 'Street 1, Hyderabad',
       state: 'Telangana',
+      pincode: '500001',
       gstin: '',
       fssai: '',
       storeName: 'Test Store',

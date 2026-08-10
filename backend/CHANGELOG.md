@@ -12,6 +12,22 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.94] - 2026-08-10
+
+### Added
+- **Pincode-based intra/inter-state GST classification** (`@common/gst/pincode-state`, vendored dataset). Whether an order is CGST+SGST (within the state) or IGST (out of state) is now decided from PINCODES — the admin's pickup pincode vs the buyer's delivery pincode — via the industry-standard 3-digit PIN-prefix → state/UT mapping (ClearTax/India Post pattern), with GST state codes attached. Genuinely shared prefixes (244 UP/UK, 682 KL/Lakshadweep, 396 GJ/DNH&DD, 737 Sikkim-in-WB-range, 813 BR/JH, …) resolve dominant-first and are disambiguated by the typed state name; when neither pincode maps, the legacy case-insensitive state-name compare remains the fallback. Fixes misclassification when customers type "TS"/"Pondicherry"/misspellings (previously any string mismatch billed IGST).
+- **Checkout tax breakup on `GET /cart/delivery-rates`.** When GST billing is enabled the response carries `taxBreakup { gstBillingEnabled, isInterState, taxableAmountPaise, cgstPaise, sgstPaise, igstPaise }` — the GST carved OUT of the GST-inclusive payable total (items − discount + shipping) with the exact invoice math, so checkout and invoice always reconcile: `taxable + CGST + SGST + IGST === payable total`, and the payable total never changes (₹600 at 5% → base 600×100/105). Merchant-fulfilled LOCAL delivery is intra-state by construction. Breakup computation is fail-open: any error logs a warning and omits the field — a tax display never blocks a quote. With GST billing off the field is absent (the price IS the base price).
+
+### Changed
+- GST carve-out math moved to `@common/gst/inclusive-gst` (`buildOrderGstTaxLines`, `computeInclusiveGstSplit`, `summarizeGstTaxLines`) so invoices and checkout share one implementation and one rounding policy; `generate-invoice.ts` re-exports the historical names. The effective GST-billing rule is likewise shared via `@common/gst/gst-billing` (`computeEffectiveGstBillingEnabled`, non-throwing `resolveGstCheckoutContext`). `SellerProfile` gains `pincode` (pickup-pincode chain: StoreSettings → ops overlay → env).
+- Cart item reads select `product.attributes` (legacy per-product GST-rate fallback for the breakup; response schemas still strip it — never serialized to clients).
+- Docs: `ROUTE_SURFACE_COMPLETE_REFERENCE.md` documents `taxBreakup` and drops the stale "`400` when GST invoicing is disabled" claim (untrue since 0.1.92); `BRD.md` BR-GST-02 amended to pincode classification + new BR-GST-02a (checkout breakup).
+
+**Propagation:**
+- Severity: NORMAL - Layers: backend (`src/common/gst/*` new, `modules/invoices/generate-invoice.ts`, `modules/cart/cart.service.ts`, `modules/cart/cart.schemas.ts`, tests) — pairs with frontend-core 0.1.66 (checkout breakup UI)
+- Migration: NO - Flag: gated at runtime by the existing GST billing toggle (StoreSettings) — no new flag - Design impact: none - Breaking: NO (additive response field)
+- Rollback: revert the files (classification falls back to raw state-string compare; checkout loses the breakup rows)
+
 ## [0.1.93] - 2026-08-10
 
 ### Fixed

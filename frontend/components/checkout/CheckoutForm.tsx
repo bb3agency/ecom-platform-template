@@ -27,6 +27,7 @@ import { useAuthenticatedApi } from "@/hooks/use-authenticated-api";
 import { getCartLineImageAlt, getCartLineImageUrl } from "@/lib/cart-line-display";
 import { useStoreConfig } from "@/components/providers/StoreConfigProvider";
 import { formatAppliedCouponLabel, isFreeShippingCoupon } from "@/lib/coupon-display";
+import type { DeliveryTaxBreakup } from "@/types/cart";
 
 declare global {
   interface Window {
@@ -76,7 +77,7 @@ export function CheckoutForm() {
   const [submitting, setSubmitting] = useState(false);
   const [savedAddresses, setSavedAddresses] = useState<UserAddress[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
-  const [shippingQuote, setShippingQuote] = useState<{ shippingCharge: number; estimatedDays: number; selectedShippingProvider?: "DELHIVERY" | "SHIPROCKET" | "LOCAL"; courierCompanyId?: number } | null>(null);
+  const [shippingQuote, setShippingQuote] = useState<{ shippingCharge: number; estimatedDays: number; selectedShippingProvider?: "DELHIVERY" | "SHIPROCKET" | "LOCAL"; courierCompanyId?: number; taxBreakup?: DeliveryTaxBreakup } | null>(null);
   const [shippingQuoteLoading, setShippingQuoteLoading] = useState(false);
   const [shippingQuoteError, setShippingQuoteError] = useState<string | null>(null);
   // Local-delivery-only items that cannot reach the entered pincode. Set when the backend
@@ -217,6 +218,7 @@ export function CheckoutForm() {
             estimatedDays: rates.estimatedDays,
             selectedShippingProvider: rates.selectedShippingProvider,
             courierCompanyId: rates.courierCompanyId,
+            taxBreakup: rates.taxBreakup,
           });
           setShippingQuoteError(null);
           setBlockedLocalDelivery(null);
@@ -372,6 +374,7 @@ export function CheckoutForm() {
   const checkoutBlocked = !configAvailable || belowMinOrder || blockedLocalDelivery !== null;
   const shippingCharge = shippingQuote?.shippingCharge ?? 0;
   const hasShippingQuote = shippingQuote !== null && !shippingQuoteError;
+  const taxBreakup = shippingQuote?.taxBreakup ?? null;
   const estimatedPayableTotal = hasShippingQuote
     ? Math.max(cartPayableTotal + shippingCharge, 0)
     : cartPayableTotal;
@@ -929,6 +932,37 @@ export function CheckoutForm() {
               Estimated delivery: {shippingQuote.estimatedDays} day{shippingQuote.estimatedDays !== 1 ? "s" : ""}
             </p>
           )}
+          {/* Included-GST breakup — shown only when the merchant has GST billing on.
+              Prices are GST-inclusive, so this is carved OUT of the total (which
+              never changes): CGST+SGST within the store's state, IGST otherwise. */}
+          {hasShippingQuote &&
+            taxBreakup &&
+            taxBreakup.cgstPaise + taxBreakup.sgstPaise + taxBreakup.igstPaise > 0 && (
+              <div className="grid gap-1.5 rounded-xl border border-border bg-muted/50 px-3 py-2.5 text-xs">
+                <p className="font-bold text-muted-foreground">Tax breakup (included in total)</p>
+                <div className="flex justify-between text-muted-foreground">
+                  <span>Taxable value</span>
+                  <span>{formatPrice(taxBreakup.taxableAmountPaise)}</span>
+                </div>
+                {taxBreakup.isInterState ? (
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>IGST</span>
+                    <span>{formatPrice(taxBreakup.igstPaise)}</span>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>CGST</span>
+                      <span>{formatPrice(taxBreakup.cgstPaise)}</span>
+                    </div>
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>SGST</span>
+                      <span>{formatPrice(taxBreakup.sgstPaise)}</span>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
           <div className="flex items-center justify-between rounded-xl bg-muted px-4 py-3">
             <span className="font-heading font-bold text-primary">
               {hasShippingQuote ? "Estimated total" : "Cart total"}
