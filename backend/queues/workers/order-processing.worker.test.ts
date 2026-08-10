@@ -46,6 +46,8 @@ const state = {
     },
     invoice: {
       findUnique: vi.fn(),
+      // Sequential-number scan (computeNextSequentialInvoiceNumber) — empty DB by default.
+      findMany: vi.fn().mockResolvedValue([]),
       create: vi.fn()
     }
   }
@@ -124,6 +126,8 @@ describe('order-processing worker error and retry behavior', () => {
     state.tx.cart.findFirst.mockReset();
     state.tx.cartReservation.deleteMany.mockReset();
     state.tx.invoice.findUnique.mockReset();
+    state.tx.invoice.findMany.mockReset();
+    state.tx.invoice.findMany.mockResolvedValue([]);
     state.tx.invoice.create.mockReset();
     state.notificationsAdd.mockReset();
     state.topOrderFindUnique.mockReset();
@@ -745,19 +749,20 @@ describe('order-processing worker error and retry behavior', () => {
       data: { orderId: 'order_1' }
     });
 
-    // Invoice number is DERIVED from the order number (ORD-2026-00001 → INV-2026-00001),
-    // not drawn from a sequence — regeneration must reissue this exact number.
+    // Invoice number is SEQUENTIAL per year: an empty scan (findMany → []) means
+    // this is the year's first invoice → INV-<year>-00001.
+    const expectedNumber = `INV-${new Date().getFullYear()}-00001`;
     expect(invoiceStorageAdapter.uploadInvoicePdf).toHaveBeenCalledWith(
       expect.objectContaining({
         orderId: 'order_1',
-        invoiceNumber: 'INV-2026-00001'
+        invoiceNumber: expectedNumber
       })
     );
     expect(state.tx.invoice.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           orderId: 'order_1',
-          invoiceNumber: 'INV-2026-00001',
+          invoiceNumber: expectedNumber,
           pdfUrl: 'client/invoices/order_1/invoice.pdf'
         })
       })
@@ -955,7 +960,7 @@ describe('order-processing worker error and retry behavior', () => {
     };
 
     boot(invoiceStorageAdapter);
-    state.tx.invoice.findUnique.mockResolvedValue({ id: 'inv_1', invoiceNumber: 'INV-ORD-2026-00001' });
+    state.tx.invoice.findUnique.mockResolvedValue({ id: 'inv_1', invoiceNumber: 'INV-2026-00001' });
     state.tx.order.findUnique.mockResolvedValue({
       id: 'order_1',
       orderNumber: 'ORD-2026-00001',
@@ -973,7 +978,8 @@ describe('order-processing worker error and retry behavior', () => {
     expect(invoiceStorageAdapter.uploadInvoicePdf).toHaveBeenCalledWith(
       expect.objectContaining({
         orderId: 'order_1',
-        invoiceNumber: 'CN-INV-ORD-2026-00001'
+        // CN- serial reuses the invoice number minus its INV- prefix (16-char serial limit).
+        invoiceNumber: 'CN-2026-00001'
       })
     );
     expect(state.tx.orderStatusHistory.create).toHaveBeenCalledWith(

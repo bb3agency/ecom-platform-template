@@ -2,8 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   buildInvoiceTaxLines,
   computeInclusiveGstSplit,
-  deriveInvoiceNumber,
+  computeNextSequentialInvoiceNumber,
   fetchInvoiceLogo,
+  formatSequentialInvoiceNumber,
   resolveInvoiceLogo,
   sniffLogoImageFormat,
   type SellerProfile
@@ -234,26 +235,58 @@ describe('buildInvoiceTaxLines — goods-only tax base (shipping untaxed, discou
   });
 });
 
-describe('deriveInvoiceNumber — order-derived, idempotent invoice numbering', () => {
-  it('maps the random order reference onto the INV- series', () => {
-    expect(deriveInvoiceNumber('ORD-AB2C-9XYZ')).toBe('INV-AB2C-9XYZ');
+describe('computeNextSequentialInvoiceNumber — per-year sequential serials', () => {
+  const AT = new Date('2026-08-10T12:00:00+05:30');
+
+  function scanClient(numbers: string[]) {
+    return {
+      invoice: {
+        findMany: vi.fn(async (args: { where: { invoiceNumber: { startsWith: string } } }) =>
+          numbers
+            .filter((n) => n.startsWith(args.where.invoiceNumber.startsWith))
+            .sort()
+            .reverse()
+            .slice(0, 25)
+            .map((invoiceNumber) => ({ invoiceNumber }))
+        )
+      }
+    };
+  }
+
+  it('starts a fresh year at 00001', async () => {
+    expect(await computeNextSequentialInvoiceNumber(scanClient([]), AT)).toBe('INV-2026-00001');
   });
 
-  it('maps legacy sequential order numbers without double-prefixing', () => {
-    expect(deriveInvoiceNumber('ORD-2026-00039')).toBe('INV-2026-00039');
+  it('continues after the highest existing sequence for the year', async () => {
+    const client = scanClient(['INV-2026-00002', 'INV-2026-00007', 'INV-2026-00001']);
+    expect(await computeNextSequentialInvoiceNumber(client, AT)).toBe('INV-2026-00008');
   });
 
-  it('is deterministic — regenerating an invoice reissues the same number', () => {
-    expect(deriveInvoiceNumber('ORD-QRST-2345')).toBe(deriveInvoiceNumber('ORD-QRST-2345'));
+  it('ignores derived-era rows that happen to share the year prefix', async () => {
+    // A random order ref block can literally be "2026" — its derived invoice number
+    // is not a sequence member and must not poison the max scan.
+    const client = scanClient(['INV-2026-XYZ9', 'INV-2026-00004']);
+    expect(await computeNextSequentialInvoiceNumber(client, AT)).toBe('INV-2026-00005');
   });
 
-  it('stays within the CGST Rule 46(b) 16-character serial limit for both formats', () => {
-    expect(deriveInvoiceNumber('ORD-AB2C-9XYZ').length).toBeLessThanOrEqual(16);
-    expect(deriveInvoiceNumber('ORD-2026-00039').length).toBeLessThanOrEqual(16);
+  it('scopes the sequence to the issue year (rollover restarts at 00001)', async () => {
+    const client = scanClient(['INV-2026-00042']);
+    const next = await computeNextSequentialInvoiceNumber(client, new Date('2027-01-01T10:00:00+05:30'));
+    expect(next).toBe('INV-2027-00001');
   });
 
-  it('keeps an unprefixed reference intact rather than mangling it', () => {
-    expect(deriveInvoiceNumber('AB2C-9XYZ')).toBe('INV-AB2C-9XYZ');
+  it('stays within the CGST Rule 46(b) 16-character serial limit', () => {
+    expect(formatSequentialInvoiceNumber(2026, 1).length).toBeLessThanOrEqual(16);
+    expect(formatSequentialInvoiceNumber(2026, 99999)).toBe('INV-2026-99999');
+    expect(formatSequentialInvoiceNumber(2026, 99999).length).toBeLessThanOrEqual(16);
+    // Overflow past 5 digits widens rather than wrapping; still inside the limit.
+    expect(formatSequentialInvoiceNumber(2026, 123456)).toBe('INV-2026-123456');
+    expect(formatSequentialInvoiceNumber(2026, 123456).length).toBeLessThanOrEqual(16);
+  });
+
+  it('accepts 6+ digit sequences when scanning (post-overflow years)', async () => {
+    const client = scanClient(['INV-2026-100000']);
+    expect(await computeNextSequentialInvoiceNumber(client, AT)).toBe('INV-2026-100001');
   });
 });
 

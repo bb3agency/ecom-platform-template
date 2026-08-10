@@ -30,9 +30,10 @@ import { resolvePickupPincode } from '@common/shipping/resolve-pickup-pincode';
  * Generation is idempotent per order: the transaction re-checks for an existing
  * `Invoice` row, and `Invoice.orderId` is unique, so a concurrent duplicate run
  * fails the insert instead of double-issuing an invoice number for the order.
- * The invoice NUMBER is idempotent too — derived from the order number (see
- * deriveInvoiceNumber), so deleting an Invoice row and regenerating reissues the
- * exact same number instead of consuming a fresh serial.
+ * The invoice NUMBER is SEQUENTIAL (`INV-<year>-<seq>`, see
+ * computeNextSequentialInvoiceNumber) and allocated exactly once, inside the same
+ * transaction that creates the row — regeneration/self-heal reuses the stored
+ * number, so re-rendering never consumes a serial and never leaves a gap.
  */
 
 export type ShippingAddress = {
@@ -270,19 +271,69 @@ export async function resolveSellerProfileOrThrow(prisma: PrismaClient): Promise
 }
 
 /**
- * Invoice number derived from the order number: `ORD-AB2C-9XYZ` → `INV-AB2C-9XYZ`.
+ * SEQUENTIAL invoice numbering — `INV-<year>-<seq>` (e.g. `INV-2026-00042`),
+ * reinstated 2026-08-10 by explicit merchant decision (consecutive serials are
+ * what CAs/GST officers expect on the books), replacing the short-lived
+ * order-derived scheme.
  *
- * Why derived, not sequential (2026-08-09): a global counter consumes a fresh number on
- * every (re)generation — deleting a bad Invoice row to re-render it burned a serial and
- * left a gap, and the counter itself leaked business volume. Deriving from the order
- * reference makes numbering IDEMPOTENT (regenerating an order's invoice always reissues
- * the same number), globally unique (order numbers are unique), and within CGST Rule
- * 46(b)'s 16-character limit (alphabets, numerals, and "-" are permitted; `INV-` + the
- * 9-char order ref = 13 chars; legacy `ORD-YYYY-#####` refs map to 14 chars).
+ * Properties the old (pre-derived) counter implementation lacked, all preserved:
+ *  - **Allocated ONCE per order**, inside the same transaction that creates the
+ *    Invoice row. Regeneration/self-heal reuses the stored number, so re-rendering
+ *    never burns a serial and never leaves a gap (the defect that motivated the
+ *    derived scheme).
+ *  - **No counter table**: the next number is max(existing sequence for the
+ *    year) + 1, and the `invoiceNumber` UNIQUE constraint arbitrates concurrent
+ *    allocations — the loser retries with a fresh scan (see generateInvoiceForOrder).
+ *  - **Per-year reset** (matches the legacy series and CGST Rule 46(b)'s
+ *    "unique for a financial year"); 5-digit zero-padding keeps `INV-2026-00042`
+ *    at 14 chars, inside the 16-char serial limit, and the parser accepts longer
+ *    sequences should a year ever exceed 99,999 invoices.
+ *  - Rows from the derived era (`INV-AB2C-9XYZ`) don't parse as sequences and are
+ *    simply skipped by the scan — both formats coexist under the global unique
+ *    constraint.
  */
-export function deriveInvoiceNumber(orderNumber: string): string {
-  const ref = orderNumber.replace(/^ORD-/, '');
-  return `INV-${ref}`;
+export function formatSequentialInvoiceNumber(year: number, sequence: number): string {
+  return `INV-${year}-${String(sequence).padStart(5, '0')}`;
+}
+
+/** Minimal delegate shape so the allocator runs on PrismaClient AND $transaction clients. */
+type InvoiceNumberScanClient = {
+  invoice: {
+    findMany(args: {
+      where: { invoiceNumber: { startsWith: string } };
+      select: { invoiceNumber: true };
+      orderBy: { invoiceNumber: 'desc' };
+      take: number;
+    }): Promise<Array<{ invoiceNumber: string }>>;
+  };
+};
+
+/**
+ * Next free sequential number for `year`: scans the top rows under the year's
+ * prefix (a bounded batch — non-sequence rows like a derived `INV-2026-XYZ1` ref
+ * or lexicographic stragglers are filtered out by the numeric parse) and returns
+ * max + 1, starting at 1 for a fresh year. Exported for tests.
+ */
+export async function computeNextSequentialInvoiceNumber(
+  client: InvoiceNumberScanClient,
+  now: Date = new Date()
+): Promise<string> {
+  const year = now.getFullYear();
+  const prefix = `INV-${year}-`;
+  const candidates = await client.invoice.findMany({
+    where: { invoiceNumber: { startsWith: prefix } },
+    select: { invoiceNumber: true },
+    orderBy: { invoiceNumber: 'desc' },
+    take: 25
+  });
+  let maxSequence = 0;
+  for (const row of candidates) {
+    const match = /^INV-\d{4}-(\d{5,})$/.exec(row.invoiceNumber);
+    if (match) {
+      maxSequence = Math.max(maxSequence, Number(match[1]));
+    }
+  }
+  return formatSequentialInvoiceNumber(year, maxSequence + 1);
 }
 
 /**
@@ -525,6 +576,15 @@ export async function regenerateInvoicePdfForOrder(
   return { invoiceNumber: existingInvoice.invoiceNumber, pdfUrl: uploaded.storageReference };
 }
 
+/** Prisma P2002 = unique-constraint violation — the sequence race signal. */
+function isUniqueConstraintViolation(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    (error as { code?: unknown }).code === 'P2002'
+  );
+}
+
 export async function generateInvoiceForOrder(
   prisma: PrismaClient,
   orderId: string,
@@ -536,6 +596,32 @@ export async function generateInvoiceForOrder(
   // Fetched OUTSIDE the transaction — a slow logo host must never hold a DB tx open.
   const invoiceLogo = await resolveInvoiceLogo(sellerProfile);
 
+  // Sequence race: two orders generating concurrently can both compute the same
+  // next number; the invoiceNumber UNIQUE constraint aborts the loser. Retrying
+  // re-runs the whole transaction — the fresh scan sees the winner's row and
+  // allocates the next free serial. Three attempts covers realistic contention;
+  // beyond that, surface the failure (the queue path retries the job anyway).
+  const MAX_ALLOCATION_ATTEMPTS = 3;
+  for (let attempt = 1; attempt <= MAX_ALLOCATION_ATTEMPTS; attempt += 1) {
+    try {
+      await generateInvoiceForOrderOnce(prisma, orderId, invoiceStorageAdapter, sellerProfile, invoiceLogo);
+      return;
+    } catch (error) {
+      if (isUniqueConstraintViolation(error) && attempt < MAX_ALLOCATION_ATTEMPTS) {
+        continue;
+      }
+      throw error;
+    }
+  }
+}
+
+async function generateInvoiceForOrderOnce(
+  prisma: PrismaClient,
+  orderId: string,
+  invoiceStorageAdapter: InvoiceStorageAdapter,
+  sellerProfile: SellerProfile,
+  invoiceLogo: Awaited<ReturnType<typeof fetchInvoiceLogo>>
+): Promise<void> {
   await prisma.$transaction(async (tx) => {
     const existingInvoice = await tx.invoice.findUnique({
       where: { orderId }
@@ -559,31 +645,11 @@ export async function generateInvoiceForOrder(
     // for filling codes on products where applicable; the HSN autofill suggestions in the
     // product editor make that easy.
 
-    // Invoice number is DERIVED from the order number (see deriveInvoiceNumber) — no
-    // sequence, no gaps, idempotent regeneration. The only collision surface is a
-    // pre-existing sequence-era invoice (`INV-YYYY-#####`) clashing with a derived
-    // number for a legacy sequential order ref (`ORD-YYYY-#####`). If that ever
-    // happens, fall back to the `INVA-` series (multiple series are permitted under
-    // CGST Rule 46(b)); a second collision is impossible in practice and throws.
-    let invoiceNumber = deriveInvoiceNumber(order.orderNumber);
-    const numberTakenByOtherOrder = await tx.invoice.findUnique({
-      where: { invoiceNumber },
-      select: { orderId: true }
-    });
-    if (numberTakenByOtherOrder && numberTakenByOtherOrder.orderId !== order.id) {
-      invoiceNumber = `INVA-${order.orderNumber.replace(/^ORD-/, '')}`;
-      const fallbackTaken = await tx.invoice.findUnique({
-        where: { invoiceNumber },
-        select: { orderId: true }
-      });
-      if (fallbackTaken && fallbackTaken.orderId !== order.id) {
-        throw new AppError(
-          ERROR_CODES.VALIDATION_ERROR,
-          `Invoice number collision for order ${order.orderNumber}: both derived series are already issued to other orders. Resolve the conflicting Invoice rows before regenerating.`,
-          422
-        );
-      }
-    }
+    // SEQUENTIAL number, allocated exactly once per order (see
+    // computeNextSequentialInvoiceNumber). Two concurrent generations can race to
+    // the same number — the UNIQUE constraint on invoiceNumber aborts the loser's
+    // transaction, and the retry loop around this $transaction re-scans.
+    const invoiceNumber = await computeNextSequentialInvoiceNumber(tx);
     const content = await renderInvoicePdfContent(order, sellerProfile, invoiceLogo, invoiceNumber);
 
     const uploaded = await invoiceStorageAdapter.uploadInvoicePdf({

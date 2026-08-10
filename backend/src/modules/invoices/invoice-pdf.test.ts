@@ -146,8 +146,8 @@ describe('brand logo in the header', () => {
 
   it('renders the credit note with the same logo treatment', async () => {
     const buffer = await renderCreditNotePdfBuffer({
-      creditNoteNumber: 'CN-INV-AB2C-9XYZ',
-      originalInvoiceNumber: 'INV-AB2C-9XYZ',
+      creditNoteNumber: 'CN-2026-00042',
+      originalInvoiceNumber: 'INV-2026-00042',
       orderNumber: 'ORD-AB2C-9XYZ',
       issuedAtIso: '2026-08-09T00:00:00.000Z',
       reason: 'Order cancelled',
@@ -165,7 +165,7 @@ describe('brand logo in the header', () => {
 describe('renderCreditNotePdfBuffer with optional registrations', () => {
   it('renders a credit note when neither GSTIN nor FSSAI is configured', async () => {
     const buffer = await renderCreditNotePdfBuffer({
-      creditNoteNumber: 'CN-INV-2026-00001',
+      creditNoteNumber: 'CN-2026-00001',
       originalInvoiceNumber: 'INV-2026-00001',
       orderNumber: 'ORD-1001',
       issuedAtIso: '2026-08-08T00:00:00.000Z',

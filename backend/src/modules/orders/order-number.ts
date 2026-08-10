@@ -14,9 +14,11 @@ import crypto from 'node:crypto';
  *    the birthday-collision odds are negligible even at millions of orders (the DB `@unique`
  *    constraint plus a pre-insert check is the final guard).
  *
- * NOTE: GST INVOICE numbers are DERIVED from the order number (`INV-<order-ref>`, see
- * deriveInvoiceNumber in @modules/invoices/generate-invoice) — same unguessable reference,
- * stable across invoice regeneration, within CGST Rule 46(b)'s 16-char serial format.
+ * NOTE: GST INVOICE numbers are NOT derived from the order number — they are SEQUENTIAL
+ * (`INV-<year>-<seq>`, see computeNextSequentialInvoiceNumber in
+ * @modules/invoices/generate-invoice), allocated once per order at first generation and
+ * stable across regeneration. Order refs stay random/unguessable; invoice serials stay
+ * consecutive for the books.
  */
 
 /** Unambiguous alphabet: uppercase minus I/L/O, digits minus 0/1. */
