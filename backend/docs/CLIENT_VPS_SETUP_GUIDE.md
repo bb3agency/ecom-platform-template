@@ -1267,8 +1267,13 @@ If you want fully hands-off recovery, add this to `/etc/sudoers.d/<runner-user>`
 # Replace <runner-user> with the username the GitHub Actions runner runs as
 # (the user that owns ~/actions-runner — usually 'deploy' or 'ubuntu')
 
-# Tombstone cleanup — required for §1.75 auto-recovery
-<runner-user> ALL=(root) NOPASSWD: /usr/bin/rm -rf /var/lib/docker/containers/*
+# Tombstone cleanup (§1.75 auto-recovery). ⚠️ Container IDs are random, so this
+# CANNOT be expressed on sudo >= 1.9.10 without an unrestricted `rm` grant —
+# deliberately omitted here (unrestricted root rm is a bigger hammer than the
+# convenience justifies). Tombstone cleanup stays manual:
+#   sudo bash scripts/cleanup-stale-compose-state.sh
+# (On legacy sudo < 1.9.10 you may still use:
+#   <runner-user> ALL=(root) NOPASSWD: /usr/bin/rm -rf /var/lib/docker/containers/*)
 
 # Docker daemon restart — required only if you want fully automatic recovery
 # from corrupted Compose project state (cleanup-stale-compose-state.sh's
@@ -1277,14 +1282,18 @@ If you want fully hands-off recovery, add this to `/etc/sudoers.d/<runner-user>`
 
 # Maintenance page install (every deploy) — required for the nginx error_page
 # 502/503 → /maintenance.html mapping to actually find the file on disk.
-# Without this grant the deploy logs a warning and the storefront falls back
-# to nginx's bare default 500 page during any backend hiccup instead of the
-# friendly maintenance page.
+# Without this the deploy logs a warning and the storefront falls back to
+# nginx's bare default 500 page during any backend hiccup. The cp itself is
+# covered by the unrestricted cp grant in the nginx block below.
 <runner-user> ALL=(root) NOPASSWD: /usr/bin/mkdir -p /etc/nginx/maintenance
-<runner-user> ALL=(root) NOPASSWD: /usr/bin/cp /var/www/*/backend/nginx/maintenance.html /etc/nginx/maintenance/maintenance.html
 
 # Nginx auto-sync — required only if NGINX_AUTO_RELOAD=1 (default '1' in the
 # client deploy.yml since 2026-08-10; override with repo variable NGINX_AUTO_RELOAD=0).
+#
+# ⚠️ sudo >= 1.9.10 (Ubuntu 24.04+, Debian 13+) REJECTS wildcards in command
+# ARGUMENTS — visudo refuses to save entries like `cp /tmp/*.nginx.conf ...`
+# ("wildcards are not allowed in command arguments"). Both live client boxes run
+# such a sudo, so this block uses only exact arguments or bare commands.
 #
 # CRITICAL — probe grant: vps-deploy.sh gates the whole auto-sync path on
 # `sudo -n true`. With only command-scoped grants that probe FAILS and the
@@ -1292,33 +1301,32 @@ If you want fully hands-off recovery, add this to `/etc/sudoers.d/<runner-user>`
 # REQUIRED for auto-sync to activate at all:
 <runner-user> ALL=(root) NOPASSWD: /usr/bin/true
 #
-# vps-deploy.sh renders client.conf.template into a tmpfile under /tmp via envsubst,
-# then copies the tmpfile over the LIVE vhost. Since backend-core 0.1.93 the live
-# vhost is resolved extension-agnostically and may live in sites-enabled OR
-# sites-available, with or without a .conf suffix (Debian convention on the live
-# boxes is extension-less: /etc/nginx/sites-enabled/raghavaorganics.com) — so the
-# target patterns must NOT require .conf:
-<runner-user> ALL=(root) NOPASSWD: /usr/bin/cp /tmp/*.nginx.conf /etc/nginx/sites-available/*, /usr/bin/cp /tmp/*.nginx.conf /etc/nginx/sites-enabled/*
-# First-deploy install path renders via mktemp (no .nginx.conf suffix):
-<runner-user> ALL=(root) NOPASSWD: /usr/bin/cp /tmp/tmp.* /etc/nginx/sites-available/*, /usr/bin/cp /tmp/tmp.* /etc/nginx/sites-enabled/*
-# Timestamped backup before overwrite + restore-on-failed-test (both cp within /etc/nginx):
-<runner-user> ALL=(root) NOPASSWD: /usr/bin/cp /etc/nginx/sites-available/* /etc/nginx/sites-available/*, /usr/bin/cp /etc/nginx/sites-enabled/* /etc/nginx/sites-enabled/*
-# First-deploy symlink + rollback removal:
-<runner-user> ALL=(root) NOPASSWD: /usr/bin/ln -sfn /etc/nginx/sites-available/* /etc/nginx/sites-enabled/*, /usr/bin/rm -f /etc/nginx/sites-enabled/*
+# The rendered config is a RANDOMIZED mktemp name under /tmp and the pre-overwrite
+# backup is timestamped, so their paths cannot be expressed without wildcards —
+# `cp` must be granted UNRESTRICTED. Understand the tradeoff: passwordless root cp
+# for the runner user is effectively root for anything running as that user
+# (including the CI runner). Acceptable on a single-tenant box whose runner user
+# already deploys the application; skip this grant to stay on the warn-only path.
+<runner-user> ALL=(root) NOPASSWD: /usr/bin/cp
 <runner-user> ALL=(root) NOPASSWD: /usr/sbin/nginx -t
 <runner-user> ALL=(root) NOPASSWD: /usr/bin/systemctl reload nginx
-# Maintenance page permissions fix (vps-deploy.sh runs `chmod 644` after the cp):
+# Maintenance page install (exact arguments — no wildcards needed; the cp is
+# covered by the unrestricted grant above):
+<runner-user> ALL=(root) NOPASSWD: /usr/bin/mkdir -p /etc/nginx/maintenance
 <runner-user> ALL=(root) NOPASSWD: /usr/bin/chmod 644 /etc/nginx/maintenance/maintenance.html
 ```
+
+Deliberately NOT granted (their absence only degrades optional self-heal paths, never a deploy): unrestricted `rm` (docker-tombstone cleanup §19.2 stays manual; the first-deploy rollback `rm -f` only matters on a brand-new box) and `ln` (only the first-deploy symlink install). Grant them ad hoc during a first deploy if needed.
 
 Then verify:
 
 ```bash
-sudo -u <runner-user> sudo -n rm -rf /var/lib/docker/containers/nonexistent-test-path
-# should exit 0 with no password prompt
+sudo -u <runner-user> sudo -n true && echo "probe OK"
+# should print "probe OK" with no password prompt — this is the exact probe
+# vps-deploy.sh runs before attempting any auto-sync
 ```
 
-**Security note.** These grants are scoped to specific commands with specific argument patterns — they don't give the runner user general root. The container-tombstone wildcard only matches paths under `/var/lib/docker/containers/`, which is already a directory only the runner needs to touch during the cleanup pass. The nginx grants are scoped to the project's own template path. Review the entries against your VPS user model before committing.
+**Security note.** Most grants are exact-argument scoped, but `cp` is unrestricted (modern sudo leaves no way to pattern-match the randomized rendered/backup filenames) — passwordless root `cp` is effectively root for anything running as the runner user, including the CI runner itself. That is an accepted tradeoff on a single-tenant box whose runner user already deploys the application and holds interactive sudo; review it against your VPS user model before committing (verified live on both client boxes 2026-08-10).
 
 **If you don't grant these.** Both layers stay functional, just less convenient:
 
