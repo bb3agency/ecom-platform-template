@@ -73,9 +73,9 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
       {/* Thumbnail strip */}
       {images.length > 1 && (
         <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-          {images.slice(0, 6).map((img, idx) => (
+          {images.map((img, idx) => (
             <button
-              key={img.url}
+              key={`${img.url}-${idx}`}
               type="button"
               onClick={() => { setActive(idx); setZoomed(false); }}
               className={cn(
