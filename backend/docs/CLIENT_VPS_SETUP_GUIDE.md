@@ -1283,15 +1283,32 @@ If you want fully hands-off recovery, add this to `/etc/sudoers.d/<runner-user>`
 <runner-user> ALL=(root) NOPASSWD: /usr/bin/mkdir -p /etc/nginx/maintenance
 <runner-user> ALL=(root) NOPASSWD: /usr/bin/cp /var/www/*/backend/nginx/maintenance.html /etc/nginx/maintenance/maintenance.html
 
-# Nginx auto-sync — required only if NGINX_AUTO_RELOAD=1 is set in .env.
+# Nginx auto-sync — required only if NGINX_AUTO_RELOAD=1 (default '1' in the
+# client deploy.yml since 2026-08-10; override with repo variable NGINX_AUTO_RELOAD=0).
+#
+# CRITICAL — probe grant: vps-deploy.sh gates the whole auto-sync path on
+# `sudo -n true`. With only command-scoped grants that probe FAILS and the
+# script silently degrades to warn-only, so this /usr/bin/true entry is
+# REQUIRED for auto-sync to activate at all:
+<runner-user> ALL=(root) NOPASSWD: /usr/bin/true
+#
 # vps-deploy.sh renders client.conf.template into a tmpfile under /tmp via envsubst,
-# then copies the tmpfile to /etc/nginx/sites-available/*.conf (not the template directly),
-# so the cp source pattern below intentionally matches /tmp/*.nginx.conf.
-<runner-user> ALL=(root) NOPASSWD: /usr/bin/cp /tmp/*.nginx.conf /etc/nginx/sites-available/*.conf
-# Also allow installing the rendered config on first deploy (initial install path).
-<runner-user> ALL=(root) NOPASSWD: /usr/bin/cp /tmp/tmp.* /etc/nginx/sites-available/*.conf
+# then copies the tmpfile over the LIVE vhost. Since backend-core 0.1.93 the live
+# vhost is resolved extension-agnostically and may live in sites-enabled OR
+# sites-available, with or without a .conf suffix (Debian convention on the live
+# boxes is extension-less: /etc/nginx/sites-enabled/raghavaorganics.com) — so the
+# target patterns must NOT require .conf:
+<runner-user> ALL=(root) NOPASSWD: /usr/bin/cp /tmp/*.nginx.conf /etc/nginx/sites-available/*, /usr/bin/cp /tmp/*.nginx.conf /etc/nginx/sites-enabled/*
+# First-deploy install path renders via mktemp (no .nginx.conf suffix):
+<runner-user> ALL=(root) NOPASSWD: /usr/bin/cp /tmp/tmp.* /etc/nginx/sites-available/*, /usr/bin/cp /tmp/tmp.* /etc/nginx/sites-enabled/*
+# Timestamped backup before overwrite + restore-on-failed-test (both cp within /etc/nginx):
+<runner-user> ALL=(root) NOPASSWD: /usr/bin/cp /etc/nginx/sites-available/* /etc/nginx/sites-available/*, /usr/bin/cp /etc/nginx/sites-enabled/* /etc/nginx/sites-enabled/*
+# First-deploy symlink + rollback removal:
+<runner-user> ALL=(root) NOPASSWD: /usr/bin/ln -sfn /etc/nginx/sites-available/* /etc/nginx/sites-enabled/*, /usr/bin/rm -f /etc/nginx/sites-enabled/*
 <runner-user> ALL=(root) NOPASSWD: /usr/sbin/nginx -t
 <runner-user> ALL=(root) NOPASSWD: /usr/bin/systemctl reload nginx
+# Maintenance page permissions fix (vps-deploy.sh runs `chmod 644` after the cp):
+<runner-user> ALL=(root) NOPASSWD: /usr/bin/chmod 644 /etc/nginx/maintenance/maintenance.html
 ```
 
 Then verify:
