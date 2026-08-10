@@ -37,6 +37,7 @@ import {
 } from "@/lib/admin-format";
 
 import { getBrowserApiBaseUrl, resolveApiBaseUrl } from "@/lib/api-base";
+import { resolveDownloadFilename } from "@/lib/download-filename";
 
 import { parseApiErrorFromResponse } from "@/lib/api";
 
@@ -185,7 +186,9 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
       const objectUrl = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = objectUrl;
-      anchor.download = `${order.orderNumber}-invoice.pdf`;
+      // The list has no invoice number in state — take the server's, which names
+      // the file after the invoice it just rendered.
+      anchor.download = resolveDownloadFilename(response, `${order.orderNumber}-invoice.pdf`);
       anchor.click();
       // Deferred: revoking synchronously can abort the save in Firefox/Safari.
       setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);

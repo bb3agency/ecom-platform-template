@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { useAuthenticatedApi } from "@/hooks/use-authenticated-api";
 import { getBrowserApiBaseUrl } from "@/lib/api-base";
+import { resolveDownloadFilename } from "@/lib/download-filename";
 import { parseApiErrorFromResponse } from "@/lib/api";
 import { createIdempotencyKey } from "@/lib/idempotency";
 import { notifyAdminDataChanged } from "@/lib/admin-data-refresh";
@@ -392,9 +393,12 @@ export function AdminOrderFulfillmentPanel({
       const objectUrl = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = objectUrl;
-      anchor.download = detail.invoice?.invoiceNumber
-        ? `${detail.invoice.invoiceNumber}.pdf`
-        : `${detail.orderNumber}-invoice.pdf`;
+      anchor.download = resolveDownloadFilename(
+        response,
+        detail.invoice?.invoiceNumber
+          ? `${detail.invoice.invoiceNumber}.pdf`
+          : `${detail.orderNumber}-invoice.pdf`,
+      );
       anchor.click();
       // Deferred: revoking synchronously can abort the save in Firefox/Safari.
       setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
@@ -437,9 +441,12 @@ export function AdminOrderFulfillmentPanel({
       if (!win) {
         const anchor = document.createElement("a");
         anchor.href = objectUrl;
-        anchor.download = detail.invoice?.invoiceNumber
-          ? `${detail.invoice.invoiceNumber}.pdf`
-          : `${detail.orderNumber}-invoice.pdf`;
+        anchor.download = resolveDownloadFilename(
+          response,
+          detail.invoice?.invoiceNumber
+            ? `${detail.invoice.invoiceNumber}.pdf`
+            : `${detail.orderNumber}-invoice.pdf`,
+        );
         document.body.appendChild(anchor);
         anchor.click();
         anchor.remove();

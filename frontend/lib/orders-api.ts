@@ -1,5 +1,6 @@
 import { apiClient, parseApiErrorFromResponse } from "@/lib/api";
 import { getBrowserApiBaseUrl } from "@/lib/api-base";
+import { resolveDownloadFilename } from "@/lib/download-filename";
 import { createIdempotencyKey } from "@/lib/idempotency";
 
 export type CheckoutPaymentMode = "PREPAID" | "COD";
@@ -267,7 +268,9 @@ export async function downloadCustomerInvoicePdf(
   const objectUrl = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = objectUrl;
-  anchor.download = filename;
+  // The server names the file after the invoice number it just rendered; the
+  // caller's `filename` is only a fallback (see resolveDownloadFilename).
+  anchor.download = resolveDownloadFilename(response, filename);
   anchor.click();
   // Deferred: revoking synchronously can abort the save in Firefox/Safari.
   setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);

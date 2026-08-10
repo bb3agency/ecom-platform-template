@@ -12,6 +12,16 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.97] - 2026-08-10
+
+### Fixed
+- **Downloaded invoice files were named differently from the invoice number printed inside them.** The endpoints already send `Content-Disposition: attachment; filename="INV-<year>-<seq>.pdf"`, but browsers hide response headers from cross-origin JS unless they are explicitly exposed, so the storefront/admin could not read it and fell back to guessing from client state. `content-disposition` is now in the CORS `exposedHeaders` allowlist (pairs with frontend-core 0.1.68, which reads it). Also benefits the CSV export routes, which set the same header.
+
+**Propagation:**
+- Severity: NORMAL - Layers: backend (`common/plugins/cors.plugin.ts`) — pairs with frontend-core 0.1.68
+- Migration: NO - Flag: none - Design impact: none - Breaking: NO (additive response-header exposure; no new origin is allowed)
+- Rollback: revert the file (same-origin deployments keep working; cross-origin ones fall back to the caller's filename)
+
 ## [0.1.96] - 2026-08-10
 
 ### Fixed
