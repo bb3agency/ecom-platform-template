@@ -12,6 +12,21 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.96] - 2026-08-10
+
+### Fixed
+- **A ₹650 line was taxed at 12% while the product editor showed 5% — the calculation, not just the label.** `resolveLineItemGstRatePercent` let the variant's stamped `gstRatePercent` win over the product's `attributes.gstRate`. The stamp is a denormalised copy: products saved before the GST-rate editor existed never stored `attributes.gstRate`, the editor displays its default ("5") for them, but their variants still carry the legacy pre-GST-2.0 default stamp of 12 — so invoice AND checkout-breakup math used 12%. Precedence is now: explicit `attributes.gstRate` (the value the editor shows and saves, including explicit 0 for NIL-rated goods) → variant stamp only when it holds a LIVE GST 2.0 slab (a 12/28 stamp with no explicit attribute rate can only be the dead legacy default and is never billed) → platform default 5%. No data migration needed — stale rows resolve correctly at runtime; re-saving a product still re-stamps its variants.
+
+### Changed
+- **Sequential invoice numbering reinstated** (explicit merchant decision — consecutive serials are what CAs/GST officers expect on the books): `INV-{YYYY}-{5-digit-seq}`, restarting each year, allocated exactly ONCE per order inside the Invoice-creating transaction as max(year sequence) + 1 — no counter table; the `invoiceNumber` unique constraint arbitrates concurrent allocations and a 3-attempt retry re-scans on the losing side. Regeneration/self-heal reuses the stored number, so the defect that motivated the 0.1.86 derived scheme (serials burned + gaps on re-render) cannot return. `deriveInvoiceNumber` and the `INVA-` collision series are removed; derived-era rows keep their numbers and are skipped by the scan.
+- **Credit-note serials shortened to `CN-{YYYY}-{seq}`** (invoice number minus its `INV-` prefix): `CN-INV-YYYY-#####` was 17 characters, breaching the 16-character serial limit (CGST Rule 53 mirrors Rule 46(b)). The full original invoice number still prints on the credit note via `originalInvoiceNumber`.
+
+**Propagation:**
+- Severity: **HIGH** (the rate bug mis-taxed live orders on every surface — invoice + checkout breakup) - Layers: backend only (`common/shipping/product-tax-fields.ts`, `modules/invoices/generate-invoice.ts`, `queues/workers/order-processing.worker.ts`, `modules/orders/order-number.ts` comment, tests) — no frontend change (invoice number and tax figures are rendered verbatim from the API)
+- Migration: NO (existing rows untouched; stale variant stamps resolve correctly at runtime) - Flag: none - Design impact: none - Breaking: NO
+- **Post-deploy note:** invoices issued before this ships carry the old numbers/rates in their stored PDFs. Deleting an `Invoice` row makes the next download regenerate it with the corrected rate and a fresh sequential number.
+- Rollback: revert the files (numbering returns to order-derived; the rate bug returns)
+
 ## [0.1.95] - 2026-08-10
 
 ### Changed

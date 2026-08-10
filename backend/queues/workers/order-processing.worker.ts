@@ -1105,7 +1105,11 @@ async function generateCreditNoteForOrder(
     }
 
     const shippingAddress = (order.shippingAddress ?? {}) as ShippingAddress;
-    const creditNoteNumber = `CN-${originalInvoice.invoiceNumber}`;
+    // Serial derived from the invoice number MINUS its `INV-` prefix: `CN-<year>-<seq>`
+    // (e.g. CN-2026-00042, 13 chars). `CN-INV-…` breached CGST Rule 53's 16-char
+    // serial limit for sequential invoice numbers (CN- + 14 = 17 chars). The full
+    // original invoice number still prints via `originalInvoiceNumber` below.
+    const creditNoteNumber = `CN-${originalInvoice.invoiceNumber.replace(/^INV-/, '')}`;
     const content = await renderCreditNotePdfBuffer({
       creditNoteNumber,
       originalInvoiceNumber: originalInvoice.invoiceNumber,
