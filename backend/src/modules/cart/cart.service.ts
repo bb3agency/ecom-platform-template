@@ -682,18 +682,18 @@ export class CartService {
     }
 
     // GST breakup shown alongside the quote (display-only: prices are GST-INCLUSIVE,
-    // the tax is carved out of the payable total, which never moves). Resolved once
+    // the tax is carved out of the goods total, which never moves — delivery/shipping
+    // is untaxed and excluded from the tax base by merchant policy). Resolved once
     // per quote; any failure degrades to "no breakup" — it must never block a quote.
     const discountForTax = couponsEnabledForLocal
       ? this.calculateDiscount(subtotal, cart.coupon, cart.items)
       : 0;
     const taxProfile = await this.resolveDeliveryTaxProfile(pincode);
-    const buildTaxBreakup = (shippingChargePaise: number, opts?: { forceIntraState?: boolean }) =>
+    const buildTaxBreakup = (opts?: { forceIntraState?: boolean }) =>
       taxProfile
         ? this.buildDeliveryTaxBreakup({
             items: cart.items,
             discountPaise: discountForTax,
-            shippingPaise: shippingChargePaise,
             // Merchant-fulfilled local delivery is same-city by construction.
             isInterState: opts?.forceIntraState ? false : taxProfile.isInterState
           })
@@ -701,7 +701,7 @@ export class CartService {
 
     if (plan.mode === 'ALL_LOCAL') {
       const quote = localQuote!;
-      const taxBreakup = buildTaxBreakup(quote.shippingChargePaise, { forceIntraState: true });
+      const taxBreakup = buildTaxBreakup({ forceIntraState: true });
       // Persist so checkout consumes the exact same fee (shown rate == charged rate).
       await this.persistShippingQuote(userId, sessionToken, cart.id, pincode, paymentMode, {
         provider: 'LOCAL',
@@ -747,7 +747,7 @@ export class CartService {
         estimatedDays: result.estimatedDays,
         ...(result.courierCompanyId != null ? { courierCompanyId: result.courierCompanyId } : {})
       });
-      const taxBreakup = buildTaxBreakup(result.shippingCharge);
+      const taxBreakup = buildTaxBreakup();
       return { ...result, ...(taxBreakup ? { taxBreakup } : {}) };
     }
 
@@ -766,7 +766,7 @@ export class CartService {
       usingNoop: true,
       paymentMode
     });
-    const noopTaxBreakup = buildTaxBreakup(noopQuote.shippingChargePaise);
+    const noopTaxBreakup = buildTaxBreakup();
     return {
       pincode,
       shippingCharge: noopQuote.shippingChargePaise,
@@ -800,10 +800,11 @@ export class CartService {
   }
 
   /**
-   * Carve the included GST out of what the customer will actually pay
-   * (items − discount + shipping) using the same math as the invoice PDF, so the
-   * checkout summary and the invoice always reconcile. taxable + CGST + SGST +
-   * IGST === payable total; the payable total itself never changes.
+   * Carve the included GST out of what the customer will pay for the GOODS
+   * (items − discount) using the same math as the invoice PDF, so the checkout
+   * summary and the invoice always reconcile: taxable + CGST + SGST + IGST ===
+   * goods total. Delivery/shipping is untaxed and excluded from the tax base
+   * (merchant policy 2026-08-10); totals never change either way.
    */
   private buildDeliveryTaxBreakup(input: {
     items: Array<{
@@ -812,7 +813,6 @@ export class CartService {
       variant: { gstRatePercent: number; product: { attributes: Prisma.JsonValue } | null };
     }>;
     discountPaise: number;
-    shippingPaise: number;
     isInterState: boolean;
   }) {
     const lines = buildOrderGstTaxLines({
@@ -827,7 +827,6 @@ export class CartService {
           item.variant.product?.attributes ?? null
         )
       })),
-      shippingPaise: input.shippingPaise,
       discountPaise: input.discountPaise,
       isInterState: input.isInterState
     });

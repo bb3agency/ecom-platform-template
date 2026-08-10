@@ -7,9 +7,11 @@ import { CartService } from './cart.service';
  * GST tax breakup on GET /cart/delivery-rates (2026-08-10).
  *
  * Prices are GST-INCLUSIVE: the breakup carves CGST+SGST (intra-state) or IGST
- * (inter-state) OUT of the payable total — taxable + tax always equals what the
- * customer pays, and the payable total itself never changes. Classification is
- * pincode-based: admin pickup pincode vs the buyer's delivery pincode.
+ * (inter-state) OUT of the GOODS total (items − discount) — taxable + tax always
+ * equals what the customer pays for the goods, and totals never change.
+ * Delivery/shipping is untaxed and excluded from the tax base (merchant policy
+ * 2026-08-10). Classification is pincode-based: admin pickup pincode vs the
+ * buyer's delivery pincode.
  */
 
 const STORE_SETTINGS = {
@@ -94,11 +96,12 @@ describe('CartService delivery-rates GST tax breakup', () => {
       sgstPaise: 4479,
       igstPaise: 0
     });
-    // The carve-out reconciles exactly with what the customer pays.
+    // The carve-out reconciles exactly with the GOODS total — shipping is untaxed
+    // and never part of the tax base.
     const breakup = result.taxBreakup!;
     expect(
       breakup.taxableAmountPaise + breakup.cgstPaise + breakup.sgstPaise + breakup.igstPaise
-    ).toBe(100000 + result.shippingCharge);
+    ).toBe(100000);
   });
 
   it('books the whole carved tax as IGST for an inter-state pincode', async () => {

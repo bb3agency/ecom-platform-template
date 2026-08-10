@@ -140,8 +140,8 @@ describe('sniffLogoImageFormat', () => {
 });
 
 
-describe('buildInvoiceTaxLines — shipping and discount inside the tax base', () => {
-  // Mirrors the real production invoice that exposed the bug: 2 items totalling
+describe('buildInvoiceTaxLines — goods-only tax base (shipping untaxed, discount applied)', () => {
+  // Mirrors the real production invoice that shaped the policy: 2 items totalling
   // Rs 1400 plus Rs 167.70 delivery, intra-state, 12% (legacy rate on those products).
   const items = [
     { name: 'Goddu Kaaram', hsnCode: '09042211', quantity: 1, unitPricePaise: 65000, lineTotalPaise: 65000, taxRatePercent: 12 },
@@ -158,26 +158,19 @@ describe('buildInvoiceTaxLines — shipping and discount inside the tax base', (
     );
   }
 
-  it('taxes the delivery charge (composite supply) instead of leaving it tax-free', () => {
-    const rows = buildInvoiceTaxLines({ items, shippingPaise: 16770, discountPaise: 0, isInterState: false });
-
-    const shippingRow = rows.find((row) => row.name === 'Delivery / Shipping');
-    expect(shippingRow).toBeDefined();
-    expect(shippingRow!.lineTotalPaise).toBe(16770);
-    // Carved at the principal supply's rate, not zero — this is the reported defect.
-    expect(shippingRow!.taxRatePercent).toBe(12);
-    expect(shippingRow!.cgstPaise + shippingRow!.sgstPaise).toBeGreaterThan(0);
-    // Classified after the principal (highest-value) line.
-    expect(shippingRow!.hsnCode).toBe('09042211');
+  it('NEVER emits a delivery/shipping row — shipping is not a product (merchant policy 2026-08-10)', () => {
+    const rows = buildInvoiceTaxLines({ items, discountPaise: 0, isInterState: false });
+    expect(rows).toHaveLength(2);
+    expect(rows.some((row) => row.name === 'Delivery / Shipping')).toBe(false);
+    // Shipping is billed untaxed in the totals section; the tax base is goods only.
   });
 
-  it('reconciles EXACTLY with the grand total the customer paid', () => {
-    const rows = buildInvoiceTaxLines({ items, shippingPaise: 16770, discountPaise: 0, isInterState: false });
-    const grandTotal = 65000 + 75000 + 16770;
+  it('reconciles EXACTLY with the goods total the customer paid', () => {
+    const rows = buildInvoiceTaxLines({ items, discountPaise: 0, isInterState: false });
     const { gross } = totals(rows);
-    expect(gross).toBe(grandTotal);
+    expect(gross).toBe(65000 + 75000);
     // Inclusive pricing: taxable + tax per row equals the row amount, so the sum of all
-    // rows equals the grand total and the tax is never added on top.
+    // rows equals the goods total and the tax is never added on top.
     for (const row of rows) {
       const tax = row.cgstPaise + row.sgstPaise + row.igstPaise;
       const taxable = Math.round((row.lineTotalPaise * 100) / (100 + row.taxRatePercent));
@@ -186,62 +179,56 @@ describe('buildInvoiceTaxLines — shipping and discount inside the tax base', (
   });
 
   it('applies an order discount to the taxable consideration, apportioned across items', () => {
-    const rows = buildInvoiceTaxLines({ items, shippingPaise: 16770, discountPaise: 14000, isInterState: false });
+    const rows = buildInvoiceTaxLines({ items, discountPaise: 14000, isInterState: false });
     const { gross, tax } = totals(rows);
 
-    expect(gross).toBe(65000 + 75000 - 14000 + 16770);
-    // Tax must be lower than the undiscounted case — the old code carved from the
-    // pre-discount amount and over-declared it.
-    const undiscounted = totals(
-      buildInvoiceTaxLines({ items, shippingPaise: 16770, discountPaise: 0, isInterState: false })
-    );
+    expect(gross).toBe(65000 + 75000 - 14000);
+    // Tax must be lower than the undiscounted case — carving from the pre-discount
+    // amount would over-declare it.
+    const undiscounted = totals(buildInvoiceTaxLines({ items, discountPaise: 0, isInterState: false }));
     expect(tax).toBeLessThan(undiscounted.tax);
-    // Apportionment is exact — no paise lost or invented.
-    const itemRows = rows.filter((row) => row.name !== 'Delivery / Shipping');
-    expect(itemRows.reduce((sum, row) => sum + row.lineTotalPaise, 0)).toBe(65000 + 75000 - 14000);
   });
 
   it('never lets a discount exceed the goods value', () => {
-    const rows = buildInvoiceTaxLines({ items, shippingPaise: 0, discountPaise: 999999, isInterState: false });
+    const rows = buildInvoiceTaxLines({ items, discountPaise: 999999, isInterState: false });
     expect(rows.every((row) => row.lineTotalPaise >= 0)).toBe(true);
     expect(rows.reduce((sum, row) => sum + row.lineTotalPaise, 0)).toBe(0);
   });
 
-  it('puts all tax in IGST for inter-state supply, including the delivery row', () => {
-    const rows = buildInvoiceTaxLines({ items, shippingPaise: 16770, discountPaise: 0, isInterState: true });
+  it('puts all tax in IGST for inter-state supply', () => {
+    const rows = buildInvoiceTaxLines({ items, discountPaise: 0, isInterState: true });
     for (const row of rows) {
       expect(row.cgstPaise).toBe(0);
       expect(row.sgstPaise).toBe(0);
+      expect(row.igstPaise).toBeGreaterThan(0);
     }
-    expect(rows.find((row) => row.name === 'Delivery / Shipping')!.igstPaise).toBeGreaterThan(0);
   });
 
   it('emits zero tax on every row when GST billing is off (rates already zeroed)', () => {
     const zeroRated = items.map((item) => ({ ...item, taxRatePercent: 0 }));
-    const rows = buildInvoiceTaxLines({ items: zeroRated, shippingPaise: 16770, discountPaise: 0, isInterState: false });
+    const rows = buildInvoiceTaxLines({ items: zeroRated, discountPaise: 0, isInterState: false });
     const { gross, tax } = totals(rows);
     expect(tax).toBe(0);
-    expect(gross).toBe(65000 + 75000 + 16770);
-  });
-
-  it('omits the delivery row when shipping is free', () => {
-    const rows = buildInvoiceTaxLines({ items, shippingPaise: 0, discountPaise: 0, isInterState: false });
-    expect(rows.some((row) => row.name === 'Delivery / Shipping')).toBe(false);
+    expect(gross).toBe(65000 + 75000);
   });
 
   it('reconciles exactly across awkward amounts and rates (property sweep)', () => {
-    for (const rate of [5, 12, 18, 28]) {
-      for (const shipping of [0, 1, 4999, 16770]) {
-        for (const discount of [0, 1, 7777]) {
-          const rows = buildInvoiceTaxLines({
-            items: items.map((item) => ({ ...item, taxRatePercent: rate })),
-            shippingPaise: shipping,
-            discountPaise: discount,
-            isInterState: false
-          });
-          const expected = 65000 + 75000 - discount + shipping;
-          expect(rows.reduce((sum, row) => sum + row.lineTotalPaise, 0)).toBe(expected);
-        }
+    for (const rate of [0, 5, 12, 18, 28]) {
+      for (const discount of [0, 1, 7777, 14000]) {
+        const rows = buildInvoiceTaxLines({
+          items: items.map((item) => ({ ...item, taxRatePercent: rate })),
+          discountPaise: discount,
+          isInterState: false
+        });
+        const expectedGross = 65000 + 75000 - discount;
+        expect(rows.reduce((sum, row) => sum + row.lineTotalPaise, 0)).toBe(expectedGross);
+        // Per-row taxable derived the way the PDF derives it must also reconcile.
+        const taxableSum = rows.reduce(
+          (sum, row) => sum + row.lineTotalPaise - row.cgstPaise - row.sgstPaise - row.igstPaise,
+          0
+        );
+        const taxSum = rows.reduce((sum, row) => sum + row.cgstPaise + row.sgstPaise + row.igstPaise, 0);
+        expect(taxableSum + taxSum).toBe(expectedGross);
       }
     }
   });
