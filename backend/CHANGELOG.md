@@ -12,6 +12,9 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+### Fixed
+- **Propagation gap documented + closed by hand:** the 0.1.92 `NGINX_AUTO_RELOAD` default lived in the template's `deploy.yml`, but `.github/workflows/**` is NOT part of `core-manifest.json` and client deploy workflows genuinely diverge per client — so the default never reached any client, and the 0.1.93 deploys resolved the vhost and detected drift yet still took the warning-only path. The env block was hand-carried into both client repos on 2026-08-10 (raghava `80bac03`, sbgs `6bc7a00`). **Rule: a change to any `.github/workflows/*` file must be hand-carried to every client repo** — the release train does not deliver it.
+
 ## [0.1.94] - 2026-08-10
 
 ### Added
