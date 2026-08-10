@@ -526,7 +526,7 @@ Storefront rendering model (`TRD.md` §12.1): use ISR patterns (`generateStaticP
 
 - `GET /cart`, `POST /cart/items`, `PATCH /cart/items/:id`, `DELETE /cart/items/:id`, `DELETE /cart`, `POST /cart/merge` (**after login**), `POST /cart/coupon`, `DELETE /cart/coupon`
 - `POST /cart/check-pincode` (public) — `{ pincode }`
-- `GET /cart/delivery-rates?pincode=<6-digit>&paymentMode=PREPAID|COD` — authenticated cart + destination; **`paymentMode` defaults to `PREPAID`**; COD quotes may differ from prepaid. On error (`503`, `422`, etc.) show shipping unavailable — **never** display a false “Free” fallback.
+- `GET /cart/delivery-rates?pincode=<6-digit>&paymentMode=PREPAID|COD` — authenticated cart + destination; **`paymentMode` defaults to `PREPAID`**; COD quotes may differ from prepaid. On error (`503`, `422`, etc.) show shipping unavailable — **never** display a false “Free” fallback. When the merchant has GST billing on, the response also carries optional `taxBreakup { gstBillingEnabled, isInterState, taxableAmountPaise, cgstPaise, sgstPaise, igstPaise }` — the GST **included** in the GST-inclusive goods total (items − discount; shipping is untaxed), classified intra/inter-state server-side from the store pickup pincode vs the delivery pincode. Render it as an informational "included in total" card (see `CheckoutForm`); never add it on top of the total, and treat absence as "don't show tax rows".
 - `GET /store/config` (public) — runtime storefront flags + COD/min order (see §1.2). No auth.
 
 ### 5.4 Reviews (`§7.7`) — if `FEATURE_REVIEWS_ENABLED`

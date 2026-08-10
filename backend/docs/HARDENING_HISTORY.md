@@ -6,6 +6,17 @@ This document preserves detailed hardening history for engineering traceability.
 
 ---
 
+**[2026-08-10] Nginx edge-sync chain closed end-to-end (backend-core 0.1.93–0.1.95 + client hand-carries):**
+
+The 0.1.90 upload-exemption fix deployed green for days without ever reaching the edge. Unwinding that exposed four independent silent failures, each of which alone kept the live vhost stale:
+
+1. **Vhost resolution never matched** — `resolve_nginx_live_conf` only considered `*.conf` filenames, but the live boxes use Debian's extension-less convention (`/etc/nginx/sites-enabled/raghavaorganics.com`), so every deploy logged "first deploy?" and skipped the sync. Fixed in 0.1.93 (extension-agnostic resolution, unit-tested against real directory fixtures).
+2. **`NGINX_AUTO_RELOAD=1` never propagated** — the 0.1.92 default lives in `deploy.yml`, but `.github/workflows/**` is not core-synced (client workflows genuinely diverge), so no client ever received it. Hand-carried into both client repos 2026-08-10; rule recorded in PLATFORM_VERSIONING_AND_SYNC_GUIDE §9.4.
+3. **The documented sudoers grants could never be saved** — sudo ≥ 1.9.10 on the live boxes rejects wildcards in command arguments, which every previous §22 block used; and even syntactically-valid scoped grants would have been ignored because `vps-deploy.sh` gates auto-sync on a bare `sudo -n true` probe. §22 rewritten (CLIENT_VPS_SETUP_GUIDE): exact-argument grants + `/usr/bin/true` probe grant + unrestricted `cp` (randomized rendered/backup filenames leave no pattern to scope to — tradeoff documented).
+4. **Deploy exit status lied by omission** — every affected run exited 0. The lesson operationalised: read the deploy LOG for the `Resolved nginx live config target` → `Nginx config drift detected` → `Nginx reload succeeded` sequence; "first deploy?" on an old box or a "no passwordless sudo" warning means the edge did not change.
+
+---
+
 **[2026-08-09] Admin multipart uploads rejected at the edge — invisible 500s (backend-core 0.1.90):**
 
 Root cause: routes matched by the generic `location ~ ^/api/v1/admin/` block in `nginx/client.conf.template` carry `auth_request /_maintenance_gate`. `auth_request` forces Nginx to buffer the entire request body before issuing the gate subrequest; for `multipart/form-data` that fails and **Nginx returns 500 itself — the request never reaches the backend**. Consequence: no request line and no error in the API logs, a generic "Something went wrong" in the browser, and (because small bodies sometimes slip through) an apparently intermittent failure. An exemption `location` that skips `auth_request` and sets `proxy_request_buffering off` already existed for image uploads, but it was a hand-maintained regex.
