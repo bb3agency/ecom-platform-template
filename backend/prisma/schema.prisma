@@ -1080,8 +1080,19 @@ model GalleryImage {
   altText   String
   sortOrder Int      @default(0)
   isActive  Boolean  @default(true)
+  /// When the photo was TAKEN, as entered by the merchant. Drives the storefront
+  /// timeline's date grouping; null falls back to createdAt (upload time), which
+  /// would otherwise file a years-old farm photo under the day it was uploaded.
+  capturedAt DateTime?
+  /// Intrinsic pixel size, read from the image header at upload. Lets the timeline
+  /// lay out justified rows that preserve aspect ratio with zero layout shift.
+  /// Null for rows uploaded before this existed — the UI falls back to a 4:3 box.
+  width      Int?
+  height     Int?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([isActive, sortOrder])
+  /// Timeline reads newest-first by capture date.
+  @@index([isActive, capturedAt])
 }

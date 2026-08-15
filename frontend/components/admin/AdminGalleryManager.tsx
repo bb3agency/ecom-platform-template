@@ -30,6 +30,19 @@ import {
   type GalleryImage,
 } from "@/lib/gallery-api";
 
+/**
+ * ISO timestamp → `yyyy-mm-dd` for <input type="date">, in LOCAL time. Slicing the
+ * ISO string instead would shift the date by a day for anyone east/west of UTC.
+ */
+function toDateInputValue(iso: string | null): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
 export function AdminGalleryManager() {
   const { adminUser } = useAdminAuth();
   const accessToken = useAuthStore((st) => st.accessToken);
@@ -302,6 +315,31 @@ export function AdminGalleryManager() {
                     placeholder="Describe the image"
                     className="mt-1 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-60"
                   />
+                </label>
+                {/* Drives the storefront timeline's date grouping. Left empty, the
+                    photo files under its upload date — which is wrong for anything
+                    shot earlier, so this is worth filling in for older photos. */}
+                <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Photo date
+                  <input
+                    type="date"
+                    defaultValue={toDateInputValue(img.capturedAt)}
+                    max={toDateInputValue(new Date().toISOString())}
+                    disabled={!canWrite || busyId === img.id}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      const next = value ? new Date(`${value}T12:00:00`).toISOString() : null;
+                      if (toDateInputValue(next) !== toDateInputValue(img.capturedAt)) {
+                        void patchImage(img.id, { capturedAt: next });
+                      }
+                    }}
+                    className="mt-1 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-60"
+                  />
+                  <span className="mt-1 block text-[11px] font-normal normal-case tracking-normal text-muted-foreground">
+                    {img.capturedAt
+                      ? "Groups under this date on the storefront timeline."
+                      : "Not set — groups under the upload date."}
+                  </span>
                 </label>
               </div>
 

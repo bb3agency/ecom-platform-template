@@ -61,7 +61,16 @@ describe('GalleryService', () => {
 
   it('listPublic returns active images when enabled', async () => {
     const rows = [
-      { id: 'a', imageUrl: 'u1', caption: 'c', altText: 'alt', sortOrder: 0, isActive: true }
+      {
+        id: 'a',
+        imageUrl: 'u1',
+        caption: 'c',
+        altText: 'alt',
+        sortOrder: 0,
+        isActive: true,
+        capturedAt: new Date('2026-03-14T00:00:00.000Z'),
+        createdAt: new Date('2026-08-01T00:00:00.000Z')
+      }
     ];
     const prisma = {
       storeSettings: { findUnique: vi.fn().mockResolvedValue({ galleryEnabled: true }) },
@@ -95,7 +104,13 @@ describe('GalleryService', () => {
         create: vi
           .fn()
           .mockImplementation(({ data }) =>
-            Promise.resolve({ id: 'new', ...data, caption: data.caption, altText: data.altText })
+            Promise.resolve({
+              id: 'new',
+              ...data,
+              caption: data.caption,
+              altText: data.altText,
+              createdAt: new Date('2026-08-15T00:00:00.000Z')
+            })
           ),
         update: vi.fn(),
         delete: vi.fn()
@@ -162,5 +177,112 @@ describe('GalleryService', () => {
 
     await expect(service.adminReorder(['a', 'ghost'])).rejects.toThrow(/Unknown gallery image id/);
     expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Timeline behaviour (backend-core 0.1.99). The storefront groups photos by
+   * date like a phone gallery, so the server owns the effective date and the
+   * newest-first order — clients must never have to re-derive either.
+   */
+  describe('timeline dates', () => {
+    function galleryPrisma(rows: unknown[]) {
+      return {
+        storeSettings: { findUnique: vi.fn().mockResolvedValue({ galleryEnabled: true }) },
+        galleryImage: {
+          findMany: vi.fn().mockResolvedValue(rows),
+          findFirst: vi.fn(),
+          findUnique: vi.fn(),
+          create: vi.fn(),
+          update: vi.fn(),
+          delete: vi.fn()
+        },
+        $transaction: vi.fn()
+      } satisfies PrismaMock;
+    }
+
+    const row = (id: string, capturedAt: Date | null, createdAt: Date) => ({
+      id,
+      imageUrl: `u-${id}`,
+      caption: null,
+      altText: '',
+      sortOrder: 0,
+      isActive: true,
+      capturedAt,
+      createdAt
+    });
+
+    it('falls back to the upload date when no photo date was entered', async () => {
+      const prisma = galleryPrisma([
+        row('a', null, new Date('2026-08-01T10:00:00.000Z'))
+      ]);
+      const result = await new GalleryService(buildFastify(prisma)).listPublic();
+      expect(result.items[0]?.capturedAt).toBeNull();
+      expect(result.items[0]?.timelineDate).toBe('2026-08-01T10:00:00.000Z');
+    });
+
+    it('prefers the photo date over the upload date', async () => {
+      // The whole point: a 2019 farm photo uploaded today belongs in 2019.
+      const prisma = galleryPrisma([
+        row('a', new Date('2019-06-02T00:00:00.000Z'), new Date('2026-08-01T00:00:00.000Z'))
+      ]);
+      const result = await new GalleryService(buildFastify(prisma)).listPublic();
+      expect(result.items[0]?.timelineDate).toBe('2019-06-02T00:00:00.000Z');
+    });
+
+    it('orders newest-first and interleaves dated with undated photos', async () => {
+      const prisma = galleryPrisma([
+        row('old-capture', new Date('2020-01-01T00:00:00.000Z'), new Date('2026-08-01T00:00:00.000Z')),
+        row('undated-2024', null, new Date('2024-05-05T00:00:00.000Z')),
+        row('new-capture', new Date('2026-07-07T00:00:00.000Z'), new Date('2026-08-01T00:00:00.000Z'))
+      ]);
+      const result = await new GalleryService(buildFastify(prisma)).listPublic();
+      // Undated photos must NOT be dumped at the end — they sort by upload date.
+      expect(result.items.map((i) => i.id)).toEqual(['new-capture', 'undated-2024', 'old-capture']);
+    });
+
+    it('rejects an unparseable or future photo date rather than silently ignoring it', async () => {
+      const prisma = {
+        storeSettings: { findUnique: vi.fn() },
+        galleryImage: {
+          findMany: vi.fn(),
+          findFirst: vi.fn().mockResolvedValue({ sortOrder: 0 }),
+          findUnique: vi.fn().mockResolvedValue({ id: 'a' }),
+          create: vi.fn(),
+          update: vi.fn(),
+          delete: vi.fn()
+        },
+        $transaction: vi.fn()
+      } satisfies PrismaMock;
+      const service = new GalleryService(buildFastify(prisma));
+
+      await expect(
+        service.adminUpdate('a', { capturedAt: 'not-a-date' })
+      ).rejects.toMatchObject({ statusCode: 400 });
+
+      const nextYear = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
+      await expect(
+        service.adminUpdate('a', { capturedAt: nextYear })
+      ).rejects.toMatchObject({ statusCode: 400 });
+      expect(prisma.galleryImage.update).not.toHaveBeenCalled();
+    });
+
+    it('clears the photo date when passed null', async () => {
+      const prisma = {
+        storeSettings: { findUnique: vi.fn() },
+        galleryImage: {
+          findMany: vi.fn(),
+          findFirst: vi.fn(),
+          findUnique: vi.fn().mockResolvedValue({ id: 'a' }),
+          create: vi.fn(),
+          update: vi.fn().mockResolvedValue(row('a', null, new Date('2026-08-01T00:00:00.000Z'))),
+          delete: vi.fn()
+        },
+        $transaction: vi.fn()
+      } satisfies PrismaMock;
+      await new GalleryService(buildFastify(prisma)).adminUpdate('a', { capturedAt: null });
+      expect(prisma.galleryImage.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ capturedAt: null }) })
+      );
+    });
   });
 });

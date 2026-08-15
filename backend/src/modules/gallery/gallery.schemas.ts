@@ -3,14 +3,21 @@ import { standardAdminErrorResponses, standardErrorResponses } from '@common/err
 const galleryImageRecordSchema = {
   type: 'object',
   additionalProperties: false,
-  required: ['id', 'imageUrl', 'caption', 'altText', 'sortOrder', 'isActive'],
+  required: ['id', 'imageUrl', 'caption', 'altText', 'sortOrder', 'isActive', 'capturedAt', 'timelineDate', 'width', 'height'],
   properties: {
     id: { type: 'string' },
     imageUrl: { type: 'string', maxLength: 1000 },
     caption: { type: ['string', 'null'], maxLength: 300 },
     altText: { type: 'string', maxLength: 200 },
     sortOrder: { type: 'integer' },
-    isActive: { type: 'boolean' }
+    isActive: { type: 'boolean' },
+    /** Merchant-entered capture date; null when never set. */
+    capturedAt: { type: ['string', 'null'], format: 'date-time' },
+    /** Date the timeline groups by — capturedAt, else the upload date. Always set. */
+    timelineDate: { type: 'string', format: 'date-time' },
+    /** Intrinsic pixel size for aspect-preserving layout; null on legacy rows. */
+    width: { type: ['integer', 'null'] },
+    height: { type: ['integer', 'null'] }
   }
 } as const;
 
@@ -66,7 +73,9 @@ export const adminUpdateGalleryImageSchema = {
       caption: { type: ['string', 'null'], maxLength: 300 },
       altText: { type: 'string', maxLength: 200 },
       isActive: { type: 'boolean' },
-      sortOrder: { type: 'integer', minimum: 0 }
+      sortOrder: { type: 'integer', minimum: 0 },
+      /** ISO date the photo was taken; null clears it (falls back to upload date). */
+      capturedAt: { type: ['string', 'null'], maxLength: 40 }
     }
   },
   response: {

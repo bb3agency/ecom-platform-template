@@ -9,6 +9,21 @@ export interface GalleryImage {
   altText: string;
   sortOrder: number;
   isActive: boolean;
+  /** Merchant-entered date the photo was taken (ISO); null when never set. */
+  capturedAt: string | null;
+  /**
+   * Date the storefront timeline groups by — `capturedAt` when set, otherwise the
+   * upload date. Always present and already applied to the server's ordering, so
+   * clients must not re-derive the fallback.
+   */
+  timelineDate: string;
+  /**
+   * Intrinsic pixel size, captured from the image header at upload. Drives the
+   * timeline's aspect-preserving justified rows; null on images uploaded before
+   * this existed, where the layout falls back to 4:3.
+   */
+  width: number | null;
+  height: number | null;
 }
 
 export interface PublicGalleryResponse {
@@ -34,7 +49,7 @@ export async function fetchAdminGallery(accessToken: string): Promise<GalleryIma
 export async function uploadGalleryImage(
   accessToken: string,
   file: File,
-  options: { caption?: string; altText?: string } = {},
+  options: { caption?: string; altText?: string; capturedAt?: string } = {},
 ): Promise<GalleryImage> {
   const base = resolveApiBaseUrl();
   if (!base) {
@@ -45,6 +60,7 @@ export async function uploadGalleryImage(
   form.append("file", file);
   if (options.caption !== undefined) form.append("caption", options.caption);
   if (options.altText !== undefined) form.append("altText", options.altText);
+  if (options.capturedAt) form.append("capturedAt", options.capturedAt);
 
   const response = await fetch(`${base}/admin/gallery`, {
     method: "POST",
@@ -78,7 +94,14 @@ export async function uploadGalleryImage(
 export async function updateGalleryImage(
   accessToken: string,
   id: string,
-  patch: { caption?: string | null; altText?: string; isActive?: boolean; sortOrder?: number },
+  patch: {
+    caption?: string | null;
+    altText?: string;
+    isActive?: boolean;
+    sortOrder?: number;
+    /** ISO date the photo was taken; null clears it (timeline falls back to upload date). */
+    capturedAt?: string | null;
+  },
 ): Promise<GalleryImage> {
   return apiClient<GalleryImage>(`/admin/gallery/${id}`, {
     method: "PATCH",

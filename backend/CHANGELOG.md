@@ -12,6 +12,22 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.99] - 2026-08-15
+
+### Added
+- **Gallery photos carry the date they were TAKEN, not just the date they were uploaded** — the backing data for the storefront's new timeline view (pairs with frontend-core 0.1.70). `GalleryImage` gains `capturedAt` (nullable, merchant-entered), plus `width`/`height` read from the image header at upload. The API exposes a server-computed `timelineDate` (`capturedAt ?? createdAt`) and orders newest-first by it, so no client re-derives the fallback or disagrees about ordering. A `capturedAt` in the future, or one that does not parse, is rejected with a 400 rather than silently landing at the top of the timeline.
+- `modules/media/image-dimensions.ts` — dependency-free intrinsic-size reader for PNG / JPEG / GIF / WebP (all three VP8 variants), used so the storefront can lay photos out at their true aspect ratio instead of square-cropping every tile. Returns `null` on anything it cannot parse (never throws, never blocks an upload) and rejects implausible sizes. The JPEG path walks marker segments to the true SOF frame header and excludes the markers that merely look like one (DHT `0xC4`, JPG `0xC8`, DAC `0xCC`) — the classic way naive parsers read a Huffman table as image dimensions.
+
+### Changed
+- **CI now runs the frontend gates.** `reliability-ci.yml` gains a `frontend-gates` job (typecheck → lint → unit tests → **production build**) alongside the backend gates. The build step is the point: it is the same command the VPS deploy runs, so a frontend compile error now fails the PR instead of the deploy. Previously a client PR could go green with a frontend that did not compile — which is exactly what happened during the 0.1.98 sync. `.github/workflows/**` is NOT core-synced, so this file must be hand-carried into each client repo.
+
+**Propagation:**
+- Severity: NORMAL - Layers: backend (`prisma/schema.prisma` + migration, `modules/gallery/**`, `modules/media/image-dimensions.ts`) — pairs with frontend-core 0.1.70 - Plus **hand-carry**: `.github/workflows/reliability-ci.yml` (not core-synced)
+- **Migration: YES** — `20260815000000_gallery_captured_at` adds three nullable columns + an index to `GalleryImage`. Additive and backward-compatible: existing photos keep working and fall back to their upload date. Runs automatically via the deploy script.
+- Flag: none (the timeline replaces the grid on clients that ship the paired theme component; clients without a gallery page are unaffected) - Design impact: none in core - Breaking: NO (all new fields are additive; `capturedAt` is optional on write)
+- **Post-deploy note:** older photos have no `capturedAt` and will group under their upload month. The merchant should set "Photo date" on them in the admin gallery for the timeline to read as a real journey.
+- Rollback: revert the files; the migration can be left in place (nullable columns are inert).
+
 ## [0.1.98] - 2026-08-15
 
 ### Security
