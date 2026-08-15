@@ -319,6 +319,122 @@ describe('AuthService refresh hardening + logout', () => {
     ).rejects.toMatchObject({ statusCode: 401 });
   });
 
+  /**
+   * Pentest F-2 (2026-08-15): a rotated refresh token was still accepted on replay.
+   * Rotation was implemented, but a deliberate concurrency grace let a just-consumed
+   * token mint again — and, more importantly, a replay outside that grace merely
+   * 401'd instead of treating the token as leaked. RFC 9700 §4.14.2 requires
+   * revoking the whole family so a thief who rotated first cannot keep the session.
+   */
+  describe('refresh token reuse detection (F-2)', () => {
+    const deviceKeyHash = crypto.createHash('sha256').update('ua|ua-a').digest('hex');
+
+    function consumedTokenRecord(consumedAtMsAgo: number, token: string) {
+      return {
+        id: 'rt-reuse',
+        userId: 'admin-1',
+        jti: 'jti-reuse',
+        sessionId: 'session-reuse',
+        tokenHash: bcrypt.hashSync(token, 10),
+        deviceKeyHash,
+        consumedAt: new Date(Date.now() - consumedAtMsAgo),
+        revokedAt: null,
+        expiresAt: new Date(Date.now() + 60_000)
+      };
+    }
+
+    function makeToken() {
+      return jwt.sign(
+        { sub: 'admin-1', role: Role.ADMIN, jti: 'jti-reuse', sid: 'session-reuse' },
+        process.env.JWT_REFRESH_SECRET as string,
+        { expiresIn: '7d' }
+      );
+    }
+
+    const refreshContext = {
+      clientIp: '127.0.0.1',
+      risk: { sessionId: 'session-reuse', deviceFingerprint: 'device-a', tlsFingerprint: 'tls-a', userAgent: 'ua-a' }
+    };
+
+    it('rejects a replayed token and revokes the whole session family', async () => {
+      const { fastify, mocks } = createFastifyMock();
+      const token = makeToken();
+      // Consumed 60s ago — comfortably outside the 10s concurrency grace, so this
+      // is a replay, not a parallel tab.
+      mocks.refreshFindUnique.mockResolvedValue(consumedTokenRecord(60_000, token));
+      const service = new AuthService(fastify);
+
+      await expect(service.refresh(token, refreshContext)).rejects.toMatchObject({
+        code: 'UNAUTHORISED',
+        statusCode: 401
+      });
+
+      // The substantive fix: the family is revoked, so the thief's newer token dies too.
+      expect(mocks.refreshUpdateMany).toHaveBeenCalledWith({
+        where: { userId: 'admin-1', sessionId: 'session-reuse', revokedAt: null },
+        data: { revokedAt: expect.any(Date) }
+      });
+    });
+
+    it('still allows a parallel refresh inside the short concurrency grace', async () => {
+      // Multiple tabs bursting 401-retries share one cookie; hard-rejecting them
+      // logged real users out. Within the grace this must succeed WITHOUT revoking.
+      const { fastify, mocks } = createFastifyMock();
+      const token = makeToken();
+      mocks.refreshFindUnique.mockResolvedValue(consumedTokenRecord(1_000, token));
+      mocks.userFindUnique.mockResolvedValue({
+        id: 'admin-1',
+        email: 'admin@example.com',
+        phone: null,
+        passwordHash: bcrypt.hashSync('password-123', 10),
+        firstName: 'Admin',
+        lastName: 'User',
+        role: Role.ADMIN,
+        isVerified: true
+      });
+      const service = new AuthService(fastify);
+
+      const result = await service.refresh(token, refreshContext);
+
+      expect(result.accessToken).toBe('access-token');
+      const revokeCalls = mocks.refreshUpdateMany.mock.calls as unknown as Array<
+        [{ data?: { revokedAt?: unknown } } | undefined]
+      >;
+      const revokedFamily = revokeCalls.some(([args]) => args?.data?.revokedAt !== undefined);
+      expect(revokedFamily).toBe(false);
+    });
+
+    it('revokes the family when a token is replayed after logout revoked it', async () => {
+      const { fastify, mocks } = createFastifyMock();
+      const token = makeToken();
+      mocks.refreshFindUnique.mockResolvedValue({
+        ...consumedTokenRecord(60_000, token),
+        revokedAt: new Date()
+      });
+      const service = new AuthService(fastify);
+
+      await expect(service.refresh(token, refreshContext)).rejects.toMatchObject({ statusCode: 401 });
+    });
+
+    it('revokes the family when the CAS race is lost outside the grace', async () => {
+      const { fastify, mocks } = createFastifyMock();
+      const token = makeToken();
+      // Passes the pre-check (not yet consumed) but loses the atomic CAS, and the
+      // winner consumed it long ago → the same reuse signal via the race path.
+      mocks.refreshFindUnique
+        .mockResolvedValueOnce({ ...consumedTokenRecord(0, token), consumedAt: null })
+        .mockResolvedValueOnce({ consumedAt: new Date(Date.now() - 60_000) });
+      mocks.refreshUpdateMany.mockResolvedValue({ count: 0 });
+      const service = new AuthService(fastify);
+
+      await expect(service.refresh(token, refreshContext)).rejects.toMatchObject({ statusCode: 401 });
+      expect(mocks.refreshUpdateMany).toHaveBeenCalledWith({
+        where: { userId: 'admin-1', sessionId: 'session-reuse', revokedAt: null },
+        data: { revokedAt: expect.any(Date) }
+      });
+    });
+  });
+
   it('revokes all active sessions when logout is called without refresh token', async () => {
     const { fastify, mocks } = createFastifyMock();
     const service = new AuthService(fastify);

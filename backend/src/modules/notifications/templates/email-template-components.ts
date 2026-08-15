@@ -574,6 +574,35 @@ export function CustomerOtpVerificationEmail(otp: string, storeName: string): Re
   );
 }
 
+/**
+ * Sent to the identifier that was just REPLACED, so the previous owner learns
+ * about a change they did not make (pentest F-1 remediation). It deliberately
+ * carries no link or code — only a prompt to contact support — so it cannot
+ * itself become a phishing lever.
+ */
+export function AccountIdentifierChangedEmail(
+  storeName: string,
+  identifierLabel: string,
+  changedAt: string
+): ReactElement {
+  return Wrapper(
+    StatusBadge('Security alert', B.warningAmber, B.warningBg),
+    Heading(`Your ${identifierLabel} was changed`),
+    Body(
+      `The ${identifierLabel} on your ${storeName} account was changed on ${changedAt}. ` +
+        `This message was sent to your previous ${identifierLabel} so you know it happened. ` +
+        `For your security, all devices were signed out.`
+    ),
+    SecurityNote(
+      `If you made this change, no action is needed. If you did NOT make this change, contact our support team immediately — someone may have access to your account.`
+    ),
+    Divider(),
+    el('p', { style: { fontSize: '12px', color: B.textMuted, margin: 0, lineHeight: '1.6' } },
+      `${storeName} will never ask you to share a one-time code or password with anyone.`
+    )
+  );
+}
+
 export function PasswordResetEmail(email: string, resetUrl: string): ReactElement {
   return Wrapper(
     StatusBadge('Password Reset', B.warningAmber, B.warningBg),

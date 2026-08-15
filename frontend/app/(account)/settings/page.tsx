@@ -5,9 +5,11 @@ import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { UserCircle, Smartphone, MapPin, ChevronRight, Loader2, ShieldCheck } from "lucide-react";
+import { UserCircle, Smartphone, Mail, MapPin, ChevronRight, Loader2, ShieldCheck } from "lucide-react";
 import { useAuthStore } from "@/stores/auth";
-import { updateMyProfile } from "@/lib/users-api";
+import { updateMyProfile, type IdentifierType } from "@/lib/users-api";
+import type { User } from "@/types/user";
+import { IdentifierChangeDialog } from "@/components/account/IdentifierChangeDialog";
 import { getApiErrorMessage } from "@/lib/error-messages";
 import { toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
@@ -15,7 +17,12 @@ import { Button } from "@/components/ui/button";
 const profileSchema = z.object({
   firstName: z.string().min(1, "First name is required"),
   lastName: z.string().optional(),
-  email: z.string().email("Enter a valid email").or(z.literal("")).optional(),
+});
+
+// Email/phone are login identifiers — changed only through the verified flow
+// (pentest F-1), never as part of an ordinary profile save.
+const emailSchema = z.object({
+  email: z.string().email("Enter a valid email"),
 });
 
 const phoneSchema = z.object({
@@ -24,6 +31,7 @@ const phoneSchema = z.object({
 
 type ProfileFormData = z.infer<typeof profileSchema>;
 type PhoneFormData = z.infer<typeof phoneSchema>;
+type EmailFormData = z.infer<typeof emailSchema>;
 
 const inputClass =
   "flex h-10 w-full rounded-lg border border-[#efe8e4] bg-white px-3 py-1 text-sm text-[#23403d] transition-colors placeholder:text-[#767676]/60 focus-visible:border-[#23403d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#23403d]/15";
@@ -61,16 +69,24 @@ export default function AccountSettingsPage() {
   const setSession = useAuthStore((s) => s.setSession);
 
   const [profileBusy, setProfileBusy] = useState(false);
-  const [phoneBusy, setPhoneBusy] = useState(false);
   const [editingPhone, setEditingPhone] = useState(false);
+  const [editingEmail, setEditingEmail] = useState(false);
+  /** Pending verified identifier change; null when no dialog is open. */
+  const [pendingChange, setPendingChange] = useState<
+    { type: IdentifierType; newValue: string | null } | null
+  >(null);
 
   const profileForm = useForm<ProfileFormData>({
     resolver: zodResolver(profileSchema),
     defaultValues: {
       firstName: user?.firstName ?? "",
       lastName: user?.lastName ?? "",
-      email: user?.email ?? "",
     },
+  });
+
+  const emailForm = useForm<EmailFormData>({
+    resolver: zodResolver(emailSchema),
+    defaultValues: { email: "" },
   });
 
   const phoneForm = useForm<PhoneFormData>({
@@ -82,7 +98,6 @@ export default function AccountSettingsPage() {
     profileForm.reset({
       firstName: user?.firstName ?? "",
       lastName: user?.lastName ?? "",
-      email: user?.email ?? "",
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
@@ -94,7 +109,6 @@ export default function AccountSettingsPage() {
       const updated = await updateMyProfile(accessToken, {
         firstName: values.firstName,
         ...(values.lastName ? { lastName: values.lastName } : {}),
-        ...(values.email ? { email: values.email } : {}),
       });
       setSession(accessToken, updated);
       toast.success("Profile updated");
@@ -105,46 +119,41 @@ export default function AccountSettingsPage() {
     }
   };
 
-  const onPhoneSubmit = async (values: PhoneFormData) => {
-    if (!accessToken) return;
-    setPhoneBusy(true);
-    try {
-      const updated = await updateMyProfile(accessToken, { phone: values.phone.trim() });
-      setSession(accessToken, updated);
-      toast.success(user?.phone ? "Mobile number updated" : "Mobile number added");
-      setEditingPhone(false);
-      phoneForm.reset({ phone: "" });
-    } catch (err) {
-      toast.error(getApiErrorMessage(err));
-    } finally {
-      setPhoneBusy(false);
-    }
+  // Identifier changes never write directly — they open the verified flow, which
+  // confirms ownership of the identifier already on the account (pentest F-1).
+  const onPhoneSubmit = (values: PhoneFormData) => {
+    setPendingChange({ type: "phone", newValue: values.phone.trim() });
   };
 
-  const onPhoneRemove = async () => {
-    if (!accessToken) return;
-    if (
-      !confirm(
-        "Remove your mobile number? You will no longer be able to sign in with a mobile OTP — only with your email.",
-      )
-    ) {
-      return;
-    }
-    setPhoneBusy(true);
-    try {
-      const updated = await updateMyProfile(accessToken, { phone: null });
-      setSession(accessToken, updated);
-      toast.success("Mobile number removed");
-    } catch (err) {
-      toast.error(getApiErrorMessage(err));
-    } finally {
-      setPhoneBusy(false);
-    }
+  const onEmailSubmit = (values: EmailFormData) => {
+    setPendingChange({ type: "email", newValue: values.email.trim() });
+  };
+
+  const onPhoneRemove = () => {
+    setPendingChange({ type: "phone", newValue: null });
+  };
+
+  const onIdentifierVerified = (updated: User) => {
+    setPendingChange(null);
+    setEditingPhone(false);
+    setEditingEmail(false);
+    phoneForm.reset({ phone: "" });
+    emailForm.reset({ email: "" });
+    // Every session was revoked server-side, so the tokens in memory are dead.
+    // Clear the session and send the user back through sign-in.
+    if (accessToken) setSession(accessToken, updated);
+    toast.success("Updated. Please sign in again with your new details.");
+    setTimeout(() => {
+      window.location.href = "/login";
+    }, 1500);
   };
 
   const profileErrors = profileForm.formState.errors;
   const phoneErrors = phoneForm.formState.errors;
+  const emailErrors = emailForm.formState.errors;
   const currentPhone = user?.phone?.trim() || "";
+  const currentEmail = user?.email?.trim() || "";
+  const phoneBusy = pendingChange?.type === "phone";
 
   return (
     <section className="flex flex-col gap-5 sm:gap-6">
@@ -157,7 +166,7 @@ export default function AccountSettingsPage() {
       <SectionCard
         icon={<UserCircle className="size-5" aria-hidden />}
         title="Profile"
-        description="Your name and email address."
+        description="Your name as it appears on orders."
       >
         <form onSubmit={profileForm.handleSubmit(onProfileSubmit)} className="grid gap-4">
           <div className="grid gap-4 sm:grid-cols-2">
@@ -176,15 +185,6 @@ export default function AccountSettingsPage() {
               </label>
               <input id="profile-last-name" {...profileForm.register("lastName")} className={inputClass} />
             </div>
-            <div className="grid gap-1.5 sm:col-span-2">
-              <label className="text-xs font-bold text-[#23403d]" htmlFor="profile-email">
-                Email
-              </label>
-              <input id="profile-email" type="email" {...profileForm.register("email")} className={inputClass} />
-              {profileErrors.email && (
-                <p className="text-xs text-destructive">{profileErrors.email.message}</p>
-              )}
-            </div>
           </div>
           <div className="flex justify-end">
             <Button type="submit" size="sm" className="bg-[#23403d] hover:bg-[#1a302e]" disabled={profileBusy}>
@@ -200,6 +200,69 @@ export default function AccountSettingsPage() {
         </form>
       </SectionCard>
 
+      {/* ── Email (verified change) ─────────────────────────────────────── */}
+      <SectionCard
+        icon={<Mail className="size-5" aria-hidden />}
+        title="Email Address"
+        description="Used for sign-in, order updates and account recovery."
+      >
+        {currentEmail && !editingEmail ? (
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2.5">
+              <ShieldCheck className="size-4 shrink-0 text-[#23403d]" aria-hidden />
+              <div>
+                <p className="text-sm font-bold text-[#23403d]">{currentEmail}</p>
+                <p className="text-xs text-[#767676]">
+                  Changing this needs a code sent to your current email or mobile.
+                </p>
+              </div>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                emailForm.reset({ email: "" });
+                setEditingEmail(true);
+              }}
+            >
+              Change
+            </Button>
+          </div>
+        ) : (
+          <form onSubmit={emailForm.handleSubmit(onEmailSubmit)} className="grid gap-3">
+            {!currentEmail && (
+              <p className="text-sm text-[#767676]">
+                No email on your account yet. Add one so you can recover access if you lose your
+                mobile number.
+              </p>
+            )}
+            <div className="grid gap-1.5 sm:max-w-sm">
+              <label className="text-xs font-bold text-[#23403d]" htmlFor="settings-email">
+                Email Address
+              </label>
+              <input
+                id="settings-email"
+                type="email"
+                autoComplete="email"
+                {...emailForm.register("email")}
+                className={inputClass}
+              />
+              {emailErrors.email && <p className="text-xs text-destructive">{emailErrors.email.message}</p>}
+            </div>
+            <div className="flex gap-2">
+              <Button type="submit" size="sm" className="bg-[#23403d] hover:bg-[#1a302e]">
+                {currentEmail ? "Change Email" : "Add Email"}
+              </Button>
+              {editingEmail && (
+                <Button type="button" variant="outline" size="sm" onClick={() => setEditingEmail(false)}>
+                  Cancel
+                </Button>
+              )}
+            </div>
+          </form>
+        )}
+      </SectionCard>
+
       {/* ── Mobile number ───────────────────────────────────────────────── */}
       <SectionCard
         icon={<Smartphone className="size-5" aria-hidden />}
@@ -212,7 +275,7 @@ export default function AccountSettingsPage() {
               <ShieldCheck className="size-4 shrink-0 text-[#23403d]" aria-hidden />
               <div>
                 <p className="text-sm font-bold text-[#23403d]">{currentPhone}</p>
-                <p className="text-xs text-[#767676]">You can sign in with an OTP sent to this number.</p>
+                <p className="text-xs text-[#767676]">Changing or removing this needs a confirmation code.</p>
               </div>
             </div>
             <div className="flex gap-2">
@@ -299,6 +362,16 @@ export default function AccountSettingsPage() {
         </div>
         <ChevronRight className="size-5 text-[#767676] transition-transform group-hover:translate-x-0.5" aria-hidden />
       </Link>
+
+      {pendingChange && accessToken && (
+        <IdentifierChangeDialog
+          accessToken={accessToken}
+          type={pendingChange.type}
+          newValue={pendingChange.newValue}
+          onCancel={() => setPendingChange(null)}
+          onVerified={onIdentifierVerified}
+        />
+      )}
     </section>
   );
 }

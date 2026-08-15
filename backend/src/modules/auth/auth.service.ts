@@ -92,6 +92,14 @@ type AuthResult = {
   user: PublicUser;
 };
 
+/**
+ * Concurrency grace for single-use refresh tokens (Auth0-style "reuse interval").
+ * Long enough for a browser's parallel 401-retry burst, short enough that a
+ * replayed token is treated as theft almost immediately. Tightened from 60s to
+ * 10s for pentest F-2 (2026-08-15).
+ */
+const REFRESH_REUSE_GRACE_MS = 10_000;
+
 const OTP_TTL_SECONDS = 5 * 60;
 const OTP_RESEND_SECONDS = 60;
 const OTP_MAX_ATTEMPTS = 3;
@@ -1354,6 +1362,31 @@ export class AuthService {
     );
   }
 
+  /**
+   * Refresh-token REUSE DETECTION (RFC 9700 §4.14.2 / OAuth 2.0 Security BCP).
+   *
+   * A refresh token is single-use. Presenting one that was already consumed —
+   * outside the short concurrency grace — means two parties hold the same token,
+   * i.e. it leaked. The safe response is to revoke the whole family so the
+   * legitimate user AND the thief both lose the session and the user must sign in
+   * again; leaving only the replayed request to 401 would let a thief who rotated
+   * first keep working. Best-effort: a failure here must not mask the 401.
+   */
+  private async revokeSessionFamilyOnReuse(userId: string, sessionId: string, reason: string): Promise<void> {
+    try {
+      const revoked = await this.fastify.prisma.refreshToken.updateMany({
+        where: { userId, sessionId, revokedAt: null },
+        data: { revokedAt: new Date() }
+      });
+      this.fastify.log?.warn(
+        { userId, sessionId, reason, revokedCount: revoked.count },
+        'Refresh token reuse detected — session family revoked'
+      );
+    } catch (error) {
+      this.fastify.log?.error({ err: error, userId, sessionId, reason }, 'Failed to revoke session family on refresh reuse');
+    }
+  }
+
   async refresh(refreshToken: string, context?: LoginContext): Promise<{ accessToken: string; refreshToken: string }> {
     let payload: { sub: string; role: Role; jti: string; sid: string; permissions?: string[] };
     try {
@@ -1385,14 +1418,21 @@ export class AuthService {
     // at token expiry) can all present the SAME refresh token — only the first CAS
     // wins, and hard-rejecting the rest logged the whole session out ("randomly
     // logged out on desktop"). Industry-standard fix (Auth0 "reuse interval"):
-    // a token consumed within the last 60s — same device, hash verified below —
-    // may still mint tokens WITHOUT consuming again. Replay outside the window
-    // still 401s, so stolen-cookie replay protection is intact beyond the grace.
-    const REFRESH_REUSE_GRACE_MS = 60_000;
+    // a token consumed within the grace window — same device, hash verified below —
+    // may still mint tokens WITHOUT consuming again.
+    //
+    // Pentest F-2 (2026-08-15) replayed a rotated token inside this window and read
+    // the 200 as "rotation not enforced". Two changes: the window is now 10s (still
+    // far longer than a browser's parallel-401 burst, ~1/6th the replay surface),
+    // and — the substantive fix — a replay OUTSIDE the window is treated as token
+    // THEFT rather than a stale request: it revokes the entire session family per
+    // RFC 9700 §4.14.2. Previously it merely 401'd, so a thief who rotated a stolen
+    // token first kept a valid session while the victim was quietly logged out.
     const withinReuseGrace =
       tokenRecord.consumedAt !== null &&
       Date.now() - tokenRecord.consumedAt.getTime() <= REFRESH_REUSE_GRACE_MS;
     if (tokenRecord.consumedAt !== null && !withinReuseGrace) {
+      await this.revokeSessionFamilyOnReuse(payload.sub, payload.sid, 'consumed-token-replayed');
       throw new AppError(ERROR_CODES.UNAUTHORISED, 'Invalid refresh token', 401);
     }
     const deviceContext = this.deriveTokenIssueContext(context);
@@ -1426,6 +1466,8 @@ export class AuthService {
           fresh?.consumedAt != null &&
           Date.now() - fresh.consumedAt.getTime() <= REFRESH_REUSE_GRACE_MS;
         if (!lostRaceWithinGrace) {
+          // Same reuse signal as above, reached via the CAS instead of the pre-check.
+          await this.revokeSessionFamilyOnReuse(payload.sub, payload.sid, 'consumed-token-replayed-race');
           throw new AppError(ERROR_CODES.UNAUTHORISED, 'Refresh token already consumed', 401);
         }
       }

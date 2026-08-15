@@ -10,6 +10,23 @@ import {
   UpdateAddressInput,
   UpdateProfileInput
 } from './users.types';
+import {
+  generateIdentifierOtp,
+  hashIdentifierOtp,
+  identifierChangeAttemptsKey,
+  identifierChangeCooldownKey,
+  identifierChangeKey,
+  IDENTIFIER_CHANGE_MAX_ATTEMPTS,
+  IDENTIFIER_CHANGE_RESEND_SECONDS,
+  IDENTIFIER_CHANGE_TTL_SECONDS,
+  maskIdentifier,
+  matchesIdentifierOtp,
+  normalizeEmail,
+  normalizePhone,
+  resolveTrustedIdentifier,
+  type IdentifierChangeChallenge,
+  type IdentifierType
+} from './identifier-change';
 
 function maskPhone(phone: string | null): string | null {
   if (!phone || phone.length < 4) return phone;
@@ -61,52 +78,15 @@ export class UsersService {
       );
     }
 
-    if (input.email) {
-      const existingEmail = await this.fastify.prisma.user.findFirst({
-        where: {
-          email: input.email,
-          id: { not: userId }
-        }
-      });
-      if (existingEmail) {
-        throw new AppError(ERROR_CODES.CONFLICT, 'Email already in use', 409);
-      }
-    }
-
-    // Phone add/update/remove. The phone doubles as an OTP login identifier, so:
-    //  - a number already on another account is a 409 (same rule as email);
-    //  - removing it is only allowed when the account still has an email — otherwise the
-    //    customer would strip their ONLY way to sign back in.
-    const normalizedPhone =
-      input.phone === undefined ? undefined : input.phone === null ? null : input.phone.trim();
-    if (typeof normalizedPhone === 'string' && normalizedPhone.length > 0) {
-      const existingPhone = await this.fastify.prisma.user.findFirst({
-        where: {
-          phone: normalizedPhone,
-          id: { not: userId }
-        }
-      });
-      if (existingPhone) {
-        throw new AppError(ERROR_CODES.CONFLICT, 'This mobile number is already linked to another account.', 409);
-      }
-    }
-    const removingPhone = normalizedPhone === null || normalizedPhone === '';
-    if (removingPhone) {
-      const willHaveEmail = input.email !== undefined ? Boolean(input.email) : Boolean(existing.email);
-      if (!willHaveEmail) {
-        throw new AppError(
-          ERROR_CODES.VALIDATION_ERROR,
-          'Add an email address before removing your mobile number — it is your only way to sign in.',
-          400
-        );
-      }
-    }
-
+    // NOTE (pentest F-1, 2026-08-15): `email` and `phone` are deliberately NOT
+    // writable here. They are login/recovery identifiers, and this endpoint proves
+    // only that the caller holds an access token — not that they own the value
+    // being set. Changing them goes through requestIdentifierChange /
+    // verifyIdentifierChange, which confirms ownership via the EXISTING identifier.
+    // Do not re-add them to this payload.
     const updateData: Record<string, string | null> = {};
     if (input.firstName !== undefined) updateData.firstName = input.firstName;
     if (input.lastName !== undefined) updateData.lastName = input.lastName;
-    if (input.email !== undefined) updateData.email = input.email;
-    if (normalizedPhone !== undefined) updateData.phone = removingPhone ? null : normalizedPhone;
 
     const user = await this.fastify.prisma.user.update({
       where: { id: userId },
@@ -122,6 +102,336 @@ export class UsersService {
       role: user.role,
       isVerified: user.isVerified
     };
+  }
+
+  /**
+   * Step 1 of a verified identifier change (pentest F-1). Sends a confirmation
+   * code to the identifier ALREADY on the account — the thing an attacker holding
+   * a stolen access token cannot read — and, when a new value is supplied, a
+   * second code to that value to prove it is reachable. Nothing is written yet.
+   */
+  async requestIdentifierChange(
+    userId: string,
+    input: { type: IdentifierType; newValue: string | null }
+  ): Promise<{
+    message: string;
+    type: IdentifierType;
+    currentTargetMasked: string;
+    newTargetMasked: string | null;
+    expiresInSeconds: number;
+  }> {
+    const account = await this.fastify.prisma.user.findUnique({
+      where: { id: userId },
+      select: { isBanned: true, email: true, phone: true }
+    });
+    if (!account) {
+      throw new AppError(ERROR_CODES.NOT_FOUND, 'User not found', 404);
+    }
+    if (account.isBanned) {
+      throw new AppError(ERROR_CODES.UNAUTHORISED, 'Your account has been suspended. Please contact support.', 401);
+    }
+
+    const { type } = input;
+    const removing = input.newValue === null;
+    const newValue =
+      input.newValue === null
+        ? null
+        : type === 'email'
+          ? normalizeEmail(input.newValue)
+          : normalizePhone(input.newValue);
+
+    if (type === 'email' && removing) {
+      throw new AppError(ERROR_CODES.VALIDATION_ERROR, 'An email address cannot be removed.', 400);
+    }
+    if (newValue !== null && newValue.length === 0) {
+      throw new AppError(ERROR_CODES.VALIDATION_ERROR, 'Enter a valid value.', 400);
+    }
+
+    const currentValue = type === 'email' ? account.email : account.phone;
+    if (newValue !== null && currentValue && newValue === currentValue) {
+      throw new AppError(
+        ERROR_CODES.VALIDATION_ERROR,
+        type === 'email'
+          ? 'This is already your email address.'
+          : 'This is already your mobile number.',
+        400
+      );
+    }
+
+    // Removing the phone must not strip the account's only way back in.
+    if (removing && !account.email) {
+      throw new AppError(
+        ERROR_CODES.VALIDATION_ERROR,
+        'Add an email address before removing your mobile number — it is your only way to sign in.',
+        400
+      );
+    }
+
+    // Same rule as before: a value already bound to another account is a conflict.
+    // (Uniqueness alone never proved ownership — that is what the OTPs below are for.)
+    if (newValue !== null) {
+      const taken = await this.fastify.prisma.user.findFirst({
+        where: { ...(type === 'email' ? { email: newValue } : { phone: newValue }), id: { not: userId } },
+        select: { id: true }
+      });
+      if (taken) {
+        throw new AppError(
+          ERROR_CODES.CONFLICT,
+          type === 'email' ? 'Email already in use' : 'This mobile number is already linked to another account.',
+          409
+        );
+      }
+    }
+
+    const trusted = resolveTrustedIdentifier(account, type);
+    if (!trusted) {
+      throw new AppError(
+        ERROR_CODES.VALIDATION_ERROR,
+        'Your account has no verified email or mobile number to confirm this change. Please contact support.',
+        400
+      );
+    }
+
+    const cooldownKey = identifierChangeCooldownKey(userId, type);
+    if (await this.fastify.redis.get(cooldownKey)) {
+      throw new AppError(ERROR_CODES.RATE_LIMIT_EXCEEDED, 'A code was just sent. Please wait before requesting another.', 429);
+    }
+
+    const currentOtp = generateIdentifierOtp();
+    const newOtp = newValue !== null ? generateIdentifierOtp() : null;
+    const challenge: IdentifierChangeChallenge = {
+      type,
+      newValue,
+      currentOtpHash: hashIdentifierOtp(currentOtp),
+      ...(newOtp ? { newOtpHash: hashIdentifierOtp(newOtp) } : {}),
+      currentTargetMasked: maskIdentifier(trusted.channel, trusted.value),
+      newTargetMasked: newValue !== null ? maskIdentifier(type, newValue) : null,
+      createdAtIso: new Date().toISOString()
+    };
+
+    const storeName = await this.resolveStoreName();
+    // Deliver BEFORE storing so a delivery failure leaves no half-armed challenge.
+    await this.deliverIdentifierOtp(trusted.channel, trusted.value, currentOtp, storeName, `idchange-current-${userId}`);
+    if (newOtp && newValue !== null) {
+      await this.deliverIdentifierOtp(type, newValue, newOtp, storeName, `idchange-new-${userId}`);
+    }
+
+    await this.fastify.redis.set(
+      identifierChangeKey(userId, type),
+      JSON.stringify(challenge),
+      'EX',
+      IDENTIFIER_CHANGE_TTL_SECONDS
+    );
+    await this.fastify.redis.del(identifierChangeAttemptsKey(userId, type));
+    await this.fastify.redis.set(cooldownKey, '1', 'EX', IDENTIFIER_CHANGE_RESEND_SECONDS);
+
+    return {
+      message: removing
+        ? 'Enter the code we sent to your current mobile number to confirm removal.'
+        : 'Enter both codes to confirm the change.',
+      type,
+      currentTargetMasked: challenge.currentTargetMasked,
+      newTargetMasked: challenge.newTargetMasked,
+      expiresInSeconds: IDENTIFIER_CHANGE_TTL_SECONDS
+    };
+  }
+
+  /**
+   * Step 2: both codes must match. On success the identifier is written, EVERY
+   * refresh session is revoked (an attacker mid-session loses it too, and the
+   * legitimate owner re-authenticates), and the OLD identifier is notified.
+   */
+  async verifyIdentifierChange(
+    userId: string,
+    input: { type: IdentifierType; currentOtp: string; newOtp?: string }
+  ) {
+    const { type } = input;
+    const challengeKey = identifierChangeKey(userId, type);
+    const attemptsKey = identifierChangeAttemptsKey(userId, type);
+
+    const raw = await this.fastify.redis.get(challengeKey);
+    if (!raw) {
+      throw new AppError(ERROR_CODES.VALIDATION_ERROR, 'This request expired. Start the change again.', 400);
+    }
+    let challenge: IdentifierChangeChallenge;
+    try {
+      challenge = JSON.parse(raw) as IdentifierChangeChallenge;
+    } catch {
+      await this.fastify.redis.del(challengeKey);
+      throw new AppError(ERROR_CODES.VALIDATION_ERROR, 'This request expired. Start the change again.', 400);
+    }
+
+    const attempts = Number((await this.fastify.redis.get(attemptsKey)) ?? '0');
+    if (attempts >= IDENTIFIER_CHANGE_MAX_ATTEMPTS) {
+      await this.fastify.redis.del(challengeKey);
+      throw new AppError(ERROR_CODES.RATE_LIMIT_EXCEEDED, 'Too many incorrect codes. Start the change again.', 429);
+    }
+
+    const currentOk = matchesIdentifierOtp(challenge.currentOtpHash, input.currentOtp);
+    const newOk =
+      challenge.newOtpHash === undefined
+        ? true
+        : matchesIdentifierOtp(challenge.newOtpHash, input.newOtp ?? '');
+    if (!currentOk || !newOk) {
+      const used = await this.fastify.redis.incr(attemptsKey);
+      await this.fastify.redis.expire(attemptsKey, IDENTIFIER_CHANGE_TTL_SECONDS);
+      const remaining = Math.max(IDENTIFIER_CHANGE_MAX_ATTEMPTS - used, 0);
+      throw new AppError(
+        ERROR_CODES.VALIDATION_ERROR,
+        remaining > 0
+          ? `Incorrect code. ${remaining} attempt${remaining === 1 ? '' : 's'} remaining.`
+          : 'Too many incorrect codes. Start the change again.',
+        400
+      );
+    }
+
+    // Re-check the conflict at commit time: another account may have claimed the
+    // value while this challenge was outstanding.
+    if (challenge.newValue !== null) {
+      const taken = await this.fastify.prisma.user.findFirst({
+        where: {
+          ...(type === 'email' ? { email: challenge.newValue } : { phone: challenge.newValue }),
+          id: { not: userId }
+        },
+        select: { id: true }
+      });
+      if (taken) {
+        await this.fastify.redis.del(challengeKey, attemptsKey);
+        throw new AppError(
+          ERROR_CODES.CONFLICT,
+          type === 'email' ? 'Email already in use' : 'This mobile number is already linked to another account.',
+          409
+        );
+      }
+    }
+
+    const previous = await this.fastify.prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true, phone: true }
+    });
+
+    const user = await this.fastify.prisma.user.update({
+      where: { id: userId },
+      data: type === 'email' ? { email: challenge.newValue } : { phone: challenge.newValue }
+    });
+
+    await this.fastify.redis.del(challengeKey, attemptsKey, identifierChangeCooldownKey(userId, type));
+
+    // Identifier changes invalidate sessions (pentest F-1 remediation #7): anyone
+    // riding a stolen token loses access, and the owner signs in with the new value.
+    await this.revokeAllSessions(userId);
+
+    // Tell the OLD identifier what happened — best-effort, never blocks the change.
+    const previousValue = type === 'email' ? previous?.email : previous?.phone;
+    if (previousValue) {
+      const storeName = await this.resolveStoreName();
+      try {
+        // For a phone change the account keeps its email, so notify that.
+        await this.deliverIdentifierChangeAlert(type, previousValue, storeName, previous?.email ?? null);
+      } catch (error) {
+        this.fastify.log?.warn({ err: error, userId }, 'Identifier-change alert to previous identifier failed');
+      }
+    }
+
+    return {
+      id: user.id,
+      email: user.email,
+      phone: user.phone ?? '',
+      firstName: user.firstName,
+      lastName: user.lastName,
+      role: user.role,
+      isVerified: user.isVerified
+    };
+  }
+
+  private async resolveStoreName(): Promise<string> {
+    const settings = await this.fastify.prisma.storeSettings.findUnique({
+      where: { singletonKey: 'default' },
+      select: { storeName: true }
+    });
+    return (settings?.storeName ?? '').trim() || 'Our Store';
+  }
+
+  /** Queues one OTP over the channel that matches the identifier type. */
+  private async deliverIdentifierOtp(
+    channel: IdentifierType,
+    target: string,
+    otp: string,
+    storeName: string,
+    jobPrefix: string
+  ): Promise<void> {
+    const jobId = `${jobPrefix}-${Date.now()}`.replace(/:/g, '-');
+    if (channel === 'email') {
+      await this.enqueueNotification('send-email', { to: target, template: 'CustomerOtpVerification', data: { otp, storeName } }, jobId);
+      return;
+    }
+    await this.enqueueNotification('send-sms', { phone: target, template: 'CustomerOtpVerification', data: { otp, storeName } }, jobId);
+  }
+
+  /**
+   * Security notice about a completed change, sent by EMAIL only: for an email
+   * change it reaches the replaced address, for a phone change the account's
+   * email. SMS/WhatsApp are skipped deliberately — those channels only accept
+   * provider-approved template names, and inventing one here would fail delivery
+   * at the provider. A phone-only account therefore gets no alert; that is a
+   * known gap, recorded rather than hidden.
+   */
+  private async deliverIdentifierChangeAlert(
+    type: IdentifierType,
+    previousValue: string,
+    storeName: string,
+    accountEmail: string | null
+  ): Promise<void> {
+    const recipient = type === 'email' ? previousValue : accountEmail;
+    if (!recipient) {
+      this.fastify.log?.info(
+        { type },
+        'Identifier-change alert skipped: account has no email address to notify'
+      );
+      return;
+    }
+    await this.enqueueNotification(
+      'send-email',
+      {
+        to: recipient,
+        template: 'AccountIdentifierChanged',
+        data: {
+          storeName,
+          identifierLabel: type === 'email' ? 'email address' : 'mobile number',
+          changedAt: new Date().toISOString()
+        }
+      },
+      `idchange-alert-${Date.now()}`.replace(/:/g, '-')
+    );
+  }
+
+  /** Outbox-first enqueue (mirrors AuthService) so delivery survives a crash. */
+  private async enqueueNotification(
+    jobName: string,
+    payload: Record<string, unknown>,
+    jobId: string
+  ): Promise<void> {
+    const outboxDelegate = (this.fastify as { prisma?: { outboxMessage?: { create: (args: unknown) => Promise<unknown> } } })
+      .prisma?.outboxMessage;
+    if (outboxDelegate) {
+      await outboxDelegate.create({
+        data: { queueName: 'notifications', jobName, payload, jobId }
+      });
+      return;
+    }
+    await this.fastify.queues.notifications.add(jobName, payload, { jobId });
+  }
+
+  /** Revokes every refresh session for the user (all devices). */
+  private async revokeAllSessions(userId: string): Promise<void> {
+    try {
+      await this.fastify.prisma.refreshToken.updateMany({
+        where: { userId, revokedAt: null },
+        data: { revokedAt: new Date() }
+      });
+    } catch (error) {
+      this.fastify.log?.error({ err: error, userId }, 'Failed to revoke sessions after identifier change');
+    }
   }
 
   async listAddresses(userId: string, query: AddressListQuery) {

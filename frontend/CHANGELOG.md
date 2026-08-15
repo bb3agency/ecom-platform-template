@@ -12,6 +12,20 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.69] - 2026-08-15
+
+### Security
+- **Login identifiers are no longer edited as ordinary profile fields** (pairs with backend-core 0.1.98, pentest F-1). `updateMyProfile` is names-only; `requestIdentifierChange`/`verifyIdentifierChange` added to `lib/users-api.ts`. New `components/account/IdentifierChangeDialog.tsx` (core, fully token-styled so it adopts each client's palette) collects the code sent to the identifier already on the account plus, when setting a new value, the code sent to that value — then routes the user back to sign-in, because the API revokes every session on success.
+
+### Changed
+- **THEME (hand-carry per client): `app/(account)/settings/page.tsx`.** Email moves out of the profile form into its own "Email Address" card with a Change action; the phone card's Change/Remove now open the verified dialog instead of writing directly. Profile save posts names only. Copy explains that a confirmation code is required.
+
+**Propagation:**
+- Severity: **HIGH (security)** - Layers: frontend core (`lib/users-api.ts`, `components/account/IdentifierChangeDialog.tsx` new) + THEME (`app/(account)/settings/page.tsx` — per-client, hand-carried)
+- Migration: NO - Flag: none - Design impact: none (token-styled) - **Breaking: YES** — must ship together with backend-core 0.1.98; an older backend rejects the new endpoints, a newer backend rejects the old profile payload
+- Requires: backend-core >= 0.1.98
+- Rollback: revert together with the backend release
+
 ## [0.1.68] - 2026-08-10
 
 ### Fixed

@@ -2,6 +2,7 @@ import { AppError } from '@common/errors/app-error';
 import { ERROR_CODES } from '@common/errors/error-codes';
 import { render } from '@react-email/render';
 import {
+  AccountIdentifierChangedEmail,
   AdminInviteSetupEmail,
   CustomerOtpVerificationEmail,
   LowStockAlertEmail,
@@ -37,6 +38,7 @@ export const supportedEmailTemplates = [
   'LowStockAlert',
   'OtpVerification',
   'CustomerOtpVerification',
+  'AccountIdentifierChanged',
   'NotificationDeliveryFailure',
   'PasswordReset',
   'AdminInviteSetup',
@@ -183,6 +185,16 @@ export async function renderNotificationEmail(template: string, data: Record<str
         return {
           subject: `Your sign-in code for ${storeName}`,
           html: await render(CustomerOtpVerificationEmail(otp, storeName))
+        };
+      }
+    case 'AccountIdentifierChanged':
+      {
+        const storeName = escapeHtml(data.storeName ?? 'Our Store');
+        const identifierLabel = escapeHtml(data.identifierLabel ?? 'account identifier');
+        const changedAt = escapeHtml(data.changedAt ?? new Date().toISOString());
+        return {
+          subject: `Security alert: your ${identifierLabel} was changed`,
+          html: await render(AccountIdentifierChangedEmail(storeName, identifierLabel, changedAt))
         };
       }
     case 'NotificationDeliveryFailure':

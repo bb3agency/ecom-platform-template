@@ -31,6 +31,7 @@
       "frontend/lib/**",
       "frontend/actions/**",
       "frontend/components/ui/**",
+      "frontend/components/account/**",
       "frontend/components/cart/**",
       "frontend/components/checkout/**",
       "frontend/components/admin/**",

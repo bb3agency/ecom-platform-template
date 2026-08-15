@@ -106,12 +106,61 @@ export async function deleteMyAddress(
   });
 }
 
+/**
+ * Profile update — NAMES ONLY. `email` and `phone` are login/recovery
+ * identifiers and are rejected by the API here (pentest F-1, 2026-08-15):
+ * holding an access token does not prove you own the value being set. Use
+ * requestIdentifierChange → verifyIdentifierChange instead.
+ */
 export async function updateMyProfile(
   accessToken: string,
-  input: { firstName?: string; lastName?: string; email?: string; phone?: string | null },
+  input: { firstName?: string; lastName?: string },
 ): Promise<User> {
   return apiClient<User>("/users/me", {
     method: "PATCH",
+    accessToken,
+    body: JSON.stringify(input),
+  });
+}
+
+export type IdentifierType = "email" | "phone";
+
+export interface IdentifierChangeRequestResult {
+  message: string;
+  type: IdentifierType;
+  /** Masked target of the confirmation code, e.g. `me••@example.com`. */
+  currentTargetMasked: string;
+  /** Masked new target; null when removing a mobile number. */
+  newTargetMasked: string | null;
+  expiresInSeconds: number;
+}
+
+/**
+ * Step 1 of changing a login identifier: sends a code to the identifier already
+ * on the account (the ownership proof) and, when setting a new value, a second
+ * code to that value. Pass `newValue: null` to remove a mobile number.
+ */
+export async function requestIdentifierChange(
+  accessToken: string,
+  input: { type: IdentifierType; newValue: string | null },
+): Promise<IdentifierChangeRequestResult> {
+  return apiClient<IdentifierChangeRequestResult>("/users/me/identifier/change/request", {
+    method: "POST",
+    accessToken,
+    body: JSON.stringify(input),
+  });
+}
+
+/**
+ * Step 2: submit both codes to commit the change. Every session is revoked on
+ * success, so the caller must send the user back through sign-in.
+ */
+export async function verifyIdentifierChange(
+  accessToken: string,
+  input: { type: IdentifierType; currentOtp: string; newOtp?: string },
+): Promise<User> {
+  return apiClient<User>("/users/me/identifier/change/verify", {
+    method: "POST",
     accessToken,
     body: JSON.stringify(input),
   });

@@ -12,6 +12,22 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.1.98] - 2026-08-15
+
+### Security
+- **F-1 (High) — account takeover via mass assignment on `PATCH /users/me`.** The endpoint accepted `email` and `phone` as ordinary profile fields. Anyone holding a victim's access token could rebind the account to attacker-controlled identifiers; the uniqueness checks only proved a value was unused, never that the requester owned it. Password reset and phone-OTP recovery then pointed at the attacker — full takeover. **Both fields are removed from the profile schema** (`additionalProperties: false` makes an attempt a 400) and from `UpdateProfileInput`; the service also refuses them defensively, so a future schema slip cannot silently reopen the path.
+  New verified flow — `POST /users/me/identifier/change/request` + `/verify`: a code goes to the identifier **already on the account** (the ownership proof a stolen token cannot satisfy — note that OTP'ing only the NEW value would be useless, since the attacker owns it) and, when setting a new value, a second code to that value so a typo cannot hand recovery to a stranger's mailbox. A phone-only account confirms by SMS and vice-versa. Commit re-checks the conflict, **revokes every session** (remediation #7), and emails an `AccountIdentifierChanged` security alert to the previous address. 10-minute challenges, 5-attempt cap, 60s resend cooldown, `authSensitive` rate limit, masked targets in responses, constant-time code comparison.
+- **F-2 (Medium) — refresh-token reuse after rotation.** Rotation was implemented, but a deliberate 60-second concurrency grace (for browsers bursting parallel 401-retries on one shared cookie) accepted a just-rotated token — which the test replayed. The grace is now **10 seconds**, and the substantive fix: a replay **outside** the grace is treated as theft and **revokes the entire session family** (RFC 9700 §4.14.2) instead of merely 401-ing. Previously a thief who rotated a stolen token first kept a working session while the victim was quietly logged out. Covered on both the pre-check and the lost-CAS race path.
+
+### Added
+- `AccountIdentifierChanged` email template (email channel only — SMS/WhatsApp need provider-approved template names, so a phone-only account gets no alert; logged rather than hidden).
+- `frontend/components/account/**` added to the frontend core manifest so the shared identifier-change dialog stays identical fleet-wide instead of being hand-carried.
+
+**Propagation:**
+- Severity: **HIGH (security)** — apply to every client - Layers: backend (`modules/users/*`, `modules/auth/auth.service.ts`, notification templates, `core-manifest.json`) — pairs with frontend-core 0.1.69
+- Migration: NO - Flag: none - Design impact: none - **Breaking: YES (client-visible API)** — `PATCH /users/me` no longer accepts `email`/`phone`; any caller sending them gets a 400. The paired frontend release moves those to the verified flow. A client on an older frontend would lose email/phone editing until it syncs, and must not be left half-upgraded.
+- Rollback: revert the files — restores the takeover path; do not roll back without compensating controls.
+
 ## [0.1.97] - 2026-08-10
 
 ### Fixed
