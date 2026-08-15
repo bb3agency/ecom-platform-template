@@ -67,6 +67,8 @@ export async function registerGalleryRoutes(fastify: FastifyInstance): Promise<v
       let file: { buffer: Buffer; mimeType: string | null } | null = null;
       let caption: string | null = null;
       let altText: string | null = null;
+      /** Optional ISO date the photo was taken (drives the storefront timeline). */
+      let capturedAt: string | null = null;
 
       for await (const part of request.parts()) {
         if (part.type === 'file' && (part.fieldname === 'file' || part.fieldname === 'files')) {
@@ -85,6 +87,8 @@ export async function registerGalleryRoutes(fastify: FastifyInstance): Promise<v
           caption = String(part.value);
         } else if (part.type === 'field' && part.fieldname === 'altText') {
           altText = String(part.value);
+        } else if (part.type === 'field' && part.fieldname === 'capturedAt') {
+          capturedAt = String(part.value);
         }
       }
 
@@ -96,7 +100,8 @@ export async function registerGalleryRoutes(fastify: FastifyInstance): Promise<v
         buffer: file.buffer,
         mimeType: file.mimeType,
         caption,
-        altText
+        altText,
+        capturedAt
       });
     }
   );

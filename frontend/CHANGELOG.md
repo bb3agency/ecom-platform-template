@@ -12,6 +12,21 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.1.70] - 2026-08-15
+
+### Added
+- **Storefront gallery timeline** (pairs with backend-core 0.1.99) — the phone-gallery pattern: photos grouped into dated sections and laid out in justified rows that preserve each photo's real aspect ratio, instead of a uniform square-cropped grid. New core `lib/gallery-timeline.ts` holds the pure maths — `groupByMonth` (partitions only; it must never re-sort, or the merchant's manual `sortOrder` tie-break inside a month would be lost), `aspectRatioOf` (4:3 fallback for photos uploaded before dimensions were captured), and `buildJustifiedRows` (greedy fill-to-width then scale-to-fit, as used by Flickr/Google Photos — the optimal Knuth–Plass variant only earns its complexity across thousands of tiles). The last row is deliberately **not** stretched to full width, which is the classic justified-layout eyesore. Fully unit-tested, including the pre-measurement `containerWidth: 0` first paint and a 320px viewport.
+- Admin gallery manager gains a **Photo date** field, and `lib/gallery-api.ts` carries `capturedAt` / `timelineDate` / `width` / `height`.
+
+### Changed
+- **THEME (per-client, hand-carried): `components/storefront/GalleryTimeline.tsx` + `app/(storefront)/gallery/page.tsx`.** Sticky month headers, a desktop scrub rail that tracks the visible section, and a lightbox with keyboard arrows, swipe, focus management and scroll lock. Motion respects `prefers-reduced-motion`. Shipped for raghava-organics; clients without a gallery page need nothing.
+
+**Propagation:**
+- Severity: NORMAL - Layers: frontend core (`lib/gallery-timeline.ts` new + test, `lib/gallery-api.ts`, `components/admin/AdminGalleryManager.tsx`) + THEME (per-client, hand-carried)
+- Migration: NO (backend-side; see backend-core 0.1.99) - Flag: none - Design impact: none in core (the theme component is token-styled) - Breaking: NO
+- Requires: backend-core >= 0.1.99 — the timeline groups by `timelineDate`, which an older backend does not send
+- Rollback: revert the theme page to the grid; the core lib is inert if unused.
+
 ## [0.1.69] - 2026-08-15
 
 ### Security

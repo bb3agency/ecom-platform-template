@@ -28,7 +28,11 @@ const serviceState = vi.hoisted(() => ({
     caption: null,
     altText: '',
     sortOrder: 0,
-    isActive: true
+    isActive: true,
+    capturedAt: '2026-03-14T00:00:00.000Z',
+    timelineDate: '2026-03-14T00:00:00.000Z',
+    width: 1600,
+    height: 1200
   })),
   adminUpdate: vi.fn(),
   adminDelete: vi.fn(),

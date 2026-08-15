@@ -19,6 +19,58 @@ defaults:
     working-directory: backend
 
 jobs:
+  # ── Frontend gates ──────────────────────────────────────────────────────────
+  # Added 2026-08-15 after a core release went green here while the client's
+  # frontend no longer compiled: reliability-gates runs entirely inside backend/,
+  # so a THEME page left behind by an API-breaking core change was only caught by
+  # `next build` during the VPS deploy — i.e. after merge, in production CD.
+  # This job reproduces that build in CI so the break surfaces on the PR.
+  frontend-gates:
+    name: frontend-gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm test
+
+      # The gate that matters: this is the exact command the VPS deploy runs, so a
+      # theme/core mismatch fails here instead of breaking the deployment.
+      - name: Production build
+        run: npm run build
+        # Scoped to this step ONLY. `next build` sets NODE_ENV=production, which
+        # trips validateProductionEnv, so the build needs these — but the unit
+        # tests assert the code's own fallbacks, and a job-level env would make
+        # them assert CI's placeholders instead. CI placeholders only, never real
+        # credentials; the VPS supplies real values from .env.production.local.
+        env:
+          NEXT_PUBLIC_API_BASE_URL: https://ci.example.com/api/v1
+          NEXT_PUBLIC_STOREFRONT_URL: https://ci.example.com
+          NEXT_PUBLIC_RAZORPAY_KEY_ID: rzp_test_ci_placeholder
+          INTERNAL_API_BASE_URL: http://127.0.0.1:3000/api/v1
+
   reliability-gates:
     runs-on: ubuntu-latest
     timeout-minutes: 45
