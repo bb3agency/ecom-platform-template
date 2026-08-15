@@ -32,14 +32,6 @@ jobs:
     defaults:
       run:
         working-directory: frontend
-    env:
-      # `next build` sets NODE_ENV=production, which triggers validateProductionEnv.
-      # CI placeholders only — never real credentials. The VPS supplies the real
-      # values from .env.production.local at deploy time.
-      NEXT_PUBLIC_API_BASE_URL: https://ci.example.com/api/v1
-      NEXT_PUBLIC_STOREFRONT_URL: https://ci.example.com
-      NEXT_PUBLIC_RAZORPAY_KEY_ID: rzp_test_ci_placeholder
-      INTERNAL_API_BASE_URL: http://127.0.0.1:3000/api/v1
 
     steps:
       - name: Checkout
@@ -68,6 +60,16 @@ jobs:
       # theme/core mismatch fails here instead of breaking the deployment.
       - name: Production build
         run: npm run build
+        # Scoped to this step ONLY. `next build` sets NODE_ENV=production, which
+        # trips validateProductionEnv, so the build needs these — but the unit
+        # tests assert the code's own fallbacks, and a job-level env would make
+        # them assert CI's placeholders instead. CI placeholders only, never real
+        # credentials; the VPS supplies real values from .env.production.local.
+        env:
+          NEXT_PUBLIC_API_BASE_URL: https://ci.example.com/api/v1
+          NEXT_PUBLIC_STOREFRONT_URL: https://ci.example.com
+          NEXT_PUBLIC_RAZORPAY_KEY_ID: rzp_test_ci_placeholder
+          INTERNAL_API_BASE_URL: http://127.0.0.1:3000/api/v1
 
   reliability-gates:
     runs-on: ubuntu-latest
