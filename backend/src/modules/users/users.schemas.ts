@@ -97,15 +97,72 @@ export const patchMeSchema = {
     minProperties: 1,
     properties: {
       firstName: { type: 'string', maxLength: 100 },
-      lastName: { type: 'string', maxLength: 100 },
-      email: { type: 'string', format: 'email', maxLength: 255 },
-      /** Set/update the login mobile number, or `null` to remove it (guarded server-side). */
-      phone: {
+      lastName: { type: 'string', maxLength: 100 }
+      // `email` and `phone` are INTENTIONALLY not writable here (pentest F-1,
+      // 2026-08-15): they are login/recovery identifiers, and this endpoint only
+      // proves the caller holds an access token — not that they own the value.
+      // `additionalProperties: false` above makes a rebind attempt a 400.
+      // Changes go through /users/me/identifier/change/{request,verify}.
+    }
+  },
+  response: {
+    200: userSchema,
+    ...standardErrorResponses
+  }
+} as const;
+
+/**
+ * Verified identifier change (pentest F-1). Step 1 sends a code to the identifier
+ * ALREADY on the account and, when setting a new value, a second code to that
+ * value. `newValue: null` removes a mobile number (email removal is rejected).
+ */
+export const requestIdentifierChangeSchema = {
+  params: emptyParamsSchema,
+  querystring: emptyQuerystringSchema,
+  body: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['type', 'newValue'],
+    properties: {
+      type: { type: 'string', enum: ['email', 'phone'] },
+      newValue: {
         anyOf: [
-          { type: 'string', pattern: '^\\+?[0-9]{10,15}$' },
+          { type: 'string', minLength: 1, maxLength: 255 },
           { type: 'null' }
         ]
       }
+    }
+  },
+  response: {
+    200: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['message', 'type', 'currentTargetMasked', 'newTargetMasked', 'expiresInSeconds'],
+      properties: {
+        message: { type: 'string', maxLength: 300 },
+        type: { type: 'string', enum: ['email', 'phone'] },
+        // Masked so the response never re-discloses a full identifier.
+        currentTargetMasked: { type: 'string', maxLength: 255 },
+        newTargetMasked: { anyOf: [{ type: 'string', maxLength: 255 }, { type: 'null' }] },
+        expiresInSeconds: { type: 'integer', minimum: 1, maximum: 3600 }
+      }
+    },
+    ...standardErrorResponses
+  }
+} as const;
+
+/** Step 2: both codes (only the current-identifier code when removing a phone). */
+export const verifyIdentifierChangeSchema = {
+  params: emptyParamsSchema,
+  querystring: emptyQuerystringSchema,
+  body: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['type', 'currentOtp'],
+    properties: {
+      type: { type: 'string', enum: ['email', 'phone'] },
+      currentOtp: { type: 'string', pattern: '^[0-9]{6}$' },
+      newOtp: { type: 'string', pattern: '^[0-9]{6}$' }
     }
   },
   response: {

@@ -211,7 +211,13 @@ All require **customer JWT** (`Authorization: Bearer <token>`). Rate-limited by 
 Returns current customer's profile: name, email, phone, createdAt.
 
 ### `PATCH /api/v1/users/me`
-Update name, email, or phone on the customer's own profile.
+Update **name only** (`firstName`, `lastName`) on the customer's own profile. `email` and `phone` are **not accepted** — the schema is `additionalProperties: false`, so sending them is a `400`. They are login/recovery identifiers, and an access token proves possession of a session, not ownership of the value being set; accepting them allowed account takeover (pentest F-1, fixed 2026-08-15). Use the verified change flow below.
+
+### `POST /api/v1/users/me/identifier/change/request`
+Start a verified change of a login identifier. Customer JWT. Body: `{ type: 'email' | 'phone', newValue: string | null }` (`null` removes a mobile number; email removal is rejected). Sends a confirmation code to the identifier **already on the account** — the ownership proof an attacker with a stolen token cannot read — and, when setting a new value, a second code to that value so a typo cannot hand recovery to a stranger's mailbox. A phone-only account confirms by SMS and vice-versa. Nothing is written. Returns masked targets only (`me••@example.com`), never full identifiers. `409` if the value belongs to another account, `429` inside the 60-second resend cooldown, `400` for a no-op change or removing the last sign-in method.
+
+### `POST /api/v1/users/me/identifier/change/verify`
+Complete the change. Body: `{ type, currentOtp, newOtp? }` (`newOtp` omitted only when removing). Both codes must match; 5 wrong attempts destroy the challenge (`429`). On success the identifier is written, **every refresh session is revoked** (an attacker riding a stolen token loses it too — the client must send the user back to sign-in), the conflict is re-checked at commit time (`409`), and an `AccountIdentifierChanged` security email goes to the previous address. Challenges expire after 10 minutes.
 
 ### `GET /api/v1/users/me/addresses`
 List all saved addresses for the customer. Supports pagination.

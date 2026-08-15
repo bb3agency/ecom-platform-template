@@ -22,7 +22,9 @@ import {
   listAddressesSchema,
   listOrdersSchema,
   patchMeSchema,
+  requestIdentifierChangeSchema,
   updateAddressSchema,
+  verifyIdentifierChangeSchema,
   getAdminNotificationPreferencesSchema,
   updateAdminNotificationPreferencesSchema
 } from './users.schemas';
@@ -65,6 +67,41 @@ export async function registerUsersRoutes(fastify: FastifyInstance): Promise<voi
     async (request) => {
       const user = getCurrentUser(request);
       return usersService.patchMe(user.sub, request.body as never);
+    }
+  );
+
+  // ── Verified identifier change (pentest F-1) ───────────────────────────────
+  // Email/phone are login + recovery identifiers, so they are not writable via
+  // PATCH /users/me. These two routes prove ownership of the EXISTING identifier
+  // (a code an attacker holding a stolen access token cannot read) before any
+  // rebinding, and the commit revokes every session.
+  fastify.post(
+    '/api/v1/users/me/identifier/change/request',
+    {
+      schema: requestIdentifierChangeSchema,
+      preHandler: [jwtAuthGuard],
+      config: {
+        rateLimit: routeRateLimitProfiles.authSensitive
+      }
+    },
+    async (request) => {
+      const user = getCurrentUser(request);
+      return usersService.requestIdentifierChange(user.sub, request.body as never);
+    }
+  );
+
+  fastify.post(
+    '/api/v1/users/me/identifier/change/verify',
+    {
+      schema: verifyIdentifierChangeSchema,
+      preHandler: [jwtAuthGuard],
+      config: {
+        rateLimit: routeRateLimitProfiles.authSensitive
+      }
+    },
+    async (request) => {
+      const user = getCurrentUser(request);
+      return usersService.verifyIdentifierChange(user.sub, request.body as never);
     }
   );
 
