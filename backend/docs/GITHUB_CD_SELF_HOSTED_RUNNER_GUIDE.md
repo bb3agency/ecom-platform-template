@@ -82,6 +82,27 @@ GitHub **only** executes workflows from `.github/workflows/` at the **repository
 
 Deploy scripts **always** live at `backend/scripts/vps-deploy.sh` and `backend/scripts/vps-frontend-deploy.sh`.
 
+### CI jobs in `reliability-ci.yml` (monorepo)
+
+| Job | Working dir | Runs |
+|-----|-------------|------|
+| `reliability-gates` | `backend` | Backend typecheck, unit/e2e/security tests, Prisma validation, guardrails |
+| `frontend-gates` (added 2026-08-15, backend-core 0.1.99) | `frontend` | typecheck → lint → unit tests → **production build** |
+
+`frontend-gates` exists because `reliability-gates` runs entirely inside `backend/`: before it, a
+frontend that no longer compiled could sail through CI and only break during the VPS deploy — i.e.
+after merge, in CD. It runs the same `npm run build` the deploy runs, so the break surfaces on the PR.
+
+Two things to keep right when editing that job:
+- **`next build` sets `NODE_ENV=production`, which trips `validateProductionEnv`,** so the build needs
+  `NEXT_PUBLIC_API_BASE_URL`, `NEXT_PUBLIC_STOREFRONT_URL`, `NEXT_PUBLIC_RAZORPAY_KEY_ID` and
+  `INTERNAL_API_BASE_URL`. Set them on the **build step only** — CI placeholders, never real
+  credentials. A job-level `env:` leaks them into the unit tests, several of which assert the code's
+  own env fallbacks and then fail against CI's values.
+- **`.github/workflows/**` is NOT core-synced** (not in `core-manifest.json`, and client deploy
+  workflows genuinely diverge). Any change here must be hand-carried into every client repo, or it
+  silently reaches none of them.
+
 **Monorepo frontend deploy invocation** (required — script is not under `frontend/scripts/`):
 
 ```bash
