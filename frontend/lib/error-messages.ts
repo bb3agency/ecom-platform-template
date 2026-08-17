@@ -109,10 +109,20 @@ function getAuthChallengeErrorMessage(error: ApiError): string | null {
     return null;
   }
   if (!isTurnstileConfigured()) {
+    // Developer-facing remedy, DEV ONLY. In production this same state is a customer
+    // staring at a broken sign-in page; naming our env vars there tells them nothing
+    // actionable and leaks deployment detail.
+    if (process.env.NODE_ENV === "development") {
+      return (
+        "The API requires a security check, but no Turnstile site key is available. " +
+        "Set TURNSTILE_SITE_KEY on the backend (published via GET /store/config) or " +
+        "NEXT_PUBLIC_TURNSTILE_SITE_KEY on the storefront, or clear TURNSTILE_SECRET_KEY " +
+        "in backend/.env for local development."
+      );
+    }
     return (
-      "The API requires a security check, but NEXT_PUBLIC_TURNSTILE_SITE_KEY is not set. " +
-      "Add the Cloudflare site key to frontend/.env.local (must pair with backend TURNSTILE_SECRET_KEY), " +
-      "or clear TURNSTILE_SECRET_KEY in backend/.env for local development."
+      "Sign-in is temporarily unavailable due to a security configuration issue. " +
+      "Please contact support."
     );
   }
   return "Complete the security check below, then try again.";

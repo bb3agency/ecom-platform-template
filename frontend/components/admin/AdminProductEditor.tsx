@@ -423,6 +423,18 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
           label: "Price",
           isEmpty: () => !createVariants[0]?.pricePaise.trim(),
         },
+        {
+          // Required, not optional: weight drives BOTH the shipping AWB (the worker
+          // rejects a variant without one) and the quantity printed on the invoice —
+          // a weight-based product with no weight silently falls back to a piece
+          // count on a tax document.
+          field: "weightGrams",
+          label: "Weight (g)",
+          isEmpty: () => {
+            const value = createVariants[0]?.weightGrams.trim() ?? "";
+            return !value || !Number.isFinite(Number(value)) || Number(value) <= 0;
+          },
+        },
       );
     } else {
       requiredChecks.push({
@@ -1881,13 +1893,15 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 items-center">
                 <label className="grid min-w-0 grid-cols-1 gap-1.5 text-sm font-medium text-foreground">
                   <span className="flex items-center gap-1">
-                    Weight (g)
-                    <span title="Weight in grams — required for shipping rate calculation.">
+                    Weight (g) {isCreate ? <span className="text-destructive">*</span> : null}
+                    <span title="Net weight of one unit in grams. Used for shipping rates AND for the quantity printed on the invoice — a 500 g pack bills as 0.5 kg.">
                       <HelpCircle className="h-3.5 w-3.5 text-muted-foreground/60 cursor-help" />
                     </span>
                   </span>
                   <input
-                    className={`${inputClass} `}
+                    data-admin-field="weightGrams"
+                    aria-invalid={Boolean(getFieldError("weightGrams"))}
+                    className={fieldClassName("weightGrams", inputClass)}
                     type="number"
                     min="1"
                     placeholder="e.g. 500"

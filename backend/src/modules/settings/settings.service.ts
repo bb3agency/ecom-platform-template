@@ -31,6 +31,7 @@ import {
   parseLocalDeliveryPincodes,
   resolveLocalDeliverySettings
 } from '@common/shipping/local-delivery';
+import { getTurnstileSiteKey, isTurnstileVerificationEnabled } from '@common/auth/auth-turnstile';
 import { AppError } from '@common/errors/app-error';
 import { ERROR_CODES } from '@common/errors/error-codes';
 import { STORE_LOGO_MAX_BYTES, sniffLogoImageFormat } from '@modules/invoices/generate-invoice';
@@ -715,6 +716,7 @@ export class SettingsService {
     contactPhone: string | null;
     facebookUrl: string | null;
     instagramUrl: string | null;
+    authChallenge: { required: boolean; provider: 'turnstile'; siteKey: string | null };
   }> {
     const [settings, couponsEnabled] = await Promise.all([
       this.fastify.prisma.storeSettings.findUnique({
@@ -763,7 +765,15 @@ export class SettingsService {
       contactEmail: settings?.contactEmail ?? null,
       contactPhone: settings?.contactPhone ?? null,
       facebookUrl: settings?.facebookUrl ?? null,
-      instagramUrl: settings?.instagramUrl ?? null
+      instagramUrl: settings?.instagramUrl ?? null,
+      // Bot-challenge contract for the auth forms. The SERVER decides whether a
+      // challenge is required, so the storefront cannot disagree with it — see
+      // getTurnstileSiteKey() for why that mattered.
+      authChallenge: {
+        required: isTurnstileVerificationEnabled(),
+        provider: 'turnstile' as const,
+        siteKey: getTurnstileSiteKey()
+      }
     };
   }
 }

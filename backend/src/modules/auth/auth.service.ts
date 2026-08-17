@@ -930,7 +930,10 @@ export class AuthService {
         }
         return genericResponse;
       }
-      const resetUrl = `${storefrontUrl}/reset-password?token=${encodeURIComponent(resetToken)}`;
+      // Trailing slash would produce `https://shop.example.com//reset-password?...`,
+      // which most hosts serve as a 404 — a dead link in every reset email, with no
+      // error anywhere to explain it. The CORS plugin normalises the same value.
+      const resetUrl = `${storefrontUrl.replace(/\/+$/, '')}/reset-password?token=${encodeURIComponent(resetToken)}`;
       const jobId = `password-reset-${user.id}-${Date.now()}`;
       try {
         await this.enqueueOutboxMessage('notifications', 'send-email', {
@@ -939,7 +942,10 @@ export class AuthService {
           data: {
             email: user.email,
             userId: user.id,
-            resetToken,
+            // `resetToken` is deliberately NOT sent: outbox rows persist in Postgres
+            // long after delivery, and the token already travels inside resetUrl —
+            // storing it twice doubled the exposure for nothing. The email template
+            // only ever used resetUrl.
             resetUrl
           }
         }, jobId);
@@ -980,15 +986,40 @@ export class AuthService {
       where: { tokenHash }
     });
 
-    if (!tokenRecord) {
+    // One indistinguishable rejection for "never existed", "already used" and
+    // "expired". Separate codes let anyone holding a candidate token learn whether
+    // it was ever real — a probing oracle over a 48-hex space that also confirms an
+    // account exists. The user-facing remedy is identical in every case: request a
+    // new link.
+    // Explicitly typed so TypeScript treats calls as never-returning and narrows
+    // `tokenRecord` after them.
+    const rejectToken: () => never = () => {
       throw new AppError(ERROR_CODES.INVALID_CREDENTIALS, 'Invalid or expired reset token', 401);
+    };
+
+    if (!tokenRecord) {
+      rejectToken();
     }
 
     if (tokenRecord.expiresAt < new Date()) {
       await this.fastify.prisma.passwordResetToken.delete({
         where: { id: tokenRecord.id }
       });
-      throw new AppError(ERROR_CODES.TOKEN_EXPIRED, 'Reset token has expired', 401);
+      rejectToken();
+    }
+
+    // A banned account must not be recoverable: resetting the password would hand
+    // back a working credential to someone the merchant deliberately locked out.
+    // Same generic rejection — do not disclose the ban through this endpoint.
+    const targetUser = await this.fastify.prisma.user.findUnique({
+      where: { id: tokenRecord.userId },
+      select: { isBanned: true }
+    });
+    if (!targetUser || targetUser.isBanned) {
+      await this.fastify.prisma.passwordResetToken.deleteMany({
+        where: { userId: tokenRecord.userId }
+      });
+      rejectToken();
     }
 
     const passwordHash = await bcrypt.hash(input.password, 10);

@@ -21,7 +21,10 @@ import {
 import { getApiErrorMessage } from "@/lib/error-messages";
 import { AuthErrorBanner } from "@/components/auth/AuthErrorBanner";
 import { TurnstileChallenge } from "@/components/auth/TurnstileChallenge";
-import { useAuthTurnstile } from "@/hooks/use-auth-turnstile";
+import {
+  TURNSTILE_MISCONFIGURED_MESSAGE,
+  useAuthTurnstile,
+} from "@/hooks/use-auth-turnstile";
 import type { AuthSession } from "@/types/user";
 import { otpSchema, passwordSchema } from "@/lib/validators";
 
@@ -69,6 +72,8 @@ function LoginPageContent() {
   const {
     required: turnstileRequired,
     ready: turnstileReady,
+    misconfigured: turnstileMisconfigured,
+    siteKey: turnstileSiteKey,
     widgetKey,
     turnstileField,
     onTurnstileTokenChange,
@@ -132,6 +137,10 @@ function LoginPageContent() {
 
   // ── Step 1: check identifier ───────────────────────────────────────────────
   const handleContinue = identifierForm.handleSubmit(async (values) => {
+    if (turnstileMisconfigured) {
+      setError(TURNSTILE_MISCONFIGURED_MESSAGE);
+      return;
+    }
     if (turnstileRequired && !turnstileReady) {
       setError("Complete the security check, then try again.");
       return;
@@ -210,6 +219,10 @@ function LoginPageContent() {
   // ── Step 2b: password login ────────────────────────────────────────────────
   const handlePasswordLogin = passwordForm.handleSubmit(async (values) => {
     if (step.kind !== "password") return;
+    if (turnstileMisconfigured) {
+      setError(TURNSTILE_MISCONFIGURED_MESSAGE);
+      return;
+    }
     if (turnstileRequired && !turnstileReady) {
       setError("Complete the security check, then try again.");
       return;
@@ -284,10 +297,16 @@ function LoginPageContent() {
           </div>
 
           <TurnstileChallenge
+            siteKey={turnstileSiteKey}
             key={widgetKey}
             onTokenChange={onTurnstileTokenChange}
             onLoadError={setTurnstileLoadError}
           />
+          {turnstileMisconfigured ? (
+            <p className="text-xs text-destructive" role="alert">
+              {TURNSTILE_MISCONFIGURED_MESSAGE}
+            </p>
+          ) : null}
           {turnstileLoadError && (
             <p className="text-xs font-bold text-red-500" role="alert">{turnstileLoadError}</p>
           )}
@@ -347,6 +366,7 @@ function LoginPageContent() {
           <div className="flex items-center gap-2">
             {turnstileRequired && (
               <TurnstileChallenge
+                siteKey={turnstileSiteKey}
                 key={widgetKey}
                 onTokenChange={onTurnstileTokenChange}
                 onLoadError={setTurnstileLoadError}
@@ -405,9 +425,15 @@ function LoginPageContent() {
           </div>
 
           <TurnstileChallenge
+            siteKey={turnstileSiteKey}
             onTokenChange={onTurnstileTokenChange}
             onLoadError={setTurnstileLoadError}
           />
+          {turnstileMisconfigured ? (
+            <p className="text-xs text-destructive" role="alert">
+              {TURNSTILE_MISCONFIGURED_MESSAGE}
+            </p>
+          ) : null}
           {turnstileLoadError && (
             <p className="text-xs font-bold text-red-500" role="alert">{turnstileLoadError}</p>
           )}

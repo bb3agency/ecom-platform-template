@@ -655,6 +655,11 @@ model OrderItem {
   quantity    Int
   unitPrice   Int
   totalPrice  Int
+  /// Per-unit net weight in GRAMS, snapshotted at order time. Null for items sold by
+  /// count (or ordered before this existed). Snapshotted rather than read live from
+  /// the variant because an invoice is a legal record: editing a product from 500 g to
+  /// 1 kg must not silently rewrite the weights printed on every past invoice.
+  weightGrams Int?
 
   @@index([orderId])
   @@index([variantId])

@@ -244,7 +244,10 @@ export async function renderNotificationEmail(template: string, data: Record<str
     case 'PasswordReset':
       {
         const email = escapeHtml(data.email ?? 'N/A');
-        const resetUrl = typeof data.resetUrl === 'string' ? data.resetUrl : 'N/A';
+        // Escaped like every sibling template: this value is interpolated into an
+        // href and link text, so an unescaped quote would break out of the attribute.
+        // The URL is server-built today, but the template must not depend on that.
+        const resetUrl = escapeHtml(typeof data.resetUrl === 'string' ? data.resetUrl : 'N/A');
         return {
           subject: 'Reset your Raghava Organics password',
           html: await render(PasswordResetEmail(email, resetUrl))

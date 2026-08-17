@@ -87,6 +87,39 @@ describe('renderInvoicePdfBuffer GST billing modes', () => {
     expect(buffer.subarray(0, 5).toString()).toBe('%PDF-');
   });
 
+  it('renders weight-based lines (kg quantities) without breaking the table', async () => {
+    // A 500 g pack ordered twice prints as "1 kg" with a per-kg rate; the wider
+    // Quantity column has to survive that in both GST layouts.
+    const payload = invoicePayload({ gstin: '36ABCDE1234F1Z5' });
+    const withWeights = {
+      ...payload,
+      gstBilling: true,
+      lineItems: payload.lineItems.map((item) => ({ ...item, weightGrams: 500 }))
+    };
+    expect((await renderInvoicePdfBuffer(withWeights)).subarray(0, 5).toString()).toBe('%PDF-');
+    expect(
+      (await renderInvoicePdfBuffer({ ...withWeights, gstBilling: false })).subarray(0, 5).toString()
+    ).toBe('%PDF-');
+  });
+
+  it('renders mixed weight and count lines in one invoice', async () => {
+    // The reason the unit is per ROW: a catalogue holds both a 500 g pack and a
+    // bottle sold by the piece, and a single "Quantity (kg)" header would be a
+    // false statement about the bottle.
+    const payload = invoicePayload({ gstin: '36ABCDE1234F1Z5' });
+    const first = payload.lineItems[0];
+    if (!first) throw new Error('fixture must have a line item');
+    const buffer = await renderInvoicePdfBuffer({
+      ...payload,
+      gstBilling: true,
+      lineItems: [
+        { ...first, weightGrams: 500 },
+        { ...first, name: 'Gift Box', weightGrams: null }
+      ]
+    });
+    expect(buffer.subarray(0, 5).toString()).toBe('%PDF-');
+  });
+
   it('renders the inter-state layout (single IGST column) when isInterState is true', async () => {
     const payload = invoicePayload({ gstin: '36ABCDE1234F1Z5' });
     const buffer = await renderInvoicePdfBuffer({

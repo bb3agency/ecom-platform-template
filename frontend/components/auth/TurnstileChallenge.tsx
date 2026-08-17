@@ -68,18 +68,31 @@ interface TurnstileChallengeProps {
   onTokenChange: (token: string | null) => void;
   onLoadError?: (message: string) => void;
   className?: string;
+  /**
+   * Site key resolved by `useAuthTurnstile()` — server-published when the backend
+   * sends one, else the build-time env var. Pass it so the widget renders from the
+   * same source that decided a challenge is required; omit it and the widget falls
+   * back to the env var alone, which is exactly the split that caused a silent
+   * auth outage when the two disagreed.
+   */
+  siteKey?: string | null;
 }
 
 /**
- * Cloudflare Turnstile widget. Renders only when `isTurnstileConfigured()` is true
- * (production build with site key, or dev with NEXT_PUBLIC_TURNSTILE_ENFORCE_IN_DEV=true).
+ * Cloudflare Turnstile widget. Renders nothing when no site key is resolvable.
  */
 export function TurnstileChallenge({
   onTokenChange,
   onLoadError,
   className,
+  siteKey: siteKeyProp,
 }: TurnstileChallengeProps) {
-  const siteKey = isTurnstileConfigured() ? getTurnstileSiteKey() : null;
+  const siteKey =
+    siteKeyProp !== undefined
+      ? siteKeyProp
+      : isTurnstileConfigured()
+        ? getTurnstileSiteKey()
+        : null;
   const containerRef = useRef<HTMLDivElement>(null);
   const widgetIdRef = useRef<string | null>(null);
   const onTokenChangeRef = useRef(onTokenChange);

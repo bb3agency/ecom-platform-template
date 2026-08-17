@@ -12,6 +12,29 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-17
+
+### Fixed
+- **A half-configured Turnstile took a storefront's ENTIRE auth surface down, silently.** With `TURNSTILE_SECRET_KEY` set, the API requires a challenge token on login, register, send-otp and forgot-password. The storefront decided *independently* whether to render the widget, from its own build-time `NEXT_PUBLIC_TURNSTILE_SITE_KEY`. On raghava-organics that variable was absent from the production build: no widget rendered, no token was sent, and **every one of those four endpoints returned `VALIDATION_ERROR` / "Challenge token is required"**. Health checks stayed green; neither side could detect the disagreement. Worse, a token-less request is recorded as a challenge FAILURE, so three customer retries locked that IP for 15 minutes — retrying escalated the outage.
+  `GET /store/config` now publishes the contract — `authChallenge: { required, provider, siteKey }` — so the browser reads enforcement from the same place that enforces it and the two cannot disagree. `siteKey` comes from the new optional `TURNSTILE_SITE_KEY` (public by design; it already ships in the widget markup), which also means rotating the key no longer needs a frontend rebuild. Startup warns loudly when a secret is configured with no site key, rather than refusing to boot — deployments that set the key only on the storefront are still correct.
+
+### Security
+- **Password reset: five defects fixed.** (1) A trailing slash on `STOREFRONT_URL` produced `https://shop//reset-password?token=...`, a 404 in every reset email with nothing logged to explain it — the value is now normalised, as the CORS plugin already did. (2) `resetUrl` was interpolated into the email HTML unescaped, unlike every sibling template. (3) Invalid, already-used and expired tokens returned *distinguishable* codes (`INVALID_CREDENTIALS` vs `TOKEN_EXPIRED`), an oracle for probing whether a token — and therefore an account — ever existed; all three now return one indistinguishable rejection. (4) The raw reset token was written into the outbox payload alongside the URL that already contains it, doubling its exposure in a table that outlives delivery. (5) **A banned user could reset their password and recover the account** the merchant had deliberately locked out; the reset is now refused (with the same generic rejection, so the ban is not disclosed here either).
+
+### Added
+- **`OrderItem.weightGrams`** — per-unit net weight snapshotted at order time so invoices can bill by weight. Deliberately a snapshot, not a live read of `ProductVariant.weight`: an invoice is a legal record, and editing a product from 500 g to 1 kg must not silently rewrite the weight printed on every past invoice.
+- **`common/units/line-quantity.ts`** — resolves how a line's quantity is printed. Weight-based lines show the TOTAL weight (2 x 500 g = `1 kg`) with a per-kg rate so `quantity x rate = taxable value` still reconciles; count-based lines are unchanged (`2 pcs`, per-piece rate). The unit travels per ROW because a catalogue mixes both, and a single "Quantity (kg)" column would state a kilogram figure against a bottle — false on a tax document. A zero/negative/unparseable weight falls back to a piece count rather than inventing one.
+
+### Changed
+- Invoice items table: `Qty` becomes `Quantity` (wider, to fit `0.5 kg`), `Unit Price` becomes `Rate (ex-GST)` with a `/kg` suffix on weight lines. The rate divisor now matches the printed quantity — dividing by unit count while printing kilograms would have relabelled a per-pack price as per-kg.
+
+**Propagation:**
+- Severity: **HIGH** (the challenge mismatch is a total auth outage; the reset defects are security) - Layers: backend (`common/auth/auth-turnstile.ts`, `common/units/**` new, `config/app.config.ts`, `modules/auth/auth.service.ts`, `modules/settings/**`, `modules/invoices/**`, `modules/orders/orders.service.ts`, notification templates, schema + migration) — pairs with frontend-core 0.2.0
+- **Migration: YES** — `20260816000000_order_item_weight_grams` adds one nullable column to `OrderItem`. Additive; pre-existing orders print piece counts (there is nothing to backfill from — the variant's CURRENT weight is not evidence of what was sold).
+- Flag: none - Design impact: none - Breaking: NO (`authChallenge` is additive; `TURNSTILE_SITE_KEY` is optional and the storefront falls back to its own env var)
+- **Post-deploy action:** set `TURNSTILE_SITE_KEY` on any client whose backend holds `TURNSTILE_SECRET_KEY`. Verify with `curl <api>/store/config | jq .authChallenge` — `required: true` with `siteKey: null` means the storefront build must supply the key itself, or auth is down.
+- Rollback: revert the files; the migration is inert if left in place.
+
 ## [0.1.99] - 2026-08-15
 
 ### Added
