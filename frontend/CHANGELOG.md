@@ -12,6 +12,20 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-08-17
+
+### Changed
+- **Checkout order lines show the variant size and an explicit quantity.** Each line in the checkout summary now renders the variant label under the product name and a `Qty N - <unit price> each` row. Previously quantity appeared only as a small badge overlapping the thumbnail corner, and the right-hand figure is a line total that gave no indication of how many units it covered - customers read it as the unit price.
+  - `CartLineProductDetails` already rendered the variant label; checkout was the one caller not passing `variantClassName`, so it fell back to the larger default styling.
+  - Note a variant named `Default` stays suppressed by `getCartLineVariantLabel`, so products whose variants are unnamed in admin still show no size - there is nothing to show. Merchants must name variants (e.g. `500 g`) for sizes to appear.
+
+**Propagation:**
+- Severity: NORMAL - Layers: frontend core (`components/checkout/CheckoutForm.tsx`)
+- Migration: NO - Flag: none - Design impact: none (checkout is core, not theme) - Breaking: NO
+- Developed in the sbgs-site client repo and carried there as a time-boxed `approved-divergence`; syncing this version lets that client drop the divergence entry.
+- Rollback: revert the file
+
+
 ## [0.2.0] - 2026-08-17
 
 ### Fixed
