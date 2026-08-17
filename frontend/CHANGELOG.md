@@ -12,6 +12,23 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-08-18
+
+### Fixed
+- **Product editor no longer discards unsaved edits when a variant or image is saved.** `loadProduct()` re-seeded every top-level form input from the server (`name`, `slug`, `description`, short description, category, tags, featured, status, GST/HSN, primary-variant pricing), and it was called after every sub-entity mutation - saving a variant, adding/removing/reordering a variant or image. The refetch exists only to update the variant/image lists, so it was silently overwriting whatever the merchant had typed into the product fields but not yet saved. Merchants saw "all the fields reset when I hit save" and lost work.
+  `loadProduct` now takes `{ seedFields }` (default `true` for the initial mount load) and all nine sub-mutation call sites pass `false`: the product object still refreshes so lists stay accurate, but the form inputs are left alone.
+
+### Added
+- **Opening stock when adding a variant to an existing product.** The add-variant form now has an "Opening stock (qty)" input and sends `quantity` on `POST /admin/products/:id/variants`. The endpoint has always accepted `quantity` and creates the Inventory row with it - the form simply never sent it, so every new variant was created at 0 stock and the merchant had to go to Inventory and stock it in a separate step before it could sell. Left blank, the field is omitted so the server default still applies.
+  Stock on the *edit* side stays read-only ("Managed in Inventory") on purpose: changes to existing stock must go through the inventory module so they get an adjustment-history audit trail.
+
+**Propagation:**
+- Severity: NORMAL - Layers: frontend core (`components/admin/AdminProductEditor.tsx`)
+- Migration: NO - Flag: none - Design impact: none (admin console) - Breaking: NO
+- Backend: none required - `quantity` is already in the variant-create schema and `adminCreateProductVariant` already seeds Inventory from it
+- Rollback: revert the file
+
+
 ## [0.2.1] - 2026-08-17
 
 ### Changed

@@ -267,8 +267,20 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
     }
   }, [api, categoryId, isCreate]);
 
-  const loadProduct = useCallback(async () => {
+  /**
+   * Re-fetch the product.
+   *
+   * `seedFields` controls whether the top-level form inputs are re-seeded from
+   * the server response. It MUST be false for refreshes triggered by a sub-entity
+   * mutation (saving/adding/deleting a variant or image): those refreshes exist
+   * only to update the variant/image lists, and re-seeding would overwrite
+   * whatever the merchant has typed into the product fields but not yet saved.
+   * That was the "everything resets when I hit save" bug — a variant save wiped
+   * unsaved edits to name, description, tags, category and the rest.
+   */
+  const loadProduct = useCallback(async (options?: { seedFields?: boolean }) => {
     if (!productId) return;
+    const seedFields = options?.seedFields ?? true;
     setLoading(true);
     setError(null);
     try {
@@ -277,6 +289,9 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
       );
       const normalized = normalizeProductDetail(detail);
       setProduct(normalized);
+      if (!seedFields) {
+        return;
+      }
       setName(normalized.name);
       setSlug(normalized.slug);
       setSlugTouched(true);
@@ -825,7 +840,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
           isActive: draft.isActive,
         }),
       });
-      await loadProduct();
+      await loadProduct({ seedFields: false });
       setSuccess("Variant updated.");
       notifyAdminDataChanged(["products", "inventory", "dashboard"]);
     } catch (err) {
@@ -871,6 +886,11 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
         heightStr !== "" && Number.isFinite(Number(heightStr)) && Number(heightStr) > 0
           ? Math.floor(Number(heightStr))
           : undefined;
+      const qtyStr = newVariant.initialQuantity.trim();
+      const initialQuantity =
+        qtyStr !== "" && Number.isFinite(Number(qtyStr)) && Number(qtyStr) >= 0
+          ? Math.floor(Number(qtyStr))
+          : undefined;
       await api(`/admin/products/${productId}/variants`, {
         method: "POST",
         idempotencyKey: createIdempotencyKey(),
@@ -884,11 +904,15 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
           ...(packageWidthCm !== undefined ? { packageWidthCm } : {}),
           ...(packageHeightCm !== undefined ? { packageHeightCm } : {}),
           ...(newVariant.keepUpright ? { keepUpright: true } : {}),
+          // Opening stock — the endpoint creates the Inventory row with this
+          // quantity, so a new variant is immediately sellable. Omitted (not 0)
+          // when left blank so the server default applies.
+          ...(initialQuantity !== undefined ? { quantity: initialQuantity } : {}),
           isActive: newVariant.isActive,
         }),
       });
       setNewVariant(emptyVariant());
-      await loadProduct();
+      await loadProduct({ seedFields: false });
       setSuccess("Variant added.");
       notifyAdminDataChanged(["products", "inventory", "dashboard"]);
     } catch (err) {
@@ -917,7 +941,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
         method: "DELETE",
         idempotencyKey: createIdempotencyKey(),
       });
-      await loadProduct();
+      await loadProduct({ seedFields: false });
       setSuccess("Variant deleted.");
       notifyAdminDataChanged(["products", "inventory", "dashboard"]);
     } catch (err) {
@@ -939,7 +963,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
               idempotencyKey: createIdempotencyKey(),
               body: JSON.stringify({ isActive: false }),
             });
-            await loadProduct();
+            await loadProduct({ seedFields: false });
             setSuccess("Variant deactivated — removed from storefront and customer carts.");
             notifyAdminDataChanged(["products", "inventory", "dashboard"]);
           } catch (deactivateErr) {
@@ -989,7 +1013,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
       notifyAdminDataChanged(["products"]);
     } catch (err) {
       setError(handleSubmitError(err));
-      await loadProduct(); // revert to server order on failure
+      await loadProduct({ seedFields: false }); // revert to server order on failure
     } finally {
       setSaving(false);
     }
@@ -1031,7 +1055,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
         sortOrder,
       });
       setNewImage({ url: "", altText: "", sortOrder: "0" });
-      await loadProduct();
+      await loadProduct({ seedFields: false });
       setSuccess(
         filesToUpload.length === 1
           ? "Image uploaded."
@@ -1074,7 +1098,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
         }),
       });
       setNewImage({ url: "", altText: "", sortOrder: "0" });
-      await loadProduct();
+      await loadProduct({ seedFields: false });
       setSuccess("Image added.");
       notifyAdminDataChanged(["products", "dashboard"]);
     } catch (err) {
@@ -1099,7 +1123,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
         method: "DELETE",
         idempotencyKey: createIdempotencyKey(),
       });
-      await loadProduct();
+      await loadProduct({ seedFields: false });
       setSuccess("Image removed.");
       notifyAdminDataChanged(["products", "dashboard"]);
     } catch (err) {
@@ -1134,7 +1158,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
         idempotencyKey: createIdempotencyKey(),
         body: JSON.stringify({ images: payload }),
       });
-      await loadProduct();
+      await loadProduct({ seedFields: false });
     } catch (err) {
       setError(getApiErrorMessage(err));
     } finally {
@@ -2412,6 +2436,23 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                         setNewVariant({
                           ...newVariant,
                           packageHeightCm: event.target.value,
+                        })
+                      }
+                    />
+                    {/* Opening stock. Without this the variant was created with
+                        quantity 0 and the merchant had to go to Inventory and
+                        stock it in a second step; the create endpoint has always
+                        accepted `quantity`, the form just never sent it. */}
+                    <input
+                      className={`${inputClass} `}
+                      type="number"
+                      min="0"
+                      placeholder="Opening stock (qty)"
+                      value={newVariant.initialQuantity}
+                      onChange={(event) =>
+                        setNewVariant({
+                          ...newVariant,
+                          initialQuantity: event.target.value,
                         })
                       }
                     />
