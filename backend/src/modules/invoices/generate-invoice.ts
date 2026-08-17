@@ -49,6 +49,8 @@ export type InvoiceOrderItem = {
   id: string;
   productName: string;
   quantity: number;
+  /** Snapshotted per-unit net weight in grams; null for count-based goods. */
+  weightGrams?: number | null;
   unitPrice: number;
   totalPrice: number;
   variant: {
@@ -476,6 +478,7 @@ async function renderInvoicePdfContent(
           productAttributes: attributes
         }),
         quantity: item.quantity,
+        weightGrams: item.weightGrams ?? null,
         unitPricePaise: item.unitPrice,
         lineTotalPaise: item.totalPrice,
         taxRatePercent: gstBilling

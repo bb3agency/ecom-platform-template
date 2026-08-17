@@ -75,7 +75,10 @@ describe('SettingsService getPublicStoreConfig', () => {
       contactPhone: '+91 90000 00000',
       // merchant social links exposed for the storefront footer icons
       facebookUrl: 'https://facebook.com/acme',
-      instagramUrl: 'https://instagram.com/acme'
+      instagramUrl: 'https://instagram.com/acme',
+      // Challenge contract published to the storefront so it never has to infer
+      // enforcement from its own build-time env (that mismatch = total auth outage).
+      authChallenge: { required: false, provider: 'turnstile', siteKey: null }
     });
   });
 

@@ -103,6 +103,32 @@ Latest merchant-approved reviews for storefront social proof (homepage testimoni
 ### `GET /api/v1/reviews/product/:slug`
 Paginated approved reviews for a product. Public — no auth needed.
 
+### `GET /api/v1/gallery`
+Storefront photo gallery. Returns `{ enabled, items }` — `enabled` mirrors `StoreSettings.galleryEnabled`, and when it is off the route still answers 200 with an empty `items` array rather than 404, so the page can render its own "coming soon" state without branching on status codes. Items are **active only**, ordered newest-first by `timelineDate` with the merchant's manual `sortOrder` as the tie-break within a date.
+
+Each item carries `imageUrl`, `caption`, `altText`, `sortOrder`, `isActive`, plus (since backend-core 0.1.99): `capturedAt` (nullable — the date the photo was TAKEN, entered by the merchant), `timelineDate` (**server-computed** `capturedAt ?? createdAt`; the storefront timeline groups by this and must not re-derive the fallback, or clients would disagree with the server's own ordering), and `width`/`height` (intrinsic pixels read from the image header at upload; null for photos uploaded before 0.1.99, where the layout falls back to 4:3).
+
+---
+
+## 1a. Admin gallery routes (`gallery:write` via `settings:write`)
+
+### `GET /api/v1/admin/gallery`
+All gallery images including hidden ones (`isActive: false`), same ordering as the public route. Admin-only.
+
+### `POST /api/v1/admin/gallery`
+Multipart upload (`file`, optional `caption`, `altText`, `capturedAt`). Stores the image via the media pipeline and reads its intrinsic dimensions from the file header — an unparseable or exotic image simply stores null dimensions rather than failing the upload. A `capturedAt` that does not parse, or that lies in the future, is a **400** (a future date would otherwise pin the photo to the top of the timeline forever).
+
+> **Nginx:** like every multipart route, this must be present in the upload-exemption regex or it fails at the proxy with a 500 and no API log line. See `CLIENT_VPS_SETUP_GUIDE.md`.
+
+### `PATCH /api/v1/admin/gallery/:id`
+Update `caption`, `altText`, `isActive`, `sortOrder`, or `capturedAt`. Passing `capturedAt: null` clears it, and the timeline falls back to the upload date.
+
+### `DELETE /api/v1/admin/gallery/:id`
+Hard-deletes the image row and its stored object.
+
+### `PATCH /api/v1/admin/gallery/reorder`
+Takes `orderedIds` — the FULL list in the desired order. Manual order is a tie-break *within* a timeline date, not a global override: it cannot lift an old photo above a newer one on the storefront timeline.
+
 ---
 
 ## 2. Customer auth routes

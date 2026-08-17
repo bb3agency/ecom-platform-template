@@ -26,6 +26,7 @@ const FAIL_CLOSED_EXPECTED = {
   wishlistEnabled: false,
   gstInvoicingEnabled: false,
   ...STORE_FIELDS,
+  authChallenge: { required: false, provider: "turnstile", siteKey: null },
   configAvailable: false,
 };
 
@@ -82,6 +83,7 @@ describe("storefront-settings", () => {
       wishlistEnabled: true,
       gstInvoicingEnabled: true,
       ...STORE_FIELDS,
+      authChallenge: { required: false, provider: "turnstile", siteKey: null },
       configAvailable: true,
     });
   });
@@ -119,6 +121,7 @@ describe("storefront-settings", () => {
       wishlistEnabled: false,
       gstInvoicingEnabled: false,
       ...STORE_FIELDS,
+      authChallenge: { required: false, provider: "turnstile", siteKey: null },
       configAvailable: true,
     });
   });
@@ -152,6 +155,7 @@ describe("storefront-settings", () => {
       wishlistEnabled: false,
       gstInvoicingEnabled: false,
       ...STORE_FIELDS,
+      authChallenge: { required: false, provider: "turnstile", siteKey: null },
       configAvailable: true,
     });
     expect(global.fetch).toHaveBeenCalledWith(

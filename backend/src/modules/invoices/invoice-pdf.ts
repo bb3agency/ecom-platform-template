@@ -1,10 +1,13 @@
 import { Document, Image, Page, StyleSheet, Text, View, renderToBuffer } from '@react-pdf/renderer';
 import { createElement } from 'react';
+import { resolveLineQuantityDisplay } from '@common/units/line-quantity';
 
 export type InvoiceLineItem = {
   name: string;
   hsnCode: string;
   quantity: number;
+  /** Per-unit net weight in grams; null for goods sold by count. Presentation only. */
+  weightGrams?: number | null;
   unitPricePaise: number;
   lineTotalPaise: number;
   taxRatePercent: number;
@@ -141,30 +144,30 @@ const styles = StyleSheet.create({
   right: { textAlign: 'right' },
 
   // Plain (non-GST) layout.
-  colName: { width: '40%' },
-  colHsn: { width: '14%' },
-  colQty: { width: '8%', textAlign: 'right' },
-  colRate: { width: '19%', textAlign: 'right' },
-  colTotal: { width: '19%', textAlign: 'right' },
+  colName: { width: '36%' },
+  colHsn: { width: '13%' },
+  colQty: { width: '13%', textAlign: 'right' },
+  colRate: { width: '20%', textAlign: 'right' },
+  colTotal: { width: '18%', textAlign: 'right' },
   // GST layout, intra-state (CGST + SGST columns).
-  giName: { width: '20%' },
-  giHsn: { width: '10%' },
-  giRate: { width: '7%', textAlign: 'right' },
-  giQty: { width: '5%', textAlign: 'right' },
-  giUnit: { width: '12%', textAlign: 'right' },
-  giTaxable: { width: '13%', textAlign: 'right' },
-  giCgst: { width: '10.5%', textAlign: 'right' },
-  giSgst: { width: '10.5%', textAlign: 'right' },
-  giTotal: { width: '12%', textAlign: 'right' },
+  giName: { width: '18%' },
+  giHsn: { width: '9%' },
+  giRate: { width: '6.5%', textAlign: 'right' },
+  giQty: { width: '10%', textAlign: 'right' },
+  giUnit: { width: '13%', textAlign: 'right' },
+  giTaxable: { width: '12%', textAlign: 'right' },
+  giCgst: { width: '10%', textAlign: 'right' },
+  giSgst: { width: '10%', textAlign: 'right' },
+  giTotal: { width: '11.5%', textAlign: 'right' },
   // GST layout, inter-state (single IGST column).
-  geName: { width: '23%' },
-  geHsn: { width: '11%' },
-  geRate: { width: '7%', textAlign: 'right' },
-  geQty: { width: '5%', textAlign: 'right' },
-  geUnit: { width: '13%', textAlign: 'right' },
-  geTaxable: { width: '14%', textAlign: 'right' },
-  geIgst: { width: '13%', textAlign: 'right' },
-  geTotal: { width: '14%', textAlign: 'right' },
+  geName: { width: '21%' },
+  geHsn: { width: '10%' },
+  geRate: { width: '6.5%', textAlign: 'right' },
+  geQty: { width: '11%', textAlign: 'right' },
+  geUnit: { width: '14%', textAlign: 'right' },
+  geTaxable: { width: '13.5%', textAlign: 'right' },
+  geIgst: { width: '12%', textAlign: 'right' },
+  geTotal: { width: '12%', textAlign: 'right' },
 
   // ── Totals ──────────────────────────────────────────────────────────────
   totalsWrap: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 14 },
@@ -315,8 +318,8 @@ export async function renderInvoicePdfBuffer(payload: InvoicePdfPayload): Promis
             createElement(Text, { style: [styles.th, showIgst ? styles.geName : styles.giName] }, 'Item'),
             createElement(Text, { style: [styles.th, showIgst ? styles.geHsn : styles.giHsn] }, 'HSN'),
             createElement(Text, { style: [styles.th, showIgst ? styles.geRate : styles.giRate] }, 'GST %'),
-            createElement(Text, { style: [styles.th, showIgst ? styles.geQty : styles.giQty] }, 'Qty'),
-            createElement(Text, { style: [styles.th, showIgst ? styles.geUnit : styles.giUnit] }, 'Unit Price'),
+            createElement(Text, { style: [styles.th, showIgst ? styles.geQty : styles.giQty] }, 'Quantity'),
+            createElement(Text, { style: [styles.th, showIgst ? styles.geUnit : styles.giUnit] }, 'Rate (ex-GST)'),
             createElement(Text, { style: [styles.th, showIgst ? styles.geTaxable : styles.giTaxable] }, 'Taxable'),
             ...(showIgst
               ? [createElement(Text, { style: [styles.th, styles.geIgst] }, 'IGST')]
@@ -331,34 +334,54 @@ export async function renderInvoicePdfBuffer(payload: InvoicePdfPayload): Promis
             { style: styles.tableHeader },
             createElement(Text, { style: [styles.th, styles.colName] }, 'Item'),
             createElement(Text, { style: [styles.th, styles.colHsn] }, 'HSN'),
-            createElement(Text, { style: [styles.th, styles.colQty] }, 'Qty'),
-            createElement(Text, { style: [styles.th, styles.colRate] }, 'Unit Price'),
+            createElement(Text, { style: [styles.th, styles.colQty] }, 'Quantity'),
+            createElement(Text, { style: [styles.th, styles.colRate] }, 'Rate'),
             createElement(Text, { style: [styles.th, styles.colTotal] }, 'Amount')
           ),
       ...payload.lineItems.map((item, index) => {
         if (!gstBilling) {
+          const plainQty = resolveLineQuantityDisplay({
+            quantity: item.quantity,
+            weightGrams: item.weightGrams
+          });
           return createElement(
             View,
             { style: styles.tableRow, key: `${item.name}-${index}` },
             createElement(Text, { style: [styles.td, styles.colName] }, item.name),
             createElement(Text, { style: [styles.tdMuted, styles.colHsn] }, item.hsnCode),
-            createElement(Text, { style: [styles.td, styles.colQty] }, String(item.quantity)),
-            createElement(Text, { style: [styles.td, styles.colRate] }, formatPaise(item.unitPricePaise)),
+            createElement(Text, { style: [styles.td, styles.colQty] }, plainQty.text),
+            createElement(
+              Text,
+              { style: [styles.td, styles.colRate] },
+              `${formatPaise(Math.round(item.lineTotalPaise / plainQty.rateDivisor))}${plainQty.rateSuffix}`
+            ),
             createElement(Text, { style: [styles.td, styles.colTotal] }, formatPaise(item.lineTotalPaise))
           );
         }
-        // Taxable value is authoritative (sums reconcile exactly); the ex-GST unit
-        // price is taxable/qty rounded for display only.
+        // Taxable value is authoritative (sums reconcile exactly); the rate is
+        // derived from it for display only.
+        //
+        // The divisor must match the QUANTITY printed beside it: a weight line shows
+        // total kilograms, so its rate is per kg. Dividing by the unit count while
+        // printing kilograms would silently relabel a per-pack price as per-kg.
         const taxablePaise = item.lineTotalPaise - item.cgstPaise - item.sgstPaise - item.igstPaise;
-        const unitExGstPaise = item.quantity > 0 ? Math.round(taxablePaise / item.quantity) : taxablePaise;
+        const qtyDisplay = resolveLineQuantityDisplay({
+          quantity: item.quantity,
+          weightGrams: item.weightGrams
+        });
+        const rateExGstPaise = Math.round(taxablePaise / qtyDisplay.rateDivisor);
         return createElement(
           View,
           { style: styles.tableRow, key: `${item.name}-${index}` },
           createElement(Text, { style: [styles.td, showIgst ? styles.geName : styles.giName] }, item.name),
           createElement(Text, { style: [styles.tdMuted, showIgst ? styles.geHsn : styles.giHsn] }, item.hsnCode),
           createElement(Text, { style: [styles.tdMuted, showIgst ? styles.geRate : styles.giRate] }, `${item.taxRatePercent}%`),
-          createElement(Text, { style: [styles.td, showIgst ? styles.geQty : styles.giQty] }, String(item.quantity)),
-          createElement(Text, { style: [styles.td, showIgst ? styles.geUnit : styles.giUnit] }, formatPaise(unitExGstPaise)),
+          createElement(Text, { style: [styles.td, showIgst ? styles.geQty : styles.giQty] }, qtyDisplay.text),
+          createElement(
+            Text,
+            { style: [styles.td, showIgst ? styles.geUnit : styles.giUnit] },
+            `${formatPaise(rateExGstPaise)}${qtyDisplay.rateSuffix}`
+          ),
           createElement(Text, { style: [styles.td, showIgst ? styles.geTaxable : styles.giTaxable] }, formatPaise(taxablePaise)),
           ...(showIgst
             ? [createElement(Text, { style: [styles.tdMuted, styles.geIgst] }, formatPaise(item.igstPaise))]

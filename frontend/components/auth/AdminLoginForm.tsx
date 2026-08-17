@@ -18,9 +18,11 @@ import { isCompleteOtpCode, normalizeOtpCodeInput } from "@/lib/otp-code";
 import { emailSchema, otpSchema, passwordSchema } from "@/lib/validators";
 import { AuthErrorBanner } from "@/components/auth/AuthErrorBanner";
 import { TurnstileChallenge } from "@/components/auth/TurnstileChallenge";
-import { useAuthTurnstile } from "@/hooks/use-auth-turnstile";
+import {
+  TURNSTILE_MISCONFIGURED_MESSAGE,
+  useAuthTurnstile,
+} from "@/hooks/use-auth-turnstile";
 import { Eye, EyeOff, Loader2, Send } from "lucide-react";
-import { isTurnstileConfigured } from "@/lib/turnstile-config";
 import type { AuthSession } from "@/types/user";
 import { getAuthDevOtpHint, isAuthDevBypassUiEnabled } from "@/lib/dev-auth";
 
@@ -48,22 +50,35 @@ function TurnstileField({
   onTokenChange,
   loadError,
   onLoadError,
+  required,
+  misconfigured,
+  siteKey,
 }: {
   widgetKey: string;
   onTokenChange: (token: string | null) => void;
   onLoadError: (message: string) => void;
   loadError: string | null;
+  /** From useAuthTurnstile() — the SERVER's answer, not this build's env. */
+  required: boolean;
+  misconfigured: boolean;
+  siteKey: string | null;
 }) {
-  if (!isTurnstileConfigured()) {
+  if (!required) {
     return null;
   }
   return (
     <>
       <TurnstileChallenge
+        siteKey={siteKey}
         key={widgetKey}
         onTokenChange={onTokenChange}
         onLoadError={onLoadError}
       />
+      {misconfigured ? (
+        <p className="text-xs text-destructive" role="alert">
+          {TURNSTILE_MISCONFIGURED_MESSAGE}
+        </p>
+      ) : null}
       {loadError ? (
         <p className="text-xs text-destructive" role="alert">
           {loadError}
@@ -92,6 +107,8 @@ export function AdminLoginForm({ onSuccess, enrollmentHint }: AdminLoginFormProp
   const {
     required: turnstileRequired,
     ready: turnstileReady,
+    misconfigured: turnstileMisconfigured,
+    siteKey: turnstileSiteKey,
     turnstileField,
     onTurnstileTokenChange,
     turnstileLoadError,
@@ -176,12 +193,14 @@ export function AdminLoginForm({ onSuccess, enrollmentHint }: AdminLoginFormProp
   }, []);
 
   const handleRequestOtp = credentialsForm.handleSubmit(async (values) => {
+    if (turnstileMisconfigured) {
+      setError(TURNSTILE_MISCONFIGURED_MESSAGE);
+      return;
+    }
     if (turnstileRequired && !turnstileReady) {
-      setError(
-        isTurnstileConfigured()
-          ? "Complete the security check below, then try again."
-          : "Security check is required by the API. Configure NEXT_PUBLIC_TURNSTILE_SITE_KEY or disable TURNSTILE_SECRET_KEY on the backend for local dev.",
-      );
+      // The "not configured at all" case is handled above by turnstileMisconfigured,
+      // so reaching here means the widget exists and simply has not been solved yet.
+      setError("Complete the security check below, then try again.");
       return;
     }
     try {
@@ -211,6 +230,10 @@ export function AdminLoginForm({ onSuccess, enrollmentHint }: AdminLoginFormProp
 
   async function handleResendOtp() {
     if (resendCooldown > 0) return;
+    if (turnstileMisconfigured) {
+      setError(TURNSTILE_MISCONFIGURED_MESSAGE);
+      return;
+    }
     if (turnstileRequired && !turnstileReady) {
       setError("Complete the security check below before resending the code.");
       return;
@@ -331,6 +354,9 @@ export function AdminLoginForm({ onSuccess, enrollmentHint }: AdminLoginFormProp
             ) : null}
           </div>
           <TurnstileField
+            required={turnstileRequired}
+            misconfigured={turnstileMisconfigured}
+            siteKey={turnstileSiteKey}
             widgetKey={`admin-login-creds-${turnstileWidgetKey}`}
             onTokenChange={onTurnstileTokenChange}
             onLoadError={setTurnstileLoadError}
@@ -395,6 +421,9 @@ export function AdminLoginForm({ onSuccess, enrollmentHint }: AdminLoginFormProp
             />
           </label>
           <TurnstileField
+            required={turnstileRequired}
+            misconfigured={turnstileMisconfigured}
+            siteKey={turnstileSiteKey}
             widgetKey={`admin-login-otp-${turnstileWidgetKey}`}
             onTokenChange={onTurnstileTokenChange}
             onLoadError={setTurnstileLoadError}

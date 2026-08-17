@@ -237,6 +237,24 @@ function validateProductionProviderSafetyEnv(): void {
     );
   }
   assertEnvNotPlaceholderIfPresent('TURNSTILE_SECRET_KEY');
+  // A secret without its public site key is the half-configured state that took a
+  // storefront's ENTIRE auth surface down (login, register, phone OTP, forgot
+  // password) while every health check stayed green: the API demanded a challenge
+  // token the browser was never given a widget to produce. Warn loudly rather than
+  // refusing to boot — deployments that configure the site key only on the
+  // storefront (NEXT_PUBLIC_TURNSTILE_SITE_KEY) are still correct, and taking a
+  // healthy API down over a missing convenience variable would be worse.
+  if (envVarPresent('TURNSTILE_SECRET_KEY') && !envVarPresent('TURNSTILE_SITE_KEY')) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      '[startup] TURNSTILE_SECRET_KEY is set but TURNSTILE_SITE_KEY is not. The API will REQUIRE a ' +
+      'challenge token on login/register/send-otp/forgot-password, but GET /store/config cannot tell ' +
+      'the storefront which site key to render. This only works if the storefront build supplies ' +
+      'NEXT_PUBLIC_TURNSTILE_SITE_KEY itself — if it does not, every auth request will fail with ' +
+      '"Challenge token is required". Set TURNSTILE_SITE_KEY to the public key that pairs with the secret.'
+    );
+  }
+  assertEnvNotPlaceholderIfPresent('TURNSTILE_SITE_KEY');
   // Product media (R2) credentials are DB-overlay via Ops config — enforced by /health/ready.
 }
 

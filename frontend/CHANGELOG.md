@@ -12,6 +12,25 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-17
+
+### Fixed
+- **The storefront no longer guesses whether a bot challenge is required** (pairs with backend-core 0.2.0). It inferred this from build-time `NEXT_PUBLIC_TURNSTILE_SITE_KEY` while the API decided from `TURNSTILE_SECRET_KEY`; a build missing that variable rendered no widget, sent no token, and had every login, registration, phone OTP and password reset rejected — with no error on either side naming the cause. `useAuthTurnstile()` now reads `authChallenge` from `GET /store/config`, and the resolved site key (server-published, else env) is passed to `TurnstileChallenge`.
+  Two new guarantees: submit is held until the contract is known (a token-less request is counted as a challenge failure by the API and locks the IP after three, so a race would not merely fail — it would lock the user out), and when a challenge is required with **no site key resolvable anywhere**, the forms block submit and say so instead of firing a request that cannot succeed.
+- Challenge error copy no longer names our environment variables to customers — that text is developer-facing and now shows only in dev builds.
+
+### Added
+- `lib/auth-challenge.ts` — the resolution logic as a pure, tested function (7 cases, including a reproduction of the production outage). Extracted from the hook precisely because this is the code that failed: logic this load-bearing needs tests, and tests are cheap in `lib/` and expensive inside a React hook.
+
+### Changed
+- Admin product editor: **Weight (g) is now required** when creating a product, and wired into the field-error UI. It already was required in practice — the shipping worker refuses to build an AWB without it — and it now also drives the quantity printed on the invoice, so a missing weight silently degrades a weight-based SKU to a piece count on a tax document.
+
+**Propagation:**
+- Severity: **HIGH** — a client on the old frontend with a challenge-enforcing API has NO working auth - Layers: frontend core (`lib/auth-challenge.ts` new + test, `lib/storefront-settings.ts`, `lib/error-messages.ts`, `hooks/use-auth-turnstile.ts`, `components/auth/**`, `components/admin/AdminProductEditor.tsx`, `app/(auth)/login/page.tsx`, `app/(ops)/ops/login/page.tsx`) — **no THEME change**
+- Migration: NO - Flag: none - Design impact: none (token-styled) - Breaking: NO (older backends omit `authChallenge`; the parser treats that as "not required" and falls back to the build-time key)
+- Requires: backend-core >= 0.2.0 to benefit; degrades safely against older backends
+- Rollback: revert the files — restores the silent-mismatch failure mode.
+
 ## [0.1.70] - 2026-08-15
 
 ### Added

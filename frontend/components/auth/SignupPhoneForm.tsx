@@ -10,7 +10,10 @@ import { sendOtp, verifyOtpAndSignup } from "@/lib/auth-api";
 import { signupPhoneInputSchema } from "@/lib/validators";
 import { AuthErrorBanner } from "@/components/auth/AuthErrorBanner";
 import { TurnstileChallenge } from "@/components/auth/TurnstileChallenge";
-import { useAuthTurnstile } from "@/hooks/use-auth-turnstile";
+import {
+  TURNSTILE_MISCONFIGURED_MESSAGE,
+  useAuthTurnstile,
+} from "@/hooks/use-auth-turnstile";
 import type { AuthSession } from "@/types/user";
 
 // Mobile signup OTPs are always sent via WhatsApp.
@@ -34,6 +37,8 @@ export function SignupPhoneForm({ onSuccess }: SignupPhoneFormProps) {
   const {
     required: turnstileRequired,
     ready: turnstileReady,
+    misconfigured: turnstileMisconfigured,
+    siteKey: turnstileSiteKey,
     widgetKey,
     turnstileField,
     onTurnstileTokenChange,
@@ -66,6 +71,10 @@ export function SignupPhoneForm({ onSuccess }: SignupPhoneFormProps) {
   }, [form, turnstileField]);
 
   const send = async () => {
+    if (turnstileMisconfigured) {
+      setError(TURNSTILE_MISCONFIGURED_MESSAGE);
+      return;
+    }
     if (turnstileRequired && !turnstileReady) {
       setError("Complete the security check below before requesting an OTP.");
       return;
@@ -200,10 +209,16 @@ export function SignupPhoneForm({ onSuccess }: SignupPhoneFormProps) {
 
       {/* Turnstile for send-otp call */}
       <TurnstileChallenge
+        siteKey={turnstileSiteKey}
         key={widgetKey}
         onTokenChange={onTurnstileTokenChange}
         onLoadError={setTurnstileLoadError}
       />
+      {turnstileMisconfigured ? (
+        <p className="text-xs text-destructive" role="alert">
+          {TURNSTILE_MISCONFIGURED_MESSAGE}
+        </p>
+      ) : null}
       {turnstileLoadError && (
         <p className="text-xs font-bold text-red-500" role="alert">{turnstileLoadError}</p>
       )}

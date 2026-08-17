@@ -799,7 +799,10 @@ export class OrdersService {
             sku: item.variant.sku,
             quantity: item.quantity,
             unitPrice: item.priceSnapshot,
-            totalPrice: item.priceSnapshot * item.quantity
+            totalPrice: item.priceSnapshot * item.quantity,
+            // Snapshot, not a live read: the invoice must keep printing the weight
+            // that was actually sold even if the variant is edited later.
+            weightGrams: item.variant.weight ?? null
           }
         });
       }
@@ -1658,7 +1661,8 @@ export class OrdersService {
         sku: item.variant.sku,
         quantity: item.quantity,
         unitPrice: item.priceSnapshot,
-        totalPrice: item.priceSnapshot * item.quantity
+        totalPrice: item.priceSnapshot * item.quantity,
+        weightGrams: item.variant.weight ?? null
       }))
     };
 
@@ -1695,7 +1699,7 @@ export class OrdersService {
       razorpayOrderId: string;
       selectedShippingProvider?: string | null;
       courierCompanyId?: number | null;
-      items: Array<{ variantId: string; productName: string; variantName: string; sku: string; quantity: number; unitPrice: number; totalPrice: number }>;
+      items: Array<{ variantId: string; productName: string; variantName: string; sku: string; quantity: number; unitPrice: number; totalPrice: number; weightGrams?: number | null }>;
       // Vestigial: the short-lived split release wrote a `groups` array. Local delivery no
       // longer splits, so a session carrying more than one group is stale — reject it below
       // rather than silently create just the first order.
@@ -1813,7 +1817,10 @@ export class OrdersService {
               sku: item.sku,
               quantity: item.quantity,
               unitPrice: item.unitPrice,
-              totalPrice: item.totalPrice
+              totalPrice: item.totalPrice,
+              // Sessions created before this field existed replay with null — the
+              // invoice then falls back to a plain unit count for those lines.
+              weightGrams: item.weightGrams ?? null
             }
           });
         }

@@ -11,9 +11,8 @@ import { sendTechnicalFailureAlert } from '@modules/notifications/notification-f
 
 function buildMockPrisma(userEmail: string | null, overrides?: Record<string, unknown>) {
   const tokenRecords: Array<{ id: string; userId: string; tokenHash: string; expiresAt: Date }> = [];
-  const users: Array<{ id: string; email: string | null; passwordHash: string }> = userEmail
-    ? [{ id: 'user_1', email: userEmail, passwordHash: 'old-hash' }]
-    : [];
+  const users: Array<{ id: string; email: string | null; passwordHash: string; isBanned: boolean }> =
+    userEmail ? [{ id: 'user_1', email: userEmail, passwordHash: 'old-hash', isBanned: false }] : [];
 
   const mockPrisma = {
     user: {
@@ -312,7 +311,9 @@ describe('AuthService resetPassword', () => {
     await expect(
       service.resetPassword({ token: 'expiredtoken', password: 'NewPass123!', confirmPassword: 'NewPass123!' })
     ).rejects.toMatchObject({
-      code: 'TOKEN_EXPIRED',
+      // Deliberately the SAME code an unknown token returns — distinguishing them
+      // turns this endpoint into an oracle for whether a token (and account) exists.
+      code: 'INVALID_CREDENTIALS',
       statusCode: 401
     });
     expect(prismaMock.passwordResetToken.delete).toHaveBeenCalledWith({ where: { id: 'prt_1' } });
@@ -378,5 +379,91 @@ describe('AuthService resetPassword', () => {
       code: 'VALIDATION_ERROR',
       statusCode: 400
     });
+  });
+
+  it('strips a trailing slash from STOREFRONT_URL so the emailed link is not a 404', async () => {
+    // `https://store.example.com//reset-password?...` is served as 404 by most hosts,
+    // making every reset email a dead end with nothing logged to explain it.
+    vi.stubEnv('STOREFRONT_URL', 'https://store.example.com/');
+    const add = vi.fn().mockResolvedValue(undefined);
+    const prismaMock = buildMockPrisma('user@example.com');
+    const fastify = {
+      prisma: prismaMock,
+      queues: { notifications: { add } },
+      redis: {
+        get: vi.fn().mockResolvedValue(null),
+        set: vi.fn().mockResolvedValue('OK'),
+        del: vi.fn().mockResolvedValue(1),
+        incr: vi.fn().mockResolvedValue(1),
+        expire: vi.fn().mockResolvedValue(1),
+        ttl: vi.fn().mockResolvedValue(-1)
+      }
+    } as unknown as FastifyInstance;
+
+    await new AuthService(fastify).requestPasswordReset({ email: 'user@example.com' });
+
+    const payload = add.mock.calls[0]?.[1] as { data: { resetUrl: string } };
+    expect(payload.data.resetUrl).toContain('https://store.example.com/reset-password?token=');
+    expect(payload.data.resetUrl).not.toContain('//reset-password');
+  });
+
+  it('does not put the raw reset token in the outbox payload', async () => {
+    // Outbox rows outlive delivery; the token already travels inside resetUrl, so
+    // storing it a second time only widens the window on a DB compromise.
+    const add = vi.fn().mockResolvedValue(undefined);
+    const prismaMock = buildMockPrisma('user@example.com');
+    const fastify = {
+      prisma: prismaMock,
+      queues: { notifications: { add } },
+      redis: {
+        get: vi.fn().mockResolvedValue(null),
+        set: vi.fn().mockResolvedValue('OK'),
+        del: vi.fn().mockResolvedValue(1),
+        incr: vi.fn().mockResolvedValue(1),
+        expire: vi.fn().mockResolvedValue(1),
+        ttl: vi.fn().mockResolvedValue(-1)
+      }
+    } as unknown as FastifyInstance;
+
+    await new AuthService(fastify).requestPasswordReset({ email: 'user@example.com' });
+
+    const payload = add.mock.calls[0]?.[1] as { data: Record<string, unknown> };
+    expect(payload.data).not.toHaveProperty('resetToken');
+  });
+
+  it('refuses to reset the password of a banned account', async () => {
+    // Otherwise a reset link hands a working credential back to someone the
+    // merchant deliberately locked out.
+    const add = vi.fn().mockResolvedValue(undefined);
+    const prismaMock = buildMockPrisma('user@example.com');
+    prismaMock.passwordResetToken.findUnique = vi.fn().mockResolvedValue({
+      id: 'prt_1',
+      userId: 'user_1',
+      tokenHash: 'hash',
+      expiresAt: new Date(Date.now() + 60_000)
+    });
+    prismaMock.user.findUnique = vi.fn().mockResolvedValue({ isBanned: true });
+    const fastify = {
+      prisma: prismaMock,
+      queues: { notifications: { add } },
+      redis: {
+        get: vi.fn().mockResolvedValue(null),
+        set: vi.fn().mockResolvedValue('OK'),
+        del: vi.fn().mockResolvedValue(1),
+        incr: vi.fn().mockResolvedValue(1),
+        expire: vi.fn().mockResolvedValue(1),
+        ttl: vi.fn().mockResolvedValue(-1)
+      }
+    } as unknown as FastifyInstance;
+
+    await expect(
+      new AuthService(fastify).resetPassword({
+        token: 'validtoken',
+        password: 'NewPass123!',
+        confirmPassword: 'NewPass123!'
+      })
+      // Same generic rejection as an unknown token — the ban must not be disclosed here.
+    ).rejects.toMatchObject({ code: 'INVALID_CREDENTIALS', statusCode: 401 });
+    expect(prismaMock.user.update).not.toHaveBeenCalled();
   });
 });

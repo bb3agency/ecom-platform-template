@@ -65,6 +65,12 @@ export type GstTaxLineInput = {
   name: string;
   hsnCode: string;
   quantity: number;
+  /**
+   * Per-unit net weight in grams for goods sold by weight; null/absent for goods
+   * sold by count. Carried through purely for PRESENTATION — the invoice prints a
+   * weight-based line as total kilograms — and never enters the tax maths.
+   */
+  weightGrams?: number | null;
   unitPricePaise: number;
   lineTotalPaise: number;
   taxRatePercent: number;
@@ -117,6 +123,7 @@ export function buildOrderGstTaxLines(input: {
       name: item.name,
       hsnCode: item.hsnCode,
       quantity: item.quantity,
+      weightGrams: item.weightGrams ?? null,
       unitPricePaise: item.unitPricePaise,
       lineTotalPaise: netPaise,
       taxRatePercent: item.taxRatePercent,

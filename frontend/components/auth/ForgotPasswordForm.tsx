@@ -9,7 +9,10 @@ import { getApiErrorMessage } from "@/lib/error-messages";
 import { forgotPasswordInputSchema } from "@/lib/validators";
 import { AuthErrorBanner } from "@/components/auth/AuthErrorBanner";
 import { TurnstileChallenge } from "@/components/auth/TurnstileChallenge";
-import { useAuthTurnstile } from "@/hooks/use-auth-turnstile";
+import {
+  TURNSTILE_MISCONFIGURED_MESSAGE,
+  useAuthTurnstile,
+} from "@/hooks/use-auth-turnstile";
 
 type FormValues = z.infer<typeof forgotPasswordInputSchema>;
 
@@ -19,6 +22,8 @@ export function ForgotPasswordForm() {
   const {
     required: turnstileRequired,
     ready: turnstileReady,
+    misconfigured: turnstileMisconfigured,
+    siteKey: turnstileSiteKey,
     turnstileField,
     onTurnstileTokenChange,
     turnstileLoadError,
@@ -30,6 +35,10 @@ export function ForgotPasswordForm() {
   });
 
   const submit = form.handleSubmit(async (values) => {
+    if (turnstileMisconfigured) {
+      setError(TURNSTILE_MISCONFIGURED_MESSAGE);
+      return;
+    }
     if (turnstileRequired && !turnstileReady) {
       setError("Complete the security check below, then try again.");
       return;
@@ -63,9 +72,15 @@ export function ForgotPasswordForm() {
       </div>
 
       <TurnstileChallenge
+        siteKey={turnstileSiteKey}
         onTokenChange={onTurnstileTokenChange}
         onLoadError={setTurnstileLoadError}
       />
+      {turnstileMisconfigured ? (
+        <p className="text-xs text-destructive" role="alert">
+          {TURNSTILE_MISCONFIGURED_MESSAGE}
+        </p>
+      ) : null}
       {turnstileLoadError ? (
         <p className="text-xs text-destructive" role="alert">
           {turnstileLoadError}

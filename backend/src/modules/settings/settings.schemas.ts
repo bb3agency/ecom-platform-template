@@ -490,7 +490,8 @@ export const getPublicStoreConfigSchema = {
         'galleryEnabled',
         'returnsEnabled',
         'wishlistEnabled',
-        'gstInvoicingEnabled'
+        'gstInvoicingEnabled',
+        'authChallenge'
       ],
       properties: {
         isCodEnabled: { type: 'boolean' },
@@ -517,7 +518,19 @@ export const getPublicStoreConfigSchema = {
         contactEmail: { type: ['string', 'null'] },
         contactPhone: { type: ['string', 'null'] },
         facebookUrl: { type: ['string', 'null'] },
-        instagramUrl: { type: ['string', 'null'] }
+        instagramUrl: { type: ['string', 'null'] },
+        authChallenge: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['required', 'provider', 'siteKey'],
+          description:
+            'Bot-challenge contract for the auth forms. `required` mirrors backend enforcement, so the storefront never has to guess from its own build-time env — a mismatch there is a silent total auth outage. `siteKey` is the PUBLIC Turnstile key (null when the backend does not publish one; the storefront then falls back to NEXT_PUBLIC_TURNSTILE_SITE_KEY).',
+          properties: {
+            required: { type: 'boolean' },
+            provider: { type: 'string', enum: ['turnstile'] },
+            siteKey: { type: ['string', 'null'] }
+          }
+        }
       }
     }
   }
