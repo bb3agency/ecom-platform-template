@@ -623,7 +623,17 @@ export function CheckoutForm() {
                     item={item}
                     nameClassName="truncate text-xs font-bold text-primary sm:text-sm"
                     descriptionClassName="text-[10px] text-muted-foreground line-clamp-1"
+                    variantClassName="mt-0.5 text-[11px] font-semibold text-foreground"
                   />
+                  {/* Quantity + unit price spelled out — the badge on the thumbnail
+                      alone was easy to miss, and a line total gives no hint of how
+                      many units it covers. */}
+                  <p className="mt-1 text-[11px] font-medium text-muted-foreground">
+                    Qty {item.quantity}
+                    <span aria-hidden> · </span>
+                    <span className="sr-only">at </span>
+                    {formatPrice(item.priceSnapshot)} each
+                  </p>
                 </div>
                 <span className="shrink-0 text-sm font-extrabold text-accent">
                   {formatPrice(item.priceSnapshot * item.quantity)}
