@@ -34,7 +34,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AdminRowActionsMenu } from "@/components/admin/AdminRowActionsMenu";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAdminAuth } from "@/contexts/admin-auth-context";
 import { useAuthenticatedApi } from "@/hooks/use-authenticated-api";
 import {
@@ -106,6 +106,35 @@ interface VariantDraft {
   keepUpright: boolean;
   initialQuantity: string;
   isActive: boolean;
+}
+
+/**
+ * Value-identity of a variant, covering exactly the fields the editor mirrors
+ * into form inputs.
+ *
+ * Every `loadProduct()` rebuilds the variant objects, so their *reference*
+ * changes on each refetch even when nothing about them changed. Anything that
+ * re-seeds inputs off a variant must key on this signature instead of on object
+ * identity — otherwise an unrelated refetch (triggered by saving a different
+ * variant, or an image) wipes whatever the merchant is mid-way through typing.
+ */
+function variantFieldSignature(
+  variant: AdminProductVariant | undefined,
+): string {
+  if (!variant) return "";
+  return JSON.stringify([
+    variant.id,
+    variant.sku,
+    variant.name,
+    variant.price,
+    variant.compareAtPrice,
+    variant.weight,
+    variant.packageLengthCm,
+    variant.packageWidthCm,
+    variant.packageHeightCm,
+    variant.keepUpright === true,
+    variant.isActive,
+  ]);
 }
 
 interface ImageDraft {
@@ -254,6 +283,11 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
     applyFieldErrors,
   } = useAdminFormValidation();
 
+  // Signature of the primary variant as of the last time the top-of-page
+  // Pricing fields were seeded from it — see the `seedFields: false` branch of
+  // loadProduct.
+  const primarySignatureRef = useRef<string>("");
+
   const loadCategories = useCallback(async () => {
     const items = await fetchAllPaginatedItems<AdminCategoryListItem>(
       async (page, limit) =>
@@ -281,6 +315,31 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
   const loadProduct = useCallback(async (options?: { seedFields?: boolean }) => {
     if (!productId) return;
     const seedFields = options?.seedFields ?? true;
+    const seedPrimary = (primaryVariant: AdminProductVariant | undefined) => {
+      if (!primaryVariant) return;
+      const pricing = primaryVariantPricingFromApi(primaryVariant);
+      setEditPrimaryPrice(pricing.priceRupees);
+      setEditPrimaryCompareAtPrice(pricing.compareAtPriceRupees);
+      setEditPrimaryWeight(
+        primaryVariant.weight !== null ? String(primaryVariant.weight) : "",
+      );
+      setEditPrimaryLength(
+        primaryVariant.packageLengthCm !== null
+          ? String(primaryVariant.packageLengthCm)
+          : "",
+      );
+      setEditPrimaryWidth(
+        primaryVariant.packageWidthCm !== null
+          ? String(primaryVariant.packageWidthCm)
+          : "",
+      );
+      setEditPrimaryHeight(
+        primaryVariant.packageHeightCm !== null
+          ? String(primaryVariant.packageHeightCm)
+          : "",
+      );
+      setEditPrimaryKeepUpright(primaryVariant.keepUpright === true);
+    };
     setLoading(true);
     setError(null);
     try {
@@ -289,9 +348,23 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
       );
       const normalized = normalizeProductDetail(detail);
       setProduct(normalized);
+      const primaryVariant = normalized.variants[0];
+      const primarySignature = variantFieldSignature(primaryVariant);
       if (!seedFields) {
+        // The Pricing card at the top of the page is a *mirror* of the primary
+        // variant, which is also editable down in the Variants table. When a
+        // refetch shows the primary variant's own values actually changed
+        // (the merchant just saved it in that table, or deleted the variant
+        // that used to be first), re-sync the mirror so the two stop
+        // disagreeing. Guarded by the signature so an unrelated refetch still
+        // leaves unsaved edits to those fields alone.
+        if (primarySignature !== primarySignatureRef.current) {
+          seedPrimary(primaryVariant);
+          primarySignatureRef.current = primarySignature;
+        }
         return;
       }
+      primarySignatureRef.current = primarySignature;
       setName(normalized.name);
       setSlug(normalized.slug);
       setSlugTouched(true);
@@ -306,33 +379,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
       setHsnCode(resolveAdminProductHsnCode(normalized));
       // Map isActive → Status dropdown: true = "Active", false = "Draft"
       setStatus(normalized.isActive ? "Active" : "Draft");
-      const primaryVariant = normalized.variants[0];
-      if (primaryVariant) {
-        const pricing = primaryVariantPricingFromApi(primaryVariant);
-        setEditPrimaryPrice(pricing.priceRupees);
-        setEditPrimaryCompareAtPrice(pricing.compareAtPriceRupees);
-        setEditPrimaryWeight(
-          primaryVariant.weight !== null
-            ? String(primaryVariant.weight)
-            : ""
-        );
-        setEditPrimaryLength(
-          primaryVariant.packageLengthCm !== null
-            ? String(primaryVariant.packageLengthCm)
-            : ""
-        );
-        setEditPrimaryWidth(
-          primaryVariant.packageWidthCm !== null
-            ? String(primaryVariant.packageWidthCm)
-            : ""
-        );
-        setEditPrimaryHeight(
-          primaryVariant.packageHeightCm !== null
-            ? String(primaryVariant.packageHeightCm)
-            : ""
-        );
-        setEditPrimaryKeepUpright(primaryVariant.keepUpright === true);
-      }
+      seedPrimary(primaryVariant);
     } catch (err) {
       setError(getApiErrorMessage(err));
     } finally {
@@ -2753,7 +2800,15 @@ function VariantEditRow({
     isActive: variant.isActive,
   });
 
+  // Re-seed only when the variant's own values actually changed on the server.
+  // Keying this on `variant` (object identity) meant every refetch — including
+  // ones caused by saving a *different* variant or an image — reset this row,
+  // discarding edits the merchant had typed but not yet saved.
+  const signature = variantFieldSignature(variant);
+  const seededSignatureRef = useRef(signature);
   useEffect(() => {
+    if (seededSignatureRef.current === signature) return;
+    seededSignatureRef.current = signature;
     setDraft({
       sku: variant.sku,
       name: variant.name,
@@ -2774,7 +2829,7 @@ function VariantEditRow({
       initialQuantity: "",
       isActive: variant.isActive,
     });
-  }, [variant]);
+  }, [variant, signature]);
 
   return (
     <tr

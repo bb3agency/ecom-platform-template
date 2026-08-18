@@ -12,6 +12,22 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-08-18
+
+### Fixed
+- **Saving one variant no longer resets the other variant rows.** `VariantEditRow` re-seeded its draft in a `useEffect` keyed on `[variant]` — object identity. Every `loadProduct()` rebuilds the variant objects, so *any* refetch (saving a different variant, adding/removing an image, reordering) changed that identity and reset every row on the page, discarding edits the merchant had typed but not yet saved. This was the remaining half of the 0.2.2 report: 0.2.2 stopped the top-level product fields from being clobbered, but the variant rows themselves were still resetting.
+  Re-seeding is now keyed on `variantFieldSignature(variant)` — a value-identity of exactly the mirrored fields — so a row re-seeds only when its own server values genuinely changed.
+- **Editing the primary variant in the Variants table now updates the Pricing card at the top of the page.** The Pricing card is a mirror of `variants[0]`, seeded only by a `seedFields: true` load. Since 0.2.2 routed sub-entity refetches through `seedFields: false`, saving the primary variant left the mirror showing the old price until a full page reload — the two disagreed, and saving the product afterwards could push the stale value back.
+  `loadProduct` now re-syncs the primary-variant mirror on a `seedFields: false` refresh when (and only when) the primary variant's signature changed, so it tracks edits made in the table without clobbering unsaved edits made in the card itself.
+
+**Propagation:**
+- Severity: NORMAL - Layers: frontend core (`components/admin/AdminProductEditor.tsx`)
+- Migration: NO - Flag: none - Design impact: none (admin console) - Breaking: NO
+- Backend: none required
+- Follow-up to 0.2.2; apply together if skipping versions
+- Rollback: revert the file
+
+
 ## [0.2.2] - 2026-08-18
 
 ### Fixed
