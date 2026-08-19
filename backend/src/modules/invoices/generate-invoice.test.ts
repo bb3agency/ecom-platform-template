@@ -5,6 +5,7 @@ import {
   computeNextSequentialInvoiceNumber,
   fetchInvoiceLogo,
   formatSequentialInvoiceNumber,
+  resolveInvoiceLineWeightGrams,
   resolveInvoiceLogo,
   sniffLogoImageFormat,
   type SellerProfile
@@ -331,5 +332,32 @@ describe('computeInclusiveGstSplit — GST carved out of GST-inclusive amounts',
         expect(inter.taxableValuePaise + inter.igstPaise).toBe(amount);
       }
     }
+  });
+});
+
+describe('resolveInvoiceLineWeightGrams — order snapshot vs current catalogue weight', () => {
+  it('prefers the order-time snapshot over the variant current weight', () => {
+    // The product was later re-packed from 500 g to 1 kg; the already-issued
+    // invoice must still bill the 500 g that was actually sold.
+    expect(resolveInvoiceLineWeightGrams(500, 1000)).toBe(500);
+  });
+
+  it('falls back to the variant weight for orders placed before the snapshot existed', () => {
+    // Regression: these legacy orders printed "1 pcs" for a 1 kg pack because
+    // the variant weight was never loaded, so nothing could stand in for the
+    // missing snapshot (raghava-organics, 2026-08-19).
+    expect(resolveInvoiceLineWeightGrams(null, 1000)).toBe(1000);
+    expect(resolveInvoiceLineWeightGrams(undefined, 250)).toBe(250);
+  });
+
+  it('returns null when neither source knows a weight, so the line stays a piece count', () => {
+    expect(resolveInvoiceLineWeightGrams(null, null)).toBeNull();
+    expect(resolveInvoiceLineWeightGrams(undefined, undefined)).toBeNull();
+  });
+
+  it('keeps a zero snapshot rather than substituting the catalogue weight', () => {
+    // 0 is a real recorded value meaning "not sold by weight"; only a missing
+    // snapshot may be filled in from the catalogue.
+    expect(resolveInvoiceLineWeightGrams(0, 1000)).toBe(0);
   });
 });
