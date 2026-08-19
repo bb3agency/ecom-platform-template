@@ -12,6 +12,18 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-08-19
+
+### Fixed
+- **Invoices billed by weight silently fell back to a piece count on any order placed before the weight snapshot existed.** `OrderItem.weightGrams` arrived in 0.2.0, but the invoice loader's variant `select` never included `ProductVariant.weight` — so for an older order there was no weight from ANY source and the line printed `1 pcs` for a 1 kg pack, with a per-piece rate on a tax invoice. The order-time snapshot still takes precedence wherever it exists (an invoice is a legal record; re-packing a product from 500 g to 1 kg must never rewrite invoices already issued), but a MISSING snapshot now falls back to the catalogue weight instead of printing the wrong unit. The precedence rule is stated once, in the exported `resolveInvoiceLineWeightGrams`, and covered by tests — including that a recorded `0` is kept rather than being treated as "unknown", since 0 means "not sold by weight".
+- **Items-table columns collided.** Every numeric cell is right-aligned flush against its neighbour and the table had no gutter, so wide headers ran together — `QUANTITY` touched `RATE (EX-GST)` on live invoices. Added 5pt cell padding, eased header letter-spacing (0.8 → 0.5), and rebalanced all three layouts (plain / CGST+SGST / IGST) to widen ITEM, QUANTITY and RATE; each still sums to exactly 100%.
+
+**Propagation:**
+- Severity: **HIGH** (a wrong unit and a wrong rate basis on a GST document) - Layers: backend only (`modules/invoices/generate-invoice.ts`, `modules/invoices/invoice-pdf.ts` + tests) — no frontend change
+- Migration: NO - Flag: none - Design impact: invoice PDF layout only - Breaking: NO
+- **Invoices already issued are NOT rewritten** — generation is once-per-order and the stored PDF is immutable. To re-issue affected invoices, delete the `Invoice` row for those orders and let the next download regenerate; note this allocates a NEW sequential invoice number, so only do it for invoices not yet sent or reported.
+- Rollback: revert the two files; behaviour returns to piece counts on legacy orders.
+
 ## [0.2.0] - 2026-08-17
 
 ### Fixed

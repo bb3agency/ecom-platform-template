@@ -56,6 +56,8 @@ export type InvoiceOrderItem = {
   variant: {
     hsnCode: string | null;
     gstRatePercent: number;
+    /** Current catalogue weight — fallback only, for orders placed before weightGrams existed. */
+    weight?: number | null;
     product: {
       attributes: Prisma.JsonValue;
     } | null;
@@ -425,6 +427,26 @@ type LoadedInvoiceOrder = {
   items: InvoiceOrderItem[];
 };
 
+/**
+ * Weight to bill an invoice line by, in grams.
+ *
+ * The ORDER-TIME snapshot always wins: it is the only value that is evidence of
+ * what was actually sold, and an invoice is a legal record — editing a product
+ * from 500 g to 1 kg must never rewrite the weight on invoices already issued.
+ *
+ * The variant's CURRENT weight is used only when there is no snapshot at all,
+ * which means the order predates `OrderItem.weightGrams`. Without this fallback
+ * those invoices silently print a piece count ("1 pcs") for goods the merchant
+ * sells by weight. An approximate-but-correct unit beats a wrong one, and for a
+ * legacy order no better evidence exists.
+ */
+export function resolveInvoiceLineWeightGrams(
+  snapshotWeightGrams: number | null | undefined,
+  currentVariantWeightGrams: number | null | undefined
+): number | null {
+  return snapshotWeightGrams ?? currentVariantWeightGrams ?? null;
+}
+
 const INVOICE_ORDER_INCLUDE = {
   user: {
     select: { email: true }
@@ -435,6 +457,7 @@ const INVOICE_ORDER_INCLUDE = {
         select: {
           hsnCode: true,
           gstRatePercent: true,
+          weight: true,
           product: {
             select: {
               attributes: true
@@ -478,7 +501,7 @@ async function renderInvoicePdfContent(
           productAttributes: attributes
         }),
         quantity: item.quantity,
-        weightGrams: item.weightGrams ?? null,
+        weightGrams: resolveInvoiceLineWeightGrams(item.weightGrams, item.variant?.weight),
         unitPricePaise: item.unitPrice,
         lineTotalPaise: item.totalPrice,
         taxRatePercent: gstBilling
