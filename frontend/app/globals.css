@@ -139,11 +139,19 @@
     * {
         @apply border-border outline-ring/50;
     }
+    /* `overflow-x: clip`, never `hidden`. Per the CSS overflow spec a
+       non-`visible`/`clip` value on one axis forces the other to compute to
+       `auto`, so `hidden` here silently makes <html> and <body> scroll
+       containers. That breaks viewport `position: sticky` and fights any
+       root-level custom scroller a theme installs. `clip` suppresses the same
+       horizontal overflow without establishing a scroll container. */
     html {
-        @apply font-sans overflow-x-hidden;
+        @apply font-sans;
+        overflow-x: clip;
     }
     body {
-        @apply bg-background text-foreground font-sans overflow-x-hidden;
+        @apply bg-background text-foreground font-sans;
+        overflow-x: clip;
     }
     h1,
     h2,

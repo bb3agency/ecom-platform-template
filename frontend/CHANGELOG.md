@@ -12,6 +12,20 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-08-18
+
+### Fixed
+- **`overflow-x: hidden` on the root elements silently made them scroll containers.** Per the CSS overflow spec, a value other than `visible`/`clip` on one axis forces the other axis to compute to `auto` — so `overflow-x: hidden` on `<html>` and `<body>` turned each into a scroll container, two nested ones, rather than merely clipping horizontal overflow. That breaks `position: sticky` measured against the viewport and competes with any root-level custom scroller a client theme installs; on the one client running a smooth scroller it produced intermittent "the page won't scroll" reports on desktop, because wheel events landed on whichever container sat under the cursor.
+  Replaced with `overflow-x: clip`, which clips identically without establishing a scroll container. Changed in the `<body>` utility class in `app/layout.tsx` (core) and in the template's `globals.css` theme baseline so new clients do not inherit it. Existing clients must apply the `globals.css` half themselves — that file is per-client theme and is never synced.
+
+**Propagation:**
+- Severity: NORMAL - Layers: frontend core (`app/layout.tsx`) + theme baseline (`app/globals.css`, not synced)
+- Migration: NO - Flag: none - Breaking: NO
+- Design impact: none intended. `clip` and `hidden` clip identically; the only behavioural difference is that the element is no longer programmatically scrollable, which nothing should have relied on here.
+- Client action: apply the same `overflow-x: hidden` -> `clip` change to your own `frontend/app/globals.css`
+- Rollback: revert the file
+
+
 ## [0.2.3] - 2026-08-18
 
 ### Fixed
