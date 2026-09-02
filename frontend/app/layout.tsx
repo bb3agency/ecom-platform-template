@@ -43,7 +43,16 @@ export default function RootLayout({
       className={`${interFont.variable} h-full antialiased`}
       suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col font-sans overflow-x-hidden" suppressHydrationWarning>
+      {/*
+        `overflow-x-clip`, never `overflow-x-hidden`. Per the CSS overflow spec a
+        non-`visible`/`clip` value on one axis forces the other axis to compute
+        to `auto`, so `overflow-x: hidden` silently turns <body> into a scroll
+        container. That breaks `position: sticky` against the viewport and
+        competes with any root-level custom scroller a client theme installs.
+        `clip` suppresses the same horizontal overflow without establishing a
+        scroll container.
+      */}
+      <body className="min-h-full flex flex-col font-sans overflow-x-clip" suppressHydrationWarning>
         {/*
           Global maintenance banner. Self-hides on /ops/* routes (operators
           already see the load-shed panel) and on `normal|reduced|emergency`
