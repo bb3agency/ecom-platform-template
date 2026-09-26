@@ -32,6 +32,7 @@
       "frontend/actions/**",
       "frontend/components/ui/**",
       "frontend/components/account/**",
+   "frontend/components/auth/**",
       "frontend/components/cart/**",
       "frontend/components/checkout/**",
       "frontend/components/admin/**",
