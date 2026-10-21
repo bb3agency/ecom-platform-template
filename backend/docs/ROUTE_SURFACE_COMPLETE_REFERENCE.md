@@ -385,7 +385,7 @@ Time-series revenue data for the sales chart. Query: `from`, `to`, `granularity`
 Top-selling products by revenue or quantity. Query: `from`, `to`, `limit`.
 
 ### `GET /api/v1/admin/dashboard/action-queue`
-**`dashboard:read`.** What needs the merchant now — the dashboard leads with it. No query. Returns `ordersToFulfil` (CONFIRMED), `ordersProcessing` (PROCESSING), `ordersAwaitingPayment` (PENDING_PAYMENT), `returnsToReview` (REQUESTED), `reviewsToModerate` (unapproved), `lowStockVariants` / `outOfStockVariants` (available = on hand − live cart reservations; same rule as `GET /admin/inventory/low-stock`, so the two counts sum to that list's length), `generatedAt`. Every count is a single filter so it equals the list it links to. Read-only; touches Order, ReturnRequest, Review, Inventory, CartReservation.
+**`dashboard:read`.** What needs the merchant now — the dashboard leads with it. No query. Returns `ordersToFulfil` (CONFIRMED), `ordersProcessing` (PROCESSING), `ordersAwaitingPayment` (PENDING_PAYMENT), `refundsOwed` (cancelled orders whose refund never completed; equals `GET /admin/orders?refund=owed`), `returnsToReview` (REQUESTED), `reviewsToModerate` (unapproved), `lowStockVariants` / `outOfStockVariants` (available = on hand − live cart reservations; same rule as `GET /admin/inventory/low-stock`, so the two counts sum to that list's length), `generatedAt`. Every count is a single filter so it equals the list it links to. Read-only; touches Order, ReturnRequest, Review, Inventory, CartReservation.
 
 ### `GET /api/v1/admin/dashboard/order-status-counts`
 **`orders:read`.** Query (required): `from`, `to` (ISO date-time). Order counts per status for the window **and** the equal-length window immediately before it, in one call: `{ from, to, previousFrom, previousTo, current: { total, byStatus }, previous: { total, byStatus } }`. `byStatus` always carries all nine `OrderStatus` keys (zero-filled). Powers the orders overview strip (replaced eight list calls). **400** when `from > to`.
@@ -464,7 +464,7 @@ Manual stock adjustment for a variant. Body: `{ quantity, note? }`. Creates an a
 
 | Route | What it does |
 |---|---|
-| `GET /api/v1/admin/orders` | Paginated, filterable order table. Query: `status`, `from`, `to`, `search`, `page`, `limit`. |
+| `GET /api/v1/admin/orders` | Paginated, filterable order table. Query: `status`, `from`, `to`, `search`, `paymentMode`, `sort`, `refund=owed` (cancelled provider-paid orders whose refund never completed — same predicate as the dashboard `refundsOwed` count), `page`, `limit`. |
 | `GET /api/v1/admin/orders/board` | Kanban-style board with counts by status column. |
 | `GET /api/v1/admin/orders/export` | CSV export of orders matching current filters. Returns file download. Passes through `loadShedGuard`. Requires `orders:export` permission. |
 | `GET /api/v1/admin/orders/:id` | Full order detail: items, pricing, payment status, shipping info, timeline. |
@@ -497,6 +497,7 @@ Manual stock adjustment for a variant. Body: `{ quantity, note? }`. Creates an a
 | Route | What it does |
 |---|---|
 | `POST /api/v1/admin/orders/:id/cancel` | Admin-side order cancellation. Triggers refund if payment was captured. Body: `{ reason? }`. Reason is tagged with admin ID. |
+| `POST /api/v1/admin/orders/:id/refund/retry` | **`orders:refund`**, idempotency key required. Re-queues the refund for a cancelled order whose refund is still owed (`refundOwed` on the admin order detail: nothing refunded, nothing with the provider). Refunds the remaining amount; the refunds worker's CAS gate makes a double refund impossible even if an automatic retry runs at the same moment. **409** when nothing is owed. A failure restarts the automatic retry schedule. Writes a `Refund retry requested` history row. Returns the admin order detail. |
 
 ### Shipment list route — `shipments:read` permission
 

@@ -184,7 +184,7 @@ Dispatch policy (applies regardless of provider):
 
 ### Webhook setup
 1. Add webhook endpoint: `https://<domain>/api/v1/payments/webhook`.
-2. Subscribe to required events: `payment.captured`, `payment.failed`, `refund.processed` (actively processed). Optionally subscribe to `payment.authorized` and `refund.failed` (received but no-op in current implementation).
+2. Subscribe to required events: `payment.captured`, `payment.failed`, `refund.processed`, `refund.failed` (all actively processed — `refund.failed` since backend-core 0.4.0 releases the refund and re-queues it). Optionally subscribe to `payment.authorized` (received but no-op).
 3. Set a dedicated webhook secret (not your API key secret).
 4. Store in env as `RAZORPAY_WEBHOOK_SECRET`.
 

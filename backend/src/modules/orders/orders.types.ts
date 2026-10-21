@@ -11,6 +11,8 @@ export type AdminOrderListQuery = {
   search?: string;
   paymentMode?: 'PREPAID' | 'COD';
   sort?: 'newest' | 'oldest';
+  /** 'owed' = cancelled orders whose refund never completed (refund-owed.ts). */
+  refund?: 'owed';
 };
 
 export type AdminOrderExportQuery = {

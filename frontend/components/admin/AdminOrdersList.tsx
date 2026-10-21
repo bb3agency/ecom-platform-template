@@ -66,6 +66,8 @@ const STATUS_TABS: { value: "" | AdminOrderStatusKey; label: string }[] = [
 ];
 
 const PAYMENT_FILTERS = ["", "PREPAID", "COD"] as const;
+/** "owed" = cancelled orders whose refund never went through (dashboard "Refunds to retry"). */
+const REFUND_FILTERS = ["", "owed"] as const;
 const SORTS = ["newest", "oldest"] as const;
 
 function defaultExportDates() {
@@ -83,7 +85,11 @@ function paymentDisplay(order: AdminOrderListItem): { label: string; tone: Admin
   }
   switch (order.paymentStatus) {
     case "CAPTURED":
-      return { label: "Paid", tone: "success" };
+      // A cancelled order that still holds the customer's money: the refund is
+      // either with Razorpay or still owed (open the order to see which).
+      return order.status === "CANCELLED"
+        ? { label: "Not refunded yet", tone: "warning" }
+        : { label: "Paid", tone: "success" };
     case "FAILED":
       return { label: "Failed", tone: "danger" };
     case "REFUNDED":
@@ -125,6 +131,7 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
   const [status, setStatus] = useUrlFilterState("status", "", ORDER_FILTER_STATUSES);
   const [paymentFilter, setPaymentFilter] = useUrlFilterState("payment", "", PAYMENT_FILTERS);
   const [sortOrder, setSortOrder] = useUrlFilterState("sort", "newest", SORTS);
+  const [refundFilter, setRefundFilter] = useUrlFilterState("refund", "", REFUND_FILTERS);
   const [page, setPage] = useState(1);
 
   // `searchInput` is the live field; `search` is what the fetch uses. It is committed
@@ -157,7 +164,7 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
   // Any filter change returns to the first page.
   useEffect(() => {
     setPage(1);
-  }, [status, paymentFilter, sortOrder, search, fromDate, toDate]);
+  }, [status, paymentFilter, refundFilter, sortOrder, search, fromDate, toDate]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -170,6 +177,7 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
           status: status || undefined,
           search: search.trim() || undefined,
           paymentMode: paymentFilter || undefined,
+          refund: refundFilter || undefined,
           sort: sortOrder,
           from: fromISO,
           to: toISO,
@@ -181,7 +189,7 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
     } finally {
       setLoading(false);
     }
-  }, [api, page, status, search, paymentFilter, sortOrder, fromISO, toISO]);
+  }, [api, page, status, search, paymentFilter, refundFilter, sortOrder, fromISO, toISO]);
 
   // Tab counts: one call for every status in the same window as the list.
   const loadCounts = useCallback(async () => {
@@ -273,7 +281,7 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
   }, [registerExportHandler, exportFrom, exportTo, status, search, paymentFilter, accessToken, canExport]);
 
   const items = readPaginatedItems(data);
-  const filtersActive = Boolean(search || paymentFilter || sortOrder !== "newest");
+  const filtersActive = Boolean(search || paymentFilter || refundFilter || sortOrder !== "newest");
 
   const columns: DataColumn<AdminOrderListItem>[] = [
     {
@@ -418,6 +426,7 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
                   setSearch("");
                   setSearchInput("");
                   setPaymentFilter("");
+                  setRefundFilter("");
                   setSortOrder("newest");
                 }}
               >
@@ -437,6 +446,15 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
             ]}
           />
           <FilterSelect
+            label="Refund"
+            value={refundFilter}
+            onChange={setRefundFilter}
+            options={[
+              { value: "", label: "Any refund state" },
+              { value: "owed", label: "Refund still owed" },
+            ]}
+          />
+          <FilterSelect
             label="Sort"
             value={sortOrder}
             onChange={setSortOrder}
@@ -447,6 +465,14 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
           />
         </FilterBar>
       </div>
+
+      {refundFilter === "owed" && !error ? (
+        <div className="border-b border-border p-3 sm:px-5">
+          <Notice tone="warning" title="Cancelled orders whose refund hasn't gone through">
+            A failed refund is retried automatically for up to 3 days. Open an order to see why it failed, or retry it now.
+          </Notice>
+        </div>
+      ) : null}
 
       {error ? (
         <div className="p-4 sm:p-5">
@@ -494,9 +520,17 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
             empty={
               <EmptyState
                 icon={ShoppingCart}
-                headline={search || paymentFilter || status ? "No orders match these filters" : "No orders in this period"}
+                headline={
+                  refundFilter === "owed"
+                    ? "No refunds owed"
+                    : search || paymentFilter || status
+                      ? "No orders match these filters"
+                      : "No orders in this period"
+                }
                 description={
-                  search || paymentFilter || status
+                  refundFilter === "owed"
+                    ? "Every cancelled prepaid order has been refunded or is with Razorpay."
+                    : search || paymentFilter || status
                     ? "Try another status tab, clear the search, or widen the date range."
                     : "Orders appear here as soon as customers check out."
                 }

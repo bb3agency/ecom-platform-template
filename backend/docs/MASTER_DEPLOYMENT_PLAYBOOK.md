@@ -1942,8 +1942,8 @@ Events to subscribe:
   ✅ payment.captured    ← triggers order confirmation + inventory deduction
   ✅ payment.failed      ← marks order as PAYMENT_FAILED
   ✅ refund.processed    ← marks order as REFUNDED
+  ✅ refund.failed       ← releases the refund, re-queues it (auto-retry for up to 3 days) — since backend-core 0.4.0
   ☐ payment.authorized  ← received but no-op (status mapper returns null)
-  ☐ refund.failed       ← not actively mapped; logged only
 Active: Yes
 Secret: (same as RAZORPAY_WEBHOOK_SECRET in .env)
 ```
