@@ -4,6 +4,66 @@
 
 ---
 
+## [2026-10-21] Refunds are never abandoned: slow automatic retry + a derived "refund still owed" state (backend/frontend-core 0.4.0)
+
+**Context:** A courier-cancelled Raghava order showed three "Refund initiated" rows and no refund. The worker logged before calling Razorpay and gave up after 3 attempts in seconds. The usual cause is structural: Razorpay refunds come out of the unsettled **balance**, so an order cancelled after settlement (T+~2 days) gets refused for low balance.
+
+**Decision:**
+1. A provider refusal (4xx) goes straight onto a slow schedule: 15 m, 1 h, 3 h, then every 6 h for ~3 days. It reuses the same BullMQ job (`moveToDelayed` + `DelayedError`), so job-id dedupe and the CAS gate keep it single-flight. Transient errors keep the 3 fast attempts first.
+2. "Refund still owed" is **derived** (`CANCELLED` + provider-paid + payment `CAPTURED/PARTIALLY_REFUNDED` + nothing pending), not stored. The same predicate feeds the order detail, `?refund=owed` and the dashboard count.
+3. The admin can retry at any time (`POST /admin/orders/:id/refund/retry`, `orders:refund`). A failed retry restarts the schedule.
+4. One note and one alert on the first failure; one note and one terminal alert when the window ends. Rounds in between are silent.
+
+**Alternatives considered:**
+- *A `refundStatus` column + migration.* Rejected: the payment row already encodes it, and a second source of truth can drift.
+- *Retry forever.* Rejected: after 3 days a person has to look (the account may need funds, or the payment may be disputed).
+- *Pull money back from the bank / negative balance.* Not something the platform can do. Razorpay balance top-ups are a Dashboard action.
+
+**Affected files:** see `docs/REFUND_LIFECYCLE.md` (canonical).
+
+---
+
+## [2026-10-21] Refund history rows are events, not status changes; merchant-side notes are hidden from customers
+
+**Decision:** The refunds worker writes refund notes with `fromStatus = toStatus = the order's current status`, never the caller's `sourceStatus`. The admin History panel labels these rows by what happened to the money (`frontend/lib/order-history-event.ts`). `buildOrderJourney` ignores `from === to` rows. Customer order responses drop failure, retry and still-owed notes (`isMerchantOnlyRefundNote`).
+
+**Rationale:** Writing under `sourceStatus` made a courier-cancelled order read "Shipped" after "Cancelled". Showing a customer "account does not have enough balance" leaks the merchant's finances.
+
+---
+
+## [2026-10-21] Admin + ops console design system is core (frontend-core 0.3.0)
+
+**Decision:** Console tokens and primitives live in core: `frontend/components/ui/console-theme.css` (imported in `app/layout.tsx`) and `frontend/components/ui/console.tsx`. Spec: `frontend/docs/CONSOLE_DESIGN_SYSTEM.md`. The surface is neutral, and the client's brand `--primary` is the single accent. Status is shown with `StatusDot` + `orderStatusDisplay()`, never raw enums. Consoles must not use raw palette classes, arbitrary values or inline styles.
+
+**Rationale:** Console styling used to live in each client's `globals.css` (client-owned, `merge=ours`), so it drifted and never received fixes. Core admin also had Raghava's hex baked in, which mis-themed SBGS.
+
+**Consequence:** The `.admin-console` / `.ops-console` blocks in client `globals.css` are legacy. Delete them when convenient; `.ops-console { max-width: 100% }` breaks portalled ops dialogs.
+
+---
+
+## [2026-10-21] Order status: automatic from webhooks, manual with confirmation, passed stages locked
+
+**Decision:**
+- The admin order page shows an **Order progress** tracker built from the timeline (`frontend/lib/order-journey.ts`).
+- Passed stages show when and how they happened (courier update, payment, manual) and are not clickable. Only the moves allowed by the backend state machine are offered.
+- `frontend/lib/order-state-machine.ts` mirrors the backend; a test parses the backend file for parity.
+- Every manual move confirms, because the customer is notified.
+- The page re-reads every 30 s and on focus, so courier webhooks show up live. "Check courier" pulls `POST /admin/shipments/:id/sync`.
+
+**Why manual moves exist at all:** local-delivery orders have no courier webhooks. They could not be advanced at all until the `requireRefundPermission` preHandler hang was fixed (0.3.0).
+
+---
+
+## [2026-10-21] Core manifest covers every engine directory; frontend-requires-backend releases ship as one combined client PR
+
+**Decision:**
+- `core-manifest.json` frontend core now includes `components/ops/**`, `components/auth/**`, `components/maintenance/**`, `components/providers/**` and `contexts/**` (0.3.1).
+- When a frontend-core release *requires* the same release's backend-core, merge each client's backend sync branch into its frontend sync branch, set all three `PLATFORM_VERSION` pins, and merge that one PR with a **merge commit**. The backend PR then closes as merged, and both halves deploy together.
+
+**Rationale:** The ops rebuild was never synced, because ops components were not core. The new admin screens 404 if the frontend deploys before the backend. See `PLATFORM_VERSIONING_AND_SYNC_GUIDE.md` §9.4.
+
+---
+
 ## [2026-06-10] STOREFRONT_URL fail-fast at boot in production-like profiles
 
 **Context:** `auth.service.ts` uses `process.env.STOREFRONT_URL ?? 'http://localhost:3101'` when building password-reset links. A missing bootstrap value would silently send customers localhost URLs in production.

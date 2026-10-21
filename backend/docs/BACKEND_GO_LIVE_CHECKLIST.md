@@ -72,6 +72,8 @@ This checklist validates both:
 - [ ] Webhook skew controls are explicitly configured per provider (`RAZORPAY_WEBHOOK_MAX_SKEW_SECONDS`, `DELHIVERY_WEBHOOK_MAX_SKEW_SECONDS`, `SHIPROCKET_WEBHOOK_MAX_SKEW_SECONDS`) per policy.
 - [ ] `REPLAY_APPROVAL_TOKEN` and replay controls match ops approval policy.
 - [ ] Duplicate webhook deliveries are confirmed idempotent (single downstream state transition).
+- [ ] Razorpay webhook subscribes to `payment.captured`, `payment.failed`, `refund.processed` **and `refund.failed`** (0.4.0+; without it a refund Razorpay fails after accepting stays reserved and is never retried).
+- [ ] A test-mode cancel of a captured prepaid order reaches **Refunded** (proves `refund.processed` is processed), and the admin dashboard's *Needs attention → refunds still owed* is 0 or every entry is explained (`docs/REFUND_LIFECYCLE.md` §8).
 
 ### 2.6 Risk, feature flags, and behavior toggles
 - [ ] Risk envs (for example `RISK_VELOCITY_ENABLED`, `RISK_PAYMENT_INIT_MAX_PER_HOUR`) match policy and are functionally verified.

@@ -6,6 +6,24 @@ This document preserves detailed hardening history for engineering traceability.
 
 ---
 
+**[2026-10-21] Refund chain + order-status + console fixes (backend-core 0.3.0 → 0.4.0, frontend-core 0.3.0 → 0.4.0):**
+
+Found while redesigning the admin console and investigating a courier-cancelled order whose timeline read "Shipped" after "Cancelled":
+- **`PATCH /admin/orders/:id/status` hung on every request (0.3.0).** `requireRefundPermission` was a sync preHandler that never called `done()`. Fastify waits forever on a non-async hook. No screen called the route, so local-delivery orders could never be moved past Shipped. Fixed by making it `async`; a regression test drives a real Fastify request. **Rule:** preHandlers are `async` or call `done()`.
+- **Failed refunds were abandoned silently (0.4.0).** History was written before the Razorpay call, so 3 rows meant 3 failures. BullMQ gave up within seconds. Now: notes only on acceptance; refusals go onto a ~3-day slow retry; derived "refund still owed" state; admin retry; alerts. See `docs/REFUND_LIFECYCLE.md`.
+- **`refund.processed` was swallowed (0.4.0).** The order-processing worker's duplicate-capture guard returned for any event on a captured payment with a matching id. Successful refunds never reached REFUNDED. `refund.failed` was unhandled, and refund webhook dedupe was per payment.
+- **A Razorpay refusal tripped the payment circuit breaker (0.4.0)**, which also guards checkout order creation. Refusals (`PaymentProviderError.rejected`) are now excluded; Razorpay error bodies are parsed.
+- **Merchant finances leaked to customers (0.4.0, preventive).** Customer order responses now drop refund failure/retry notes.
+- **Ops console stopped loading secret values into the page (0.3.0).** The UI shows the masked value and keeps the saved value when the field is left empty. `GET /ops/config/stored` still returns `plaintextValue` (see `OPS_CONTROL_PLANE_GUIDE.md`). `/ops/metrics` always 403'd (server fetch without the path-scoped cookie); it is now fetched in the browser.
+- **Admin sign-in `?next=` (0.3.0)** returns to the page being opened. It is validated to same-origin `/admin` paths only: no `//`, no backslash, no control chars, no auth guest pages.
+- **Smaller fixes:**
+  - Order items were hidden from read-only admins.
+  - The orders list used UTC day boundaries while the dashboard used local time.
+  - Customers/Coupons/Reviews defaulted to the last 7 days.
+  - Dev chunks were served `Cache-Control: immutable` (now production-only).
+
+---
+
 **[2026-08-10] Nginx edge-sync chain closed end-to-end (backend-core 0.1.93–0.1.95 + client hand-carries):**
 
 The 0.1.90 upload-exemption fix deployed green for days without ever reaching the edge. Unwinding that exposed four independent silent failures, each of which alone kept the live vhost stale:

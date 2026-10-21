@@ -104,6 +104,7 @@ For provider onboarding, frontend/public-vs-secret env boundaries, and key rotat
 Operational semantics to preserve in frontend behavior:
 - **Admin permission changes are token-issuance scoped.** If permissions are granted/revoked, force token refresh or logout/re-auth before expecting immediate UI/API permission changes.
 - **Admin refund status requests are deferred.** UI should show an in-progress/pending-refund state until worker/provider confirmation finalizes `REFUNDED`.
+- **A refund can fail and stay owed** (typically low Razorpay balance after settlement). Since 0.4.0 the backend retries automatically for ~3 days. The admin order detail carries `refundOwed` (`{ amountPaise, autoRetrying, lastError, lastFailedAt }` or null), so render it as a banner with **Retry refund** → `POST /admin/orders/:id/refund/retry` (`orders:refund`, idempotency key; 409 = nothing owed). The dashboard's `refundsOwed` count links to `/admin/orders?refund=owed`. Refund history rows have `fromStatus === toStatus`: label them as refund events, not statuses. Full flow: `docs/REFUND_LIFECYCLE.md`.
 - **Idempotency key collisions are now atomic-safe.** Backend uses CAS (Compare-And-Swap) patterns for idempotent request recording. Frontend can safely retry mutations with the same `Idempotency-Key` header on 503/504 errors; concurrent identical requests result in one execution, others return cached response (no double-charge).
 - **Concurrent mutation handling:** Backend state transitions are guarded by atomic checks (e.g., invite consumption, token refresh). If two users/requests race, one wins and the other receives `409 CONFLICT` with descriptive code. Frontend should handle `409` by refreshing state and retrying if appropriate, not blindly repeating the mutation.
 - **Audit chain lock contention:** Under very high concurrent ops activity, ops write endpoints may return `503 ops_audit_chain_lock_timeout`. Frontend should treat this as retryable after a short backoff (1–2 seconds), not a failure.
@@ -1384,6 +1385,7 @@ Before going live, verify:
 |--------|---------------|------------|
 | **JWT permission snapshot** | 15-minute window | Logout/relogin for immediate permission changes |
 | **Admin refund deferred** | Async worker finalization | UI shows "pending refund" state |
+| **Refund still owed** | Provider refused / failed; auto-retry ~3 days (0.4.0) | `refundOwed` banner + Retry refund; dashboard `refundsOwed` (`docs/REFUND_LIFECYCLE.md`) |
 | **Ops audit lock contention** | Possible 503 under high load | Retry after 1-2 seconds |
 
 ### 15.6 Security Scorecard

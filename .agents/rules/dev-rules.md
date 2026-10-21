@@ -55,6 +55,7 @@ If `diff` output is non-empty, re-sync and commit the updated `.agents/rules/dev
 5. **Do not ask questions already answered in the project docs/checklists** (e.g. API URL, feature flags, or agreed delivery sequence).
 
 6. **Admin console patterns (2026-06-03):** Date filters are **per-page** via `AdminDateRangePicker` (not shell-global). Product editor maps Status → `isActive`, short description → `metaDescription`, Featured → `isFeatured`. Do not reintroduce mock customer/product labels in admin tables — use API fields (`customerName`, `productName`, etc.). See `docs/FRONTEND_DEV_LOG.md`.
+7. **Console + refunds (2026-10-21, core 0.3.0–0.4.0):** Admin/ops UI is built only from the core console design system (`frontend/components/ui/console-theme.css` + `console.tsx`, spec `frontend/docs/CONSOLE_DESIGN_SYSTEM.md`). Do not restyle consoles in client `globals.css`. Refunds follow `backend/docs/REFUND_LIFECYCLE.md`: a failed refund is retried for ~3 days and surfaces as *refund still owed*, the Razorpay webhook must include `refund.failed`, and refund history rows are events, not status changes.
 
 > This protocol is non-negotiable.
 
