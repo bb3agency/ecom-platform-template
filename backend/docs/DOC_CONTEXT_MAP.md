@@ -23,12 +23,14 @@ Use this map to keep AI/developer context small while ensuring no detail is lost
 - `docs/FRONTEND_DEV_LOG_TEMPLATE.md` — frontend slice-tracker template.
 - `docs/CLIENT_VPS_DEPLOYMENT_LOG_TEMPLATE.md` — VPS-phase execution log template.
 - `docs/OPS_CONTROL_PLANE_GUIDE.md` — detailed ops control-plane behavior.
+- `docs/REFUND_LIFECYCLE.md` — prepaid refund flow end to end: CAS gate, Razorpay balance/settlement, the ~3-day automatic retry schedule, the derived "refund still owed" state, admin retry, refund webhooks (`refund.processed` + `refund.failed`), history labels, and the pre-0.4.0 failure history.
+- `frontend/docs/CONSOLE_DESIGN_SYSTEM.md` — admin + ops console design system (core since frontend-core 0.3.0): tokens, primitives, mobile rules, status display.
 - Error handling canon: `docs/NEXTJS_FRONTEND_INTEGRATION_GUIDE.md` section `2.1` (frontend error-code handling matrix) + section `2.1.1` (admin form validation UX) + `docs/CLIENT_VPS_SETUP_GUIDE.md` section `19.1` (VPS/API error triage matrix).
 - `docs/CLOUDFLARE_SHARED_VPS_DEPLOYMENT_GUIDE.md` — battle-tested Cloudflare + shared-VPS runbook (companion to `docs/CLIENT_VPS_SETUP_GUIDE.md`): `Full (strict)` TLS, certless-`default_server` **525** root cause, `AAAA`/`Flexible` pitfalls, origin-IP lock, permanent default-server block, per-client onboarding checklist, and the CD-runner-per-client + OOM lessons.
 - `docs/PLATFORM_VERSIONING_AND_SYNC_GUIDE.md` — multi-client platform versioning: semver'd `backend-core`/`frontend-core`, changelog-as-propagation-recipe, per-client `PLATFORM_VERSION` pinning, design-token contract, `FEATURE_*`-flag feature differences, and the `check-core-drift.sh` / `check-token-contract.sh` CI gates. **§9** = release-train automation (`release-train.yml` + `core-sync.yml` + `sync-core.mjs`); **§12** = the develop→cherry-pick→tag→fan-out flow; **§13/§13.1** = new-client onboarding + all required keys/secrets. Builds on `CO_DEVELOPMENT_SYNC_GUIDE.md`.
 - `docs/PHASE7_VPS_DEPLOY_INCIDENT_PLAYBOOK.md` — real incident replay and deterministic remediation for Phase 7 VPS backend deploy.
 - `docs/templates/client-GITHUB_CD_SETUP.template.md` — per-client filled CD checklist (`GITHUB_CD_SETUP.md`).
-- `docs/HARDENING_HISTORY.md` — full engineering hardening narrative (reference-only during active delivery). **Latest:** June 10, 2026 pass 2 — order/payment/coupon/storefront integration hardening + runtime `GET /store/config` (see also same-day production readiness pass for logo/boot/notification/CI).
+- `docs/HARDENING_HISTORY.md` — full engineering hardening narrative (reference-only during active delivery). **Latest:** Oct 21, 2026: refund chain (silent abandon, swallowed `refund.processed`, breaker), order-status route hang, console redesign fixes.
 - `docs/DECISIONS.md` — architectural decision ledger.
 
 ## Post-development primary set

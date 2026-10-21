@@ -97,3 +97,14 @@ Existing `components/ui/*` primitives (`Button`, `Input`, `Select`, `Tabs`, `Dia
 Render it at **375 × 812**, **768 × 1024** and **1280 × 800** and check: no horizontal scroll
 (`document.documentElement.scrollWidth === innerWidth`), nothing truncated that the user needs,
 primary action visible without hunting, loading / empty / error states all reachable.
+
+## Attention banners on a record (pattern)
+
+When a record needs the merchant to act, put a `Notice` directly under the `PageHeader`, above the work columns. Examples: a refund still owed (`AdminOrderRefundOwedNotice`, 0.4.0), or an order that cannot ship.
+
+- `tone="warning"` while the system is still handling it on its own (e.g. retrying automatically).
+- `tone="danger"` once a person must act.
+- The title says what is wrong in the merchant's terms ("Refund of ₹834 hasn't reached the customer"). The body says why (the provider's reason) and what happens next.
+- One action, behind the matching permission, confirmed with `useConfirm()`.
+
+A matching count on the dashboard's *Needs attention* must link to a list filtered with the **same backend predicate**, so the number and the list always agree.

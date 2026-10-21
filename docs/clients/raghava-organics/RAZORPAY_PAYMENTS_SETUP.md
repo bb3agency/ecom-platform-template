@@ -36,6 +36,7 @@ Live keys for this client are recorded in gitignored [VPS_INPUTS.md](./VPS_INPUT
 | `payment.captured` | Yes | Confirms prepaid order, inventory, invoice, notifications |
 | `payment.failed` | Yes | Order → `PAYMENT_FAILED` |
 | `refund.processed` | Yes | Admin refund finalization → `REFUNDED` |
+| `refund.failed` | Yes (since 0.4.0) | Releases the refund and re-queues it (auto-retry ~3 days); see `backend/docs/REFUND_LIFECYCLE.md` |
 
 Do **not** enable disputes, subscriptions, invoices, `order.paid`, payment links, or other events — the backend ignores them.
 
