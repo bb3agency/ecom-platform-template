@@ -143,7 +143,7 @@
 
 | Milestone | Status | Date |
 |---|---|---|
-| Frontend repo created, `frontend-agent-rules.md` copied to `.agents/rules/dev-rules.md`, diff clean | [ ] | — |
+| Frontend repo created, repo-root `CLAUDE.md` present (agent rules) | [ ] | — |
 | `.env.local` generated pointing at local backend | [ ] | — |
 | `FRONTEND_DEV_LOG.md` created from template | [ ] | — |
 | Tier 1 (Foundation) complete | [ ] | — |

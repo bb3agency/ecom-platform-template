@@ -10,7 +10,7 @@ Checkpoint completed during Phase 4 kickoff (session setup only).
 - `lib/api.ts` + `lib/api-base.ts` — centralized client, same-site cookie auth, Next rewrite to Fastify
 - Environment files: `.env.example`, `.env.production.example`, `.env.local` (gitignored)
 - Production env template documents `NEXT_PUBLIC_IMAGE_CDN_URL`, same-origin API pattern; storefront/COD/module flags via **`GET /store/config`** (`StoreConfigProvider`, `lib/storefront-settings.ts`)
-- AI rules: `.agents/rules/dev-rules.md`, `.cursor/rules/dev-rules.mdc`
+- AI rules: repo-root `CLAUDE.md` (single rules file since 2026-10-21)
 - Dev log: `docs/FRONTEND_DEV_LOG.md`
 - Typography: **Inter** sitewide (`lib/fonts.ts`, `app/globals.css`)
 

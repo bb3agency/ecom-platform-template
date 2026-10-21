@@ -42,8 +42,8 @@ interface OpsConfigEditorProps {
 function buildInitialDraft(fields: OpsConfigFieldDefinition[]): Record<string, OpsConfigDraftEntry> {
   const draft: Record<string, OpsConfigDraftEntry> = {};
   for (const field of fields) {
-    // Non-secret fields start from the saved value. Secret fields start empty
-    // (the row shows the masked saved value) — empty and untouched means "keep".
+    // Every field starts from the saved value (secrets too — they render as a
+    // password input with a reveal toggle). Untouched means "keep".
     draft[field.key] = { value: field.storedPlaintext ?? "", touched: false, cleared: false };
   }
   return draft;

@@ -1,7 +1,7 @@
 "use client";
 
-import { memo } from "react";
-import { RotateCcw, Trash2 } from "lucide-react";
+import { memo, useState } from "react";
+import { Eye, EyeOff, RotateCcw, Trash2 } from "lucide-react";
 import { StatusDot, type StatusTone } from "@/components/ui/console";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,6 +45,7 @@ const SELECT_CLASS =
   "console-select h-9 w-full appearance-none rounded-lg border border-input bg-card pl-3 pr-8 text-sm text-foreground outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-60 aria-invalid:border-destructive";
 
 function OpsConfigFieldRowImpl({ field, entry, canWrite, error, onChange, onClear, onUndo }: OpsConfigFieldRowProps) {
+  const [revealed, setRevealed] = useState(false);
   const state = configFieldState(field);
   const copy = STATE_COPY[state];
   const editable = canWrite && !field.envLocked;
@@ -55,7 +56,6 @@ function OpsConfigFieldRowImpl({ field, entry, canWrite, error, onChange, onClea
 
   let placeholder = "Not set";
   if (entry.cleared) placeholder = "Will be removed when you save";
-  else if (field.inputKind === "secret" && hasSaved) placeholder = `Saved (${field.storedMasked}) — type to replace`;
 
   return (
     <div
@@ -111,19 +111,33 @@ function OpsConfigFieldRowImpl({ field, entry, canWrite, error, onChange, onClea
                   )}
                 </select>
               ) : (
-                <Input
-                  id={inputId}
-                  type={field.inputKind === "secret" ? "password" : "text"}
-                  value={entry.value}
-                  disabled={!editable}
-                  placeholder={placeholder}
-                  onChange={(event) => onChange(field.key, event.target.value)}
-                  autoComplete={field.inputKind === "secret" ? "new-password" : "off"}
-                  spellCheck={false}
-                  aria-invalid={error ? true : undefined}
-                  aria-describedby={describedBy}
-                  className="font-mono"
-                />
+                <div className="relative min-w-0">
+                  <Input
+                    id={inputId}
+                    type={field.inputKind === "secret" && !revealed ? "password" : "text"}
+                    value={entry.value}
+                    disabled={!editable}
+                    placeholder={placeholder}
+                    onChange={(event) => onChange(field.key, event.target.value)}
+                    autoComplete={field.inputKind === "secret" ? "new-password" : "off"}
+                    spellCheck={false}
+                    aria-invalid={error ? true : undefined}
+                    aria-describedby={describedBy}
+                    className={cn("font-mono", field.inputKind === "secret" ? "pr-10" : "")}
+                  />
+                  {field.inputKind === "secret" && entry.value ? (
+                    <button
+                      type="button"
+                      onClick={() => setRevealed((v) => !v)}
+                      className="absolute inset-y-0 right-0 flex w-10 items-center justify-center rounded-r-lg text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+                      aria-label={revealed ? `Hide ${field.label}` : `Show ${field.label}`}
+                      aria-pressed={revealed}
+                      title={revealed ? "Hide" : "Show"}
+                    >
+                      {revealed ? <EyeOff className="size-4" aria-hidden /> : <Eye className="size-4" aria-hidden />}
+                    </button>
+                  ) : null}
+                </div>
               )}
             </div>
             {editable && dirty ? (

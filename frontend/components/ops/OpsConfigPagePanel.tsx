@@ -139,7 +139,7 @@ export function OpsConfigPagePanel({ initialShow = "all" }: OpsConfigPagePanelPr
         <Lock className="mt-0.5 size-4 shrink-0" aria-hidden />
         <span>
           Database URL, initial Redis URL and the encryption key are bootstrap settings: they live in the server&apos;s
-          environment file and can&apos;t be changed here. Secret values are never shown — leave a secret empty to keep it.
+          environment file and can&apos;t be changed here. Saved secrets are hidden until you click the eye icon next to them.
         </span>
       </p>
     </ConsolePage>
