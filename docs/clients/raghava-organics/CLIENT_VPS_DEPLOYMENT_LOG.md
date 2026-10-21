@@ -92,7 +92,7 @@
 - [x] `RAZORPAY_WEBHOOK_SECRET` generated → [VPS_INPUTS.md](./VPS_INPUTS.md) (gitignored vault)
 - [x] Razorpay **live** `RAZORPAY_KEY_ID` + `RAZORPAY_KEY_SECRET` recorded in [VPS_INPUTS.md](./VPS_INPUTS.md) (2026-05-23)
 - [x] Public runbook [RAZORPAY_PAYMENTS_SETUP.md](./RAZORPAY_PAYMENTS_SETUP.md)
-- [ ] Razorpay Dashboard → webhook URL + secret + 3 events (`payment.captured`, `payment.failed`, `refund.processed`)
+- [ ] Razorpay Dashboard → webhook URL + secret + 4 events (`payment.captured`, `payment.failed`, `refund.processed`, `refund.failed` — the last required since core 0.4.0, see `backend/docs/REFUND_LIFECYCLE.md`)
 - [ ] Ops UI → Payments → `PAYMENT_PROVIDER`, keys, webhook secret → restart API/workers
 - [ ] `NEXT_PUBLIC_RAZORPAY_KEY_ID=rzp_live_Szr9LAUchr3Sk3` in `frontend/.env.production.local` on VPS + frontend deploy
 

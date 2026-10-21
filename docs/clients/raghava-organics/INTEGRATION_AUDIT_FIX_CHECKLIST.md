@@ -38,7 +38,8 @@
    - `payment.captured`
    - `payment.failed`
    - `refund.processed`
-4. **Uncheck:** `payment.authorized`, `refund.failed`
+   - `refund.failed` (required since core 0.4.0: re-queues a refund Razorpay failed after accepting; see `backend/docs/REFUND_LIFECYCLE.md`)
+4. **Uncheck:** `payment.authorized`
 5. Save
 
 Backend ignores unknown events today; this removes noise and matches the contract.
@@ -114,7 +115,7 @@ curl -s -X POST https://apiv2.shiprocket.in/v1/external/auth/login \
 ```
 Re-audit Raghava Organics integration fixes only. Report OK/NO table.
 
-Razorpay Live webhook: only 3 events enabled (payment.captured, payment.failed, refund.processed) — payment.authorized and refund.failed must be OFF.
+Razorpay Live webhook: 4 events enabled (payment.captured, payment.failed, refund.processed, refund.failed) — payment.authorized OFF. (Until core 0.4.0 refund.failed was kept OFF because it was a no-op; it is now handled.)
 
 Shiprocket: pickup "Home" pincode 522007 — status toggle ACTIVE. Wallet balance > ₹0.
 
