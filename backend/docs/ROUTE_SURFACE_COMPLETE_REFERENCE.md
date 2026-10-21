@@ -379,10 +379,16 @@ Meta WhatsApp incoming event webhook. Processes delivery receipts and inbound me
 Aggregated KPIs for the dashboard header: total revenue, order count, AOV, new customers — for a date range. Query: `from`, `to`.
 
 ### `GET /api/v1/admin/dashboard/sales-chart`
-Time-series revenue data for the sales chart. Query: `from`, `to`, `granularity` (day/week/month).
+Time-series revenue data for the sales chart. Query: `from`, `to`, `granularity` (`hour`/`day`/`week`). **Zero-filled** (backend-core 0.2.2): every bucket in the range is returned, days without orders as `0`, so charts space the x-axis by time. Ranges that would exceed 1000 buckets fall back to sparse points.
 
 ### `GET /api/v1/admin/dashboard/top-products`
 Top-selling products by revenue or quantity. Query: `from`, `to`, `limit`.
+
+### `GET /api/v1/admin/dashboard/action-queue`
+**`dashboard:read`.** What needs the merchant now — the dashboard leads with it. No query. Returns `ordersToFulfil` (CONFIRMED), `ordersProcessing` (PROCESSING), `ordersAwaitingPayment` (PENDING_PAYMENT), `returnsToReview` (REQUESTED), `reviewsToModerate` (unapproved), `lowStockVariants` / `outOfStockVariants` (available = on hand − live cart reservations; same rule as `GET /admin/inventory/low-stock`, so the two counts sum to that list's length), `generatedAt`. Every count is a single filter so it equals the list it links to. Read-only; touches Order, ReturnRequest, Review, Inventory, CartReservation.
+
+### `GET /api/v1/admin/dashboard/order-status-counts`
+**`orders:read`.** Query (required): `from`, `to` (ISO date-time). Order counts per status for the window **and** the equal-length window immediately before it, in one call: `{ from, to, previousFrom, previousTo, current: { total, byStatus }, previous: { total, byStatus } }`. `byStatus` always carries all nine `OrderStatus` keys (zero-filled). Powers the orders overview strip (replaced eight list calls). **400** when `from > to`.
 
 ---
 
@@ -774,6 +780,17 @@ Body: `{ email, otp }`. Verifies the 6-digit OTP against the pending challenge. 
 ### `GET /api/v1/ops/session`
 **`ops:read`** — Returns the current ops user's profile: id, email, name, permissions, mfaEnabled, ipAllowlist, lastLoginAt.
 
+### `GET /api/v1/ops/overview`
+**`ops:read`** — One read for the ops console landing screen (replaces separate load-shed, DLQ summary, pending-OTP and audit calls). Read-only and **not audited**: it returns key names and counts only, never config values. No params or query. Returns:
+- `generatedAt`
+- `loadShed` — same shape as `GET /ops/load-shed` (`mode`, `phase`, `pendingUntil`, `activatedAt`, `reason`)
+- `config` — `runtimeProfile`, `missingRequiredKeys` (strict/production-like profile only; `[]` in development), `restartPendingKeys` (saved DB-overlay keys whose decrypted value differs from this API process's `process.env`, i.e. waiting for an API/worker restart)
+- `queues` — `items[]` (`name`, `waiting`, `active`, `delayed`, `failed` per BullMQ queue, DLQ excluded), `deadLetterTotal`, `deadLetterBySource[]` (`queue`, `count`; same 500 waiting + 500 completed inspection window as `GET /ops/queues/dlq/summary`). A queue that can't be read reports zeros instead of failing the call.
+- `people` — `operatorsActive`, `operatorsTotal`, `merchantAdminsActive` (role ADMIN, not banned), `merchantAdminsTotal`, `pendingOpsInvites`, `pendingAdminInvites` (status CREATED/EMAIL_SENT and not expired)
+- `audit` — `failedLast24h` (FAILED entries in the last 24 h), `recent[]` (latest 6: `id`, `actionType`, `actionStatus`, `createdAt`, `actor`)
+- `pendingOtpChallenges` — the caller's own unexpired PENDING OTP challenges
+Cannot: change anything, reveal secrets, or see other operators' pending OTPs.
+
 ---
 
 ### Ops config management
@@ -785,7 +802,7 @@ The ops config system has two layers:
 Config is grouped into **domains**: `core`, `payments`, `shipping`, `notifications`, `opsSecurity`.
 
 #### `GET /api/v1/ops/config/overview`
-**`ops:read`** — Returns all known config keys grouped by domain with metadata: whether the key is present, whether it's a placeholder, whether it's mutable via ops, and the runtime source (`env-bootstrap` or `db-overlay`). Also returns a `strictProfileHealth` object indicating missing required keys in production mode.
+**`ops:read`** — Returns all known config keys grouped by domain with metadata: whether the key is present, whether it's a placeholder, whether it's mutable via ops, the runtime source (`env-bootstrap` or `db-overlay`), and `restartPending` (a saved DB-overlay value differs from what the running API process uses — restart to apply). Also returns a `strictProfileHealth` object indicating missing required keys in production mode.
 
 #### `POST /api/v1/ops/config/validate`
 **`ops:read`** — Dry-run validation of proposed config values. Body: `{ domain?, values: { KEY: value } }`. Returns errors/warnings per key and whether applying them would require a restart. Does **not** save anything.
@@ -930,7 +947,7 @@ Used by the storefront banner (`MaintenanceBanner`) and by Nginx as the `auth_re
 ### Ops audit log
 
 #### `GET /api/v1/ops/audit/logs`
-**`ops:read`** — Paginated tamper-evident audit chain. Every ops action (config save, OTP request, invite create/revoke, user deactivate, load-shed change) creates a chained audit entry with a hash linking to the previous entry. Query: `actionStatus`, `actionType` (filter by action type), `opsUserId` (filter by actor), `page`, `limit`. Returns `{ id, requestId, actionType, actionStatus, requestPath, method, summary, createdAt }` per entry.
+**`ops:read`** — Paginated tamper-evident audit chain. Every ops action (config save, OTP request, invite create/revoke, user deactivate, load-shed change) creates a chained audit entry with a hash linking to the previous entry. Query: `actionStatus`, `actionType` (filter by action type — must be one of the `OpsActionType` enum values below; anything else is a 400 validation error, previously a 500), `opsUserId` (filter by actor), `page`, `limit`. Returns `{ id, requestId, actionType, actionStatus, requestPath, method, summary, createdAt, actor }` per entry, where `actor` is `{ id, name, email }` of the operator who performed the action (or `null`).
 
 Audit action types recorded: `INVITE_CREATED`, `INVITE_CONSUMED`, `INVITE_EXPIRED_CLEANED`, `INVITE_REVOKED`, `OTP_CHALLENGE_REQUESTED`, `OTP_CHALLENGE_VERIFIED`, `OTP_CHALLENGE_FAILED`, `USER_DEACTIVATED`, `OPS_USER_LOGGED_IN`, `OPS_USER_LOGGED_OUT`, `ENV_READ`, `ENV_UPDATE`, `LOAD_SHED_CHANGE`, `CONTAINER_RESTART`.
 

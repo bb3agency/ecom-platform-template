@@ -1,20 +1,19 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useCallback, useRef } from "react";
+import { useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { OpsPublicLayout } from "@/components/ops/OpsPublicLayout";
-import { OpsAlert, OpsCard, OpsField, OpsInput } from "@/components/ops/ui/ops-ui";
+import { OpsField, formatClock, useSecondsUntil } from "@/components/ops/ui/ops-ui";
 import { TurnstileChallenge } from "@/components/auth/TurnstileChallenge";
+import { Notice } from "@/components/ui/console";
 import { Button } from "@/components/ui/button";
-import {
-  TURNSTILE_MISCONFIGURED_MESSAGE,
-  useAuthTurnstile,
-} from "@/hooks/use-auth-turnstile";
+import { Input } from "@/components/ui/input";
+import { TURNSTILE_MISCONFIGURED_MESSAGE, useAuthTurnstile } from "@/hooks/use-auth-turnstile";
 import { getApiErrorMessage, getOpsLoginErrorMessage } from "@/lib/error-messages";
-import { normalizeOtpCodeInput } from "@/lib/otp-code";
+import { isCompleteOtpCode, normalizeOtpCodeInput } from "@/lib/otp-code";
 import { requestOpsLoginOtp, verifyOpsLoginOtp } from "@/lib/ops-client-api";
 import { emailSchema, otpSchema } from "@/lib/validators";
 import { isAuthDevBypassUiEnabled, getAuthDevOtpHint } from "@/lib/dev-auth";
@@ -29,8 +28,10 @@ export default function OpsLoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [otp, setOtp] = useState("");
   const [devOtpHint, setDevOtpHint] = useState<string | null>(null);
-  const [otpRemainingSec, setOtpRemainingSec] = useState(0);
-  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [expiresAt, setExpiresAt] = useState<string | null>(null);
+  const [verifying, setVerifying] = useState(false);
+  const secondsLeft = useSecondsUntil(expiresAt);
+  const expired = expiresAt !== null && secondsLeft === 0;
   const {
     required: turnstileRequired,
     ready: turnstileReady,
@@ -44,26 +45,11 @@ export default function OpsLoginPage() {
   const form = useForm<z.infer<typeof emailStepSchema>>({
     resolver: zodResolver(emailStepSchema),
     defaultValues: { email: "" },
+    mode: "onTouched",
   });
+  const emailError = form.formState.errors.email?.message;
 
-  const startCountdown = useCallback((expiryIso: string) => {
-    if (countdownRef.current) {
-      clearInterval(countdownRef.current);
-    }
-    const remaining = Math.max(0, Math.ceil((new Date(expiryIso).getTime() - Date.now()) / 1000));
-    setOtpRemainingSec(remaining);
-    countdownRef.current = setInterval(() => {
-      setOtpRemainingSec((prev) => {
-        if (prev <= 1) {
-          clearInterval(countdownRef.current!);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-  }, []);
-
-  const applyDevOtpHint = useCallback((apiDevOtp?: string) => {
+  function applyDevOtpHint(apiDevOtp?: string) {
     if (apiDevOtp) {
       setDevOtpHint(apiDevOtp);
       setOtp(apiDevOtp);
@@ -74,7 +60,7 @@ export default function OpsLoginPage() {
       setDevOtpHint(hint);
       setOtp((current) => current || hint);
     }
-  }, []);
+  }
 
   const handleRequestOtp = form.handleSubmit(async (values) => {
     if (turnstileMisconfigured) {
@@ -82,13 +68,13 @@ export default function OpsLoginPage() {
       return;
     }
     if (turnstileRequired && !turnstileReady) {
-      setError("Complete the security check below, then try again.");
+      setError("Complete the security check, then try again.");
       return;
     }
     try {
       setError(null);
       const response = await requestOpsLoginOtp({ ...values, ...turnstileField });
-      startCountdown(response.expiresAt);
+      setExpiresAt(response.expiresAt);
       applyDevOtpHint(response.devOtp);
       setStep("otp");
     } catch (err) {
@@ -102,98 +88,127 @@ export default function OpsLoginPage() {
     const normalizedOtp = normalizeOtpCodeInput(otp);
     const parsed = z.object({ email: emailSchema, otp: otpSchema }).safeParse({ email, otp: normalizedOtp });
     if (!parsed.success) {
-      setError("Enter a valid 6-digit OTP.");
+      setError("Enter the 6-digit code from the email.");
       return;
     }
+    setVerifying(true);
     try {
       setError(null);
       await verifyOpsLoginOtp(parsed.data);
       router.replace("/ops");
     } catch (err) {
       setError(getOpsLoginErrorMessage(err));
+      setVerifying(false);
     }
+  }
+
+  function backToEmail() {
+    setStep("email");
+    setOtp("");
+    setExpiresAt(null);
+    setDevOtpHint(null);
+    setError(null);
   }
 
   return (
     <OpsPublicLayout
-      title="Sign in to Ops"
-      description="Use your operator email. We will send a one-time code — your session is stored as an httpOnly cookie on the API host."
+      title={step === "email" ? "Sign in to ops" : "Check your email"}
+      description={
+        step === "email" ? (
+          "For platform operators. We'll email you a one-time code."
+        ) : (
+          <>
+            We sent a 6-digit code to <span className="break-all font-medium text-foreground">{form.getValues("email")}</span>.
+          </>
+        )
+      }
     >
       {step === "email" ? (
-        <OpsCard>
-          <form onSubmit={handleRequestOtp} className="grid min-w-0 grid-cols-1 gap-5">
-            <OpsField label="Work email" htmlFor="ops-login-email">
-              <OpsInput
-                id="ops-login-email"
-                type="email"
-                autoComplete="email"
-                placeholder="ops@yourcompany.com"
-                {...form.register("email")}
-              />
-            </OpsField>
-            <TurnstileChallenge
-              siteKey={turnstileSiteKey}
-              onTokenChange={onTurnstileTokenChange}
-              onLoadError={setTurnstileLoadError}
+        <form onSubmit={handleRequestOtp} className="flex min-w-0 flex-col gap-4" noValidate>
+          <OpsField label="Work email" htmlFor="ops-login-email" error={emailError}>
+            <Input
+              id="ops-login-email"
+              type="email"
+              autoComplete="email"
+              inputMode="email"
+              autoFocus
+              placeholder="you@company.com"
+              aria-invalid={emailError ? true : undefined}
+              aria-describedby={emailError ? "ops-login-email-error" : undefined}
+              className="h-10"
+              {...form.register("email")}
             />
-            {turnstileMisconfigured ? (
-              <p className="text-xs text-destructive" role="alert">
-                {TURNSTILE_MISCONFIGURED_MESSAGE}
-              </p>
-            ) : null}
-            {turnstileLoadError ? (
-              <p className="text-sm text-destructive" role="alert">
-                {turnstileLoadError}
-              </p>
-            ) : null}
-            <Button
-              type="submit"
-              className="h-11 w-full"
-              disabled={form.formState.isSubmitting || (turnstileRequired && !turnstileReady)}
-            >
-              {form.formState.isSubmitting ? "Sending code…" : "Send verification code"}
-            </Button>
-          </form>
-        </OpsCard>
+          </OpsField>
+          <TurnstileChallenge
+            siteKey={turnstileSiteKey}
+            onTokenChange={onTurnstileTokenChange}
+            onLoadError={setTurnstileLoadError}
+          />
+          {turnstileMisconfigured ? <Notice tone="danger">{TURNSTILE_MISCONFIGURED_MESSAGE}</Notice> : null}
+          {turnstileLoadError ? <Notice tone="danger">{turnstileLoadError}</Notice> : null}
+          {error ? <Notice tone="danger">{error}</Notice> : null}
+          <Button
+            type="submit"
+            className="h-10 w-full"
+            loading={form.formState.isSubmitting}
+            disabled={turnstileRequired && !turnstileReady}
+          >
+            {form.formState.isSubmitting ? "Sending code…" : "Email me a code"}
+          </Button>
+        </form>
       ) : (
-        <OpsCard>
-          <form onSubmit={handleVerify} className="grid min-w-0 grid-cols-1 gap-5">
-            <OpsAlert tone="info">
-              Code sent to <strong>{form.getValues("email")}</strong>. Check your inbox.
-            </OpsAlert>
-            {devOtpHint ? (
-              <OpsAlert tone="info">
-                Dev bypass active — OTP: <strong>{devOtpHint}</strong>
-              </OpsAlert>
-            ) : null}
-            <OpsField label="6-digit code" htmlFor="ops-login-otp">
-              <OpsInput
-                id="ops-login-otp"
-                value={otp}
-                onChange={(event) => setOtp(normalizeOtpCodeInput(event.target.value))}
-                inputMode="numeric"
-                maxLength={6}
-                autoComplete="one-time-code"
-                className="tracking-[0.3em]"
-              />
-            </OpsField>
-            <p className={`text-sm ${otpRemainingSec <= 0 ? "text-destructive" : "text-muted-foreground"}`}>
-              {otpRemainingSec > 0 ? `Code expires in ${otpRemainingSec}s` : "Code expired — request a new one"}
-            </p>
-            <Button type="submit" className="h-11 w-full" disabled={otpRemainingSec <= 0}>
-              Verify and enter console
-            </Button>
-            <Button type="button" variant="ghost" className="w-full" onClick={() => setStep("email")}>
+        <form onSubmit={handleVerify} className="flex min-w-0 flex-col gap-4" noValidate>
+          {devOtpHint ? (
+            <Notice tone="info" title="Development sign-in">
+              Code filled in automatically: <span className="font-mono font-medium text-foreground">{devOtpHint}</span>
+            </Notice>
+          ) : null}
+          <OpsField
+            label="Verification code"
+            htmlFor="ops-login-otp"
+            hint={
+              expired ? (
+                <span className="text-destructive">This code has expired. Request a new one.</span>
+              ) : (
+                <>
+                  Expires in <span className="tabular font-medium text-foreground">{formatClock(secondsLeft ?? 0)}</span>
+                </>
+              )
+            }
+          >
+            <Input
+              id="ops-login-otp"
+              value={otp}
+              onChange={(event) => setOtp(normalizeOtpCodeInput(event.target.value))}
+              inputMode="numeric"
+              maxLength={6}
+              autoComplete="one-time-code"
+              autoFocus
+              placeholder="000000"
+              aria-invalid={error ? true : undefined}
+              className="h-11 text-center font-mono text-lg tracking-widest tabular"
+            />
+          </OpsField>
+          {error ? <Notice tone="danger">{error}</Notice> : null}
+          <Button type="submit" className="h-10 w-full" loading={verifying} disabled={expired || !isCompleteOtpCode(otp)}>
+            Sign in
+          </Button>
+          <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+            <Button type="button" variant="link" className="h-auto px-0" onClick={backToEmail}>
               Use a different email
             </Button>
-          </form>
-        </OpsCard>
+            <Button
+              type="button"
+              variant="link"
+              className="h-auto px-0"
+              onClick={() => void handleRequestOtp()}
+              disabled={form.formState.isSubmitting}
+            >
+              Send a new code
+            </Button>
+          </div>
+        </form>
       )}
-      {error ? (
-        <OpsAlert tone="error" className="mt-4">
-          {error}
-        </OpsAlert>
-      ) : null}
     </OpsPublicLayout>
   );
 }

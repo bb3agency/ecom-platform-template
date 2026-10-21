@@ -124,6 +124,8 @@ Admin UI should be served under `/admin/*` in the frontend and call `/api/v1/adm
 | GET | `/api/v1/admin/dashboard/kpis` | KPI cards |
 | GET | `/api/v1/admin/dashboard/sales-chart` | Sales chart |
 | GET | `/api/v1/admin/dashboard/top-products` | Top products table |
+| GET | `/api/v1/admin/dashboard/action-queue` | Counts needing action (fulfil, payment, returns, reviews, stock) |
+| GET | `/api/v1/admin/dashboard/order-status-counts` | Per-status order counts for a window + previous window (`orders:read`) |
 
 ### Products and categories
 

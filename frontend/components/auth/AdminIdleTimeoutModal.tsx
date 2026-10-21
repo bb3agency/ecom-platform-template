@@ -103,8 +103,8 @@ export function AdminIdleTimeoutModal() {
       aria-describedby="idle-desc"
     >
       <div className="mx-4 w-full max-w-sm rounded-xl border border-border bg-card p-6 text-center shadow-lg animate-in fade-in-0 slide-in-from-bottom-2 duration-200">
-        <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-full bg-amber-500/10">
-          <Timer className="size-6 text-amber-600" />
+        <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-full bg-warning-soft">
+          <Timer className="size-6 text-warning" />
         </div>
 
         <h2 id="idle-title" className="font-heading text-lg font-semibold text-foreground">
@@ -119,7 +119,7 @@ export function AdminIdleTimeoutModal() {
         {/* Countdown progress bar. */}
         <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-muted">
           <div
-            className="h-full rounded-full bg-amber-500 transition-[width] duration-1000 ease-linear"
+            className="h-full rounded-full bg-warning transition-[width] duration-1000 ease-linear"
             style={{ width: `${progressPct}%` }}
           />
         </div>

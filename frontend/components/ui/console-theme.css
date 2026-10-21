@@ -1,0 +1,218 @@
+/*
+ * Console theme — the admin and ops consoles' design layer.
+ *
+ * CORE file (components/ui/** is synced to every client). It lives here, not in
+ * app/globals.css, because globals.css is client-owned (merge=ours): console styling
+ * kept there drifted silently per client and never received fixes. The storefront
+ * keeps each client's brand palette; the consoles are a neutral work surface that
+ * borrows ONLY the brand's primary colour as the accent, so every client's console
+ * looks like the same product with that client's colour on it.
+ *
+ * Selectors use two classes (.console-theme.admin-console) so they win over the
+ * legacy `.admin-console` block still present in older client globals.css files,
+ * regardless of stylesheet order.
+ *
+ * Spec: frontend/docs/CONSOLE_DESIGN_SYSTEM.md
+ */
+
+/* Capture the client's brand colours at the root, before the console scope
+   overrides --primary. Custom properties inherit their computed value, so these
+   resolve to the storefront brand everywhere below. */
+:root {
+  --console-brand: var(--primary);
+  --console-brand-foreground: var(--primary-foreground);
+
+  /* Status hues that the client theme does not define (it only has --success and
+     --destructive). Global so storefront checkout/auth can use them too. Each has a
+     darker "ink" for text, tuned to ≥4.5:1 on white. */
+  --console-warning: oklch(0.75 0.15 70);
+  --console-warning-ink: oklch(0.5 0.12 60);
+  --console-info: oklch(0.6 0.12 245);
+  --console-info-ink: oklch(0.47 0.12 250);
+}
+
+/* body:has(...) also themes Dialogs, Sheets and menus, which portal to <body>
+   outside the console wrapper. Tokens are set on <body>, not :root, so they can
+   still read the brand captured on :root without a var() cycle. */
+.console-theme.admin-console,
+.console-theme.ops-console,
+body:has(.console-theme.admin-console),
+body:has(.console-theme.ops-console) {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-heading: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+
+  /* Surfaces: one canvas, one work surface, one sunken tone. */
+  --background: oklch(0.975 0.003 255); /* canvas  #F6F7F9 */
+  --card: oklch(1 0 0); /* surface #FFFFFF */
+  --popover: oklch(1 0 0);
+  --muted: oklch(0.963 0.004 255); /* sunken  #F1F3F6 */
+  --secondary: oklch(0.963 0.004 255);
+  --sidebar: oklch(1 0 0);
+  --sidebar-accent: oklch(0.963 0.004 255);
+
+  /* Ink. */
+  --foreground: oklch(0.235 0.015 262); /* #1F2533 */
+  --card-foreground: oklch(0.235 0.015 262);
+  --popover-foreground: oklch(0.235 0.015 262);
+  --secondary-foreground: oklch(0.235 0.015 262);
+  --sidebar-foreground: oklch(0.235 0.015 262);
+  --sidebar-accent-foreground: oklch(0.235 0.015 262);
+  --muted-foreground: oklch(0.52 0.016 262); /* #667085 — 4.9:1 on canvas */
+
+  /* Hairlines. Borders, never shadows, separate things at rest. */
+  --border: oklch(0.915 0.006 262); /* #E3E6EB */
+  --input: oklch(0.88 0.008 262); /* inputs read a step stronger than dividers */
+  --sidebar-border: oklch(0.915 0.006 262);
+
+  /* The one accent: the client's own brand colour. */
+  --primary: var(--console-brand);
+  --primary-foreground: var(--console-brand-foreground);
+  --ring: var(--console-brand);
+  --sidebar-primary: var(--console-brand);
+  --sidebar-primary-foreground: var(--console-brand-foreground);
+  --sidebar-ring: var(--console-brand);
+  --accent: oklch(0.963 0.004 255);
+  --accent-foreground: oklch(0.235 0.015 262);
+
+  /* Status — brand-independent so a state reads the same in every client.
+     --success is darkened so `text-success` meets 4.5:1 on white. */
+  --success: oklch(0.53 0.13 155);
+  --destructive: oklch(0.56 0.21 27);
+
+  /* Charts: brand first, then neutral-friendly companions. */
+  --chart-1: var(--console-brand);
+  --chart-2: oklch(0.7 0.11 220);
+  --chart-3: oklch(0.75 0.12 75);
+  --chart-4: oklch(0.65 0.1 155);
+  --chart-5: oklch(0.8 0.02 262);
+
+  /* Geometry is fixed across clients (storefronts may use 1rem; consoles don't). */
+  --radius: 0.625rem;
+
+  font-family: var(--font-sans);
+  font-feature-settings: "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
+}
+
+/*
+ * Component rules live in Tailwind's `components` layer so utilities on the element
+ * (e.g. `whitespace-normal` on a StatusDot) can still override them. The token
+ * blocks above stay unlayered on purpose: they must beat the legacy `.admin-console`
+ * block in older client globals.css files.
+ */
+@layer components {
+/* Figures line up in columns: money, counts, dates, IDs. */
+.console-theme .tabular,
+.console-theme td,
+.console-theme [data-numeric] {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Keyboard focus is always visible and always the brand colour. */
+.console-theme :focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* Status dot + text. Used by StatusDot; colour never carries meaning alone. */
+.console-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  white-space: nowrap;
+}
+.console-status::before {
+  content: "";
+  width: 0.4375rem;
+  height: 0.4375rem;
+  border-radius: 9999px;
+  background: var(--console-status-color, var(--muted-foreground));
+  flex-shrink: 0;
+}
+.console-status[data-tone="success"] { --console-status-color: var(--success); }
+.console-status[data-tone="warning"] { --console-status-color: var(--console-warning); }
+.console-status[data-tone="danger"] { --console-status-color: var(--destructive); }
+.console-status[data-tone="info"] { --console-status-color: var(--console-info); }
+.console-status[data-tone="brand"] { --console-status-color: var(--console-brand); }
+
+/* Trend deltas in KPI strips. */
+.console-delta[data-direction="up"] { color: var(--success); }
+.console-delta[data-direction="down"] { color: var(--destructive); }
+.console-delta[data-direction="flat"] { color: var(--muted-foreground); }
+
+/* Soft tinted panels for inline notices (warning/info) without raw palette classes. */
+.console-notice {
+  border: 1px solid color-mix(in srgb, var(--console-notice-color) 30%, transparent);
+  background: color-mix(in srgb, var(--console-notice-color) 7%, var(--card));
+  color: var(--foreground);
+}
+.console-notice[data-tone="warning"] { --console-notice-color: var(--console-warning); }
+.console-notice[data-tone="danger"] { --console-notice-color: var(--destructive); }
+.console-notice[data-tone="info"] { --console-notice-color: var(--console-info); }
+.console-notice[data-tone="success"] { --console-notice-color: var(--success); }
+
+}
+
+/* Mobile bottom tab bar sits above the iOS home indicator. */
+.console-tabbar {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Touch: 40px minimum controls and 16px input text (below 16px iOS zooms the page
+   on focus, which is what made forms "jump" off-screen on phones). */
+@media (pointer: coarse) {
+  .console-theme [data-slot="button"]:not([data-size-locked]),
+  .console-theme [data-slot="input"],
+  .console-theme [data-slot="select-trigger"] {
+    min-height: 2.5rem;
+  }
+  .console-theme input:not([type="checkbox"]):not([type="radio"]),
+  .console-theme select,
+  .console-theme textarea {
+    font-size: max(16px, 1em);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .console-theme *,
+  .console-theme *::before,
+  .console-theme *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Native select chevron (FilterSelect). */
+.console-select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23667085' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.5rem center;
+  background-size: 1rem;
+}
+
+@layer utilities {
+/*
+ * Warning / info utilities. Tailwind generates `text-success`, `bg-destructive/10`
+ * etc. from the theme, but the theme lives in client-owned globals.css and has no
+ * warning/info colours — so these are plain classes, with the hover variants the
+ * consoles actually use.
+ */
+.text-warning { color: var(--console-warning-ink); }
+.bg-warning { background-color: var(--console-warning); }
+.bg-warning-soft { background-color: color-mix(in srgb, var(--console-warning) 14%, transparent); }
+.border-warning-soft { border-color: color-mix(in srgb, var(--console-warning) 40%, transparent); }
+.hover\:bg-warning-soft:hover { background-color: color-mix(in srgb, var(--console-warning) 22%, transparent); }
+.text-info { color: var(--console-info-ink); }
+.bg-info { background-color: var(--console-info); }
+.bg-info-soft { background-color: color-mix(in srgb, var(--console-info) 12%, transparent); }
+.border-info-soft { border-color: color-mix(in srgb, var(--console-info) 35%, transparent); }
+.hover\:bg-info-soft:hover { background-color: color-mix(in srgb, var(--console-info) 20%, transparent); }
+}
+
+/* Checkout's fixed "Place order" bar (phones/tablets) must not cover the end of
+   the client's footer. */
+@media (max-width: 1023.98px) {
+  body:has(#checkout-form) {
+    padding-bottom: 5.5rem;
+  }
+}

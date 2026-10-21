@@ -1,572 +1,275 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { Eye, EyeOff, KeyRound, Package, RotateCcw, Trash2 } from "lucide-react";
+import { useCallback, useMemo, useState } from "react";
+import { OpsConfigFieldRow, configFieldState, type OpsConfigDraftEntry } from "@/components/ops/OpsConfigFieldRow";
+import { OpsOtpDialog } from "@/components/ops/OpsOtpDialog";
+import { OpsShippingModeNotice } from "@/components/ops/OpsShippingModeNotice";
 import { useOpsCanWrite } from "@/components/ops/OpsSessionProvider";
-import {
-  OpsAlert,
-  OpsBadge,
-  OpsCard,
-  OpsCardHeader,
-  OpsField,
-  OpsInput,
-  OpsSelect,
-} from "@/components/ops/ui/ops-ui";
+import { FilterBar, FilterSelect, Notice, Panel } from "@/components/ui/console";
 import { Button } from "@/components/ui/button";
-import { ApiError } from "@/lib/api";
-import {
-  getApiErrorMessageWithHint,
-  getOpsErrorDetail,
-  isOpsOtpChallengeConsumed,
-} from "@/lib/error-messages";
-import { isCompleteOtpCode, normalizeOtpCodeInput } from "@/lib/otp-code";
+import { getApiErrorMessageWithHint } from "@/lib/error-messages";
 import {
   buildOpsConfigFieldDefinitions,
   groupOpsConfigFieldsByDomain,
   type OpsConfigFieldDefinition,
 } from "@/lib/ops-config-fields";
 import {
-  requestOpsOtpChallenge,
   saveOpsConfigClient,
   validateOpsConfigClient,
   type OpsConfigOverview,
+  type OpsConfigSaveResponse,
   type OpsStoredConfig,
 } from "@/lib/ops-client-api";
+
+export type OpsConfigShowFilter = "all" | "missing" | "restart" | "edited";
+
+const SHOW_OPTIONS: Array<{ value: OpsConfigShowFilter; label: string }> = [
+  { value: "all", label: "All settings" },
+  { value: "missing", label: "Not set" },
+  { value: "restart", label: "Waiting for restart" },
+  { value: "edited", label: "Edited" },
+];
 
 interface OpsConfigEditorProps {
   overview: OpsConfigOverview;
   stored: OpsStoredConfig;
-  onConfigSaved?: () => void;
+  initialShow?: OpsConfigShowFilter;
+  /** Extra line under a section title, e.g. WhatsApp cost under Notifications. */
+  sectionNotes?: Partial<Record<string, string>>;
+  onSaved: (result: OpsConfigSaveResponse) => void;
 }
 
-type DraftEntry = {
-  value: string;
-  touched: boolean;
-  cleared: boolean;
-};
-
-function buildInitialDraft(fields: OpsConfigFieldDefinition[]): Record<string, DraftEntry> {
-  const draft: Record<string, DraftEntry> = {};
+function buildInitialDraft(fields: OpsConfigFieldDefinition[]): Record<string, OpsConfigDraftEntry> {
+  const draft: Record<string, OpsConfigDraftEntry> = {};
   for (const field of fields) {
-    // Prefill every key with its currently stored plaintext value — including
-    // real secrets like RAZORPAY_KEY_SECRET, SHIPROCKET_PASSWORD, RESEND_API_KEY.
-    // The Ops console is platform-operator-only (ops login + email OTP for
-    // writes, fail-closed permissions, tamper-evident audit chain) so the
-    // operator deliberately gets full visibility into the saved values
-    // instead of having to keep an external vault in sync to know what was
-    // last persisted. Secret-typed inputs (see field.inputKind === "secret"
-    // below) still render as <input type="password"> with an eye-toggle, so
-    // the rendered DOM stays bullet-masked until the operator opts to peek.
-    // `touched: false` keeps the field out of the dirty diff until the user
-    // actually changes it, so re-saving is a true no-op.
-    const prefill = field.storedPlaintext ?? "";
-    draft[field.key] = { value: prefill, touched: false, cleared: false };
+    // Non-secret fields start from the saved value. Secret fields start empty
+    // (the row shows the masked saved value) — empty and untouched means "keep".
+    draft[field.key] = { value: field.storedPlaintext ?? "", touched: false, cleared: false };
   }
   return draft;
 }
 
-interface OpsConfigFieldRowProps {
-  field: OpsConfigFieldDefinition;
-  entry: DraftEntry;
-  canWrite: boolean;
-  onChange: (key: string, value: string) => void;
-  onClear: (key: string) => void;
-}
-
-function OpsConfigFieldRow({
-  field,
-  entry,
-  canWrite,
-  onChange,
-  onClear,
-}: OpsConfigFieldRowProps) {
-  const [showSecret, setShowSecret] = useState(false);
-  const hasStoredValue = Boolean(field.storedMasked);
-  const isDirty = entry.touched || entry.cleared;
-  const canEditField = canWrite && !field.envLocked;
-
-  return (
-    <div className="grid min-w-0 grid-cols-1 gap-3 rounded-lg border border-border/60 bg-muted/15 p-4 sm:grid-cols-[minmax(0,220px)_1fr_auto] sm:items-start sm:gap-4">
-      <div className="grid min-w-0 grid-cols-1 gap-1">
-        <code className="text-xs font-medium text-foreground">{field.key}</code>
-        <p className="text-xs text-muted-foreground">{field.label}</p>
-        <div className="flex flex-wrap gap-1">
-          {field.present && hasStoredValue ? (
-            <OpsBadge tone="success">Runtime present (DB overlay)</OpsBadge>
-          ) : field.present ? (
-            <OpsBadge tone="success">Runtime present (env file)</OpsBadge>
-          ) : hasStoredValue ? (
-            <OpsBadge tone="warning">Saved — restart pending</OpsBadge>
-          ) : (
-            <OpsBadge tone="danger">Missing</OpsBadge>
-          )}
-          {field.envLocked ? <OpsBadge tone="muted">Managed via env file</OpsBadge> : null}
-          {field.requiresRestart ? <OpsBadge tone="muted">Restart required</OpsBadge> : null}
-          {isDirty ? <OpsBadge tone="warning">Unsaved</OpsBadge> : null}
-        </div>
-      </div>
-
-      <div className="grid min-w-0 grid-cols-1 gap-2">
-        {field.envLocked ? (
-          <div className="rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-            Runtime value is currently sourced from environment. Edit the deployment env file and
-            restart services to change this key.
-          </div>
-        ) : field.inputKind === "boolean" ? (
-          <OpsSelect
-            id={`config-${field.key}`}
-            value={entry.value}
-            disabled={!canEditField}
-            onChange={(event) => onChange(field.key, event.target.value)}
-          >
-            <option value="">— Select —</option>
-            <option value="true">true</option>
-            <option value="false">false</option>
-          </OpsSelect>
-        ) : field.inputKind === "select" && field.options ? (
-          <OpsSelect
-            id={`config-${field.key}`}
-            value={entry.value}
-            disabled={!canEditField}
-            onChange={(event) => onChange(field.key, event.target.value)}
-          >
-            <option value="">— Select —</option>
-            {field.options.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </OpsSelect>
-        ) : (
-          <div className="relative">
-            <OpsInput
-              id={`config-${field.key}`}
-              type={field.inputKind === "secret" && !showSecret ? "password" : "text"}
-              value={entry.value}
-              disabled={!canEditField}
-              placeholder={
-                entry.cleared
-                  ? "Will remove stored value on save"
-                  : "Enter value"
-              }
-              onChange={(event) => onChange(field.key, event.target.value)}
-              className={field.inputKind === "secret" ? "pr-10 font-mono text-xs" : "font-mono text-xs"}
-              autoComplete="off"
-            />
-            {field.inputKind === "secret" ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="absolute top-1/2 right-1 size-8 -translate-y-1/2"
-                onClick={() => setShowSecret((prev) => !prev)}
-                aria-label={showSecret ? "Hide value" : "Show value"}
-              >
-                {showSecret ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-              </Button>
-            ) : null}
-          </div>
-        )}
-        {field.hint ? <p className="text-xs text-muted-foreground">{field.hint}</p> : null}
-      </div>
-
-      <div className="flex gap-2 sm:justify-end">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={!canEditField || (!entry.value && !hasStoredValue && !entry.cleared)}
-          onClick={() => onClear(field.key)}
-          className="gap-1"
-        >
-          <Trash2 className="size-3.5" aria-hidden />
-          Clear
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-function ShippingModeStatus({ overview }: { overview: OpsConfigOverview }) {
-  const shippingDomain = overview.domains.find((d) => d.domain === "shipping");
-  const itemMap = new Map(shippingDomain?.items.map((i) => [i.key, i]) ?? []);
-
-  const hasDelhivery = Boolean(itemMap.get("DELHIVERY_API_KEY")?.present);
-  const hasShiprocket =
-    Boolean(itemMap.get("SHIPROCKET_EMAIL")?.present) &&
-    Boolean(itemMap.get("SHIPROCKET_PASSWORD")?.present);
-
-  const isDual = hasDelhivery && hasShiprocket;
-  const hasAny = hasDelhivery || hasShiprocket;
-
-  const label = isDual
-    ? "Dual-provider mode active"
-    : hasDelhivery
-      ? "Single-provider mode: Delhivery"
-      : hasShiprocket
-        ? "Single-provider mode: Shiprocket"
-        : "No shipping provider configured";
-
-  const description = isDual
-    ? "Both Delhivery and Shiprocket are configured. At checkout the system queries both in parallel and assigns each order to the cheaper provider automatically. No manual selection needed."
-    : hasAny
-      ? "One provider is configured. Configure credentials for the second provider below to enable dual-provider mode."
-      : "Neither Delhivery nor Shiprocket credentials are present. Customers cannot get delivery rates at checkout until credentials are saved and the API is restarted.";
-
-  const tone = isDual ? "border-green-500/30 bg-green-500/10 text-green-800" : hasAny ? "border-amber-500/30 bg-amber-500/10 text-amber-800" : "border-destructive/30 bg-destructive/10 text-destructive";
-
-  return (
-    <div className={`flex items-start gap-3 rounded-lg border p-4 ${tone}`}>
-      <Package className="mt-0.5 size-4 shrink-0" aria-hidden />
-      <div className="grid min-w-0 grid-cols-1 gap-1">
-        <p className="text-sm font-medium">{label}</p>
-        <p className="text-xs">{description}</p>
-        <div className="mt-1 flex gap-3 text-xs">
-          <span className={`flex items-center gap-1.5 ${hasDelhivery ? "font-medium" : "opacity-60"}`}>
-            <span className={`inline-block size-2 rounded-full ${hasDelhivery ? "bg-green-500" : "bg-current opacity-30"}`} />
-            Delhivery {hasDelhivery ? "✓" : "—"}
-          </span>
-          <span className={`flex items-center gap-1.5 ${hasShiprocket ? "font-medium" : "opacity-60"}`}>
-            <span className={`inline-block size-2 rounded-full ${hasShiprocket ? "bg-green-500" : "bg-current opacity-30"}`} />
-            Shiprocket {hasShiprocket ? "✓" : "—"}
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-export function OpsConfigEditor({ overview, stored, onConfigSaved }: OpsConfigEditorProps) {
+export function OpsConfigEditor({ overview, stored, initialShow = "all", sectionNotes, onSaved }: OpsConfigEditorProps) {
   const canWrite = useOpsCanWrite();
-  const fields = useMemo(
-    () => buildOpsConfigFieldDefinitions(overview, stored),
-    [overview, stored],
-  );
-  const sections = useMemo(() => groupOpsConfigFieldsByDomain(fields), [fields]);
-
-  const [draft, setDraft] = useState<Record<string, DraftEntry>>(() => buildInitialDraft(fields));
+  const fields = useMemo(() => buildOpsConfigFieldDefinitions(overview, stored), [overview, stored]);
+  const [draft, setDraft] = useState(() => buildInitialDraft(fields));
   const [trackedFields, setTrackedFields] = useState(fields);
-  const [challengeId, setChallengeId] = useState("");
-  const [expiresAt, setExpiresAt] = useState<string | null>(null);
-  const [otpCode, setOtpCode] = useState("");
-  const [secondsLeft, setSecondsLeft] = useState(0);
-  const [error, setError] = useState<string | null>(null);
-  const [errorDetail, setErrorDetail] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [query, setQuery] = useState("");
+  const [show, setShow] = useState<OpsConfigShowFilter>(initialShow);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [formError, setFormError] = useState<string | null>(null);
+  const [warnings, setWarnings] = useState<string[]>([]);
+  const [validating, setValidating] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
 
-  // Derived-state-during-render pattern (React docs: "Storing information
-  // from previous renders"): when the parent passes a fresh `fields` array
-  // — e.g. after a successful save triggers a refetch of overview + stored
-  // config — reset the draft to the new prefills so the editor reflects the
-  // newly saved values and clears any leftover unsaved edits. Doing this in
-  // a useEffect would trigger react-hooks/set-state-in-effect and cause a
-  // cascading render. Setting state directly during render is the
-  // React-recommended replacement.
+  // New data after a save: reset the draft during render (not in an effect).
   if (fields !== trackedFields) {
     setTrackedFields(fields);
     setDraft(buildInitialDraft(fields));
   }
 
-  useEffect(() => {
-    if (!expiresAt) {
-      return;
-    }
-    const tick = () => {
-      const remaining = Math.max(
-        0,
-        Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000),
-      );
-      setSecondsLeft(remaining);
-    };
-    tick();
-    const timer = window.setInterval(tick, 1000);
-    return () => window.clearInterval(timer);
-  }, [expiresAt]);
-
   const dirtyValues = useMemo(() => {
     const values: Record<string, string | null> = {};
     for (const field of fields) {
       const entry = draft[field.key];
-      if (!entry) {
-        continue;
-      }
-      if (entry.cleared) {
-        values[field.key] = null;
-        continue;
-      }
-      if (entry.touched && entry.value.trim()) {
+      if (!entry) continue;
+      if (entry.cleared) values[field.key] = null;
+      else if (entry.touched && entry.value.trim() && entry.value.trim() !== (field.storedPlaintext ?? "")) {
         values[field.key] = entry.value.trim();
       }
     }
     return values;
   }, [draft, fields]);
-
-  const dirtyCount = Object.keys(dirtyValues).length;
+  const dirtyKeys = Object.keys(dirtyValues);
+  const dirtyCount = dirtyKeys.length;
 
   const handleChange = useCallback((key: string, value: string) => {
-    setDraft((prev) => ({
-      ...prev,
-      [key]: {
-        value,
-        touched: true,
-        cleared: false,
-      },
-    }));
+    setDraft((prev) => ({ ...prev, [key]: { value, touched: true, cleared: false } }));
+    setFieldErrors((prev) => {
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
   }, []);
-
   const handleClear = useCallback((key: string) => {
-    setDraft((prev) => ({
-      ...prev,
-      [key]: {
-        value: "",
-        touched: true,
-        cleared: true,
-      },
-    }));
+    setDraft((prev) => ({ ...prev, [key]: { value: "", touched: true, cleared: true } }));
   }, []);
+  const handleUndo = useCallback(
+    (key: string) => {
+      const field = fields.find((f) => f.key === key);
+      setDraft((prev) => ({ ...prev, [key]: { value: field?.storedPlaintext ?? "", touched: false, cleared: false } }));
+    },
+    [fields],
+  );
 
-  const resetDraft = useCallback(() => {
+  function discard() {
     setDraft(buildInitialDraft(fields));
-    setOtpCode("");
-    setChallengeId("");
-    setExpiresAt(null);
-    setError(null);
-    setErrorDetail(null);
-    setMessage(null);
-  }, [fields]);
-
-  async function handleRequestOtp() {
-    setError(null);
-    setErrorDetail(null);
-    setMessage(null);
-    setIsLoading(true);
-    try {
-      const challenge = await requestOpsOtpChallenge("config-save");
-      setChallengeId(challenge.challengeId);
-      setExpiresAt(challenge.expiresAt);
-      setMessage("A 6-digit code was sent to your ops email.");
-    } catch (err) {
-      setError(getApiErrorMessageWithHint(err));
-      setErrorDetail(getOpsErrorDetail(err));
-    } finally {
-      setIsLoading(false);
-    }
+    setFieldErrors({});
+    setFormError(null);
+    setWarnings([]);
   }
 
-  async function executeSave() {
-    if (!canWrite) {
-      return;
-    }
-    if (dirtyCount === 0) {
-      setError("Change at least one field before saving.");
-      return;
-    }
-
-    if (!challengeId) {
-      await handleRequestOtp();
-      return;
-    }
-
-    if (!isCompleteOtpCode(otpCode)) {
-      setError("Enter the 6-digit OTP sent to your email.");
-      setErrorDetail(null);
-      return;
-    }
-    if (secondsLeft <= 0) {
-      setError("OTP expired. Request a new code.");
-      return;
-    }
-
-    setError(null);
-    setErrorDetail(null);
-    setMessage(null);
-    setIsLoading(true);
+  async function reviewAndSave() {
+    setFormError(null);
+    setWarnings([]);
+    setValidating(true);
     try {
-      const normalizedOtp = normalizeOtpCodeInput(otpCode);
       const validation = await validateOpsConfigClient({ values: dirtyValues });
       if (!validation.valid) {
-        setError(
-          validation.errors.map((issue) => `${issue.key}: ${issue.message}`).join(" · ") ||
-            "Configuration validation failed.",
+        const errors: Record<string, string> = {};
+        for (const issue of validation.errors) errors[issue.key] = issue.message;
+        setFieldErrors(errors);
+        setFormError(
+          `${validation.errors.length} ${validation.errors.length === 1 ? "setting needs" : "settings need"} fixing before you can save.`,
         );
+        const first = validation.errors[0]?.key;
+        if (first) document.getElementById(`config-${first}`)?.focus();
         return;
       }
-
-      const result = await saveOpsConfigClient({
-        values: dirtyValues,
-        challengeId,
-        otpCode: normalizedOtp,
-      });
-      setDraft(buildInitialDraft(fields));
-      setOtpCode("");
-      setChallengeId("");
-      setExpiresAt(null);
-      setMessage(
-        result.requiresRestart
-          ? `Saved ${result.savedKeys.length} key(s) to the database. Restart the API and workers next — there is no automatic popup; use Ops → System or SSH on the VPS.`
-          : `Saved ${result.savedKeys.length} key(s) to the database.`,
-      );
-      onConfigSaved?.();
+      setFieldErrors({});
+      setWarnings(validation.warnings.map((w) => `${w.key}: ${w.message}`));
+      setDialogOpen(true);
     } catch (err) {
-      if (err instanceof ApiError && err.code === "INVALID_CREDENTIALS" && isOpsOtpChallengeConsumed(err)) {
-        setError(getApiErrorMessageWithHint(err));
-        setErrorDetail(getOpsErrorDetail(err));
-        setChallengeId("");
-        setOtpCode("");
-        setExpiresAt(null);
-        return;
-      }
-      if (err instanceof ApiError && err.code === "ops_audit_chain_lock_timeout") {
-        setError(getApiErrorMessageWithHint(err));
-        setErrorDetail(getOpsErrorDetail(err));
-        window.setTimeout(() => {
-          void executeSave();
-        }, 1500);
-        return;
-      }
-      setError(getApiErrorMessageWithHint(err));
-      setErrorDetail(getOpsErrorDetail(err));
-      if (isOpsOtpChallengeConsumed(err)) {
-        setChallengeId("");
-        setOtpCode("");
-        setExpiresAt(null);
-      }
+      setFormError(getApiErrorMessageWithHint(err));
     } finally {
-      setIsLoading(false);
+      setValidating(false);
     }
   }
 
-  async function handleSave(event: React.FormEvent) {
-    event.preventDefault();
-    await executeSave();
-  }
+  const q = query.trim().toLowerCase();
+  const sections = groupOpsConfigFieldsByDomain(fields)
+    .map((section) => ({
+      ...section,
+      fields: section.fields.filter((field) => {
+        if (q && !field.key.toLowerCase().includes(q) && !field.label.toLowerCase().includes(q)) return false;
+        const entry = draft[field.key];
+        const dirty = Boolean(entry && (entry.touched || entry.cleared));
+        if (show === "edited") return dirty;
+        if (show === "missing") return configFieldState(field) === "missing";
+        if (show === "restart") return configFieldState(field) === "restart";
+        return true;
+      }),
+    }))
+    .filter((section) => section.fields.length > 0);
 
-  if (!canWrite) {
-    return (
-      <OpsAlert tone="warning">
-        Read-only session — configuration changes require ops:write.
-      </OpsAlert>
-    );
-  }
+  const fieldByKey = new Map(fields.map((f) => [f.key, f] as const));
 
   return (
-    <form onSubmit={handleSave} className="grid min-w-0 grid-cols-1 gap-8">
+    <div className="flex min-w-0 flex-col gap-5 sm:gap-6">
+      <FilterBar search={{ value: query, onChange: setQuery, placeholder: "Search settings", label: "Search settings" }}>
+        <FilterSelect
+          label="Show"
+          value={show}
+          onChange={(value) => setShow(value as OpsConfigShowFilter)}
+          options={SHOW_OPTIONS}
+        />
+      </FilterBar>
+
+      {sections.length === 0 ? (
+        <Panel>
+          <p className="text-sm text-muted-foreground">
+            No settings match.{" "}
+            <button
+              type="button"
+              className="font-medium text-primary hover:underline"
+              onClick={() => {
+                setQuery("");
+                setShow("all");
+              }}
+            >
+              Show all settings
+            </button>
+          </p>
+        </Panel>
+      ) : null}
+
       {sections.map((section) => (
-        <OpsCard key={section.domain}>
-          <OpsCardHeader
-            title={section.label}
-            description="DB-overlay keys — variable name is fixed; edit the value column."
-          />
-          <div className="grid min-w-0 grid-cols-1 gap-3">
-            {section.domain === "shipping" ? (
-              <ShippingModeStatus overview={overview} />
-            ) : null}
-            {section.fields.map((field) => (
-              <OpsConfigFieldRow
-                key={field.key}
-                field={field}
-                entry={draft[field.key] ?? { value: "", touched: false, cleared: false }}
-                canWrite={canWrite}
-                onChange={handleChange}
-                onClear={handleClear}
-              />
-            ))}
-          </div>
-        </OpsCard>
+        <Panel
+          key={section.domain}
+          title={section.label}
+          description={sectionNotes?.[section.domain]}
+          flush
+          bodyClassName="divide-y divide-border"
+        >
+          {section.domain === "shipping" && !q && show === "all" ? <OpsShippingModeNotice overview={overview} /> : null}
+          {section.fields.map((field) => (
+            <OpsConfigFieldRow
+              key={field.key}
+              field={field}
+              entry={draft[field.key] ?? { value: "", touched: false, cleared: false }}
+              canWrite={canWrite}
+              error={fieldErrors[field.key]}
+              onChange={handleChange}
+              onClear={handleClear}
+              onUndo={handleUndo}
+            />
+          ))}
+        </Panel>
       ))}
 
-      <OpsCard className="border-primary/25 bg-primary/5">
-        <OpsCardHeader
-          title="Save configuration"
-          description="Sends an OTP to your ops email, then encrypts and stores changed keys in the database."
-          actions={
-            <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-              <KeyRound className="size-5" aria-hidden />
-            </div>
-          }
-        />
+      {formError ? <Notice tone="danger">{formError}</Notice> : null}
 
-        <div className="grid min-w-0 grid-cols-1 gap-4">
-          <p className="text-sm text-muted-foreground">
-            {dirtyCount > 0
-              ? `${dirtyCount} unsaved change(s) ready to persist.`
-              : "Edit values above, then save."}
+      {canWrite && (dirtyCount > 0 || formError) ? (
+        // Always sticky (not StickyActions, which goes static on desktop): this form is long and
+        // edits are scattered, so the save bar must stay in view at every width.
+        <div
+          className="sticky -bottom-5 z-20 -mx-4 flex min-w-0 flex-wrap items-center justify-between gap-2 border-t border-border bg-card/95 px-4 py-3 backdrop-blur supports-backdrop-filter:bg-card/80 sm:-bottom-6 sm:-mx-6 sm:px-6 lg:-bottom-8 lg:-mx-8 lg:px-8"
+          role="region"
+          aria-label="Unsaved changes"
+        >
+          <p className="min-w-0 text-sm text-muted-foreground tabular" aria-live="polite">
+            {dirtyCount} unsaved {dirtyCount === 1 ? "change" : "changes"}
           </p>
-
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={resetDraft}
-              disabled={isLoading || dirtyCount === 0}
-              className="gap-1"
-            >
-              <RotateCcw className="size-3.5" aria-hidden />
-              Reset changes
+          <div className="flex shrink-0 items-center gap-2">
+            <Button type="button" variant="outline" onClick={discard} disabled={validating}>
+              Discard
             </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => void handleRequestOtp()}
-              disabled={isLoading}
-            >
-              {challengeId && secondsLeft > 0 ? "Resend OTP" : "Send OTP to email"}
+            <Button type="button" onClick={() => void reviewAndSave()} loading={validating} disabled={dirtyCount === 0}>
+              Save changes
             </Button>
-            {challengeId && secondsLeft > 0 ? (
-              <span className="self-center text-xs text-muted-foreground" role="status">
-                OTP expires in {secondsLeft}s
-              </span>
-            ) : null}
           </div>
-
-          <OpsField label="Verification code" htmlFor="ops-config-otp">
-            <OpsInput
-              id="ops-config-otp"
-              value={otpCode}
-              onChange={(event) => setOtpCode(normalizeOtpCodeInput(event.target.value))}
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              maxLength={6}
-              placeholder="000000"
-              className="max-w-xs tracking-[0.3em]"
-            />
-          </OpsField>
-
-          <Button type="submit" disabled={isLoading || dirtyCount === 0} className="w-fit">
-            {isLoading
-              ? "Working…"
-              : challengeId
-                ? "Verify OTP and save to database"
-                : "Save — send OTP first"}
-          </Button>
-
-          {message ? <OpsAlert tone="success">{message}</OpsAlert> : null}
-          {error ? (
-            <OpsAlert tone="error">
-              <div className="grid min-w-0 grid-cols-1 gap-1">
-                <span>{error}</span>
-                {errorDetail ? (
-                  <span className="font-mono text-xs text-destructive/80">{errorDetail}</span>
-                ) : null}
-              </div>
-            </OpsAlert>
-          ) : null}
-
-          <OpsAlert tone="info" title="Restart is manual">
-            Saved keys stay in the database until the running API and workers reload them. There is
-            no in-app restart prompt after save — go to{" "}
-            <Link href="/ops/system" className="font-medium underline underline-offset-2">
-              Ops → System
-            </Link>{" "}
-            (OTP + optional delay) or restart containers on the VPS (for example{" "}
-            <code className="text-xs">docker compose up -d backend workers</code>).
-          </OpsAlert>
         </div>
-      </OpsCard>
-    </form>
+      ) : null}
+
+      <OpsOtpDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        action="config-save"
+        title={`Save ${dirtyCount} ${dirtyCount === 1 ? "setting" : "settings"}?`}
+        description="Values are encrypted in the database. The API and workers use them after the next restart."
+        confirmLabel="Save settings"
+        onConfirm={async ({ challengeId, otpCode }) => {
+          const result = await saveOpsConfigClient({ values: dirtyValues, challengeId, otpCode });
+          onSaved(result);
+        }}
+      >
+        <ul className="flex min-w-0 flex-col divide-y divide-border rounded-lg border border-border">
+          {dirtyKeys.map((key) => {
+            const field = fieldByKey.get(key);
+            const value = dirtyValues[key];
+            return (
+              <li key={key} className="flex min-w-0 flex-col gap-0.5 px-3 py-2">
+                <span className="text-sm font-medium text-foreground">{field?.label ?? key}</span>
+                <span className="break-all font-mono text-xs text-muted-foreground">
+                  {value === null ? "Remove saved value" : field?.inputKind === "secret" ? "New secret (hidden)" : value}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+        {warnings.length > 0 ? (
+          <Notice tone="warning" title="Check before saving">
+            <ul className="list-disc pl-4">
+              {warnings.map((w) => (
+                <li key={w} className="break-words">
+                  {w}
+                </li>
+              ))}
+            </ul>
+          </Notice>
+        ) : null}
+      </OpsOtpDialog>
+    </div>
   );
 }

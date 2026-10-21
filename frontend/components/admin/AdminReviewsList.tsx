@@ -1,5 +1,6 @@
 "use client";
 
+import { useUrlFilterState } from "@/hooks/use-url-filter-state";
 import { useCallback, useEffect, useState } from "react";
 import { AdminPagination } from "@/components/admin/AdminPagination";
 import { AdminTableScroll } from "@/components/admin/AdminTableScroll";
@@ -41,7 +42,8 @@ export function AdminReviewsList({
   const { adminUser } = useAdminAuth();
   const canModerate = hasAdminPermission(adminUser, ADMIN_PERMISSIONS.reviewsModerate);
   const [page, setPage] = useState(1);
-  const [approvedFilter, setApprovedFilter] = useState<string>("");
+  // URL-backed so the dashboard's "reviews to moderate" link opens pre-filtered.
+  const [approvedFilter, setApprovedFilter] = useUrlFilterState("approved", "", ["true", "false"]);
   const [ratingFilter, setRatingFilter] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
@@ -309,7 +311,7 @@ export function AdminReviewsList({
                     </td>
                     <td className="px-3 py-4">
                       <div className="flex items-center gap-2">
-                        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[9px] font-bold text-primary uppercase">
+                        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary uppercase">
                           {review.author.firstName?.charAt(0)}
                           {review.author.lastName?.charAt(0)}
                         </div>
@@ -329,8 +331,8 @@ export function AdminReviewsList({
                             key={star}
                             aria-hidden
                             className={`h-3.5 w-3.5 ${
-                              star <= review.rating
-                                ? "fill-amber-500 text-amber-500"
+ star <= review.rating
+                                ? "text-warning text-warning"
                                 : "text-muted-foreground/30"
                             }`}
                           />
@@ -359,7 +361,7 @@ export function AdminReviewsList({
                         {canModerate && (!review.approved ? (
                           <button
                             type="button"
-                            className="flex h-10 w-10 sm:h-7 sm:w-7 items-center justify-center rounded-md border border-emerald-500/30 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-400 transition-colors disabled:opacity-50"
+                            className="flex h-10 w-10 sm:h-7 sm:w-7 items-center justify-center rounded-md border border-success/30 bg-success/10 text-success hover:bg-success/10 transition-colors disabled:opacity-50"
                             disabled={actionId === review.id}
                             onClick={() => void moderate(review.id, true)}
                             title="Approve"
@@ -370,7 +372,7 @@ export function AdminReviewsList({
                         ) : (
                           <button
                             type="button"
-                            className="flex h-10 w-10 sm:h-7 sm:w-7 items-center justify-center rounded-md border border-amber-500/30 bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 dark:text-amber-400 transition-colors disabled:opacity-50"
+                            className="flex h-10 w-10 sm:h-7 sm:w-7 items-center justify-center rounded-md border border-warning-soft bg-warning-soft text-warning hover:bg-warning-soft transition-colors disabled:opacity-50"
                             disabled={actionId === review.id}
                             onClick={() => void moderate(review.id, false)}
                             title="Unpublish"

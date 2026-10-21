@@ -101,9 +101,9 @@ export function AdminInventoryHistoryPanel({
                   <span
                     className={
                       entry.delta > 0
-                        ? "w-14 shrink-0 font-semibold tabular-nums text-emerald-600"
+                        ? "w-14 shrink-0 font-semibold tabular-nums text-success"
                         : entry.delta < 0
-                          ? "w-14 shrink-0 font-semibold tabular-nums text-red-600"
+                          ? "w-14 shrink-0 font-semibold tabular-nums text-destructive"
                           : "w-14 shrink-0 font-semibold tabular-nums text-muted-foreground"
                     }
                   >

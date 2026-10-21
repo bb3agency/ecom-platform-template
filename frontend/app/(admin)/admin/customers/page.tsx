@@ -4,12 +4,12 @@ import { useState } from "react";
 import { AdminCustomersList } from "@/components/admin/AdminCustomersList";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import {
-  defaultDateRange,
+  allTimeRange,
   type DateRange,
 } from "@/components/admin/AdminDateRangePicker";
 
 export default function AdminCustomersPage() {
-  const [range, setRange] = useState<DateRange>(defaultDateRange);
+  const [range, setRange] = useState<DateRange>(allTimeRange);
 
   return (
     <div className="flex flex-col gap-6">

@@ -19,3 +19,8 @@ export type DashboardTopProductsQuery = {
   to?: string;
 };
 
+
+export type DashboardOrderStatusCountsQuery = {
+  from: string;
+  to: string;
+};

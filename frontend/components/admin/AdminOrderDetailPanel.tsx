@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { FileDown, User, MapPin, CreditCard, Truck, Tag, Package } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { AdminStatusBadge } from "@/components/admin/AdminStatusBadge";
+import { ExternalLink, FileDown, Loader2 } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { KeyValueList, Notice, PageHeader, Panel, StatusDot } from "@/components/ui/console";
 import { useAuthenticatedApi } from "@/hooks/use-authenticated-api";
 import type { AdminOrderDetailFull } from "@/lib/admin-api";
 import { getBrowserApiBaseUrl } from "@/lib/api-base";
@@ -12,337 +14,253 @@ import { parseApiErrorFromResponse } from "@/lib/api";
 import {
   formatAdminDate,
   formatPaise,
-  orderStatusTone,
-  paymentStatusTone,
+  orderStatusDisplay,
+  paymentStatusDisplay,
+  sentenceCaseEnum,
 } from "@/lib/admin-format";
 import { getApiErrorMessage } from "@/lib/error-messages";
 import { isInvoiceEligibleOrderStatus } from "@/lib/order-status-ui";
+import { toast } from "@/lib/toast";
 import { useAuthStore } from "@/stores/auth";
 
-interface AdminOrderDetailPanelProps {
-  orderId: string;
-}
-
-export function AdminOrderDetailPanel({ orderId }: AdminOrderDetailPanelProps) {
+/** One fetch for the whole detail page; panels below receive the order as a prop. */
+export function useAdminOrderDetail(orderId: string) {
   const api = useAuthenticatedApi();
-  const accessToken = useAuthStore((s) => s.accessToken);
-  const [loading, setLoading] = useState(true);
-  const [downloadingInvoice, setDownloadingInvoice] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [order, setOrder] = useState<AdminOrderDetailFull | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const reload = useCallback(async () => {
     setError(null);
     try {
-      const detail = await api<AdminOrderDetailFull>(`/admin/orders/${orderId}`);
-      setOrder(detail);
+      setOrder(await api<AdminOrderDetailFull>(`/admin/orders/${orderId}`));
     } catch (err) {
       setError(getApiErrorMessage(err));
-      setOrder(null);
     } finally {
       setLoading(false);
     }
   }, [api, orderId]);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    void reload();
+  }, [reload]);
 
-  const address = order?.shippingAddress;
+  return { order, loading, error, reload };
+}
 
-  async function downloadInvoice() {
+function useInvoiceDownload(order: AdminOrderDetailFull | null, onGenerated: () => void) {
+  const accessToken = useAuthStore((s) => s.accessToken);
+  const [busy, setBusy] = useState(false);
+
+  async function download() {
     if (!order || !accessToken) return;
-    setDownloadingInvoice(true);
+    setBusy(true);
     try {
-      const url = `${getBrowserApiBaseUrl()}/admin/orders/${orderId}/invoice.pdf`;
-      const response = await fetch(url, {
+      const response = await fetch(`${getBrowserApiBaseUrl()}/admin/orders/${order.id}/invoice.pdf`, {
         headers: { Authorization: `Bearer ${accessToken}` },
         credentials: "include",
       });
-      if (!response.ok) {
-        throw await parseApiErrorFromResponse(response, "Unable to download invoice.");
-      }
+      if (!response.ok) throw await parseApiErrorFromResponse(response, "Unable to download invoice.");
       const blob = await response.blob();
       const objectUrl = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = objectUrl;
       anchor.download = resolveDownloadFilename(
         response,
-        order.invoice?.invoiceNumber
-          ? `${order.invoice.invoiceNumber}.pdf`
-          : `${order.orderNumber}-invoice.pdf`,
+        order.invoice?.invoiceNumber ? `${order.invoice.invoiceNumber}.pdf` : `${order.orderNumber}-invoice.pdf`,
       );
       anchor.click();
       // Deferred: revoking synchronously can abort the save in Firefox/Safari.
       setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
-      // First download may have generated the invoice on demand — refresh so the
-      // invoice number shows up in the panel.
-      if (!order.invoice?.hasPdf) void load();
+      // The first download may have generated the invoice — refresh to show its number.
+      if (!order.invoice?.hasPdf) onGenerated();
     } catch (err) {
-      setError(getApiErrorMessage(err));
+      toast.error(getApiErrorMessage(err));
     } finally {
-      setDownloadingInvoice(false);
+      setBusy(false);
     }
   }
 
-  if (loading) {
-    return (
-      <div className="rounded-xl border border-border bg-card p-6">
-        <div className="h-6 w-40 animate-pulse rounded-md bg-muted" />
-        <div className="mt-2 h-4 w-24 animate-pulse rounded-md bg-muted" />
-      </div>
-    );
-  }
+  return { download, busy };
+}
 
-  if (error) {
-    return (
-      <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
-        {error}
-      </div>
-    );
-  }
-
-  if (!order) return null;
-
-  const shipmentStatusTone = (s: string) => {
-    if (s === "DELIVERED") return "success";
-    if (s === "CANCELLED") return "destructive";
-    if (["PICKED_UP", "IN_TRANSIT", "OUT_FOR_DELIVERY"].includes(s)) return "warning";
-    return "default";
-  };
+export function AdminOrderDetailHeader({
+  order,
+  onChanged,
+}: {
+  order: AdminOrderDetailFull;
+  onChanged: () => void;
+}) {
+  const status = orderStatusDisplay(order.status);
+  const invoice = useInvoiceDownload(order, onChanged);
+  const canInvoice = Boolean(order.invoice?.hasPdf) || isInvoiceEligibleOrderStatus(order.status);
 
   return (
-    <div className="grid min-w-0 grid-cols-1 gap-4">
-      {/* Page header */}
-      <div className="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-border bg-card px-4 py-4 sm:px-6 sm:py-5">
-        <div className="grid min-w-0 grid-cols-1 gap-1">
-          <h1 className="font-heading text-xl font-semibold">{order.orderNumber}</h1>
-          <p className="text-sm text-muted-foreground">
-            {formatAdminDate(order.createdAt)} · {order.paymentMode}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <AdminStatusBadge
-            label={order.status}
-            tone={orderStatusTone(order.status)}
-          />
-          {order.invoice?.hasPdf || isInvoiceEligibleOrderStatus(order.status) ? (
-            <button
-              type="button"
-              disabled={downloadingInvoice}
-              onClick={() => void downloadInvoice()}
-              className="flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-medium hover:bg-muted/50 disabled:opacity-60"
-            >
-              <FileDown className="h-3.5 w-3.5" />
-              {downloadingInvoice ? "Downloading…" : "Download invoice"}
-            </button>
-          ) : null}
-        </div>
-      </div>
+    <PageHeader
+      breadcrumbs={[{ label: "Orders", href: "/admin/orders" }, { label: order.orderNumber }]}
+      title={<span className="tabular">{order.orderNumber}</span>}
+      meta={<StatusDot tone={status.tone}>{status.label}</StatusDot>}
+      description={
+        <>
+          {formatAdminDate(order.createdAt)} · {order.paymentMode === "COD" ? "Cash on delivery" : "Prepaid"} ·{" "}
+          <span className="font-medium text-foreground tabular">{formatPaise(order.total)}</span>
+        </>
+      }
+      actions={
+        canInvoice ? (
+          <Button type="button" variant="outline" size="lg" onClick={() => void invoice.download()} disabled={invoice.busy}>
+            {invoice.busy ? <Loader2 className="animate-spin" aria-hidden /> : <FileDown aria-hidden />}
+            {order.invoice?.invoiceNumber ? `Invoice ${order.invoice.invoiceNumber}` : "Download invoice"}
+          </Button>
+        ) : null
+      }
+    />
+  );
+}
 
-      {/* Summary grid */}
-      <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        <InfoCard icon={<User className="h-4 w-4" />} title="Customer">
-          <p className="font-medium leading-tight">{order.customer.name}</p>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            {order.customer.email ?? "—"}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {order.customer.phone ?? "—"}
-          </p>
-          <Link
-            href={`/admin/customers/${order.userId}`}
-            className="mt-2 inline-block text-xs font-medium text-primary hover:underline"
-          >
-            View customer →
+/** Context column: who, where, how they paid, how it ships. */
+export function AdminOrderContextColumn({ order }: { order: AdminOrderDetailFull }) {
+  const address = order.shippingAddress;
+  const payment = order.payment ? paymentStatusDisplay(order.payment.status) : null;
+
+  return (
+    <>
+      <Panel
+        title="Customer"
+        actions={
+          <Link href={`/admin/customers/${order.userId}`} className="text-sm font-medium text-primary hover:underline">
+            View profile
           </Link>
-        </InfoCard>
-
-        <InfoCard icon={<MapPin className="h-4 w-4" />} title="Ship to">
-          {address ? (
-            <>
-              <p className="font-medium leading-tight">{address.fullName}</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">{address.line1}</p>
-              {address.line2 ? (
-                <p className="text-xs text-muted-foreground">{address.line2}</p>
-              ) : null}
-              <p className="text-xs text-muted-foreground">
-                {address.city}, {address.state} {address.pincode}
-              </p>
-            </>
-          ) : (
-            <p className="text-sm text-muted-foreground">—</p>
-          )}
-        </InfoCard>
-
-        <InfoCard icon={<CreditCard className="h-4 w-4" />} title="Payment">
-          {order.payment ? (
-            <div className="grid min-w-0 grid-cols-1 gap-1.5">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-xs text-muted-foreground">Status</span>
-                <AdminStatusBadge
-                  label={order.payment.status}
-                  tone={paymentStatusTone(order.payment.status)}
-                />
-              </div>
-              <Row label="Provider" value={order.payment.provider} />
-              <Row label="Method" value={order.payment.method ?? "—"} />
-              <Row label="Amount" value={formatPaise(order.payment.amount)} />
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">No payment record</p>
-          )}
-        </InfoCard>
-
-        <InfoCard icon={<Truck className="h-4 w-4" />} title="Shipment">
-          {order.shipment ? (
-            <div className="grid min-w-0 grid-cols-1 gap-1.5">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-xs text-muted-foreground">Status</span>
-                <AdminStatusBadge
-                  label={order.shipment.status}
-                  tone={shipmentStatusTone(order.shipment.status)}
-                />
-              </div>
-              <Row label="AWB" value={order.shipment.awb ?? "—"} />
-              {order.shipment.trackingUrl ? (
-                <a
-                  href={order.shipment.trackingUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-1 text-xs font-medium text-primary hover:underline"
-                >
-                  Track shipment →
-                </a>
-              ) : null}
-            </div>
-          ) : order.isLocalDelivery ? (
-            <p className="text-sm text-muted-foreground">
-              Local delivery — no courier shipment is booked. You deliver this order and
-              advance its status manually.
-            </p>
-          ) : (
-            <p className="text-sm text-muted-foreground">Not shipped yet</p>
-          )}
-        </InfoCard>
-
-        <InfoCard icon={<Package className="h-4 w-4" />} title="Packing box">
-          {order.packingBox ? (
-            <div className="grid min-w-0 grid-cols-1 gap-1.5">
-              <Row
-                label="Dimensions"
-                value={`${order.packingBox.lengthCm} × ${order.packingBox.widthCm} × ${order.packingBox.heightCm} cm`}
-              />
-              <Row
-                label="Weight"
-                value={`${(order.packingBox.weightGrams / 1000).toFixed(2)} kg`}
-              />
-              <Row
-                label="Incl. packaging"
-                value={`${order.packingBox.packagingWeightGrams} g`}
-              />
-              <Row label="Box" value={packingBoxSourceLabel(order.packingBox)} />
-              <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-                Recommended carton — the same dimensions and sealed-parcel weight (products +
-                carton/tape/void fill) declared to the courier for this order. Pack into a box
-                at least this size.
-              </p>
-            </div>
-          ) : order.isLocalDelivery ? (
-            <p className="text-sm text-muted-foreground">
-              Local delivery — no courier dimensions needed. Pack in any suitable box.
-            </p>
-          ) : (
-            <p className="text-sm text-muted-foreground">No items to pack</p>
-          )}
-        </InfoCard>
-
-        <InfoCard icon={<Tag className="h-4 w-4" />} title="Coupon">
-          {order.coupon ? (
-            <div className="grid min-w-0 grid-cols-1 gap-1.5">
-              <Row label="Code" value={order.coupon.code} />
-              <Row label="Discount" value={getCouponDiscountDisplay(order.coupon)} />
-              <Row label="Min. Order" value={formatPaise(order.coupon.minOrderPaise)} />
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">No coupon applied</p>
-          )}
-        </InfoCard>
-      </div>
-
-      {/* Order totals */}
-      <div className="rounded-xl border border-border bg-card px-4 py-4 sm:px-6">
-        <div className="flex flex-wrap items-center gap-x-8 gap-y-2">
-          <TotalItem label="Subtotal" value={formatPaise(order.subtotal)} />
-          <span className="hidden text-border sm:block">|</span>
-          <TotalItem label="Shipping" value={formatPaise(order.shippingCharge)} />
-          <span className="hidden text-border sm:block">|</span>
-          <TotalItem label="Discount" value={formatPaise(order.discountAmount)} />
-          <span className="hidden text-border sm:block">|</span>
-          <TotalItem label="Total" value={formatPaise(order.total)} bold />
+        }
+      >
+        <div className="flex flex-col gap-4">
+          <div className="min-w-0">
+            <p className="font-medium text-foreground">{order.customer.name}</p>
+            {order.customer.email ? (
+              <a href={`mailto:${order.customer.email}`} className="block break-all text-sm text-muted-foreground hover:text-foreground">
+                {order.customer.email}
+              </a>
+            ) : null}
+            {order.customer.phone ? (
+              <a href={`tel:${order.customer.phone}`} className="block text-sm text-muted-foreground tabular hover:text-foreground">
+                {order.customer.phone}
+              </a>
+            ) : null}
+          </div>
+          <div className="min-w-0 border-t border-border pt-4">
+            <p className="mb-1 text-xs text-muted-foreground">Ship to</p>
+            {address ? (
+              <address className="text-sm not-italic leading-relaxed text-foreground">
+                {address.fullName}
+                <br />
+                {address.line1}
+                {address.line2 ? (
+                  <>
+                    <br />
+                    {address.line2}
+                  </>
+                ) : null}
+                <br />
+                {address.city}, {address.state} <span className="tabular">{address.pincode}</span>
+              </address>
+            ) : (
+              <p className="text-sm text-muted-foreground">No address on file</p>
+            )}
+          </div>
         </div>
-      </div>
+      </Panel>
+
+      <Panel title="Payment">
+        {order.payment && payment ? (
+          <KeyValueList
+            className="sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2"
+            items={[
+              { label: "Status", value: <StatusDot tone={payment.tone}>{payment.label}</StatusDot> },
+              { label: "Amount", value: <span className="tabular">{formatPaise(order.payment.amount)}</span> },
+              { label: "Method", value: order.payment.method ? sentenceCaseEnum(order.payment.method) : "—" },
+              { label: "Provider", value: sentenceCaseEnum(order.payment.provider) },
+              ...(order.payment.refundedAmountPaise > 0
+                ? [{ label: "Refunded", value: <span className="tabular">{formatPaise(order.payment.refundedAmountPaise)}</span> }]
+                : []),
+              ...(order.coupon
+                ? [{ label: "Coupon", value: <span className="font-medium">{order.coupon.code}</span> }]
+                : []),
+            ]}
+          />
+        ) : (
+          <p className="text-sm text-muted-foreground">No payment recorded yet.</p>
+        )}
+      </Panel>
+
+      <Panel title="Shipping">
+        {order.shipment ? (
+          <KeyValueList
+            className="sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2"
+            items={[
+              { label: "Status", value: sentenceCaseEnum(order.shipment.status) },
+              { label: "AWB", value: <span className="break-all tabular">{order.shipment.awb ?? "Not booked"}</span> },
+              ...(order.shipment.trackingUrl
+                ? [
+                    {
+                      label: "Tracking",
+                      wide: true,
+                      value: (
+                        <a
+                          href={order.shipment.trackingUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 font-medium text-primary hover:underline"
+                        >
+                          Open tracking page <ExternalLink className="size-3.5" aria-hidden />
+                        </a>
+                      ),
+                    },
+                  ]
+                : []),
+            ]}
+          />
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            {order.isLocalDelivery ? "Local delivery — your team delivers this order." : "Not shipped yet."}
+          </p>
+        )}
+        {order.packingBox && !order.isLocalDelivery ? (
+          <div className="mt-4 border-t border-border pt-4">
+            <p className="text-xs text-muted-foreground">Pack in a box at least</p>
+            <p className="mt-0.5 text-sm text-foreground tabular">
+              {order.packingBox.lengthCm} × {order.packingBox.widthCm} × {order.packingBox.heightCm} cm ·{" "}
+              {(order.packingBox.weightGrams / 1000).toFixed(2)} kg sealed
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {packingBoxSourceLabel(order.packingBox)} · includes {order.packingBox.packagingWeightGrams} g packaging.
+              These are the dimensions declared to the courier.
+            </p>
+          </div>
+        ) : null}
+      </Panel>
 
       {order.notes ? (
-        <div className="rounded-xl border border-border bg-card px-4 py-4 sm:px-6">
-          <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Order notes
-          </p>
-          <p className="text-sm">{order.notes}</p>
-        </div>
+        <Panel title="Customer note">
+          <p className="whitespace-pre-wrap break-words text-sm text-foreground">{order.notes}</p>
+        </Panel>
       ) : null}
-    </div>
+    </>
   );
 }
 
-function InfoCard({
-  icon,
-  title,
-  children,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  children: React.ReactNode;
-}) {
+export function AdminOrderDetailError({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <div className="rounded-xl border border-border bg-card p-4">
-      <div className="mb-3 flex items-center gap-2">
-        <span className="text-muted-foreground">{icon}</span>
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          {title}
-        </h3>
-      </div>
-      {children}
-    </div>
-  );
-}
-
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between gap-2 text-xs">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="font-medium">{value}</span>
-    </div>
-  );
-}
-
-function TotalItem({
-  label,
-  value,
-  bold,
-}: {
-  label: string;
-  value: string;
-  bold?: boolean;
-}) {
-  return (
-    <div className="grid min-w-0 grid-cols-1 gap-0.5">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <span className={bold ? "text-base font-semibold" : "text-sm font-medium"}>
-        {value}
-      </span>
-    </div>
+    <Notice
+      tone="danger"
+      title="Couldn't load this order"
+      action={
+        <Button type="button" variant="outline" size="lg" onClick={onRetry}>
+          Try again
+        </Button>
+      }
+    >
+      {message}
+    </Notice>
   );
 }
 
@@ -352,19 +270,6 @@ function packingBoxSourceLabel(box: {
 }): string {
   if (box.source === "catalog") return box.boxName ?? "Catalog box";
   if (box.source === "single-item") return "Single item";
-  if (box.source === "default-fallback") return "Default box (set variant dims)";
-  return "Computed (best fit)";
-}
-
-function getCouponDiscountDisplay(coupon: {
-  type: string;
-  value: number;
-}): string {
-  if (coupon.type === "PERCENTAGE_OFF") {
-    return `${coupon.value}%`;
-  }
-  if (coupon.type === "FREE_SHIPPING") {
-    return "Free Shipping";
-  }
-  return formatPaise(coupon.value);
+  if (box.source === "default-fallback") return "Default box (set variant dimensions for accuracy)";
+  return "Best-fit box";
 }

@@ -250,7 +250,7 @@ export function AdminCategoriesList() {
       label: "Active",
       value: categoryKpis ? categoryKpis.active.toLocaleString() : "—",
       icon: Tag,
-      iconClassName: "bg-emerald-500/10 text-emerald-600",
+      iconClassName: "bg-success/10 text-success",
     },
     {
       label: "Inactive",

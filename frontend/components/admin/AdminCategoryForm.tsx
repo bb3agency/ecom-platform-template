@@ -58,9 +58,9 @@ function Field({ label, required, hint, error, children }: FieldProps) {
         {required && <span className="text-destructive">*</span>}
       </label>
       {children}
-      {hint && !error && <p className="text-[11px] text-muted-foreground/70">{hint}</p>}
+      {hint && !error && <p className="text-xs text-muted-foreground/70">{hint}</p>}
       {error && (
-        <p className="flex items-center gap-1 text-[11px] font-semibold text-destructive">
+        <p className="flex items-center gap-1 text-xs font-semibold text-destructive">
           <AlertCircle className="h-3 w-3 shrink-0" />
           {error}
         </p>
@@ -70,7 +70,7 @@ function Field({ label, required, hint, error, children }: FieldProps) {
 }
 
 const inputClass =
-  "h-10 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20 disabled:opacity-50 transition-colors";
+  "h-10 w-full rounded-lg border border-input bg-card px-3 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20 disabled:opacity-50 transition-colors";
 
 // ── Toggle switch ─────────────────────────────────────────────────────────────
 
@@ -322,7 +322,7 @@ export function AdminCategoryForm({ open, category, onSaved, onClose }: AdminCat
               <h2 className="text-sm font-semibold text-foreground">
                 {isEdit ? "Edit Category" : "New Category"}
               </h2>
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 {isEdit ? "Update category details" : "Add a new product category"}
               </p>
             </div>
@@ -415,6 +415,7 @@ export function AdminCategoryForm({ open, category, onSaved, onClose }: AdminCat
                           src={pendingPreviewUrl ?? resolveProductImageUrl(imageUrl.trim())}
                           alt={name || "Category image preview"}
                           fill
+                          sizes="64px"
                           className="object-cover"
                           unoptimized={Boolean(pendingPreviewUrl)}
                         />

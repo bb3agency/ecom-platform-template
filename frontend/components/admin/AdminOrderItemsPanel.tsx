@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Panel } from "@/components/ui/console";
 import { useAdminAuth } from "@/contexts/admin-auth-context";
 import { useAuthenticatedApi } from "@/hooks/use-authenticated-api";
 import {
@@ -70,7 +71,8 @@ export function AdminOrderItemsPanel({ orderId, onUpdated }: AdminOrderItemsPane
     void load();
   }, [load]);
 
-  const canEditItems = order ? EDITABLE_STATUSES.has(order.status) : false;
+  // Read-only admins still see the items; only editing needs orders:write.
+  const canEditItems = canWrite && order ? EDITABLE_STATUSES.has(order.status) : false;
 
   async function saveItems() {
     if (!canWrite || !order || !canEditItems) return;
@@ -110,120 +112,106 @@ export function AdminOrderItemsPanel({ orderId, onUpdated }: AdminOrderItemsPane
     }
   }
 
-  if (!canWrite) return null;
+  const dirty = order ? order.items.some((item) => (quantities[item.id] ?? "") !== String(item.quantity)) : false;
 
   return (
-    <section className="rounded-xl border border-border bg-card">
-      <header className="flex items-center justify-between gap-3 px-4 py-4 sm:px-6">
-        <div>
-          <h2 className="font-heading text-sm font-semibold">Line items</h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            {canEditItems
-              ? "Quantities editable while PENDING_PAYMENT or CONFIRMED."
-              : "Read-only for this order status."}
-          </p>
-        </div>
-        {loading ? <Skeleton className="h-4 w-20" /> : null}
-      </header>
-
-      {order ? (
-        <>
-          <div className="overflow-x-auto border-t border-border">
-            <table className="w-full min-w-[520px] text-sm">
-              <thead className="bg-muted/30">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    Product
-                  </th>
-                  <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    SKU
-                  </th>
-                  <th className="px-3 py-3 text-center text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    Qty
-                  </th>
-                  <th className="px-3 py-3 text-right text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    Unit
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    Total
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {order.items.map((item) => (
-                  <tr key={item.id} className="transition-colors hover:bg-muted/20">
-                    <td className="px-6 py-3.5">
-                      <p className="font-medium">{item.productName}</p>
-                      <p className="text-xs text-muted-foreground">{item.variantName}</p>
-                    </td>
-                    <td className="px-3 py-3.5 font-mono text-xs text-muted-foreground">
-                      {item.sku}
-                    </td>
-                    <td className="px-3 py-3.5 text-center">
-                      {canEditItems ? (
-                        <input
-                          className="h-8 w-16 rounded-lg border border-border bg-background px-2 text-center text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                          value={quantities[item.id] ?? ""}
-                          onChange={(e) =>
-                            setQuantities({ ...quantities, [item.id]: e.target.value })
-                          }
-                        />
-                      ) : (
-                        <span className="font-medium">{item.quantity}</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-3.5 text-right text-muted-foreground">
-                      {formatPaise(item.unitPrice)}
-                    </td>
-                    <td className="px-6 py-3.5 text-right font-medium">
-                      {formatPaise(item.totalPrice)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="border-t border-border px-4 py-4 sm:px-6">
-            <dl className="ml-auto grid w-full max-w-xs grid-cols-1 gap-1.5 text-sm">
-              <div className="flex items-center justify-between">
-                <dt className="text-muted-foreground">Subtotal</dt>
-                <dd className="text-foreground">{formatPaise(order.subtotal)}</dd>
-              </div>
-              <div className="flex items-center justify-between">
-                <dt className="text-muted-foreground">Discount</dt>
-                <dd className="text-foreground">
-                  {order.discountAmount > 0
-                    ? `−${formatPaise(order.discountAmount)}`
-                    : formatPaise(0)}
-                </dd>
-              </div>
-              <div className="flex items-center justify-between">
-                <dt className="text-muted-foreground">Shipping</dt>
-                <dd className="text-foreground">{formatPaise(order.shippingCharge)}</dd>
-              </div>
-              <div className="mt-1 flex items-center justify-between border-t border-border pt-2 font-semibold">
-                <dt>Grand total</dt>
-                <dd>{formatPaise(order.total)}</dd>
-              </div>
-            </dl>
-          </div>
-
-          {canEditItems ? (
-            <div className="flex items-center gap-3 border-t border-border px-4 py-4 sm:px-6">
+    <Panel
+      title="Items"
+      description={
+        canEditItems
+          ? "You can change quantities until the order is being processed."
+          : order
+            ? `${order.items.length} ${order.items.length === 1 ? "item" : "items"}`
+            : undefined
+      }
+      flush
+      footer={
+        canEditItems && dirty ? (
+          <>
+            <p className="text-sm text-muted-foreground">Totals and stock update when you save.</p>
+            <div className="flex gap-2">
               <Button
-                className="px-4"
-                loading={saving}
-                onClick={() => void saveItems()}
+                type="button"
+                variant="outline"
+                size="lg"
+                disabled={saving}
+                onClick={() =>
+                  order &&
+                  setQuantities(Object.fromEntries(order.items.map((i) => [i.id, String(i.quantity)])))
+                }
               >
-                {saving ? "Saving…" : "Save changes"}
+                Discard
+              </Button>
+              <Button type="button" size="lg" loading={saving} onClick={() => void saveItems()}>
+                Save changes
               </Button>
             </div>
-          ) : null}
+          </>
+        ) : undefined
+      }
+    >
+      {loading && !order ? (
+        <div className="space-y-3 p-4 sm:p-5">
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+        </div>
+      ) : order && order.items.length > 0 ? (
+        <>
+          <ul className="divide-y divide-border">
+            {order.items.map((item) => (
+              <li key={item.id} className="flex min-w-0 items-center gap-3 px-4 py-3 sm:px-5">
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium text-foreground">{item.productName}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {item.variantName} · <span className="tabular">{item.sku}</span>
+                  </p>
+                </div>
+                <div className="shrink-0">
+                  {canEditItems ? (
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      aria-label={`Quantity of ${item.productName} ${item.variantName}`}
+                      className="h-9 w-16 rounded-lg border border-input bg-card px-2 text-center text-sm tabular outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
+                      value={quantities[item.id] ?? ""}
+                      onChange={(e) => setQuantities({ ...quantities, [item.id]: e.target.value.replace(/[^0-9]/g, "") })}
+                    />
+                  ) : (
+                    <span className="text-sm text-muted-foreground tabular">× {item.quantity}</span>
+                  )}
+                </div>
+                <div className="w-24 shrink-0 text-right">
+                  <p className="font-medium text-foreground tabular">{formatPaise(item.totalPrice)}</p>
+                  <p className="text-xs text-muted-foreground tabular">{formatPaise(item.unitPrice)} each</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+          <dl className="ml-auto grid w-full max-w-xs grid-cols-1 gap-1.5 border-t border-border px-4 py-4 text-sm sm:px-5">
+            <div className="flex items-center justify-between">
+              <dt className="text-muted-foreground">Subtotal</dt>
+              <dd className="tabular">{formatPaise(order.subtotal)}</dd>
+            </div>
+            {order.discountAmount > 0 ? (
+              <div className="flex items-center justify-between">
+                <dt className="text-muted-foreground">Discount</dt>
+                <dd className="tabular">−{formatPaise(order.discountAmount)}</dd>
+              </div>
+            ) : null}
+            <div className="flex items-center justify-between">
+              <dt className="text-muted-foreground">Shipping</dt>
+              <dd className="tabular">{order.shippingCharge > 0 ? formatPaise(order.shippingCharge) : "Free"}</dd>
+            </div>
+            <div className="mt-1 flex items-center justify-between border-t border-border pt-2 font-semibold">
+              <dt>Total</dt>
+              <dd className="tabular">{formatPaise(order.total)}</dd>
+            </div>
+          </dl>
         </>
-      ) : !loading ? (
-        <p className="px-4 pb-4 text-sm text-muted-foreground sm:px-6">No line items.</p>
-      ) : null}
-    </section>
+      ) : (
+        <p className="p-4 text-sm text-muted-foreground sm:p-5">No items on this order.</p>
+      )}
+    </Panel>
   );
 }

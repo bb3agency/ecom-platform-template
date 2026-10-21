@@ -35,19 +35,19 @@ const STATUS_ICON: Record<string, React.ReactNode> = {
 };
 
 const STATUS_COLOR: Record<string, string> = {
-  CONFIRMED: "bg-amber-50 text-amber-600",
-  PROCESSING: "bg-blue-50 text-blue-600",
-  SHIPPED: "bg-indigo-50 text-indigo-600",
-  PAYMENT_FAILED: "bg-red-50 text-red-600",
-  CANCELLED: "bg-zinc-100 text-zinc-500",
+  CONFIRMED: "bg-warning-soft text-warning",
+  PROCESSING: "bg-info-soft text-info",
+  SHIPPED: "bg-info-soft text-info",
+  PAYMENT_FAILED: "bg-destructive/10 text-destructive",
+  CANCELLED: "bg-muted text-muted-foreground",
 };
 
 const STATUS_BADGE: Record<string, string> = {
-  CONFIRMED: "bg-amber-50 text-amber-700",
-  PROCESSING: "bg-blue-50 text-blue-700",
-  SHIPPED: "bg-indigo-50 text-indigo-700",
-  PAYMENT_FAILED: "bg-red-50 text-red-700",
-  CANCELLED: "bg-zinc-100 text-zinc-600",
+  CONFIRMED: "bg-warning-soft text-warning",
+  PROCESSING: "bg-info-soft text-info",
+  SHIPPED: "bg-info-soft text-info",
+  PAYMENT_FAILED: "bg-destructive/10 text-destructive",
+  CANCELLED: "bg-muted text-foreground",
 };
 
 export function AdminNotificationsPanel({ onClose }: AdminNotificationsPanelProps) {
@@ -150,7 +150,7 @@ export function AdminNotificationsPanel({ onClose }: AdminNotificationsPanelProp
         >
           Pending Orders
           {pendingCount > 0 && (
-            <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-amber-500 px-1 text-[9px] font-bold text-white">
+            <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-warning px-1 text-xs font-bold text-white">
               {pendingCount}
             </span>
           )}
@@ -167,7 +167,7 @@ export function AdminNotificationsPanel({ onClose }: AdminNotificationsPanelProp
         >
           Payment Issues
           {issuesCount > 0 && (
-            <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-destructive px-1 text-[9px] font-bold text-white">
+            <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-destructive px-1 text-xs font-bold text-white">
               {issuesCount}
             </span>
           )}
@@ -187,14 +187,14 @@ export function AdminNotificationsPanel({ onClose }: AdminNotificationsPanelProp
             <button
               type="button"
               onClick={() => setRefreshKey((k) => k + 1)}
-              className="text-[11px] text-primary hover:underline"
+              className="text-xs text-primary hover:underline"
             >
               Retry
             </button>
           </div>
         ) : items.length === 0 ? (
           <div className="flex h-32 flex-col items-center justify-center gap-2 text-muted-foreground">
-            <CheckCircle2 className="h-7 w-7 text-green-500" />
+            <CheckCircle2 className="h-7 w-7 text-success" />
             <p className="text-xs font-medium">
               {tab === "pending" ? "No pending orders" : "No payment issues"}
             </p>
@@ -220,18 +220,18 @@ export function AdminNotificationsPanel({ onClose }: AdminNotificationsPanelProp
                       <p className="text-xs font-semibold text-foreground truncate">
                         {order.orderNumber}
                       </p>
-                      <span className={cn("shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold", badgeColor)}>
+                      <span className={cn("shrink-0 rounded-full px-1.5 py-0.5 text-xs font-semibold", badgeColor)}>
                         {order.status.replace("_", " ")}
                       </span>
                     </div>
-                    <p className="text-[11px] text-muted-foreground truncate mt-0.5">
+                    <p className="text-xs text-muted-foreground truncate mt-0.5">
                       {order.customerName}
                     </p>
                     <div className="flex items-center justify-between mt-1">
-                      <span className="text-[11px] font-medium text-foreground">
+                      <span className="text-xs font-medium text-foreground">
                         {formatPaise(order.total)}
                       </span>
-                      <span className="text-[10px] text-muted-foreground/70">
+                      <span className="text-xs text-muted-foreground/70">
                         {formatAdminDate(order.createdAt).split(",")[0]}
                       </span>
                     </div>

@@ -21,7 +21,7 @@ import {
   type PaginatedResponse,
 } from "@/lib/admin-api";
 import {
-  defaultDateRange,
+  allTimeRange,
   trendPeriodLabel,
   prevRange,
   rangeToISO,
@@ -73,7 +73,7 @@ function KpiCard({
           {icon}
         </div>
         <div className="flex flex-col gap-0.5 sm:gap-1 min-w-0">
-          <p className="text-[10px] sm:text-xs font-medium text-muted-foreground truncate">{label}</p>
+          <p className="text-xs sm:text-xs font-medium text-muted-foreground truncate">{label}</p>
           {loading ? (
             <div className="h-6 sm:h-7 w-16 sm:w-24 animate-pulse rounded bg-muted" />
           ) : (
@@ -83,17 +83,17 @@ function KpiCard({
           )}
         </div>
       </div>
-      <div className="mt-3 sm:mt-4 flex flex-wrap items-center gap-1 sm:gap-1.5 text-[9px] sm:text-[11px] font-medium">
+      <div className="mt-3 sm:mt-4 flex flex-wrap items-center gap-1 sm:gap-1.5 text-xs sm:text-[11px] font-medium">
         {loading ? (
           <div className="h-3 w-20 animate-pulse rounded bg-muted" />
         ) : trend !== undefined && trendUp !== undefined ? (
           <>
             {trendUp ? (
-              <TrendingUp className="h-3 w-3 text-emerald-500" />
+              <TrendingUp className="h-3 w-3 text-success" />
             ) : (
-              <TrendingDown className="h-3 w-3 text-rose-500" />
+              <TrendingDown className="h-3 w-3 text-destructive" />
             )}
-            <span className={trendUp ? "text-emerald-600" : "text-rose-600"}>
+            <span className={trendUp ? "text-success" : "text-destructive"}>
               {trend}
             </span>
             <span className="text-muted-foreground">
@@ -221,8 +221,8 @@ function AdminReviewsKpis({ from, to, trendLabel }: AdminReviewsKpisProps) {
       <KpiCard
         label="Total Reviews"
         value={kpis ? kpis.total.toLocaleString() : "—"}
-        icon={<Star className="h-5 w-5 text-emerald-600" />}
-        iconBg="bg-emerald-100"
+        icon={<Star className="h-5 w-5 text-success" />}
+        iconBg="bg-success/10"
         trend={totalTrend?.value}
         trendUp={totalTrend?.up}
         trendLabel={trendLabel}
@@ -235,16 +235,16 @@ function AdminReviewsKpis({ from, to, trendLabel }: AdminReviewsKpisProps) {
             ? kpis.averageRating.toFixed(1)
             : "—"
         }
-        icon={<MessageSquare className="h-5 w-5 text-blue-600" />}
-        iconBg="bg-blue-100"
+        icon={<MessageSquare className="h-5 w-5 text-info" />}
+        iconBg="bg-info-soft"
         description="Approved reviews in range"
         loading={loading}
       />
       <KpiCard
         label="Positive Reviews"
         value={kpis ? kpis.published.toLocaleString() : "—"}
-        icon={<ThumbsUp className="h-5 w-5 text-purple-600" />}
-        iconBg="bg-purple-100"
+        icon={<ThumbsUp className="h-5 w-5 text-info" />}
+        iconBg="bg-info-soft"
         trend={publishedTrend?.value}
         trendUp={publishedTrend?.up}
         trendLabel={trendLabel}
@@ -253,8 +253,8 @@ function AdminReviewsKpis({ from, to, trendLabel }: AdminReviewsKpisProps) {
       <KpiCard
         label="Low ratings (≤2★)"
         value={kpis ? kpis.lowRatings.toLocaleString() : "—"}
-        icon={<ThumbsDown className="h-5 w-5 text-rose-600" />}
-        iconBg="bg-rose-100"
+        icon={<ThumbsDown className="h-5 w-5 text-destructive" />}
+        iconBg="bg-destructive/10"
         trend={lowRatingsTrend?.value}
         trendUp={lowRatingsTrend?.up}
         trendLabel={trendLabel}
@@ -263,8 +263,8 @@ function AdminReviewsKpis({ from, to, trendLabel }: AdminReviewsKpisProps) {
       <KpiCard
         label="Pending Reviews"
         value={kpis ? kpis.pending.toLocaleString() : "—"}
-        icon={<Shield className="h-5 w-5 text-amber-600" />}
-        iconBg="bg-amber-100"
+        icon={<Shield className="h-5 w-5 text-warning" />}
+        iconBg="bg-warning-soft"
         trend={pendingTrend?.value}
         trendUp={pendingTrend?.up}
         trendLabel={trendLabel}
@@ -332,12 +332,12 @@ function AdminReviewsRatingOverview({
                 ? summary.averageRating.toFixed(1)
                 : "—"}
             </span>
-            <div className="flex text-amber-400">
+            <div className="flex text-warning">
               {Array.from({ length: 5 }).map((_, index) => (
                 <Star
                   key={index}
                   className={`h-5 w-5 ${
-                    summary?.averageRating != null &&
+ summary?.averageRating != null &&
                     index < Math.round(summary.averageRating)
                       ? "fill-current"
                       : ""
@@ -346,7 +346,7 @@ function AdminReviewsRatingOverview({
               ))}
             </div>
           </div>
-          <p className="text-[11px] text-muted-foreground font-medium mb-6">
+          <p className="text-xs text-muted-foreground font-medium mb-6">
             Based on {total.toLocaleString()} approved reviews
           </p>
 
@@ -362,7 +362,7 @@ function AdminReviewsRatingOverview({
                   <span className="w-12">{stars} Stars</span>
                   <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
                     <div
-                      className="h-full rounded-full bg-emerald-500"
+                      className="h-full rounded-full bg-success"
                       style={{ width: `${percent}%` }}
                     />
                   </div>
@@ -381,7 +381,7 @@ function AdminReviewsRatingOverview({
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function AdminReviewsPage() {
-  const [range, setRange] = useState<DateRange>(defaultDateRange);
+  const [range, setRange] = useState<DateRange>(allTimeRange);
   const trendLabel = trendPeriodLabel(range.from, range.to);
 
   return (

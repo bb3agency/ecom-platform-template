@@ -44,11 +44,11 @@ interface StatusMeta {
 }
 
 const STATUS_META: Record<string, StatusMeta> = {
-  REQUESTED: { label: "Requested", icon: Clock, variant: "warning", text: "text-amber-700", bg: "bg-amber-500/10", border: "border-amber-500/30" },
-  APPROVED:  { label: "Approved",  icon: CheckCircle2, variant: "info", text: "text-sky-700", bg: "bg-sky-500/10", border: "border-sky-500/30" },
-  REJECTED:  { label: "Rejected",  icon: XCircle, variant: "destructive", text: "text-red-700", bg: "bg-red-500/10", border: "border-red-500/30" },
-  PICKED_UP: { label: "Picked Up", icon: Truck, variant: "info", text: "text-sky-700", bg: "bg-sky-500/10", border: "border-sky-500/30" },
-  REFUNDED:  { label: "Refunded",  icon: RefreshCcw, variant: "success", text: "text-emerald-700", bg: "bg-emerald-500/10", border: "border-emerald-500/30" },
+  REQUESTED: { label: "Requested", icon: Clock, variant: "warning", text: "text-warning", bg: "bg-warning-soft", border: "border-warning-soft" },
+  APPROVED:  { label: "Approved",  icon: CheckCircle2, variant: "info", text: "text-info", bg: "bg-info-soft", border: "border-info-soft" },
+  REJECTED:  { label: "Rejected",  icon: XCircle, variant: "destructive", text: "text-destructive", bg: "bg-destructive/10", border: "border-destructive/30" },
+  PICKED_UP: { label: "Picked Up", icon: Truck, variant: "info", text: "text-info", bg: "bg-info-soft", border: "border-info-soft" },
+  REFUNDED:  { label: "Refunded",  icon: RefreshCcw, variant: "success", text: "text-success", bg: "bg-success/10", border: "border-success/30" },
 };
 
 // Status flow order
@@ -105,17 +105,17 @@ function StatusTimeline({ current }: { current: string }) {
               <div className={cn(
                 "flex h-8 w-8 items-center justify-center rounded-full border-2 transition-all",
                 active ? cn(meta.bg, meta.border, "shadow-md") :
-                done   ? "border-emerald-500/30 bg-emerald-500/10" :
+                done   ? "border-success/30 bg-success/10" :
                          "border-border bg-muted",
               )}>
-                <Icon className={cn("h-3.5 w-3.5", active ? meta.text : done ? "text-emerald-600" : "text-muted-foreground/50")} />
+                <Icon className={cn("h-3.5 w-3.5", active ? meta.text : done ? "text-success" : "text-muted-foreground/50")} />
               </div>
-              <span className={cn("text-[9px] font-semibold whitespace-nowrap", active ? meta.text : done ? "text-emerald-600" : "text-muted-foreground/50")}>
+              <span className={cn("text-xs font-semibold whitespace-nowrap", active ? meta.text : done ? "text-success" : "text-muted-foreground/50")}>
                 {meta.label}
               </span>
             </div>
             {!isLast && (
-              <div className={cn("h-0.5 w-8 mx-1 mb-4 rounded-full transition-colors", done ? "bg-emerald-500/40" : "bg-border")} />
+              <div className={cn("h-0.5 w-8 mx-1 mb-4 rounded-full transition-colors", done ? "bg-success/10" : "bg-border")} />
             )}
           </div>
         );
@@ -133,7 +133,7 @@ function InfoRow({ icon: Icon, label, children }: { icon: React.ElementType; lab
         <Icon className="h-3.5 w-3.5 text-muted-foreground" />
       </div>
       <div className="flex min-w-0 flex-col gap-0.5">
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</span>
+        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{label}</span>
         <div className="text-sm text-foreground">{children}</div>
       </div>
     </div>
@@ -314,7 +314,7 @@ export function AdminReturnDetailPanel({ returnId }: AdminReturnDetailPanelProps
                       ×{item.quantity}
                     </span>
                   </div>
-                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                     {item.sku && <span>SKU: {item.sku}</span>}
                     {item.unitPrice != null && <span>{formatPaise(item.unitPrice)} each</span>}
                     {item.orderedQuantity != null && <span>Ordered: {item.orderedQuantity}</span>}
@@ -372,9 +372,9 @@ export function AdminReturnDetailPanel({ returnId }: AdminReturnDetailPanelProps
           <div className="p-4 flex flex-col gap-4">
             {/* Success / error banners */}
             {successMsg && (
-              <div className="flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2.5">
-                <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
-                <p className="text-sm text-emerald-700 font-medium">{successMsg}</p>
+              <div className="flex items-center gap-2 rounded-lg border border-success/30 bg-success/10 px-3 py-2.5">
+                <CheckCircle2 className="h-4 w-4 text-success shrink-0" />
+                <p className="text-sm text-success font-medium">{successMsg}</p>
               </div>
             )}
             {error && (
@@ -430,7 +430,7 @@ export function AdminReturnDetailPanel({ returnId }: AdminReturnDetailPanelProps
                 maxLength={1000}
                 className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-colors"
               />
-              <p className="text-[10px] text-muted-foreground text-right">{adminNote.length}/1000</p>
+              <p className="text-xs text-muted-foreground text-right">{adminNote.length}/1000</p>
             </div>
 
             {/* Submit */}

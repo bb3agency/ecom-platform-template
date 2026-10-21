@@ -197,13 +197,18 @@ const nextConfig: NextConfig = {
         source: "/(.*)",
         headers: securityHeaders,
       },
-      {
-        // Static assets: allow cross-origin reads (fonts, scripts, CSS)
-        source: "/_next/static/(.*)",
-        headers: [
-          { key: "Cache-Control", value: "public, max-age=31536000, immutable" },
-        ],
-      },
+      // Static assets: long-lived immutable caching in production only. Production
+      // chunk URLs are content-hashed, so a new build gets new URLs. Dev chunk URLs are
+      // NOT hashed (`chunks/app/(admin)/layout.js`), so `immutable` there made browsers
+      // keep running stale code after every edit — a fixed page "still looked broken".
+      ...(isProd
+        ? [
+            {
+              source: "/_next/static/(.*)",
+              headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }],
+            },
+          ]
+        : []),
     ];
   },
   images: {

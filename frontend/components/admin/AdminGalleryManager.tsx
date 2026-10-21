@@ -185,12 +185,12 @@ export function AdminGalleryManager() {
           disabled={!canWrite || savingToggle}
           onClick={handleToggleEnabled}
           className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-            enabled ? "bg-primary" : "bg-muted"
+ enabled ? "bg-primary" : "bg-muted"
           }`}
         >
           <span
             className={`inline-block size-5 transform rounded-full bg-background shadow transition-transform ${
-              enabled ? "translate-x-6" : "translate-x-1"
+ enabled ? "translate-x-6" : "translate-x-1"
             }`}
           />
         </button>
@@ -281,7 +281,7 @@ export function AdminGalleryManager() {
                   className="object-cover"
                 />
                 {!img.isActive && (
-                  <span className="absolute left-2 top-2 rounded-full bg-foreground/80 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-background">
+                  <span className="absolute left-2 top-2 rounded-full bg-foreground/80 px-2 py-0.5 text-xs font-bold uppercase tracking-wide text-background">
                     Hidden
                   </span>
                 )}
@@ -335,7 +335,7 @@ export function AdminGalleryManager() {
                     }}
                     className="mt-1 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-60"
                   />
-                  <span className="mt-1 block text-[11px] font-normal normal-case tracking-normal text-muted-foreground">
+                  <span className="mt-1 block text-xs font-normal normal-case tracking-normal text-muted-foreground">
                     {img.capturedAt
                       ? "Groups under this date on the storefront timeline."
                       : "Not set — groups under the upload date."}

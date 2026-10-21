@@ -1,29 +1,33 @@
 "use client";
 
-import { type FormEvent, useEffect, useState } from "react";
-import { OpsCriticalOtpForm } from "@/components/ops/OpsCriticalOtpForm";
-import { useOpsCanWrite } from "@/components/ops/OpsSessionProvider";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { CircleCheck, Store, UserPlus } from "lucide-react";
+import { OpsAdminInviteForm } from "@/components/ops/OpsAdminInviteForm";
+import { OpsOperatorInviteForm } from "@/components/ops/OpsOperatorInviteForm";
+import { OpsOtpDialog } from "@/components/ops/OpsOtpDialog";
+import { OpsPersonCell } from "@/components/ops/OpsPersonCell";
+import { useOpsCanWrite } from "@/components/ops/OpsSessionProvider";
+import { OPS_SIDE_SHEET_CLASS, OpsLoadError, OpsReadOnlyNotice, formatRelativeTime } from "@/components/ops/ui/ops-ui";
 import {
-  OpsAlert,
-  OpsBadge,
-  OpsCard,
-  OpsCardHeader,
-  OpsDataTable,
-  OpsField,
-  OpsInput,
-  OpsLoadingBlock,
-} from "@/components/ops/ui/ops-ui";
+  ConsolePage,
+  DataTable,
+  KeyValueList,
+  Notice,
+  PageHeader,
+  Panel,
+  StatusDot,
+  type DataColumn,
+} from "@/components/ui/console";
 import { Button } from "@/components/ui/button";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatOpsDateTime, formatOpsRelativeExpiry } from "@/lib/ops-format";
 import { getApiErrorMessageWithHint } from "@/lib/error-messages";
-import { inviteStatusTone } from "@/lib/ops-status-maps";
-import { ADMIN_PERMISSIONS } from "@/lib/permissions";
+import { INVITE_STATUS_LABELS, inviteStatusTone } from "@/lib/ops-status-maps";
 import {
   cleanupExpiredAdminInvitesClient,
   cleanupExpiredOpsInvitesClient,
-  createAdminInviteClient,
-  createOpsInviteClient,
   isOpsUnauthorisedError,
   listAdminInvitesClient,
   listOpsInvitesClient,
@@ -33,426 +37,292 @@ import {
   type OpsInviteListItem,
 } from "@/lib/ops-client-api";
 
-const REVOKABLE_STATUSES = new Set<OpsInviteListItem["status"]>(["CREATED", "EMAIL_SENT"]);
-const ADMIN_REVOKABLE_STATUSES = new Set<AdminInviteListItem["status"]>(["CREATED", "EMAIL_SENT"]);
-const ADMIN_PERMISSION_CHOICES = Object.values(ADMIN_PERMISSIONS);
+type InviteKind = "operator" | "admin";
+type InviteRow = OpsInviteListItem | AdminInviteListItem;
 
-export function OpsInvitesPanel() {
+const REVOKABLE = new Set<InviteRow["status"]>(["CREATED", "EMAIL_SENT"]);
+
+function isOpen(row: InviteRow): boolean {
+  return REVOKABLE.has(row.status) && new Date(row.expiresAt).getTime() > Date.now();
+}
+
+function statusLabel(row: InviteRow): string {
+  if (REVOKABLE.has(row.status) && new Date(row.expiresAt).getTime() <= Date.now()) return "Expired";
+  return INVITE_STATUS_LABELS[row.status];
+}
+
+function statusTone(row: InviteRow) {
+  return statusLabel(row) === "Expired" ? "neutral" : inviteStatusTone(row.status);
+}
+
+interface OpsInvitesPanelProps {
+  initialInvite?: InviteKind | null;
+}
+
+export function OpsInvitesPanel({ initialInvite = null }: OpsInvitesPanelProps) {
   const router = useRouter();
   const canWrite = useOpsCanWrite();
+  const [tab, setTab] = useState<InviteKind>(initialInvite ?? "operator");
   const [opsItems, setOpsItems] = useState<OpsInviteListItem[]>([]);
   const [adminItems, setAdminItems] = useState<AdminInviteListItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [revokeOpsInviteId, setRevokeOpsInviteId] = useState<string | null>(null);
-  const [revokeAdminInviteId, setRevokeAdminInviteId] = useState<string | null>(null);
-  const [selectedAdminPermissions, setSelectedAdminPermissions] = useState<string[]>([
-    ADMIN_PERMISSIONS.productsRead,
-    ADMIN_PERMISSIONS.ordersRead,
-    ADMIN_PERMISSIONS.inventoryRead,
-    ADMIN_PERMISSIONS.settingsRead,
-    ADMIN_PERMISSIONS.analyticsRead,
-  ]);
+  const [formOpen, setFormOpen] = useState<InviteKind | null>(canWrite ? initialInvite : null);
+  const [revoke, setRevoke] = useState<{ kind: InviteKind; row: InviteRow } | null>(null);
+  const [cleaning, setCleaning] = useState(false);
 
-  async function reload() {
-    setError(null);
-    await Promise.all([reloadOpsInvites(), reloadAdminInvites()]);
-  }
-
-  async function reloadOpsInvites() {
+  const load = useCallback(async () => {
+    setLoading(true);
     try {
-      const opsList = await listOpsInvitesClient({ limit: 50 });
-      setOpsItems(Array.isArray(opsList.items) ? opsList.items : []);
+      const [ops, admins] = await Promise.all([listOpsInvitesClient({ limit: 50 }), listAdminInvitesClient({ limit: 50 })]);
+      setOpsItems(Array.isArray(ops.items) ? ops.items : []);
+      setAdminItems(Array.isArray(admins.items) ? admins.items : []);
+      setError(null);
     } catch (err) {
       if (isOpsUnauthorisedError(err)) {
         router.replace("/ops/login");
         return;
       }
-      setError((prev) => prev ?? getApiErrorMessageWithHint(err));
+      setError(getApiErrorMessageWithHint(err));
+    } finally {
+      setLoading(false);
     }
-  }
-
-  async function reloadAdminInvites() {
-    try {
-      const adminList = await listAdminInvitesClient({ limit: 50 });
-      setAdminItems(Array.isArray(adminList.items) ? adminList.items : []);
-    } catch (err) {
-      if (isOpsUnauthorisedError(err)) {
-        router.replace("/ops/login");
-        return;
-      }
-      setError((prev) => prev ?? getApiErrorMessageWithHint(err));
-    }
-  }
+  }, [router]);
 
   useEffect(() => {
-    let cancelled = false;
+    const timer = window.setTimeout(() => void load(), 0);
+    return () => window.clearTimeout(timer);
+  }, [load]);
 
-    async function load() {
-      setLoading(true);
-      setError(null);
-      await reloadOpsInvites();
-      await reloadAdminInvites();
-      if (!cancelled) {
-        setLoading(false);
-      }
-    }
-
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  async function handleCreate(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const formData = new FormData(event.currentTarget);
+  async function cleanup(kind: InviteKind) {
+    setCleaning(true);
+    setMessage(null);
     try {
-      const result = await createOpsInviteClient({
-        email: String(formData.get("email") ?? ""),
-        name: String(formData.get("name") ?? ""),
-        setupBaseUrl: String(formData.get("setupBaseUrl") ?? ""),
-        ipAllowlist: String(formData.get("ipAllowlist") ?? "")
-          .split(",")
-          .map((value) => value.trim())
-          .filter(Boolean),
-      });
+      const result = kind === "operator" ? await cleanupExpiredOpsInvitesClient() : await cleanupExpiredAdminInvitesClient();
       setMessage(
-        `Invite created — expires ${formatOpsDateTime(result.expiresAt)}. Setup URL was emailed to the invitee.`,
+        result.cleaned === 0
+          ? "No expired invites to clear."
+          : `Cleared ${result.cleaned} expired ${result.cleaned === 1 ? "invite" : "invites"}.`,
       );
-      await reload();
+      await load();
     } catch (err) {
       setError(getApiErrorMessageWithHint(err));
+    } finally {
+      setCleaning(false);
     }
   }
 
-  function toggleAdminPermission(permission: string) {
-    setSelectedAdminPermissions((previous) =>
-      previous.includes(permission)
-        ? previous.filter((value) => value !== permission)
-        : [...previous, permission],
-    );
-  }
-
-  async function handleCreateAdminInvite(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const formData = new FormData(event.currentTarget);
-    try {
-      const result = await createAdminInviteClient({
-        email: String(formData.get("email") ?? ""),
-        name: String(formData.get("name") ?? ""),
-        setupBaseUrl: String(formData.get("setupBaseUrl") ?? ""),
-        permissions: selectedAdminPermissions,
-      });
-      setMessage(
-        `Merchant admin invite created — expires ${formatOpsDateTime(result.expiresAt)}.`,
-      );
-      await reload();
-    } catch (err) {
-      setError(getApiErrorMessageWithHint(err));
-    }
-  }
-
-  if (loading) {
-    return <OpsLoadingBlock label="Loading invites…" />;
-  }
-
-  return (
-    <div className="grid min-w-0 grid-cols-1 gap-6">
-      {message ? <OpsAlert tone="success">{message}</OpsAlert> : null}
-      {error ? <OpsAlert tone="error">{error}</OpsAlert> : null}
-
-      {canWrite ? (
-        <OpsCard>
-          <OpsCardHeader
-            title="Create invite"
-            description="Ops operators only — not for merchant admins. setupBaseUrl is storefront origin only (no path). New ops users receive OPS_READ + OPS_WRITE."
-          />
-          <form onSubmit={handleCreate} className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">
-            <OpsField label="Email" htmlFor="invite-email">
-              <OpsInput id="invite-email" name="email" type="email" required />
-            </OpsField>
-            <OpsField label="Name" htmlFor="invite-name">
-              <OpsInput id="invite-name" name="name" required />
-            </OpsField>
-            <OpsField label="Setup base URL" htmlFor="invite-url" className="sm:col-span-2">
-              <OpsInput
-                id="invite-url"
-                name="setupBaseUrl"
-                placeholder="https://example.com"
-                required
-              />
-            </OpsField>
-            <OpsField label="IP allowlist" htmlFor="invite-ip" hint="Optional, comma-separated CIDRs">
-              <OpsInput id="invite-ip" name="ipAllowlist" placeholder="203.0.113.10/32" />
-            </OpsField>
-            <div className="sm:col-span-2">
-              <Button type="submit">Send invite</Button>
-            </div>
-          </form>
-        </OpsCard>
-      ) : (
-        <OpsAlert tone="warning">Read-only — creating invites requires ops:write.</OpsAlert>
-      )}
-
-      <OpsCard>
-        <OpsCardHeader
-          title="Invite queue"
-          description={`${opsItems.length} recent invites`}
-          actions={
-            canWrite ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  void cleanupExpiredOpsInvitesClient()
-                    .then((result) => setMessage(`Cleaned ${result.cleaned} expired invites.`))
-                    .catch((err) => setError(getApiErrorMessageWithHint(err)))
-                    .then(() => reload());
-                }}
-              >
-                Cleanup expired
-              </Button>
-            ) : null
-          }
-        />
-        <OpsDataTable
-          rows={opsItems}
-          rowKey={(row) => row.id}
-          emptyTitle="No invites"
-          emptyDescription="Create an invite to onboard a new operator."
-          columns={[
-            { key: "email", header: "Email", cell: (row) => row.inviteEmail },
-            { key: "name", header: "Name", cell: (row) => row.inviteName },
-            {
-              key: "status",
-              header: "Status",
-              cell: (row) => <OpsBadge tone={inviteStatusTone(row.status)}>{row.status}</OpsBadge>,
-            },
-            {
-              key: "expires",
-              header: "Expires",
-              cell: (row) => (
-                <span className="text-muted-foreground">
-                  {formatOpsRelativeExpiry(row.expiresAt)}
-                </span>
-              ),
-            },
-            {
-              key: "id",
-              header: "Invite ID",
-              cell: (row) => <code className="text-xs text-muted-foreground">{row.id}</code>,
-            },
-            ...(canWrite
-              ? [
-                  {
-                    key: "actions",
-                    header: "Actions",
-                    cell: (row: OpsInviteListItem) =>
-                      REVOKABLE_STATUSES.has(row.status) ? (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setRevokeOpsInviteId(row.id);
-                            setMessage(null);
-                            setError(null);
-                          }}
-                        >
-                          Revoke…
-                        </Button>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      ),
-                  },
-                ]
-              : []),
-          ]}
-        />
-      </OpsCard>
-
-      {canWrite && revokeOpsInviteId ? (
-        <OpsCriticalOtpForm
-          actionType="invite-revoke"
-          title="Revoke invite"
-          description={`Cancels invite ${revokeOpsInviteId} before it is consumed.`}
-          buttonLabel="Confirm revoke"
-          variant="danger"
-          onExecute={async ({ challengeId, otpCode }) => {
-            await revokeOpsInviteClient({ inviteId: revokeOpsInviteId, challengeId, otpCode });
-            setRevokeOpsInviteId(null);
-            setMessage("Invite revoked.");
-            await reload();
-          }}
-        >
-          <OpsField label="Invite ID" htmlFor="revoke-invite-id">
-            <OpsInput
-              id="revoke-invite-id"
-              value={revokeOpsInviteId}
-              readOnly
-              className="font-mono text-xs"
-            />
-          </OpsField>
-          <Button type="button" variant="ghost" size="sm" onClick={() => setRevokeOpsInviteId(null)}>
-            Cancel revoke
-          </Button>
-        </OpsCriticalOtpForm>
-      ) : null}
-
-      {canWrite ? (
-        <OpsCard>
-          <OpsCardHeader
-            title="Create merchant admin invite"
-            description="Bootstraps merchant admins at /admin/setup. Deactivated merchant admin emails can be re-invited here—the same account is reactivated (audit history kept)."
-          />
-          <form onSubmit={handleCreateAdminInvite} className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">
-            <OpsField label="Admin email" htmlFor="admin-invite-email">
-              <OpsInput id="admin-invite-email" name="email" type="email" required />
-            </OpsField>
-            <OpsField label="Admin name" htmlFor="admin-invite-name">
-              <OpsInput id="admin-invite-name" name="name" required />
-            </OpsField>
-            <OpsField label="Setup base URL" htmlFor="admin-invite-url" className="sm:col-span-2">
-              <OpsInput
-                id="admin-invite-url"
-                name="setupBaseUrl"
-                placeholder="https://example.com"
-                required
-              />
-            </OpsField>
-            <div className="sm:col-span-2 grid gap-2">
-              <p className="text-sm font-medium">Permissions</p>
-              <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2">
-                {ADMIN_PERMISSION_CHOICES.map((permission) => (
-                  <label key={permission} className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <input
-                      type="checkbox"
-                      checked={selectedAdminPermissions.includes(permission)}
-                      onChange={() => toggleAdminPermission(permission)}
-                    />
-                    <span>{permission}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-            <div className="sm:col-span-2">
-              <Button type="submit" disabled={selectedAdminPermissions.length === 0}>
-                Send merchant admin invite
-              </Button>
-            </div>
-          </form>
-        </OpsCard>
-      ) : null}
-
-      <OpsCard>
-        <OpsCardHeader
-          title="Merchant admin invites"
-          description={`${adminItems.length} recent merchant-admin invites`}
-          actions={
-            canWrite ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  void cleanupExpiredAdminInvitesClient()
-                    .then((result) => setMessage(`Cleaned ${result.cleaned} expired merchant-admin invites.`))
-                    .catch((err) => setError(getApiErrorMessageWithHint(err)))
-                    .then(() => reload());
-                }}
-              >
-                Cleanup expired
-              </Button>
-            ) : null
-          }
-        />
-        <OpsDataTable
-          rows={adminItems}
-          rowKey={(row) => row.id}
-          emptyTitle="No merchant admin invites"
-          emptyDescription="Create an invite to onboard a merchant admin user."
-          columns={[
-            { key: "email", header: "Email", cell: (row) => row.inviteEmail },
-            { key: "name", header: "Name", cell: (row) => row.inviteName },
-            {
-              key: "status",
-              header: "Status",
-              cell: (row) => <OpsBadge tone={inviteStatusTone(row.status)}>{row.status}</OpsBadge>,
-            },
+  function columns(kind: InviteKind): DataColumn<InviteRow>[] {
+    return [
+      {
+        key: "who",
+        header: "Invitee",
+        hideOnMobile: true,
+        cell: (row) => <OpsPersonCell name={row.inviteName} email={row.inviteEmail} />,
+      },
+      {
+        key: "status",
+        header: "Status",
+        cell: (row) => <StatusDot tone={statusTone(row)}>{statusLabel(row)}</StatusDot>,
+      },
+      {
+        key: "expires",
+        header: "When",
+        cell: (row) =>
+          isOpen(row) ? (
+            <span title={formatOpsDateTime(row.expiresAt)}>{formatOpsRelativeExpiry(row.expiresAt)}</span>
+          ) : (
+            <span className="text-muted-foreground" title={formatOpsDateTime(row.createdAt)}>
+              Sent {formatRelativeTime(row.createdAt)}
+            </span>
+          ),
+      },
+      ...(kind === "admin"
+        ? [
             {
               key: "permissions",
               header: "Permissions",
-              cell: (row) => <span className="text-xs text-muted-foreground">{row.permissions.join(", ")}</span>,
+              hideBelow: "lg" as const,
+              cell: (row: InviteRow) =>
+                "permissions" in row ? (
+                  <span className="text-muted-foreground" title={row.permissions.join(", ")}>
+                    {row.permissions.length}
+                  </span>
+                ) : null,
             },
+          ]
+        : []),
+      ...(canWrite
+        ? [
             {
-              key: "expires",
-              header: "Expires",
-              cell: (row) => (
-                <span className="text-muted-foreground">
-                  {formatOpsRelativeExpiry(row.expiresAt)}
-                </span>
-              ),
+              key: "actions",
+              header: <span className="sr-only">Actions</span>,
+              align: "right" as const,
+              hideOnMobile: true,
+              cell: (row: InviteRow) =>
+                isOpen(row) ? (
+                  <Button type="button" variant="ghost" size="sm" className="text-destructive" onClick={() => setRevoke({ kind, row })}>
+                    Revoke
+                  </Button>
+                ) : null,
             },
-            ...(canWrite
-              ? [
-                  {
-                    key: "actions",
-                    header: "Actions",
-                    cell: (row: AdminInviteListItem) =>
-                      ADMIN_REVOKABLE_STATUSES.has(row.status) ? (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setRevokeAdminInviteId(row.id);
-                            setMessage(null);
-                            setError(null);
-                          }}
-                        >
-                          Revoke…
-                        </Button>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      ),
-                  },
-                ]
-              : []),
-          ]}
-        />
-      </OpsCard>
+          ]
+        : []),
+    ];
+  }
 
-      {canWrite && revokeAdminInviteId ? (
-        <OpsCriticalOtpForm
-          actionType="invite-revoke"
-          title="Revoke merchant admin invite"
-          description={`Cancels merchant-admin invite ${revokeAdminInviteId} before setup.`}
-          buttonLabel="Confirm revoke"
-          variant="danger"
-          onExecute={async ({ challengeId, otpCode }) => {
-            await revokeAdminInviteClient({ inviteId: revokeAdminInviteId, challengeId, otpCode });
-            setRevokeAdminInviteId(null);
-            setMessage("Merchant admin invite revoked.");
-            await reload();
-          }}
-        >
-          <OpsField label="Invite ID" htmlFor="revoke-admin-invite-id">
-            <OpsInput
-              id="revoke-admin-invite-id"
-              value={revokeAdminInviteId}
-              readOnly
-              className="font-mono text-xs"
-            />
-          </OpsField>
-          <Button type="button" variant="ghost" size="sm" onClick={() => setRevokeAdminInviteId(null)}>
-            Cancel revoke
-          </Button>
-        </OpsCriticalOtpForm>
+  function list(kind: InviteKind) {
+    const rows: InviteRow[] = kind === "operator" ? opsItems : adminItems;
+    return (
+      <Panel
+        flush
+        footer={
+          canWrite ? (
+            <>
+              <p className="text-xs text-muted-foreground">Showing the 50 most recent invites.</p>
+              <Button type="button" variant="outline" size="sm" onClick={() => void cleanup(kind)} disabled={cleaning}>
+                Clear expired
+              </Button>
+            </>
+          ) : undefined
+        }
+      >
+        <DataTable
+          rows={rows}
+          columns={columns(kind)}
+          rowKey={(row) => row.id}
+          loading={loading}
+          caption={kind === "operator" ? "Operator invites" : "Merchant admin invites"}
+          mobileTitle={(row) => (
+            <div className="flex min-w-0 items-center justify-between gap-3">
+              <OpsPersonCell name={row.inviteName} email={row.inviteEmail} />
+              {canWrite && isOpen(row) ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0 text-destructive"
+                  onClick={() => setRevoke({ kind, row })}
+                >
+                  Revoke
+                </Button>
+              ) : null}
+            </div>
+          )}
+          empty={
+            <p className="text-sm text-muted-foreground">
+              {kind === "operator"
+                ? "No operator invites yet."
+                : "No merchant admin invites yet. Invite the store owner to get them started."}
+            </p>
+          }
+        />
+      </Panel>
+    );
+  }
+
+  const openOps = opsItems.filter(isOpen).length;
+  const openAdmins = adminItems.filter(isOpen).length;
+
+  return (
+    <ConsolePage>
+      <PageHeader
+        title="Invites"
+        description="Bring new operators and merchant admins on board. Setup links expire after 10 minutes."
+        actions={
+          canWrite ? (
+            <>
+              <Button type="button" variant="outline" onClick={() => setFormOpen("admin")} className="gap-1.5">
+                <Store aria-hidden />
+                Invite merchant admin
+              </Button>
+              <Button type="button" onClick={() => setFormOpen("operator")} className="gap-1.5">
+                <UserPlus aria-hidden />
+                Invite operator
+              </Button>
+            </>
+          ) : null
+        }
+      />
+
+      {!canWrite ? <OpsReadOnlyNotice>Sending and revoking invites needs write access (ops:write).</OpsReadOnlyNotice> : null}
+      {message ? (
+        <Notice tone="success" icon={CircleCheck}>
+          {message}
+        </Notice>
       ) : null}
-    </div>
+      {error ? <OpsLoadError message={error} onRetry={() => void load()} /> : null}
+
+      <Tabs value={tab} onValueChange={(value) => setTab(value as InviteKind)}>
+        <TabsList className="overflow-x-auto scrollbar-hide">
+          <TabsTrigger value="operator" className="min-h-11">
+            Operators
+            {openOps > 0 ? <span className="text-xs font-normal text-muted-foreground tabular">{openOps} open</span> : null}
+          </TabsTrigger>
+          <TabsTrigger value="admin" className="min-h-11">
+            Merchant admins
+            {openAdmins > 0 ? <span className="text-xs font-normal text-muted-foreground tabular">{openAdmins} open</span> : null}
+          </TabsTrigger>
+        </TabsList>
+        <TabsContent value="operator">{list("operator")}</TabsContent>
+        <TabsContent value="admin">{list("admin")}</TabsContent>
+      </Tabs>
+
+      <Sheet open={formOpen !== null} onOpenChange={(open) => (!open ? setFormOpen(null) : undefined)}>
+        <SheetContent className={OPS_SIDE_SHEET_CLASS}>
+          {formOpen === "operator" ? (
+            <OpsOperatorInviteForm
+              onCancel={() => setFormOpen(null)}
+              onCreated={(text) => {
+                setFormOpen(null);
+                setTab("operator");
+                setMessage(text);
+                void load();
+              }}
+            />
+          ) : null}
+          {formOpen === "admin" ? (
+            <OpsAdminInviteForm
+              onCancel={() => setFormOpen(null)}
+              onCreated={(text) => {
+                setFormOpen(null);
+                setTab("admin");
+                setMessage(text);
+                void load();
+              }}
+            />
+          ) : null}
+        </SheetContent>
+      </Sheet>
+
+      <OpsOtpDialog
+        open={revoke !== null}
+        onOpenChange={(open) => (!open ? setRevoke(null) : undefined)}
+        action="invite-revoke"
+        title="Revoke this invite?"
+        description="The setup link stops working immediately. You can send a new invite later."
+        confirmLabel="Revoke invite"
+        tone="danger"
+        onConfirm={async ({ challengeId, otpCode }) => {
+          if (!revoke) return;
+          const input = { inviteId: revoke.row.id, challengeId, otpCode };
+          if (revoke.kind === "operator") await revokeOpsInviteClient(input);
+          else await revokeAdminInviteClient(input);
+          setMessage(`Invite for ${revoke.row.inviteEmail} was revoked.`);
+          await load();
+        }}
+      >
+        {revoke ? (
+          <KeyValueList
+            items={[
+              { label: "Invitee", value: `${revoke.row.inviteName} (${revoke.row.inviteEmail})`, wide: true },
+              { label: "Type", value: revoke.kind === "operator" ? "Operator" : "Merchant admin" },
+              { label: "Expires", value: formatOpsRelativeExpiry(revoke.row.expiresAt) },
+            ]}
+          />
+        ) : null}
+      </OpsOtpDialog>
+    </ConsolePage>
   );
 }

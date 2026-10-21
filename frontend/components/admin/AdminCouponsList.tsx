@@ -501,13 +501,13 @@ export function AdminCouponsList({
                             <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
                               <div
                                 className={`h-full rounded-full ${
-                                  (coupon.usesCount ?? 0) / coupon.maxUsesTotal >
+ (coupon.usesCount ?? 0) / coupon.maxUsesTotal >
                                   0.9
-                                    ? "bg-red-500"
+                                    ? "bg-destructive"
                                     : (coupon.usesCount ?? 0) /
                                           coupon.maxUsesTotal >
                                         0.7
-                                      ? "bg-amber-500"
+                                      ? "bg-warning"
                                       : "bg-primary"
                                 }`}
                                 style={{
@@ -523,7 +523,7 @@ export function AdminCouponsList({
                               />
                             </div>
                           ) : (
-                            <div className="text-[10px] text-muted-foreground">
+                            <div className="text-xs text-muted-foreground">
                               Unlimited
                             </div>
                           )}
@@ -564,7 +564,7 @@ export function AdminCouponsList({
                           {canWrite && coupon.status === "deleted" ? (
                             <button
                               type="button"
-                              className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-[11px] font-medium text-foreground hover:bg-muted disabled:opacity-50"
+                              className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-xs font-medium text-foreground hover:bg-muted disabled:opacity-50"
                               disabled={actionId === coupon.id}
                               onClick={() => void restoreCoupon(coupon)}
                             >

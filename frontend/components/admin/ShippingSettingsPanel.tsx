@@ -100,7 +100,7 @@ export function ShippingSettingsPanel() {
       ) : (
         <form onSubmit={(e) => { e.preventDefault(); void onSave(); }} className="space-y-6">
           {settings?.source === "default" && (
-            <div className="flex min-w-0 items-start gap-2.5 rounded-lg border border-amber-500/20 bg-amber-500/10 p-3.5 text-xs text-amber-800 overflow-hidden">
+            <div className="flex min-w-0 items-start gap-2.5 rounded-lg border border-warning-soft bg-warning-soft p-3.5 text-xs text-warning overflow-hidden">
               <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" aria-hidden />
               <span className="break-words min-w-0">
                 <strong>Using default placeholder pincode (500001).</strong> This is
@@ -111,7 +111,7 @@ export function ShippingSettingsPanel() {
             </div>
           )}
           {settings?.source === "environment" && (
-            <div className="flex min-w-0 items-start gap-2.5 rounded-lg border border-blue-500/20 bg-blue-500/10 p-3.5 text-xs text-blue-800 overflow-hidden">
+            <div className="flex min-w-0 items-start gap-2.5 rounded-lg border border-info-soft bg-info-soft p-3.5 text-xs text-info overflow-hidden">
               <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" aria-hidden />
               <span className="break-words min-w-0">
                 Pincode is currently read from the deployment environment variable
@@ -197,11 +197,11 @@ export function ShippingSettingsPanel() {
                 </div>
               )}
               <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2">
-                <div className={`flex items-center gap-2.5 rounded-lg border p-3 text-sm ${settings.providerAvailability.delhiveryConfigured ? "border-green-500/30 bg-green-500/10" : "border-border bg-muted/20"}`}>
-                  <div className={`h-2 w-2 shrink-0 rounded-full ${settings.providerAvailability.delhiveryConfigured ? "bg-green-500" : "bg-muted-foreground/30"}`} />
+                <div className={`flex items-center gap-2.5 rounded-lg border p-3 text-sm ${settings.providerAvailability.delhiveryConfigured ? "border-success/30 bg-success/10" : "border-border bg-muted/20"}`}>
+                  <div className={`h-2 w-2 shrink-0 rounded-full ${settings.providerAvailability.delhiveryConfigured ? "bg-success" : "bg-muted-foreground/30"}`} />
                   <div className="min-w-0">
                     <div className="font-medium text-foreground text-xs">Delhivery</div>
-                    <div className={`text-xs ${settings.providerAvailability.delhiveryConfigured ? "text-green-700" : "text-muted-foreground"}`}>
+                    <div className={`text-xs ${settings.providerAvailability.delhiveryConfigured ? "text-success" : "text-muted-foreground"}`}>
                       {settings.providerAvailability.delhiveryConfigured ? "Configured" : "Not configured"}
                     </div>
                   </div>
@@ -209,11 +209,11 @@ export function ShippingSettingsPanel() {
                     <Settings className="h-3.5 w-3.5 text-muted-foreground/50 ml-auto shrink-0" aria-hidden />
                   )}
                 </div>
-                <div className={`flex items-center gap-2.5 rounded-lg border p-3 text-sm ${settings.providerAvailability.shiprocketConfigured ? "border-green-500/30 bg-green-500/10" : "border-border bg-muted/20"}`}>
-                  <div className={`h-2 w-2 shrink-0 rounded-full ${settings.providerAvailability.shiprocketConfigured ? "bg-green-500" : "bg-muted-foreground/30"}`} />
+                <div className={`flex items-center gap-2.5 rounded-lg border p-3 text-sm ${settings.providerAvailability.shiprocketConfigured ? "border-success/30 bg-success/10" : "border-border bg-muted/20"}`}>
+                  <div className={`h-2 w-2 shrink-0 rounded-full ${settings.providerAvailability.shiprocketConfigured ? "bg-success" : "bg-muted-foreground/30"}`} />
                   <div className="min-w-0">
                     <div className="font-medium text-foreground text-xs">Shiprocket</div>
-                    <div className={`text-xs ${settings.providerAvailability.shiprocketConfigured ? "text-green-700" : "text-muted-foreground"}`}>
+                    <div className={`text-xs ${settings.providerAvailability.shiprocketConfigured ? "text-success" : "text-muted-foreground"}`}>
                       {settings.providerAvailability.shiprocketConfigured ? "Configured" : "Not configured"}
                     </div>
                   </div>

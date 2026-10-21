@@ -90,7 +90,7 @@ export function ForgotPasswordForm() {
       <AuthErrorBanner message={error} />
 
       {successMessage ? (
-        <p className="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/30 dark:text-emerald-300">
+        <p className="rounded-md border border-success/30 bg-success/10 px-3 py-2 text-sm text-success ">
           {successMessage}
         </p>
       ) : null}

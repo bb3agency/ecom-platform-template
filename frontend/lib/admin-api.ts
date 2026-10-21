@@ -862,6 +862,46 @@ export interface AdminDashboardKpis {
   customersCount: number;
 }
 
+/** GET /admin/dashboard/action-queue — counts that need the merchant now. */
+export interface AdminActionQueue {
+  /** CONFIRMED — matches the "To fulfil" tab. */
+  ordersToFulfil: number;
+  /** PROCESSING — matches the "Processing" tab. */
+  ordersProcessing: number;
+  ordersAwaitingPayment: number;
+  returnsToReview: number;
+  reviewsToModerate: number;
+  lowStockVariants: number;
+  outOfStockVariants: number;
+  generatedAt: string;
+}
+
+export type AdminOrderStatusKey =
+  | "PENDING_PAYMENT"
+  | "PAYMENT_FAILED"
+  | "CONFIRMED"
+  | "PROCESSING"
+  | "SHIPPED"
+  | "OUT_FOR_DELIVERY"
+  | "DELIVERED"
+  | "CANCELLED"
+  | "REFUNDED";
+
+export interface AdminOrderStatusCountsWindow {
+  total: number;
+  byStatus: Record<AdminOrderStatusKey, number>;
+}
+
+/** GET /admin/dashboard/order-status-counts — window + equal-length previous window. */
+export interface AdminOrderStatusCounts {
+  from: string;
+  to: string;
+  previousFrom: string;
+  previousTo: string;
+  current: AdminOrderStatusCountsWindow;
+  previous: AdminOrderStatusCountsWindow;
+}
+
 export interface AdminSalesChartPoint {
   bucket: string;
   ordersCount: number;

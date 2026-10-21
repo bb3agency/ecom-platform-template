@@ -309,11 +309,11 @@ export function AdminShipmentsList({
         <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-5">
           <div className="flex flex-col justify-center rounded-xl border border-border/40 bg-card p-4 sm:p-5 shadow-sm min-w-0">
             <div className="flex items-center gap-3 sm:gap-4">
-              <div className="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10">
-                <Truck className="h-5 w-5 text-emerald-600" />
+              <div className="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl bg-success/10">
+                <Truck className="h-5 w-5 text-success" />
               </div>
               <div className="flex flex-col gap-0.5 sm:gap-1 min-w-0">
-                <p className="text-[10px] sm:text-xs font-medium text-muted-foreground truncate">
+                <p className="text-xs sm:text-xs font-medium text-muted-foreground truncate">
                   Total Deliveries
                 </p>
                 <p className="font-heading text-lg sm:text-2xl font-bold tracking-tight text-foreground truncate">
@@ -321,13 +321,13 @@ export function AdminShipmentsList({
                 </p>
               </div>
             </div>
-            <div className="mt-3 sm:mt-4 flex flex-wrap items-center gap-1 sm:gap-1.5 text-[9px] sm:text-[11px] font-medium">
+            <div className="mt-3 sm:mt-4 flex flex-wrap items-center gap-1 sm:gap-1.5 text-xs sm:text-[11px] font-medium">
               {kpisLoading ? (
                 <div className="h-3 w-20 animate-pulse rounded bg-muted" />
               ) : kTotalTrend ? (
                 <span
                   className={
-                    kTotalTrend.up ? "text-emerald-600" : "text-red-600"
+                    kTotalTrend.up ? "text-success" : "text-destructive"
                   }
                 >
                   {kTotalTrend.up ? "↑" : "↓"} {kTotalTrend.value}{" "}
@@ -341,11 +341,11 @@ export function AdminShipmentsList({
 
           <div className="flex flex-col justify-center rounded-xl border border-border/40 bg-card p-4 sm:p-5 shadow-sm min-w-0">
             <div className="flex items-center gap-3 sm:gap-4">
-              <div className="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10">
-                <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+              <div className="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl bg-success/10">
+                <CheckCircle2 className="h-5 w-5 text-success" />
               </div>
               <div className="flex flex-col gap-0.5 sm:gap-1 min-w-0">
-                <p className="text-[10px] sm:text-xs font-medium text-muted-foreground truncate">
+                <p className="text-xs sm:text-xs font-medium text-muted-foreground truncate">
                   Delivered
                 </p>
                 <p className="font-heading text-lg sm:text-2xl font-bold tracking-tight text-foreground truncate">
@@ -353,13 +353,13 @@ export function AdminShipmentsList({
                 </p>
               </div>
             </div>
-            <div className="mt-3 sm:mt-4 flex flex-wrap items-center gap-1 sm:gap-1.5 text-[9px] sm:text-[11px] font-medium">
+            <div className="mt-3 sm:mt-4 flex flex-wrap items-center gap-1 sm:gap-1.5 text-xs sm:text-[11px] font-medium">
               {kpisLoading ? (
                 <div className="h-3 w-20 animate-pulse rounded bg-muted" />
               ) : kDeliveredTrend ? (
                 <span
                   className={
-                    kDeliveredTrend.up ? "text-emerald-600" : "text-red-600"
+                    kDeliveredTrend.up ? "text-success" : "text-destructive"
                   }
                 >
                   {kDeliveredTrend.up ? "↑" : "↓"} {kDeliveredTrend.value}{" "}
@@ -373,11 +373,11 @@ export function AdminShipmentsList({
 
           <div className="flex flex-col justify-center rounded-xl border border-border/40 bg-card p-4 sm:p-5 shadow-sm min-w-0">
             <div className="flex items-center gap-3 sm:gap-4">
-              <div className="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl bg-amber-500/10">
-                <Clock className="h-5 w-5 text-amber-600" />
+              <div className="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl bg-warning-soft">
+                <Clock className="h-5 w-5 text-warning" />
               </div>
               <div className="flex flex-col gap-0.5 sm:gap-1 min-w-0">
-                <p className="text-[10px] sm:text-xs font-medium text-muted-foreground truncate">
+                <p className="text-xs sm:text-xs font-medium text-muted-foreground truncate">
                   In Transit
                 </p>
                 <p className="font-heading text-lg sm:text-2xl font-bold tracking-tight text-foreground truncate">
@@ -385,13 +385,13 @@ export function AdminShipmentsList({
                 </p>
               </div>
             </div>
-            <div className="mt-3 sm:mt-4 flex flex-wrap items-center gap-1 sm:gap-1.5 text-[9px] sm:text-[11px] font-medium">
+            <div className="mt-3 sm:mt-4 flex flex-wrap items-center gap-1 sm:gap-1.5 text-xs sm:text-[11px] font-medium">
               {kpisLoading ? (
                 <div className="h-3 w-20 animate-pulse rounded bg-muted" />
               ) : kInTransitTrend ? (
                 <span
                   className={
-                    kInTransitTrend.up ? "text-emerald-600" : "text-red-600"
+                    kInTransitTrend.up ? "text-success" : "text-destructive"
                   }
                 >
                   {kInTransitTrend.up ? "↑" : "↓"} {kInTransitTrend.value}{" "}
@@ -405,11 +405,11 @@ export function AdminShipmentsList({
 
           <div className="flex flex-col justify-center rounded-xl border border-border/40 bg-card p-4 sm:p-5 shadow-sm min-w-0">
             <div className="flex items-center gap-3 sm:gap-4">
-              <div className="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl bg-sky-500/10">
-                <MapPin className="h-5 w-5 text-sky-600" />
+              <div className="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl bg-info-soft">
+                <MapPin className="h-5 w-5 text-info" />
               </div>
               <div className="flex flex-col gap-0.5 sm:gap-1 min-w-0">
-                <p className="text-[10px] sm:text-xs font-medium text-muted-foreground truncate">
+                <p className="text-xs sm:text-xs font-medium text-muted-foreground truncate">
                   Out for Delivery
                 </p>
                 <p className="font-heading text-lg sm:text-2xl font-bold tracking-tight text-foreground truncate">
@@ -419,13 +419,13 @@ export function AdminShipmentsList({
                 </p>
               </div>
             </div>
-            <div className="mt-3 sm:mt-4 flex flex-wrap items-center gap-1 sm:gap-1.5 text-[9px] sm:text-[11px] font-medium">
+            <div className="mt-3 sm:mt-4 flex flex-wrap items-center gap-1 sm:gap-1.5 text-xs sm:text-[11px] font-medium">
               {kpisLoading ? (
                 <div className="h-3 w-20 animate-pulse rounded bg-muted" />
               ) : kOutTrend ? (
                 <span
                   className={
-                    kOutTrend.up ? "text-emerald-600" : "text-red-600"
+                    kOutTrend.up ? "text-success" : "text-destructive"
                   }
                 >
                   {kOutTrend.up ? "↑" : "↓"} {kOutTrend.value}{" "}
@@ -439,11 +439,11 @@ export function AdminShipmentsList({
 
           <div className="flex flex-col justify-center rounded-xl border border-border/40 bg-card p-4 sm:p-5 shadow-sm min-w-0">
             <div className="flex items-center gap-3 sm:gap-4">
-              <div className="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl bg-red-500/10">
-                <XCircle className="h-5 w-5 text-red-600" />
+              <div className="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl bg-destructive/10">
+                <XCircle className="h-5 w-5 text-destructive" />
               </div>
               <div className="flex flex-col gap-0.5 sm:gap-1 min-w-0">
-                <p className="text-[10px] sm:text-xs font-medium text-muted-foreground truncate">
+                <p className="text-xs sm:text-xs font-medium text-muted-foreground truncate">
                   Failed Deliveries
                 </p>
                 <p className="font-heading text-lg sm:text-2xl font-bold tracking-tight text-foreground truncate">
@@ -451,13 +451,13 @@ export function AdminShipmentsList({
                 </p>
               </div>
             </div>
-            <div className="mt-3 sm:mt-4 flex flex-wrap items-center gap-1 sm:gap-1.5 text-[9px] sm:text-[11px] font-medium">
+            <div className="mt-3 sm:mt-4 flex flex-wrap items-center gap-1 sm:gap-1.5 text-xs sm:text-[11px] font-medium">
               {kpisLoading ? (
                 <div className="h-3 w-20 animate-pulse rounded bg-muted" />
               ) : kFailedTrend ? (
                 <span
                   className={
-                    kFailedTrend.up ? "text-red-600" : "text-emerald-600"
+                    kFailedTrend.up ? "text-destructive" : "text-success"
                   }
                 >
                   {kFailedTrend.up ? "↑" : "↓"} {kFailedTrend.value}{" "}
@@ -583,7 +583,7 @@ export function AdminShipmentsList({
                                 >
                                   {shipment.orderNumber}
                                 </Link>
-                                <span className="text-[11px] text-muted-foreground">
+                                <span className="text-xs text-muted-foreground">
                                   {
                                     formatAdminDate(shipment.createdAt).split(
                                       ",",
@@ -604,7 +604,7 @@ export function AdminShipmentsList({
                             </td>
                             <td className="px-4 py-3">
                               <div className="flex items-center gap-3">
-                                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-sky-500/10 text-xs font-bold text-sky-700 uppercase shrink-0">
+                                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-info-soft text-xs font-bold text-info uppercase shrink-0">
                                   {shipment.provider?.[0] ?? "P"}
                                 </div>
                                 <div className="flex flex-col gap-0.5">
@@ -630,7 +630,7 @@ export function AdminShipmentsList({
                                   <span className="font-medium text-foreground">
                                     Pickup
                                   </span>
-                                  <span className="text-[11px] text-muted-foreground">
+                                  <span className="text-xs text-muted-foreground">
                                     {
                                       formatAdminDate(
                                         shipment.pickupScheduledDate,
@@ -650,7 +650,7 @@ export function AdminShipmentsList({
                                   href={shipment.trackingUrl}
                                   target="_blank"
                                   rel="noreferrer"
-                                  className="inline-flex items-center gap-1 text-xs font-medium text-sky-600 hover:underline"
+                                  className="inline-flex items-center gap-1 text-xs font-medium text-info hover:underline"
                                 >
                                   Track <ExternalLink className="h-3 w-3" />
                                 </a>
@@ -742,7 +742,7 @@ export function AdminShipmentsList({
                   <span className="text-[20px] font-bold text-foreground">
                     {(shipmentKpis?.total ?? 0).toLocaleString()}
                   </span>
-                  <span className="text-[10px] text-muted-foreground font-medium">
+                  <span className="text-xs text-muted-foreground font-medium">
                     Total
                   </span>
                 </div>
@@ -795,7 +795,7 @@ export function AdminShipmentsList({
                   </h3>
                   <Link
                     href="/admin/shipments"
-                    className="text-[11px] font-medium text-foreground bg-muted px-2 py-0.5 rounded-full hover:bg-muted/70"
+                    className="text-xs font-medium text-foreground bg-muted px-2 py-0.5 rounded-full hover:bg-muted/70"
                   >
                     View All
                   </Link>
@@ -820,12 +820,12 @@ export function AdminShipmentsList({
                           >
                             {s.orderNumber}
                           </Link>
-                          <span className="text-[10px] text-muted-foreground">
+                          <span className="text-xs text-muted-foreground">
                             {s.provider}
                           </span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-medium text-sky-700 bg-sky-500/10 px-2 py-0.5 rounded-full">
+                          <span className="text-xs font-medium text-info bg-info-soft px-2 py-0.5 rounded-full">
                             {s.status.replace(/_/g, " ")}
                           </span>
                           {s.trackingUrl && (

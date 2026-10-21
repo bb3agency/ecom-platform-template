@@ -70,10 +70,10 @@ function Field({ label, hint, required, error, children }: FieldProps) {
       </label>
       {children}
       {hint && !error && (
-        <p className="text-[11px] text-muted-foreground">{hint}</p>
+        <p className="text-xs text-muted-foreground">{hint}</p>
       )}
       {error && (
-        <p className="flex items-center gap-1 text-[11px] text-destructive">
+        <p className="flex items-center gap-1 text-xs text-destructive">
           <AlertCircle className="h-3 w-3 shrink-0" />
           {error}
         </p>
@@ -115,7 +115,7 @@ function TypeCard({ active, icon: Icon, label, desc, onClick }: TypeCardProps) {
     >
       <Icon className={cn("h-5 w-5", active ? "text-primary-foreground" : "text-muted-foreground")} />
       <span className="text-xs font-semibold leading-none">{label}</span>
-      <span className={cn("text-[10px] leading-tight", active ? "text-primary-foreground/70" : "text-muted-foreground")}>
+      <span className={cn("text-xs leading-tight", active ? "text-primary-foreground/70" : "text-muted-foreground")}>
         {desc}
       </span>
     </button>
@@ -364,9 +364,9 @@ export function AdminCouponForm({
 
           {/* ── Success flash ── */}
           {saved && (
-            <div className="mb-4 flex items-center gap-2.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3">
-              <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-              <p className="text-sm font-medium text-emerald-700 dark:text-emerald-400">
+            <div className="mb-4 flex items-center gap-2.5 rounded-xl border border-success/30 bg-success/10 px-4 py-3">
+              <CheckCircle2 className="h-4 w-4 shrink-0 text-success " />
+              <p className="text-sm font-medium text-success ">
                 Coupon {isEdit ? "updated" : "created"} successfully!
               </p>
             </div>
@@ -559,15 +559,15 @@ export function AdminCouponForm({
                 className={cn(
                   "flex w-full items-center justify-between rounded-xl border-2 px-4 py-3 transition-all",
                   isActive
-                    ? "border-emerald-500/30 bg-emerald-500/10"
+                    ? "border-success/30 bg-success/10"
                     : "border-border bg-card",
                 )}
               >
                 <div className="flex flex-col items-start gap-0.5">
-                  <span className={cn("text-sm font-semibold", isActive ? "text-emerald-700 dark:text-emerald-400" : "text-muted-foreground")}>
+                  <span className={cn("text-sm font-semibold", isActive ? "text-success " : "text-muted-foreground")}>
                     {isActive ? "Active" : "Paused"}
                   </span>
-                  <span className="text-[11px] text-muted-foreground">
+                  <span className="text-xs text-muted-foreground">
                     {isActive
                       ? "Coupon is live and can be used by customers"
                       : "Coupon is paused — customers cannot use it"}
@@ -575,7 +575,7 @@ export function AdminCouponForm({
                 </div>
                 <div className={cn(
                   "relative h-6 w-11 rounded-full transition-colors",
-                  isActive ? "bg-emerald-500" : "bg-muted",
+                  isActive ? "bg-success" : "bg-muted",
                 )}>
                   <div className={cn(
                     "absolute top-0.5 h-5 w-5 rounded-full bg-background shadow-sm transition-transform",
@@ -604,7 +604,7 @@ export function AdminCouponForm({
               size="lg"
               className={cn(
                 "flex-1 font-semibold",
-                saved && "bg-emerald-600 text-white hover:bg-emerald-600",
+                saved && "bg-success text-white hover:bg-success",
               )}
               loading={saving}
               disabled={saved}

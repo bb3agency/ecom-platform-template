@@ -7,7 +7,9 @@ import {
 } from "@/components/admin/AdminDateRangePicker";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import type { DateRange } from "@/components/admin/AdminDateRangePicker";
+import { ConsolePage } from "@/components/ui/console";
 import {
+  AdminActionQueuePanel,
   AdminDashboardKpisPanel,
   AdminSalesChartPanel,
   AdminTopProductsPanel,
@@ -56,33 +58,23 @@ export default function AdminDashboardPage() {
   }, [registerExportHandler, range.from, range.to, accessToken, canExport]);
 
   return (
-    <div className="flex flex-col gap-6">
-      <AdminPageHeader
-        title="Dashboard"
-        range={range}
-        onRangeChange={setRange}
-      />
+    <ConsolePage>
+      <AdminPageHeader title="Dashboard" range={range} onRangeChange={setRange} />
 
-      <AdminDashboardKpisPanel
-        from={range.from}
-        to={range.to}
-        trendLabel={trendLabel}
-      />
+      <AdminActionQueuePanel />
 
-      {/* Sales Overview and Recent Orders Row */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <AdminSalesChartPanel from={range.from} to={range.to} />
+      <AdminDashboardKpisPanel from={range.from} to={range.to} trendLabel={trendLabel} />
+
+      <div className="grid min-w-0 grid-cols-1 gap-5 sm:gap-6 xl:grid-cols-3">
+        <AdminSalesChartPanel from={range.from} to={range.to} className="xl:col-span-2" />
         <AdminRecentOrdersPanel />
       </div>
 
-      {/* Top Products and Category Share Row */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      <div className="grid min-w-0 grid-cols-1 gap-5 sm:gap-6 lg:grid-cols-2 xl:grid-cols-3">
         <AdminTopProductsPanel from={range.from} to={range.to} />
         <AdminSalesByCategoryPanel from={range.from} to={range.to} />
+        <AdminLowStockPanel className="lg:col-span-2 xl:col-span-1" />
       </div>
-
-      {/* Low Stock Alert Row */}
-      <AdminLowStockPanel />
-    </div>
+    </ConsolePage>
   );
 }

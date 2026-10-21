@@ -1,5 +1,7 @@
 "use client";
 
+import { ChevronLeft, ChevronRight } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import type { PaginationMeta } from "@/lib/admin-api";
 
@@ -8,41 +10,42 @@ interface AdminPaginationProps {
   onPageChange: (page: number) => void;
 }
 
+/** Previous / page x of y / next. Compact enough to sit on one line on phones. */
 export function AdminPagination({ meta, onPageChange }: AdminPaginationProps) {
   const { page, totalPages, total } = meta;
   if (totalPages <= 1) {
     return (
-      <p className="text-xs text-muted-foreground">
-        {total} {total === 1 ? "row" : "rows"}
+      <p className="text-sm text-muted-foreground tabular">
+        {total.toLocaleString("en-IN")} {total === 1 ? "result" : "results"}
       </p>
     );
   }
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2">
-      <p className="text-xs text-muted-foreground">
-        Page {page} of {totalPages} · {total} total
-      </p>
-      <div className="flex gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={page <= 1}
-          onClick={() => onPageChange(page - 1)}
-        >
-          Previous
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={page >= totalPages}
-          onClick={() => onPageChange(page + 1)}
-        >
-          Next
-        </Button>
-      </div>
-    </div>
+    <nav aria-label="Pagination" className="flex items-center gap-1">
+      <Button
+        type="button"
+        variant="outline"
+        size="icon-lg"
+        disabled={page <= 1}
+        onClick={() => onPageChange(page - 1)}
+        aria-label="Previous page"
+      >
+        <ChevronLeft aria-hidden />
+      </Button>
+      <span className="min-w-20 text-center text-sm text-muted-foreground tabular">
+        {page} of {totalPages}
+      </span>
+      <Button
+        type="button"
+        variant="outline"
+        size="icon-lg"
+        disabled={page >= totalPages}
+        onClick={() => onPageChange(page + 1)}
+        aria-label="Next page"
+      >
+        <ChevronRight aria-hidden />
+      </Button>
+    </nav>
   );
 }

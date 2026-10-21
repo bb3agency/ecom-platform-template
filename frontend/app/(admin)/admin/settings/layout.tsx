@@ -97,7 +97,7 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
                   <Icon className={cn("h-4 w-4 shrink-0", isActive ? "text-primary-foreground" : "text-muted-foreground")} />
                   <div className="flex flex-col text-left">
                     <span>{item.label}</span>
-                    <span className={cn("text-[10px] font-normal leading-tight mt-0.5", isActive ? "text-primary-foreground/85" : "text-muted-foreground/75")}>
+                    <span className={cn("text-xs font-normal leading-tight mt-0.5", isActive ? "text-primary-foreground/85" : "text-muted-foreground/75")}>
                       {item.description}
                     </span>
                   </div>

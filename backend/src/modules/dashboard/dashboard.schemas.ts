@@ -114,3 +114,93 @@ export const dashboardTopProductsSchema = {
   }
 } as const;
 
+
+const countSchema = { type: 'integer', minimum: 0, maximum: 1000000000 } as const;
+
+export const dashboardActionQueueSchema = {
+  params: emptyParamsSchema,
+  querystring: { type: 'object', additionalProperties: false, properties: {} },
+  response: {
+    200: {
+      type: 'object',
+      additionalProperties: false,
+      required: [
+        'ordersToFulfil',
+        'ordersProcessing',
+        'ordersAwaitingPayment',
+        'returnsToReview',
+        'reviewsToModerate',
+        'lowStockVariants',
+        'outOfStockVariants',
+        'generatedAt'
+      ],
+      properties: {
+        ordersToFulfil: countSchema,
+        ordersProcessing: countSchema,
+        ordersAwaitingPayment: countSchema,
+        returnsToReview: countSchema,
+        reviewsToModerate: countSchema,
+        lowStockVariants: countSchema,
+        outOfStockVariants: countSchema,
+        generatedAt: { type: 'string', maxLength: 64 }
+      }
+    },
+    ...standardAdminErrorResponses
+  }
+} as const;
+
+const orderStatusValues = [
+  'PENDING_PAYMENT',
+  'PAYMENT_FAILED',
+  'CONFIRMED',
+  'PROCESSING',
+  'SHIPPED',
+  'OUT_FOR_DELIVERY',
+  'DELIVERED',
+  'CANCELLED',
+  'REFUNDED'
+] as const;
+
+const statusCountsSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['total', 'byStatus'],
+  properties: {
+    total: countSchema,
+    byStatus: {
+      type: 'object',
+      additionalProperties: false,
+      required: [...orderStatusValues],
+      properties: Object.fromEntries(orderStatusValues.map((status) => [status, countSchema]))
+    }
+  }
+} as const;
+
+export const dashboardOrderStatusCountsSchema = {
+  params: emptyParamsSchema,
+  querystring: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['from', 'to'],
+    properties: {
+      from: { type: 'string', format: 'date-time', maxLength: 64 },
+      to: { type: 'string', format: 'date-time', maxLength: 64 }
+    }
+  },
+  response: {
+    200: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['from', 'to', 'previousFrom', 'previousTo', 'current', 'previous'],
+      properties: {
+        from: { type: 'string', maxLength: 64 },
+        to: { type: 'string', maxLength: 64 },
+        previousFrom: { type: 'string', maxLength: 64 },
+        previousTo: { type: 'string', maxLength: 64 },
+        current: statusCountsSchema,
+        previous: statusCountsSchema
+      }
+    },
+    ...standardAdminErrorResponses
+  }
+} as const;

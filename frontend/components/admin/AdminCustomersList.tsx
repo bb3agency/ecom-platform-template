@@ -264,8 +264,8 @@ export function AdminCustomersList({
           <div className="p-4">
             <EmptyState
               icon={Users}
-              headline="No customers yet"
-              description="Customers appear here after their first sign-in or order. Try adjusting your search or filters."
+              headline={search ? "No customers match" : "No customers in this period"}
+              description={search ? "Try a different name, email or phone." : "Customers appear here after their first sign-in or order. Try a wider date range."}
             />
           </div>
         ) : (

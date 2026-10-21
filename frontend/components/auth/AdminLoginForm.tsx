@@ -384,7 +384,7 @@ export function AdminLoginForm({ onSuccess, enrollmentHint }: AdminLoginFormProp
         <form onSubmit={handleVerifyOtp} className="grid gap-4">
           {devOtpHint ? (
             <p
-              className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900"
+              className="rounded-md border border-warning-soft bg-warning-soft px-3 py-2 text-sm text-warning"
               role="status"
             >
               Development mode: use OTP{" "}
@@ -399,12 +399,12 @@ export function AdminLoginForm({ onSuccess, enrollmentHint }: AdminLoginFormProp
             {otpChannel === "sms" ? "SMS" : otpChannel === "whatsapp" ? "WhatsApp" : "email"} to{" "}
             {otpChannel === "email" ? credentialsForm.getValues("email") : "your registered phone"}.
             {otpRemainingSec > 0 ? (
-              <span className="ml-1 text-amber-600">
+              <span className="ml-1 text-warning">
                 Expires in {Math.floor(otpRemainingSec / 60)}:
                 {(otpRemainingSec % 60).toString().padStart(2, "0")}
               </span>
             ) : expiresAt ? (
-              <span className="ml-1 text-red-600">Expired</span>
+              <span className="ml-1 text-destructive">Expired</span>
             ) : null}
           </p>
           <label className="grid gap-1 text-sm" htmlFor="admin-otp">

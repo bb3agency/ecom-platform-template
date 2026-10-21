@@ -175,8 +175,8 @@ export function AdminInventoryList({ onViewHistory }: AdminInventoryListProps) {
                             <span
                               className={cn(
                                 "font-medium text-foreground",
-                                low && "text-amber-600",
-                                out && "text-red-600",
+                                low && "text-warning",
+                                out && "text-destructive",
                               )}
                             >
                               {row.quantity}

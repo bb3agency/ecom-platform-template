@@ -196,6 +196,8 @@ async function main() {
     '/api/v1/admin/dashboard/kpis',
     '/api/v1/admin/dashboard/sales-chart',
     '/api/v1/admin/dashboard/top-products',
+    '/api/v1/admin/dashboard/action-queue',
+    `/api/v1/admin/dashboard/order-status-counts?from=${encodeURIComponent(new Date(Date.now() - 7 * 864e5).toISOString())}&to=${encodeURIComponent(new Date().toISOString())}`,
     '/api/v1/admin/analytics/revenue',
     '/api/v1/admin/analytics/funnel',
     '/api/v1/admin/analytics/inventory-alerts',

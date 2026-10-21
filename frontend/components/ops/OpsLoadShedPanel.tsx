@@ -1,177 +1,226 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { OpsCriticalOtpForm } from "@/components/ops/OpsCriticalOtpForm";
-import { OpsAlert, OpsBadge, OpsCard, OpsField, OpsLoadingBlock, OpsSelect, OpsTextarea } from "@/components/ops/ui/ops-ui";
-import { getApiErrorMessageWithHint } from "@/lib/error-messages";
-import { loadShedBadgeTone } from "@/lib/ops-status-maps";
+import { useState } from "react";
+import { CircleCheck, TriangleAlert } from "lucide-react";
+import { OpsOtpDialog } from "@/components/ops/OpsOtpDialog";
+import { useOpsCanWrite, useOpsLoadShed } from "@/components/ops/OpsSessionProvider";
 import {
-  getOpsLoadShedStatusClient,
-  setOpsLoadShedMode,
-  type OpsLoadShedStatus,
-} from "@/lib/ops-client-api";
-import { useOpsCanWrite } from "@/components/ops/OpsSessionProvider";
+  OpsField,
+  OpsLinesSkeleton,
+  OpsReadOnlyNotice,
+  formatClock,
+  formatRelativeTime,
+  useSecondsUntil,
+} from "@/components/ops/ui/ops-ui";
+import { ConsolePage, KeyValueList, Notice, PageHeader, Panel, StatusDot, StickyActions } from "@/components/ui/console";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
+import {
+  LOAD_SHED_MODE_DESCRIPTIONS,
+  LOAD_SHED_MODE_LABELS,
+  loadShedLabel,
+  loadShedTone,
+} from "@/lib/ops-status-maps";
+import { setOpsLoadShedMode, type OpsLoadShedMode, type OpsLoadShedStatus } from "@/lib/ops-client-api";
 
-const MODE_DESCRIPTIONS: Record<OpsLoadShedStatus["mode"], string> = {
-  normal: "Full traffic — every storefront, admin, and ops route is reachable.",
-  reduced: "Non-critical admin reports, analytics, and inventory dashboards are temporarily shed. Catalogue browsing and checkout remain live.",
-  emergency: "Strict protection — checkout mutations, cart writes, and admin writes are blocked. Use only under severe pressure (DB pressure, payment provider outage, etc.).",
-  maintenance: "Planned downtime. Starts with a 2-minute warning window during which payment-in-flight jobs drain; afterwards the storefront serves a static maintenance page until ops switches back. Ops console stays reachable.",
-};
-
-function formatRelativeSeconds(targetIso: string | null): string | null {
-  if (!targetIso) return null;
-  const target = new Date(targetIso).getTime();
-  const diff = target - Date.now();
-  if (!Number.isFinite(target)) return null;
-  if (diff <= 0) return "now";
-  const totalSeconds = Math.ceil(diff / 1000);
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${minutes}m ${seconds.toString().padStart(2, "0")}s`;
-}
+const MODES: OpsLoadShedMode[] = ["normal", "reduced", "emergency", "maintenance"];
+const REASON_MIN = 10;
+const REASON_MAX = 500;
 
 export function OpsLoadShedPanel() {
   const canWrite = useOpsCanWrite();
-  const [status, setStatus] = useState<OpsLoadShedStatus | null>(null);
-  const [targetMode, setTargetMode] = useState<OpsLoadShedStatus["mode"]>("reduced");
+  const { loadShed, refreshLoadShed } = useOpsLoadShed();
+  const [targetMode, setTargetMode] = useState<OpsLoadShedMode | null>(null);
   const [reason, setReason] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [countdownTick, setCountdownTick] = useState(0);
+  const [reasonTouched, setReasonTouched] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
 
-  useEffect(() => {
-    void getOpsLoadShedStatusClient()
-      .then((next) => {
-        setStatus(next);
-        setError(null);
-      })
-      .catch((err) => setError(getApiErrorMessageWithHint(err)))
-      .finally(() => setLoading(false));
-  }, []);
+  const selected = targetMode ?? loadShed?.mode ?? "normal";
+  const trimmedReason = reason.trim();
+  const reasonValid = trimmedReason.length >= REASON_MIN;
+  const reasonError =
+    reasonTouched && !reasonValid ? `Write at least ${REASON_MIN} characters so the audit log explains the change.` : null;
 
-  // While maintenance is pending, refresh the panel + countdown frequently
-  // so the operator sees the cutover time tick down accurately.
-  useEffect(() => {
-    if (status?.mode !== "maintenance" || status.phase !== "pending") return;
-    const interval = setInterval(() => {
-      setCountdownTick((t) => t + 1);
-      void getOpsLoadShedStatusClient()
-        .then((next) => setStatus(next))
-        .catch(() => {
-          // Silent — banner-style polling, transient failures are fine.
-        });
-    }, 5_000);
-    return () => clearInterval(interval);
-  }, [status?.mode, status?.phase]);
-
-  if (loading) {
-    return <OpsLoadingBlock label="Fetching load-shed status…" />;
+  function openConfirm() {
+    setReasonTouched(true);
+    setResult(null);
+    if (!reasonValid) {
+      document.getElementById("load-shed-reason")?.focus();
+      return;
+    }
+    setDialogOpen(true);
   }
 
-  const mode = status?.mode ?? null;
-  const phase = status?.phase ?? null;
-  const countdownText =
-    status?.mode === "maintenance" && status.phase === "pending"
-      ? formatRelativeSeconds(status.pendingUntil)
-      : null;
-
   return (
-    <div className="grid min-w-0 grid-cols-1 gap-6">
-      {error ? <OpsAlert tone="error">{error}</OpsAlert> : null}
-      {mode ? (
-        <OpsCard padding="md" className="flex flex-col gap-3">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-sm text-muted-foreground">Current runtime mode</p>
-              <p className="font-heading mt-1 text-2xl font-semibold capitalize">
-                {mode}
-                {phase ? ` · ${phase}` : ""}
-              </p>
-            </div>
-            <OpsBadge tone={loadShedBadgeTone(mode)}>{mode}</OpsBadge>
-          </div>
-          {mode === "maintenance" && phase === "pending" ? (
-            <OpsAlert tone="warning">
-              Maintenance cutover in <strong>{countdownText ?? "moments"}</strong>
-              {countdownTick >= 0 ? "" : ""}. Payment-in-flight jobs are draining; new checkout mutations are blocked.
-              Switch the mode below before the timer elapses to abort the maintenance window.
-            </OpsAlert>
-          ) : null}
-          {mode === "maintenance" && phase === "active" ? (
-            <OpsAlert tone="error">
-              Site is in maintenance — the storefront and admin surfaces are returning the maintenance page. The ops console
-              and provider webhooks remain reachable. Switch the mode below to <strong>normal</strong>, <strong>reduced</strong>,
-              or <strong>emergency</strong> to restore traffic.
-            </OpsAlert>
-          ) : null}
-          {status?.reason ? (
-            <p className="text-xs text-muted-foreground">
-              <span className="font-medium">Last reason:</span> {status.reason}
-            </p>
-          ) : null}
-        </OpsCard>
+    <ConsolePage className="max-w-4xl">
+      <PageHeader
+        title="Traffic mode"
+        description="Shed load to protect checkout, or take the store offline for planned work."
+      />
+
+      <CurrentModePanel status={loadShed} />
+
+      {result ? (
+        <Notice tone="success" icon={CircleCheck}>
+          {result}
+        </Notice>
       ) : null}
 
       {!canWrite ? (
-        <OpsAlert tone="warning">You have read-only access. Load-shed changes require ops:write.</OpsAlert>
+        <OpsReadOnlyNotice>Changing the traffic mode needs write access (ops:write).</OpsReadOnlyNotice>
       ) : (
-        <OpsCriticalOtpForm
-          actionType="load-shed-change"
-          title="Change load-shed mode"
-          description="Applies immediately after OTP verification. Maintenance mode starts a 2-minute warning window before the site goes offline."
-          buttonLabel="Apply mode change"
-          onExecute={async ({ challengeId, otpCode }) => {
-            const trimmedReason = reason.trim();
-            if (trimmedReason.length < 10) {
-              throw new Error("Reason must be at least 10 characters.");
-            }
-            const result = await setOpsLoadShedMode({
-              mode: targetMode,
-              reason: trimmedReason,
-              challengeId,
-              otpCode,
-            });
-            setStatus({
-              mode: result.mode,
-              phase: result.phase,
-              pendingUntil: result.pendingUntil,
-              activatedAt: status?.activatedAt ?? null,
-              reason: trimmedReason,
-            });
-          }}
-        >
-          <div className="grid min-w-0 grid-cols-1 gap-4">
-            <OpsField label="Target mode" htmlFor="load-shed-mode">
-              <OpsSelect
-                id="load-shed-mode"
-                name="mode"
-                value={targetMode}
-                onChange={(event) => {
-                  setTargetMode(event.target.value as OpsLoadShedStatus["mode"]);
-                }}
-              >
-                <option value="normal">Normal — full traffic</option>
-                <option value="reduced">Reduced — defer non-critical work</option>
-                <option value="emergency">Emergency — strict protection</option>
-                <option value="maintenance">Maintenance — planned downtime (2-min warning)</option>
-              </OpsSelect>
-            </OpsField>
-            <p className="text-xs text-muted-foreground">{MODE_DESCRIPTIONS[targetMode]}</p>
-            <OpsField label="Reason" htmlFor="load-shed-reason" hint="Minimum 10 characters for audit">
-              <OpsTextarea
+        <Panel title="Change mode" description="Applies as soon as you confirm with the code we email you.">
+          <form
+            className="flex min-w-0 flex-col gap-5"
+            onSubmit={(event) => {
+              event.preventDefault();
+              openConfirm();
+            }}
+            noValidate
+          >
+            <fieldset className="flex min-w-0 flex-col gap-2">
+              <legend className="mb-2 text-sm font-medium text-foreground">Mode</legend>
+              {MODES.map((mode) => {
+                const isCurrent = loadShed?.mode === mode;
+                const checked = selected === mode;
+                return (
+                  <label
+                    key={mode}
+                    className={cn(
+                      "flex min-w-0 cursor-pointer items-start gap-3 rounded-lg border px-3 py-3 transition-colors",
+                      checked ? "border-primary bg-primary/5" : "border-border hover:bg-muted/50",
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="load-shed-mode"
+                      value={mode}
+                      checked={checked}
+                      onChange={() => setTargetMode(mode)}
+                      className="mt-0.5 size-4 shrink-0 accent-primary"
+                    />
+                    <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                      <span className="flex flex-wrap items-center gap-x-2 text-sm font-medium text-foreground">
+                        <StatusDot tone={loadShedTone(mode)}>{LOAD_SHED_MODE_LABELS[mode]}</StatusDot>
+                        {isCurrent ? <span className="text-xs font-normal text-muted-foreground">Current</span> : null}
+                      </span>
+                      <span className="text-sm text-muted-foreground">{LOAD_SHED_MODE_DESCRIPTIONS[mode]}</span>
+                    </span>
+                  </label>
+                );
+              })}
+            </fieldset>
+
+            <OpsField
+              label="Reason"
+              htmlFor="load-shed-reason"
+              hint="Recorded in the audit log and shown to other operators."
+              error={reasonError}
+            >
+              <Textarea
                 id="load-shed-reason"
-                name="reason"
-                minLength={10}
-                required
-                placeholder="Describe why this mode change is required…"
                 value={reason}
+                maxLength={REASON_MAX}
                 onChange={(event) => setReason(event.target.value)}
+                onBlur={() => setReasonTouched(true)}
+                placeholder="e.g. Payment provider outage — pausing checkout until resolved"
+                aria-invalid={reasonError ? true : undefined}
+                aria-describedby={reasonError ? "load-shed-reason-error" : "load-shed-reason-hint"}
+                rows={3}
               />
+              <p className="text-right text-xs text-muted-foreground tabular">
+                {trimmedReason.length}/{REASON_MAX}
+              </p>
             </OpsField>
-          </div>
-        </OpsCriticalOtpForm>
+
+            <StickyActions>
+              <Button type="submit" variant={selected === "maintenance" || selected === "emergency" ? "destructive" : "default"}>
+                {selected === loadShed?.mode ? `Re-apply ${LOAD_SHED_MODE_LABELS[selected].toLowerCase()} mode` : `Switch to ${LOAD_SHED_MODE_LABELS[selected].toLowerCase()}`}
+              </Button>
+            </StickyActions>
+          </form>
+        </Panel>
       )}
-    </div>
+
+      <OpsOtpDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        action="load-shed-change"
+        title={`Switch to ${LOAD_SHED_MODE_LABELS[selected].toLowerCase()} mode?`}
+        description={LOAD_SHED_MODE_DESCRIPTIONS[selected]}
+        confirmLabel="Change mode"
+        tone={selected === "maintenance" || selected === "emergency" ? "danger" : "default"}
+        onConfirm={async ({ challengeId, otpCode }) => {
+          const response = await setOpsLoadShedMode({ mode: selected, reason: trimmedReason, challengeId, otpCode });
+          await refreshLoadShed();
+          setTargetMode(null);
+          setReason("");
+          setReasonTouched(false);
+          setResult(
+            response.mode === "maintenance" && response.phase === "pending"
+              ? "Maintenance starts in 2 minutes. Shoppers see a countdown banner now."
+              : response.updated
+                ? `Traffic mode is now ${LOAD_SHED_MODE_LABELS[response.mode].toLowerCase()}.`
+                : `Traffic mode was already ${LOAD_SHED_MODE_LABELS[response.mode].toLowerCase()} — nothing changed.`,
+          );
+        }}
+      >
+        <KeyValueList
+          items={[
+            { label: "From", value: loadShed ? loadShedLabel(loadShed) : "—" },
+            { label: "To", value: LOAD_SHED_MODE_LABELS[selected] },
+            { label: "Reason", value: trimmedReason, wide: true },
+          ]}
+        />
+        {selected === "maintenance" ? (
+          <Notice tone="warning" icon={TriangleAlert}>
+            New checkouts stop immediately. After 2 minutes the storefront and merchant admin show the maintenance page
+            until you switch back.
+          </Notice>
+        ) : null}
+      </OpsOtpDialog>
+    </ConsolePage>
+  );
+}
+
+function CurrentModePanel({ status }: { status: OpsLoadShedStatus | null }) {
+  const seconds = useSecondsUntil(status?.mode === "maintenance" && status.phase === "pending" ? status.pendingUntil : null);
+
+  return (
+    <Panel title="Current mode">
+      {!status ? (
+        <OpsLinesSkeleton lines={2} />
+      ) : (
+        <div className="flex min-w-0 flex-col gap-4">
+          <div className="flex min-w-0 flex-col gap-1">
+            <StatusDot tone={loadShedTone(status.mode)} className="text-xl font-semibold">
+              {loadShedLabel(status)}
+            </StatusDot>
+            <p className="text-sm text-muted-foreground">{LOAD_SHED_MODE_DESCRIPTIONS[status.mode]}</p>
+          </div>
+          {status.mode === "maintenance" && status.phase === "pending" ? (
+            <Notice tone="warning" icon={TriangleAlert} title={`Storefront goes offline in ${seconds != null ? formatClock(seconds) : "a moment"}`}>
+              In-flight payments are finishing and new checkouts are blocked. Switch to another mode before the timer ends to cancel.
+            </Notice>
+          ) : null}
+          {status.mode === "maintenance" && status.phase === "active" ? (
+            <Notice tone="danger" icon={TriangleAlert} title="The store is offline">
+              Shoppers and merchant admins see the maintenance page. Ops and payment webhooks still work. Switch to normal to
+              reopen.
+            </Notice>
+          ) : null}
+          {status.activatedAt || status.reason ? (
+            <KeyValueList
+              items={[
+                ...(status.activatedAt ? [{ label: "Since", value: formatRelativeTime(status.activatedAt) }] : []),
+                ...(status.reason ? [{ label: "Last reason", value: status.reason }] : []),
+              ]}
+            />
+          ) : null}
+        </div>
+      )}
+    </Panel>
   );
 }

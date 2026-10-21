@@ -57,7 +57,13 @@ import {
   webhookAllowlistEnvKeyForProvider
 } from '@common/security/webhook-allowlist';
 
-function requireRefundPermission(request: FastifyRequest): void {
+/**
+ * MUST stay `async`. Fastify treats a non-async hook as callback-style and waits for
+ * `done()` — the previous synchronous version never called it, so every
+ * PATCH /admin/orders/:id/status hung until the client gave up (only the 403 throw
+ * path ever completed). See orders.routes.refund-permission.test.ts.
+ */
+export async function requireRefundPermission(request: FastifyRequest): Promise<void> {
   const body = request.body as { status?: string };
   if (body.status === 'REFUNDED' && !hasAdminPermission(request.user?.permissions, 'orders:refund')) {
     throw new AppError(ERROR_CODES.FORBIDDEN, 'Insufficient permissions: orders:refund required to set REFUNDED status', 403);

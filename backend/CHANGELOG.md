@@ -12,6 +12,27 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-21
+
+### Fixed
+- **`PATCH /admin/orders/:id/status` hung on every request.** Its `requireRefundPermission` preHandler was a plain synchronous function; Fastify treats a non-async hook as callback-style and waits for `done()`, which it never called. Every manual status change hung until the client timed out — only the 403 (refund without `orders:refund`) path ever completed. It went unnoticed because no admin screen called the route, which also meant **local-delivery orders could never be moved to Out for delivery / Delivered** (they have no courier webhooks). Now `async`; regression test drives it through a real Fastify request and fails on the old code.
+
+### Added
+- **`GET /admin/dashboard/action-queue`** (`dashboard:read`) — what needs the merchant now: `ordersToFulfil` (CONFIRMED), `ordersProcessing` (PROCESSING), `ordersAwaitingPayment`, `returnsToReview`, `reviewsToModerate`, `lowStockVariants` / `outOfStockVariants` (same available-stock rule as `/admin/inventory/low-stock`). Every count is a single filter, so it equals the list it links to.
+- **`GET /admin/dashboard/order-status-counts`** (`orders:read`) — per-status counts for a window and the equal-length window before it, in one call (the orders overview previously made eight list calls). `byStatus` always carries all nine statuses.
+- **`GET /ops/overview`** (`ops:read`) — one-call ops overview: load-shed state, config readiness (`missingRequiredKeys`, `restartPendingKeys`), per-queue counts + dead-letter breakdown, people/invite counts, failed audit entries in 24h, recent audit with actor, pending OTP challenges. Read-only, not audited.
+- `GET /ops/audit/logs`: `actor { id, name, email }` per item (additive); `actionType` is validated against the `OpsActionType` enum — an unknown value is now 400 instead of a Prisma 500.
+- `GET /ops/config/overview`: `restartPending` per item (additive) — a saved DB-overlay value differs from this process's env.
+
+### Changed
+- `GET /admin/dashboard/sales-chart` is **zero-filled**: every bucket in the range is returned (quiet days as 0), so charts space the x-axis by time. Ranges over 1000 buckets fall back to sparse points.
+
+**Propagation:**
+- Severity: **HIGH** (status-update hang blocks local-delivery fulfilment) - Layers: backend (`modules/dashboard/**`, `modules/orders/orders.routes.ts`, `modules/ops/**`, `common/auth/admin-endpoint-policy-registry.ts`, `scripts/admin-contract-check.js`, docs) — pairs with frontend-core 0.3.0
+- Migration: NO - Flag: none - Design impact: none
+- Breaking: NO — new routes and fields are additive. `sales-chart` returns more points (zero buckets) in the same shape; a consumer that treated "no point" as "no data" now sees explicit zeros.
+- Rollback: revert the files; no data changes.
+
 ## [0.2.1] - 2026-08-19
 
 ### Fixed

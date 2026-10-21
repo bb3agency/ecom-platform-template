@@ -1,434 +1,367 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ComponentType } from "react";
 import Link from "next/link";
+import {
+  AlertTriangle,
+  ArrowRight,
+  CheckCircle2,
+  CreditCard,
+  LineChart as LineChartIcon,
+  MessageSquare,
+  Package,
+  PackageCheck,
+  PackageX,
+  RotateCcw,
+  ShoppingCart,
+  Tags,
+} from "lucide-react";
+import { Area, AreaChart, CartesianGrid, Tooltip, XAxis, YAxis } from "recharts";
 
-import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
-import { KpiCard } from "@/components/admin/ui/kpi-card";
+import {
+  Notice,
+  Panel,
+  StatStrip,
+  StatusDot,
+  percentChange,
+} from "@/components/ui/console";
+import { AdminResponsiveContainer } from "@/components/admin/AdminResponsiveContainer";
+import { prevRange, rangeToISO } from "@/components/admin/AdminDateRangePicker";
 import type {
+  AdminActionQueue,
+  AdminAnalyticsCategoryBreakdown,
   AdminDashboardKpis,
+  AdminInventoryListItem,
+  AdminOrderListItem,
   AdminSalesChart,
   AdminSalesChartPoint,
   AdminTopProductItem,
   AdminTopProducts,
-  AdminAnalyticsCategoryBreakdown,
-  AdminOrderListItem,
-  AdminInventoryListItem,
   PaginatedResponse,
 } from "@/lib/admin-api";
-import {
-  buildAdminQuery,
-  ensureArray,
-  coercePaginatedResponse,
-} from "@/lib/admin-api";
-import { formatPaise, orderStatusTone } from "@/lib/admin-format";
+import { buildAdminQuery, coercePaginatedResponse, ensureArray } from "@/lib/admin-api";
+import { formatAdminWhen, formatPaise, orderStatusDisplay } from "@/lib/admin-format";
 import { getApiErrorMessage } from "@/lib/error-messages";
+import { ADMIN_DASHBOARD_REFRESH_SCOPES } from "@/lib/admin-data-refresh";
 import { useAuthenticatedApi } from "@/hooks/use-authenticated-api";
 import { useAdminDataRefreshEffect } from "@/hooks/use-admin-data-refresh-effect";
-import {
-  ADMIN_DASHBOARD_REFRESH_SCOPES,
-} from "@/lib/admin-data-refresh";
-import { AdminResponsiveContainer } from "@/components/admin/AdminResponsiveContainer";
-import { prevRange, rangeToISO } from "@/components/admin/AdminDateRangePicker";
-import {
-  Wallet,
-  ShoppingCart,
-  Users,
-  Package,
-  PackageCheck,
-  LineChart as LineChartIcon,
-  PieChart as PieChartIcon,
-} from "lucide-react";
-import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  PieChart,
-  Pie,
-  Cell,
-} from "recharts";
+import { cn } from "@/lib/utils";
 
-/** Percentage delta vs the comparison period, or null when no baseline. */
-function computeDelta(current: number, previous: number): number | null {
-  if (!previous) return null;
-  return ((current - previous) / previous) * 100;
-}
-
-export function AdminDashboardKpisPanel({
-  from,
-  to,
-  trendLabel,
-}: {
-  from: string;
-  to: string;
-  trendLabel: string;
-}) {
+/** Shared loader: one request, loading/error state, refresh on admin data changes. */
+function useDashboardResource<T>(path: string | null) {
   const api = useAuthenticatedApi();
+  const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [kpis, setKpis] = useState<AdminDashboardKpis | null>(null);
-  const [prev, setPrev] = useState<AdminDashboardKpis | null>(null);
 
   const load = useCallback(async () => {
+    if (!path) return;
     setLoading(true);
     setError(null);
     try {
-      const { fromISO, toISO } = rangeToISO(from, to);
-      const prevDates = prevRange(from, to);
-
-      const [current, previous] = await Promise.all([
-        api<AdminDashboardKpis>(
-          `/admin/dashboard/kpis${buildAdminQuery({ period: "custom", from: fromISO, to: toISO })}`,
-        ),
-        api<AdminDashboardKpis>(
-          `/admin/dashboard/kpis${buildAdminQuery({ period: "custom", from: prevDates.from, to: prevDates.to })}`,
-        ),
-      ]);
-      setKpis(current);
-      setPrev(previous);
-    } catch (err) {
-      setError(getApiErrorMessage(err));
-      setKpis(null);
-      setPrev(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [api, from, to]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  useAdminDataRefreshEffect(load, ADMIN_DASHBOARD_REFRESH_SCOPES);
-
-  const trendOf = (pick: (k: AdminDashboardKpis) => number) => {
-    if (!kpis || !prev) return null;
-    const delta = computeDelta(pick(kpis), pick(prev));
-    return delta === null ? null : { deltaPct: delta, caption: trendLabel };
-  };
-
-  return (
-    <>
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-        <KpiCard
-          label="Total Revenue"
-          value={kpis ? formatPaise(kpis.revenuePaise) : "₹0"}
-          icon={Wallet}
-          trend={trendOf((k) => k.revenuePaise)}
-          loading={loading}
-        />
-        <KpiCard
-          label="Total Orders"
-          value={kpis ? String(kpis.ordersCount) : "0"}
-          icon={ShoppingCart}
-          trend={trendOf((k) => k.ordersCount)}
-          loading={loading}
-        />
-        <KpiCard
-          label="Total Customers"
-          value={kpis ? String(kpis.customersCount) : "0"}
-          icon={Users}
-          trend={trendOf((k) => k.customersCount)}
-          loading={loading}
-        />
-        <KpiCard
-          label="Avg. Order Value"
-          value={kpis ? formatPaise(kpis.averageOrderValuePaise) : "₹0"}
-          icon={Package}
-          trend={trendOf((k) => k.averageOrderValuePaise)}
-          loading={loading}
-        />
-      </div>
-    </>
-  );
-}
-
-export function AdminSalesChartPanel({
-  from,
-  to,
-}: {
-  from: string;
-  to: string;
-}) {
-  const api = useAuthenticatedApi();
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [chart, setChart] = useState<AdminSalesChart | null>(null);
-  const [granularity, setGranularity] = useState<"day" | "week">("day");
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const { fromISO, toISO } = rangeToISO(from, to);
-      const response = await api<AdminSalesChart>(
-        `/admin/dashboard/sales-chart${buildAdminQuery({ granularity, from: fromISO, to: toISO })}`,
-      );
-      setChart(response);
-    } catch (err) {
-      setError(getApiErrorMessage(err));
-      setChart(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [api, granularity, from, to]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  useAdminDataRefreshEffect(load, ADMIN_DASHBOARD_REFRESH_SCOPES);
-
-  const points = ensureArray<AdminSalesChartPoint>(chart?.points);
-
-  // Map to recharts data
-  const chartData = points.map((p) => ({
-    name: p.bucket,
-    revenue: p.revenuePaise / 100, // format to rupees for chart
-  }));
-
-  return (
-    <div className="flex min-w-0 flex-col rounded-2xl border border-border bg-card p-4 transition-shadow hover:shadow-sm sm:p-5 lg:col-span-2">
-      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="text-sm font-semibold text-foreground">Sales Overview</h2>
-        <select
-          className="h-8 rounded-md border border-border bg-background px-2 text-xs text-muted-foreground focus:border-primary focus:outline-none"
-          value={granularity}
-          onChange={(e) =>
-            setGranularity(e.target.value as "day" | "week")
-          }
-        >
-          <option value="day">Daily</option>
-          <option value="week">Weekly</option>
-        </select>
-      </div>
-
-      {loading ? (
-        <div className="flex h-[220px] w-full items-end gap-2 sm:h-[300px]">
-          {/* Skeleton mimicking chart columns */}
-          <Skeleton className="h-1/3 flex-1" />
-          <Skeleton className="h-2/3 flex-1" />
-          <Skeleton className="h-1/2 flex-1" />
-          <Skeleton className="h-full flex-1" />
-          <Skeleton className="h-2/3 flex-1" />
-        </div>
-      ) : error ? (
-        <div className="flex h-[220px] w-full items-center justify-center text-sm text-destructive sm:h-[300px]">
-          {error}
-        </div>
-      ) : points.length === 0 ? (
-        <EmptyState
-          icon={LineChartIcon}
-          headline="No sales data yet"
-          description="Revenue will appear here once orders come in for this period."
-          className="h-[220px] py-0 sm:h-[300px]"
-        />
-      ) : (
-        <div className="h-[220px] w-full min-w-0 sm:h-[300px]">
-          <AdminResponsiveContainer height="100%">
-          <AreaChart
-            data={chartData}
-            margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
-          >
-            <defs>
-              <linearGradient id="salesRevenueFill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="var(--primary)" stopOpacity={0.15} />
-                <stop offset="100%" stopColor="var(--primary)" stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid
-              strokeDasharray="3 3"
-              vertical={false}
-              stroke="var(--border)"
-            />
-            <XAxis
-              dataKey="name"
-              axisLine={false}
-              tickLine={false}
-              tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
-              dy={10}
-            />
-            <YAxis
-              axisLine={false}
-              tickLine={false}
-              tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
-              tickFormatter={(value) =>
-                `${value >= 1000 ? value / 1000 + "k" : value}`
-              }
-              dx={-10}
-            />
-            <Tooltip
-              content={<CustomTooltip />}
-              cursor={{
-                stroke: "var(--primary)",
-                strokeWidth: 1,
-                strokeDasharray: "5 5",
-              }}
-            />
-            <Area
-              type="monotone"
-              dataKey="revenue"
-              stroke="var(--primary)"
-              strokeWidth={2}
-              fill="url(#salesRevenueFill)"
-              dot={{ r: 3, fill: "var(--card)", stroke: "var(--primary)", strokeWidth: 2 }}
-              activeDot={{
-                r: 5,
-                fill: "var(--primary)",
-                stroke: "var(--card)",
-                strokeWidth: 2,
-              }}
-            />
-          </AreaChart>
-        </AdminResponsiveContainer>
-        </div>
-      )}
-    </div>
-  );
-}
-
-interface CustomTooltipProps {
-  active?: boolean;
-  payload?: Array<{ value: number }>;
-  label?: string;
-}
-
-function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
-  if (active && payload && payload.length) {
-    return (
-      <div className="rounded-lg border border-border bg-card px-3 py-2 shadow-sm">
-        <p className="text-xs text-muted-foreground">{label}</p>
-        <p className="text-sm font-semibold text-foreground">
-          ₹{payload[0].value.toLocaleString()}
-        </p>
-      </div>
-    );
-  }
-  return null;
-}
-
-export function AdminTopProductsPanel({
-  from,
-  to,
-}: {
-  from?: string;
-  to?: string;
-}) {
-  const api = useAuthenticatedApi();
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [data, setData] = useState<AdminTopProducts | null>(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const extra =
-        from && to
-          ? (() => {
-              const { fromISO, toISO } = rangeToISO(from, to);
-              return `&from=${encodeURIComponent(fromISO)}&to=${encodeURIComponent(toISO)}`;
-            })()
-          : "";
-      const response = await api<AdminTopProducts>(
-        `/admin/dashboard/top-products?limit=5${extra}`,
-      );
-      setData(response);
+      setData(await api<T>(path));
     } catch (err) {
       setError(getApiErrorMessage(err));
       setData(null);
     } finally {
       setLoading(false);
     }
-  }, [api, from, to]);
+  }, [api, path]);
 
   useEffect(() => {
     void load();
   }, [load]);
-
   useAdminDataRefreshEffect(load, ADMIN_DASHBOARD_REFRESH_SCOPES);
 
-  const items = ensureArray<AdminTopProductItem>(data?.items);
+  return { data, loading, error, reload: load };
+}
+
+function PanelError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <Notice
+      tone="danger"
+      title="Couldn't load this"
+      action={
+        <button type="button" onClick={onRetry} className="text-sm font-medium text-foreground underline underline-offset-4">
+          Try again
+        </button>
+      }
+    >
+      {message}
+    </Notice>
+  );
+}
+
+// ─── Needs attention ─────────────────────────────────────────────────────────
+
+interface QueueItem {
+  key: keyof Omit<AdminActionQueue, "generatedAt">;
+  label: (n: number) => string;
+  href: string;
+  icon: ComponentType<{ className?: string }>;
+  tone: "brand" | "warning" | "danger";
+}
+
+const QUEUE_ITEMS: QueueItem[] = [
+  { key: "ordersToFulfil", label: (n) => (n === 1 ? "order to fulfil" : "orders to fulfil"), href: "/admin/orders?status=CONFIRMED&range=all", icon: ShoppingCart, tone: "brand" },
+  { key: "ordersProcessing", label: (n) => (n === 1 ? "order being processed" : "orders being processed"), href: "/admin/orders?status=PROCESSING&range=all", icon: Package, tone: "brand" },
+  { key: "returnsToReview", label: (n) => (n === 1 ? "return to review" : "returns to review"), href: "/admin/returns?status=REQUESTED", icon: RotateCcw, tone: "warning" },
+  { key: "outOfStockVariants", label: (n) => (n === 1 ? "variant out of stock" : "variants out of stock"), href: "/admin/inventory?stock=out", icon: PackageX, tone: "danger" },
+  { key: "lowStockVariants", label: (n) => (n === 1 ? "variant running low" : "variants running low"), href: "/admin/inventory?stock=low", icon: AlertTriangle, tone: "warning" },
+  { key: "ordersAwaitingPayment", label: (n) => (n === 1 ? "order awaiting payment" : "orders awaiting payment"), href: "/admin/orders?status=PENDING_PAYMENT&range=all", icon: CreditCard, tone: "warning" },
+  { key: "reviewsToModerate", label: (n) => (n === 1 ? "review to moderate" : "reviews to moderate"), href: "/admin/reviews?approved=false", icon: MessageSquare, tone: "warning" },
+];
+
+const QUEUE_ICON_TONE: Record<QueueItem["tone"], string> = {
+  brand: "bg-primary/10 text-primary",
+  warning: "console-notice text-foreground",
+  danger: "console-notice text-destructive",
+};
+
+/** The dashboard opens with what needs doing, each count linking to the filtered list. */
+export function AdminActionQueuePanel() {
+  const { data, loading, error, reload } = useDashboardResource<AdminActionQueue>("/admin/dashboard/action-queue");
+  const anyPending = data ? QUEUE_ITEMS.some((item) => data[item.key] > 0) : false;
 
   return (
-    <div className="flex min-w-0 flex-col rounded-2xl border border-border bg-card p-4 transition-shadow hover:shadow-sm sm:p-5 lg:col-span-2">
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold text-foreground">
-          Top Selling Products
-        </h2>
-        <Link href="/admin/products" className="text-sm font-medium text-primary hover:underline">
-          View all
-        </Link>
-      </div>
-
-      {loading ? (
-        <ListRowsSkeleton rows={5} />
-      ) : error ? (
-        <div className="flex h-[200px] w-full items-center justify-center text-sm text-destructive">
-          {error}
+    <Panel title="Needs attention" flush>
+      {loading && !data ? (
+        <div className="grid grid-cols-1 gap-px bg-border sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-3 bg-card p-4 sm:px-5">
+              <Skeleton className="size-9 rounded-lg" />
+              <Skeleton className="h-4 w-40" />
+            </div>
+          ))}
         </div>
-      ) : items.length === 0 ? (
+      ) : error ? (
+        <div className="p-4 sm:p-5">
+          <PanelError message={error} onRetry={() => void reload()} />
+        </div>
+      ) : !anyPending ? (
+        <div className="flex items-center gap-3 p-4 sm:px-5">
+          <CheckCircle2 className="size-5 shrink-0 text-success" aria-hidden />
+          <p className="text-sm text-muted-foreground">
+            You&apos;re all caught up. New orders and returns will show up here.
+          </p>
+        </div>
+      ) : (
+        // Each cell draws its own right/bottom hairline; the negative margin tucks the
+        // outer edge under the panel border, so any item count leaves no gaps.
+        <ul className="-mb-px -mr-px grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+          {QUEUE_ITEMS.map((item) => {
+            const count = data?.[item.key] ?? 0;
+            if (count === 0) {
+              // Cleared items stay in place (stable layout) but go quiet and aren't links.
+              return (
+                <li key={item.key} className="flex min-w-0 items-center gap-3 border-b border-r border-border bg-card p-4 sm:px-5">
+                  <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                    <item.icon className="size-4.5" aria-hidden />
+                  </span>
+                  <span className="min-w-0 flex-1 text-sm text-muted-foreground">
+                    <span className="tabular">0</span> {item.label(0)}
+                  </span>
+                  <CheckCircle2 className="size-4 shrink-0 text-success" aria-label="Clear" />
+                </li>
+              );
+            }
+            return (
+              <li key={item.key} className="min-w-0 border-b border-r border-border bg-card">
+                <Link
+                  href={item.href}
+                  className="group flex min-w-0 items-center gap-3 p-4 transition-colors hover:bg-muted/50 sm:px-5"
+                >
+                  <span
+                    data-tone={item.tone === "danger" ? "danger" : "warning"}
+                    className={cn("flex size-9 shrink-0 items-center justify-center rounded-lg", QUEUE_ICON_TONE[item.tone])}
+                  >
+                    <item.icon className="size-4.5" aria-hidden />
+                  </span>
+                  <span className="min-w-0 flex-1 text-sm text-foreground">
+                    <span className="font-semibold tabular">{count.toLocaleString("en-IN")}</span>{" "}
+                    {item.label(count)}
+                  </span>
+                  <ArrowRight
+                    className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5"
+                    aria-hidden
+                  />
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </Panel>
+  );
+}
+
+// ─── KPIs ────────────────────────────────────────────────────────────────────
+
+export function AdminDashboardKpisPanel({ from, to, trendLabel }: { from: string; to: string; trendLabel: string }) {
+  const { fromISO, toISO } = rangeToISO(from, to);
+  const prevDates = prevRange(from, to);
+  const current = useDashboardResource<AdminDashboardKpis>(
+    `/admin/dashboard/kpis${buildAdminQuery({ period: "custom", from: fromISO, to: toISO })}`,
+  );
+  const previous = useDashboardResource<AdminDashboardKpis>(
+    `/admin/dashboard/kpis${buildAdminQuery({ period: "custom", from: prevDates.from, to: prevDates.to })}`,
+  );
+  const k = current.data;
+  const p = previous.data;
+  const delta = (pick: (x: AdminDashboardKpis) => number) => (k && p ? percentChange(pick(k), pick(p)) : null);
+
+  if (current.error) return <PanelError message={current.error} onRetry={() => void current.reload()} />;
+
+  return (
+    <StatStrip
+      loading={current.loading && !k}
+      items={[
+        { label: "Revenue", value: formatPaise(k?.revenuePaise ?? 0), deltaPct: delta((x) => x.revenuePaise), deltaCaption: trendLabel },
+        { label: "Orders", value: (k?.ordersCount ?? 0).toLocaleString("en-IN"), deltaPct: delta((x) => x.ordersCount), deltaCaption: trendLabel, href: "/admin/orders" },
+        { label: "Average order", value: formatPaise(k?.averageOrderValuePaise ?? 0), deltaPct: delta((x) => x.averageOrderValuePaise), deltaCaption: trendLabel },
+        { label: "New customers", value: (k?.customersCount ?? 0).toLocaleString("en-IN"), deltaPct: delta((x) => x.customersCount), deltaCaption: trendLabel, href: "/admin/customers" },
+      ]}
+    />
+  );
+}
+
+// ─── Sales chart ─────────────────────────────────────────────────────────────
+
+function formatBucketLabel(bucket: string): string {
+  const date = new Date(`${bucket.slice(0, 10)}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return bucket;
+  return new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short" }).format(date);
+}
+
+function compactRupees(value: number): string {
+  if (value >= 100000) return `₹${Math.round(value / 1000) / 100}L`;
+  if (value >= 1000) return `₹${Math.round(value / 100) / 10}k`;
+  return `₹${value}`;
+}
+
+export function AdminSalesChartPanel({ from, to, className }: { from: string; to: string; className?: string }) {
+  const [granularity, setGranularity] = useState<"day" | "week">("day");
+  const { fromISO, toISO } = rangeToISO(from, to);
+  const { data, loading, error, reload } = useDashboardResource<AdminSalesChart>(
+    `/admin/dashboard/sales-chart${buildAdminQuery({ granularity, from: fromISO, to: toISO })}`,
+  );
+  const points = ensureArray<AdminSalesChartPoint>(data?.points);
+  const chartData = points.map((p) => ({ name: formatBucketLabel(p.bucket), revenue: p.revenuePaise / 100, orders: p.ordersCount }));
+  const total = points.reduce((sum, p) => sum + p.revenuePaise, 0);
+  const hasSales = points.some((p) => p.revenuePaise > 0);
+
+  return (
+    <Panel
+      className={className}
+      title="Sales"
+      description={!loading && hasSales ? `${formatPaise(total)} in this period` : undefined}
+      actions={
+        <div role="group" aria-label="Chart interval" className="inline-flex rounded-lg border border-input p-0.5">
+          {(["day", "week"] as const).map((g) => (
+            <button
+              key={g}
+              type="button"
+              data-size-locked
+              aria-pressed={granularity === g}
+              onClick={() => setGranularity(g)}
+              className={cn(
+                "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+                granularity === g ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {g === "day" ? "Daily" : "Weekly"}
+            </button>
+          ))}
+        </div>
+      }
+    >
+      {loading && !data ? (
+        <Skeleton className="h-56 w-full sm:h-72" />
+      ) : error ? (
+        <PanelError message={error} onRetry={() => void reload()} />
+      ) : !hasSales ? (
         <EmptyState
-          icon={Package}
-          headline="No top products yet"
-          description="Best sellers will appear here once orders are placed."
-          className="py-8"
+          icon={LineChartIcon}
+          headline="No sales in this period"
+          description="Pick a wider date range, or check back once orders come in."
+          className="h-56 border-0 sm:h-72"
         />
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b border-border text-xs text-muted-foreground">
-              <tr>
-                <th className="pb-3 pl-2 font-medium">Product</th>
-                <th className="hidden pb-3 px-2 font-medium sm:table-cell">Variant</th>
-                <th className="pb-3 px-2 font-medium">Sold</th>
-                <th className="pb-3 px-2 font-medium">Revenue</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {items.map((item) => (
-                <tr key={item.variantId} className="group hover:bg-muted/40">
-                  <td className="py-3 pl-2">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10">
-                        {/* Placeholder for product image since it's not in the API response */}
-                        <Package className="h-4 w-4 text-primary" />
-                      </div>
-                      <span className="font-medium text-foreground">{item.productName}</span>
-                    </div>
-                  </td>
-                  <td className="hidden py-3 px-2 text-muted-foreground sm:table-cell">
-                    {item.variantName || "Default"}
-                  </td>
-                  <td className="py-3 px-2 font-medium">{item.quantitySold}</td>
-                  <td className="py-3 px-2 font-medium">
-                    {formatPaise(item.revenuePaise)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="h-56 w-full min-w-0 sm:h-72">
+          <AdminResponsiveContainer height="100%">
+            <AreaChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+              <defs>
+                <linearGradient id="salesRevenueFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="var(--primary)" stopOpacity={0.12} />
+                  <stop offset="100%" stopColor="var(--primary)" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid vertical={false} stroke="var(--border)" />
+              <XAxis
+                dataKey="name"
+                axisLine={false}
+                tickLine={false}
+                minTickGap={24}
+                tick={{ fontSize: 12, fill: "var(--muted-foreground)" }}
+                dy={8}
+              />
+              <YAxis
+                axisLine={false}
+                tickLine={false}
+                width={52}
+                tick={{ fontSize: 12, fill: "var(--muted-foreground)" }}
+                tickFormatter={(value: number) => compactRupees(value)}
+              />
+              <Tooltip content={<SalesTooltip />} cursor={{ stroke: "var(--border)", strokeWidth: 1 }} />
+              <Area
+                type="monotone"
+                dataKey="revenue"
+                stroke="var(--primary)"
+                strokeWidth={2}
+                fill="url(#salesRevenueFill)"
+                isAnimationActive={false}
+                dot={false}
+                activeDot={{ r: 4, fill: "var(--primary)", stroke: "var(--card)", strokeWidth: 2 }}
+              />
+            </AreaChart>
+          </AdminResponsiveContainer>
         </div>
       )}
+    </Panel>
+  );
+}
+
+interface SalesTooltipProps {
+  active?: boolean;
+  payload?: Array<{ value: number; payload?: { orders?: number } }>;
+  label?: string;
+}
+
+function SalesTooltip({ active, payload, label }: SalesTooltipProps) {
+  if (!active || !payload?.length) return null;
+  const orders = payload[0].payload?.orders ?? 0;
+  return (
+    <div className="rounded-lg border border-border bg-popover px-3 py-2 text-popover-foreground shadow-md">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="text-sm font-semibold tabular">₹{payload[0].value.toLocaleString("en-IN")}</p>
+      <p className="text-xs text-muted-foreground tabular">
+        {orders} {orders === 1 ? "order" : "orders"}
+      </p>
     </div>
   );
 }
 
-/** Skeleton rows that mimic the avatar + two-line list layout. */
-function ListRowsSkeleton({ rows }: { rows: number }) {
+// ─── Lists ───────────────────────────────────────────────────────────────────
+
+function ListSkeleton({ rows = 5 }: { rows?: number }) {
   return (
-    <div className="flex flex-col gap-4">
+    <div className="divide-y divide-border">
       {Array.from({ length: rows }).map((_, i) => (
-        <div key={i} className="flex items-center gap-3">
-          <Skeleton className="h-9 w-9 rounded-full" />
+        <div key={i} className="flex items-center gap-3 px-4 py-3 sm:px-5">
           <div className="flex-1 space-y-1.5">
-            <Skeleton className="h-3.5 w-1/3" />
+            <Skeleton className="h-3.5 w-2/5" />
             <Skeleton className="h-3 w-1/4" />
           </div>
           <Skeleton className="h-3.5 w-14" />
@@ -438,353 +371,209 @@ function ListRowsSkeleton({ rows }: { rows: number }) {
   );
 }
 
-export function AdminSalesByCategoryPanel({
-  from,
-  to,
-}: {
-  from: string;
-  to: string;
-}) {
-  const api = useAuthenticatedApi();
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [data, setData] = useState<AdminAnalyticsCategoryBreakdown | null>(
-    null,
-  );
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const { fromISO, toISO } = rangeToISO(from, to);
-      const response = await api<AdminAnalyticsCategoryBreakdown>(
-        `/admin/analytics/category-breakdown${buildAdminQuery({ from: fromISO, to: toISO })}`,
-      );
-      setData(response);
-    } catch (err) {
-      setError(getApiErrorMessage(err));
-      setData(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [api, from, to]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  useAdminDataRefreshEffect(load, ADMIN_DASHBOARD_REFRESH_SCOPES);
-
-  const items = ensureArray<AdminAnalyticsCategoryBreakdown["items"][number]>(
-    data?.items,
-  );
-
-  // Map data to Recharts format
-  const chartData = items.map((item) => ({
-    name: item.categoryName,
-    value: item.revenuePaise / 100, // Rupees
-    percentage: item.sharePercent,
-  }));
-
-  // Theme chart tokens (defined in globals.css) — no raw hex.
-  const COLORS = [
-    "var(--chart-1)",
-    "var(--chart-2)",
-    "var(--chart-3)",
-    "var(--chart-4)",
-    "var(--chart-5)",
-  ];
-
-  const totalRevenue = chartData.reduce((acc, curr) => acc + curr.value, 0);
-
+function ViewAll({ href, label = "View all" }: { href: string; label?: string }) {
   return (
-    <div className="flex min-w-0 flex-col rounded-2xl border border-border bg-card p-4 transition-shadow hover:shadow-sm sm:p-5">
-      <h2 className="mb-4 text-sm font-semibold text-foreground">
-        Sales by Category
-      </h2>
-
-      {loading ? (
-        <div className="flex items-center gap-6 py-6">
-          <Skeleton className="h-[160px] w-[160px] shrink-0 rounded-full" />
-          <div className="flex-1 space-y-3">
-            <Skeleton className="h-3.5 w-3/4" />
-            <Skeleton className="h-3.5 w-2/3" />
-            <Skeleton className="h-3.5 w-1/2" />
-          </div>
-        </div>
-      ) : error ? (
-        <div className="flex h-[240px] w-full items-center justify-center text-sm text-destructive">
-          {error}
-        </div>
-      ) : chartData.length === 0 ? (
-        <EmptyState
-          icon={PieChartIcon}
-          headline="No category sales yet"
-          description="Category share will appear here once orders come in."
-          className="py-8"
-        />
-      ) : (
-        <div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-around">
-          <div className="relative h-[180px] w-[180px] shrink-0">
-            <AdminResponsiveContainer width={180} height={180}>
-              <PieChart>
-                <Pie
-                  data={chartData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={80}
-                  paddingAngle={2}
-                  dataKey="value"
-                >
-                  {chartData.map((entry, index) => (
-                    <Cell
-                      key={`cell-${index}`}
-                      fill={COLORS[index % COLORS.length]}
-                      stroke="var(--card)"
-                    />
-                  ))}
-                </Pie>
-                <Tooltip
-                  formatter={(value: unknown) =>
-                    value ? `₹${Number(value).toLocaleString()}` : "₹0"
-                  }
-                  contentStyle={{
-                    background: "var(--card)",
-                    color: "var(--foreground)",
-                    borderRadius: "8px",
-                    border: "1px solid var(--border)",
-                  }}
-                />
-              </PieChart>
-            </AdminResponsiveContainer>
-            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
-              <span className="font-heading text-xl font-semibold tracking-tight text-foreground">
-                ₹{Math.round(totalRevenue).toLocaleString()}
-              </span>
-              <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                Total Sales
-              </span>
-            </div>
-          </div>
-
-          <div className="flex w-full flex-1 flex-col gap-2.5">
-            {chartData.slice(0, 5).map((item, index) => (
-              <div
-                key={item.name}
-                className="flex items-center justify-between text-sm"
-              >
-                <div className="flex items-center gap-2">
-                  <div
-                    className="h-2.5 w-2.5 shrink-0 rounded-full"
-                    style={{ backgroundColor: COLORS[index % COLORS.length] }}
-                  />
-                  <span className="max-w-[120px] truncate font-medium text-muted-foreground">
-                    {item.name}
-                  </span>
-                </div>
-                <span className="font-semibold text-foreground">
-                  {item.percentage}%
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
+    <Link href={href} className="text-sm font-medium text-primary hover:underline">
+      {label}
+    </Link>
   );
 }
 
-export function AdminRecentOrdersPanel() {
-  const api = useAuthenticatedApi();
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [orders, setOrders] = useState<AdminOrderListItem[]>([]);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await api<PaginatedResponse<AdminOrderListItem>>(
-        "/admin/orders?limit=5",
-      );
-      const coerced = coercePaginatedResponse(response);
-      setOrders(coerced.items as AdminOrderListItem[]);
-    } catch (err) {
-      setError(getApiErrorMessage(err));
-      setOrders([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [api]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  useAdminDataRefreshEffect(load, ADMIN_DASHBOARD_REFRESH_SCOPES);
+export function AdminRecentOrdersPanel({ className }: { className?: string }) {
+  const { data, loading, error, reload } = useDashboardResource<PaginatedResponse<AdminOrderListItem>>(
+    "/admin/orders?limit=6",
+  );
+  const orders = data ? (coercePaginatedResponse(data).items as AdminOrderListItem[]) : [];
 
   return (
-    <div className="flex min-w-0 flex-col rounded-2xl border border-border bg-card p-4 transition-shadow hover:shadow-sm sm:p-5">
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold text-foreground">Recent Orders</h2>
-        <Link href="/admin/orders" className="text-sm font-medium text-primary hover:underline">
-          View all
-        </Link>
-      </div>
-
-      {loading ? (
-        <ListRowsSkeleton rows={5} />
+    <Panel className={className} title="Latest orders" actions={<ViewAll href="/admin/orders" />} flush>
+      {loading && !data ? (
+        <ListSkeleton rows={6} />
       ) : error ? (
-        <div className="flex h-[240px] w-full items-center justify-center text-sm text-destructive">
-          {error}
+        <div className="p-4 sm:p-5">
+          <PanelError message={error} onRetry={() => void reload()} />
         </div>
       ) : orders.length === 0 ? (
         <EmptyState
           icon={ShoppingCart}
           headline="No orders yet"
-          description="New orders will show up here as customers check out."
-          className="py-8"
+          description="Orders appear here the moment a customer checks out."
+          className="m-4 sm:m-5"
         />
       ) : (
-        <div className="flex flex-col gap-4">
-          {orders.map((order) => (
-            <div
-              key={order.id}
-              className="flex items-center justify-between gap-2 border-b border-border pb-3 last:border-none last:pb-0"
-            >
-              <div className="flex min-w-0 flex-1 items-center gap-3 pr-2">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
-                  {(order.customerName?.trim()?.charAt(0) || "#").toUpperCase()}
-                </div>
-                <div className="min-w-0">
-                  <Link
-                    href={`/admin/orders/${order.id}`}
-                    className="block truncate text-sm font-semibold text-foreground hover:underline"
-                  >
-                    {order.orderNumber}
-                  </Link>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {order.customerName}
-                  </p>
-                </div>
-              </div>
-              <div className="flex shrink-0 items-center gap-2 text-right sm:gap-4">
-                <div className="hidden sm:block">
-                  <span className="text-sm font-semibold text-foreground">
-                    {formatPaise(order.total)}
-                  </span>
-                  <p className="max-w-[80px] truncate text-xs text-muted-foreground sm:max-w-none">
-                    {order.paymentMode}
-                  </p>
-                </div>
-                <div className="flex flex-col items-end sm:hidden">
-                  <span className="text-sm font-semibold text-foreground">
-                    {formatPaise(order.total)}
-                  </span>
-                </div>
-                <Badge variant={orderStatusTone(order.status)} dot>
-                  {order.status}
-                </Badge>
-              </div>
-            </div>
-          ))}
-        </div>
+        <ul className="divide-y divide-border">
+          {orders.map((order) => {
+            const status = orderStatusDisplay(order.status);
+            return (
+              <li key={order.id} className="min-w-0">
+                <Link
+                  href={`/admin/orders/${order.id}`}
+                  className="flex min-w-0 items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/50 sm:px-5"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-foreground">
+                      {order.customerName?.trim() || "Guest"}
+                    </p>
+                    <p className="truncate text-xs text-muted-foreground tabular">
+                      {formatAdminWhen(order.createdAt)} · {order.orderNumber}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 flex-col items-end gap-1">
+                    <span className="text-sm font-semibold text-foreground tabular">{formatPaise(order.total)}</span>
+                    <StatusDot tone={status.tone} className="text-xs text-muted-foreground">
+                      {status.label}
+                    </StatusDot>
+                  </div>
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
       )}
-    </div>
+    </Panel>
   );
 }
 
-export function AdminLowStockPanel() {
-  const api = useAuthenticatedApi();
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [items, setItems] = useState<AdminInventoryListItem[]>([]);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await api<AdminInventoryListItem[]>(
-        "/admin/inventory/low-stock",
-      );
-      setItems(ensureArray(response).slice(0, 5) as AdminInventoryListItem[]);
-    } catch (err) {
-      setError(getApiErrorMessage(err));
-      setItems([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [api]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  useAdminDataRefreshEffect(load, ADMIN_DASHBOARD_REFRESH_SCOPES);
+export function AdminTopProductsPanel({ from, to, className }: { from?: string; to?: string; className?: string }) {
+  const range = from && to ? rangeToISO(from, to) : null;
+  const { data, loading, error, reload } = useDashboardResource<AdminTopProducts>(
+    `/admin/dashboard/top-products${buildAdminQuery({ limit: 5, ...(range ? { from: range.fromISO, to: range.toISO } : {}) })}`,
+  );
+  const items = ensureArray<AdminTopProductItem>(data?.items);
+  const max = Math.max(1, ...items.map((i) => i.revenuePaise));
 
   return (
-    <div className="flex min-w-0 flex-col rounded-2xl border border-border bg-card p-4 transition-shadow hover:shadow-sm sm:p-5">
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold text-foreground">Low Stock Alert</h2>
-        <Link href="/admin/inventory" className="text-sm font-medium text-primary hover:underline">
-          View all
-        </Link>
-      </div>
-
-      {loading ? (
-        <ListRowsSkeleton rows={5} />
+    <Panel className={className} title="Best sellers" actions={<ViewAll href="/admin/products" label="All products" />} flush>
+      {loading && !data ? (
+        <ListSkeleton />
       ) : error ? (
-        <div className="flex h-[240px] w-full items-center justify-center text-sm text-destructive">
-          {error}
+        <div className="p-4 sm:p-5">
+          <PanelError message={error} onRetry={() => void reload()} />
         </div>
       ) : items.length === 0 ? (
         <EmptyState
-          icon={PackageCheck}
-          headline="All stock is healthy"
-          description="Variants that fall below their low-stock threshold will appear here."
-          className="py-8"
+          icon={Package}
+          headline="No sales in this period"
+          description="Your best-selling products will be ranked here."
+          className="m-4 sm:m-5"
         />
       ) : (
-        <div className="flex flex-col gap-4">
-          {items.map((row) => (
-            <div
-              key={row.id}
-              className="flex items-center justify-between gap-2 border-b border-border pb-3 last:border-none last:pb-0"
-            >
-              <div className="flex min-w-0 flex-1 items-center gap-3 pr-2">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-500/10">
-                  <Package className="h-4 w-4 text-amber-600" />
-                </div>
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-foreground">
-                    {row.variant.product.name}
-                  </p>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {row.variant.name}
-                  </p>
-                </div>
+        <ol className="divide-y divide-border">
+          {items.map((item, index) => (
+            <li key={item.variantId} className="flex min-w-0 items-center gap-3 px-4 py-3 sm:px-5">
+              <span className="w-4 shrink-0 text-sm text-muted-foreground tabular">{index + 1}</span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-foreground">
+                  {item.productName}
+                  {item.variantName ? <span className="font-normal text-muted-foreground"> · {item.variantName}</span> : null}
+                </p>
+                <ShareBar fraction={item.revenuePaise / max} />
               </div>
-              <div className="flex shrink-0 items-center gap-2 text-right sm:gap-4">
-                <div className="hidden sm:block">
-                  <span className="text-sm font-semibold text-foreground">
-                    {row.quantity}
-                  </span>
-                  <p className="text-xs text-muted-foreground">In Stock</p>
-                </div>
-                <div className="flex flex-col items-end sm:hidden">
-                  <span className="text-sm font-semibold text-foreground">
-                    {row.quantity}
-                  </span>
-                </div>
-                <Badge variant={row.quantity === 0 ? "destructive" : "warning"} dot>
-                  {row.quantity === 0 ? "Out of Stock" : "Low Stock"}
-                </Badge>
+              <div className="shrink-0 text-right">
+                <p className="text-sm font-semibold text-foreground tabular">{formatPaise(item.revenuePaise)}</p>
+                <p className="text-xs text-muted-foreground tabular">{item.quantitySold} sold</p>
               </div>
-            </div>
+            </li>
+          ))}
+        </ol>
+      )}
+    </Panel>
+  );
+}
+
+/** Thin proportional bar drawn in SVG (no inline styles — CSP forbids them). */
+function ShareBar({ fraction, tone = "primary" }: { fraction: number; tone?: "primary" | "muted" }) {
+  const pct = Math.max(2, Math.min(100, Math.round(fraction * 100)));
+  return (
+    <svg viewBox="0 0 100 4" preserveAspectRatio="none" className="mt-1.5 h-1 w-full" aria-hidden>
+      <rect width="100" height="4" rx="2" className="fill-muted" />
+      <rect width={pct} height="4" rx="2" className={tone === "primary" ? "fill-primary" : "fill-muted-foreground"} />
+    </svg>
+  );
+}
+
+/**
+ * Category share as a ranked bar list — easier to read and compare than a donut,
+ * and it labels every category directly instead of through a colour legend.
+ */
+export function AdminSalesByCategoryPanel({ from, to, className }: { from: string; to: string; className?: string }) {
+  const { fromISO, toISO } = rangeToISO(from, to);
+  const { data, loading, error, reload } = useDashboardResource<AdminAnalyticsCategoryBreakdown>(
+    `/admin/analytics/category-breakdown${buildAdminQuery({ from: fromISO, to: toISO })}`,
+  );
+  const items = ensureArray<AdminAnalyticsCategoryBreakdown["items"][number]>(data?.items)
+    .slice()
+    .sort((a, b) => b.revenuePaise - a.revenuePaise);
+
+  return (
+    <Panel className={className} title="Sales by category">
+      {loading && !data ? (
+        <div className="space-y-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-8 w-full" />
           ))}
         </div>
+      ) : error ? (
+        <PanelError message={error} onRetry={() => void reload()} />
+      ) : items.length === 0 ? (
+        <EmptyState icon={Tags} headline="No category sales yet" description="Shares appear once orders come in." className="border-0 py-8" />
+      ) : (
+        <ul className="flex flex-col gap-4">
+          {items.slice(0, 6).map((item) => (
+            <li key={item.categoryName} className="min-w-0">
+              <div className="flex items-baseline justify-between gap-3 text-sm">
+                <span className="min-w-0 truncate text-foreground">{item.categoryName}</span>
+                <span className="shrink-0 text-muted-foreground tabular">
+                  <span className="font-medium text-foreground">{Math.round(item.sharePercent)}%</span> · {formatPaise(item.revenuePaise)}
+                </span>
+              </div>
+              <ShareBar fraction={item.sharePercent / 100} />
+            </li>
+          ))}
+        </ul>
       )}
-    </div>
+    </Panel>
+  );
+}
+
+export function AdminLowStockPanel({ className }: { className?: string }) {
+  const { data, loading, error, reload } = useDashboardResource<AdminInventoryListItem[]>("/admin/inventory/low-stock");
+  const items = ensureArray<AdminInventoryListItem>(data).slice(0, 6);
+
+  return (
+    <Panel className={className} title="Running low" actions={<ViewAll href="/admin/inventory?stock=low" label="Inventory" />} flush>
+      {loading && !data ? (
+        <ListSkeleton rows={4} />
+      ) : error ? (
+        <div className="p-4 sm:p-5">
+          <PanelError message={error} onRetry={() => void reload()} />
+        </div>
+      ) : items.length === 0 ? (
+        <div className="flex items-center gap-3 p-4 sm:px-5">
+          <PackageCheck className="size-5 shrink-0 text-success" aria-hidden />
+          <p className="text-sm text-muted-foreground">Every variant is above its low-stock level.</p>
+        </div>
+      ) : (
+        <ul className="divide-y divide-border">
+          {items.map((row) => {
+            const out = row.quantity <= 0;
+            return (
+              <li key={row.id} className="flex min-w-0 items-center gap-3 px-4 py-3 sm:px-5">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-foreground">{row.variant.product.name}</p>
+                  <p className="truncate text-xs text-muted-foreground">{row.variant.name}</p>
+                </div>
+                <div className="flex shrink-0 flex-col items-end gap-1">
+                  <span className="text-sm font-semibold text-foreground tabular">{row.quantity} left</span>
+                  <StatusDot tone={out ? "danger" : "warning"} className="text-xs text-muted-foreground">
+                    {out ? "Out of stock" : "Low"}
+                  </StatusDot>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </Panel>
   );
 }

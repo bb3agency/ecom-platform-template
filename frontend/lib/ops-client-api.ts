@@ -50,6 +50,35 @@ export interface OpsLoadShedStatus {
   reason: string | null;
 }
 
+/** Mirrors the backend `OpsActionType` enum — the only valid audit `actionType` filters. */
+export const OPS_AUDIT_ACTION_TYPES = [
+  "LOAD_SHED_CHANGE",
+  "ENV_READ",
+  "ENV_UPDATE",
+  "CONTAINER_RESTART",
+  "DB_BACKUP",
+  "DB_RESTORE",
+  "FEATURE_FLAG_TOGGLE",
+  "INVITE_CREATED",
+  "INVITE_CONSUMED",
+  "INVITE_EXPIRED_CLEANED",
+  "INVITE_REVOKED",
+  "OTP_CHALLENGE_REQUESTED",
+  "OTP_CHALLENGE_VERIFIED",
+  "OTP_CHALLENGE_FAILED",
+  "USER_DEACTIVATED",
+  "OPS_USER_LOGGED_IN",
+  "OPS_USER_LOGGED_OUT",
+] as const;
+
+export type OpsAuditActionType = (typeof OPS_AUDIT_ACTION_TYPES)[number];
+
+export interface OpsAuditActor {
+  id: string;
+  name: string;
+  email: string;
+}
+
 export interface OpsAuditRecord {
   id: string;
   requestId: string;
@@ -59,6 +88,43 @@ export interface OpsAuditRecord {
   method: string;
   summary: Record<string, unknown> | null;
   createdAt: string;
+  /** Operator who performed the action (backend-core ≥ this release; absent on older APIs). */
+  actor?: OpsAuditActor | null;
+}
+
+/** `GET /ops/overview` — everything the console landing screen needs in one call. */
+export interface OpsOverview {
+  generatedAt: string;
+  loadShed: OpsLoadShedStatus;
+  config: {
+    runtimeProfile: "development-like" | "production-like";
+    missingRequiredKeys: string[];
+    restartPendingKeys: string[];
+  };
+  queues: {
+    deadLetterTotal: number;
+    deadLetterBySource: Array<{ queue: string; count: number }>;
+    items: Array<{ name: string; waiting: number; active: number; delayed: number; failed: number }>;
+  };
+  people: {
+    operatorsActive: number;
+    operatorsTotal: number;
+    merchantAdminsActive: number;
+    merchantAdminsTotal: number;
+    pendingOpsInvites: number;
+    pendingAdminInvites: number;
+  };
+  audit: {
+    failedLast24h: number;
+    recent: Array<{
+      id: string;
+      actionType: string;
+      actionStatus: "EXECUTED" | "FAILED";
+      createdAt: string;
+      actor: OpsAuditActor | null;
+    }>;
+  };
+  pendingOtpChallenges: number;
 }
 
 export interface OpsAuditList {
@@ -82,6 +148,8 @@ export interface OpsConfigOverview {
       requiresRestart: boolean;
       runtimeSource?: "env-bootstrap" | "db-overlay";
       note?: string;
+      /** Saved value differs from what the running API uses — restart to apply. */
+      restartPending?: boolean;
     }>;
   }>;
   strictProfileHealth: {
@@ -375,6 +443,10 @@ export async function getOpsPendingOtps(): Promise<{ items: OpsPendingOtpItem[] 
   return opsFetch("/ops/otp/pending");
 }
 
+export async function getOpsOverviewClient(): Promise<OpsOverview> {
+  return opsFetch<OpsOverview>("/ops/overview");
+}
+
 export async function getOpsConfigOverviewClient(): Promise<OpsConfigOverview> {
   return opsFetch<OpsConfigOverview>("/ops/config/overview");
 }
@@ -665,12 +737,35 @@ export async function scheduleOpsSystemRestart(input: {
 
 export async function getOpsAuditLogsClient(query?: {
   actionStatus?: "EXECUTED" | "FAILED";
-  actionType?: string;
+  actionType?: OpsAuditActionType;
   opsUserId?: string;
   page?: number;
   limit?: number;
 }): Promise<OpsAuditList> {
   return opsFetch<OpsAuditList>(buildPath("/ops/audit/logs", query));
+}
+
+/**
+ * Prometheus text from `GET /ops/metrics`, read in the browser with the ops
+ * session cookie. The cookie is scoped to `/api/v1/ops`, so a server render of
+ * `/ops/metrics` never sees it — this must run client-side.
+ */
+export async function getOpsMetricsTextClient(): Promise<string> {
+  const response = await fetch(`${getOpsApiBase()}/ops/metrics`, { credentials: "include", cache: "no-store" });
+  const body = await response.text();
+  if (response.ok) {
+    return body;
+  }
+  let code = "UNKNOWN_ERROR";
+  let message = "The metrics request failed.";
+  try {
+    const parsed = JSON.parse(body) as { error?: { code?: string; message?: string } };
+    code = parsed.error?.code ?? code;
+    message = parsed.error?.message ?? message;
+  } catch {
+    // Non-JSON error body — keep the generic message.
+  }
+  throw new ApiError(code, message, response.status);
 }
 
 export async function getOpsDlqSummaryClient(): Promise<OpsDlqSummary> {

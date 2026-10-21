@@ -1,50 +1,46 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import Link from "next/link";
-import { CheckCircle2 } from "lucide-react";
-import {
-  OpsAlert,
-  OpsCard,
-  OpsCardHeader,
-  OpsField,
-  OpsInput,
-} from "@/components/ops/ui/ops-ui";
-import { Button } from "@/components/ui/button";
-import { buttonVariants } from "@/components/ui/button";
+import { CircleCheck } from "lucide-react";
+import { OpsField, formatClock, useSecondsUntil } from "@/components/ops/ui/ops-ui";
+import { Notice } from "@/components/ui/console";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { formatOpsDateTime } from "@/lib/ops-format";
 import { isCompleteOtpCode, normalizeOtpCodeInput } from "@/lib/otp-code";
-import {
-  consumeOpsInvite,
-  getOpsSetupErrorMessage,
-  sendOpsSetupOtp,
-} from "@/lib/ops-setup-api";
+import { consumeOpsInvite, getOpsSetupErrorMessage, sendOpsSetupOtp } from "@/lib/ops-setup-api";
 
 interface OpsSetupFormProps {
   token: string;
 }
 
+/** Two steps on one card: confirm your details → enter the emailed code. */
 export function OpsSetupForm({ token }: OpsSetupFormProps) {
   const [name, setName] = useState("");
+  const [nameTouched, setNameTouched] = useState(false);
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
-  const [otpSent, setOtpSent] = useState(false);
   const [expiresAt, setExpiresAt] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [completed, setCompleted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const secondsLeft = useSecondsUntil(expiresAt);
+  const otpSent = expiresAt !== null;
+  const nameError = nameTouched && !name.trim() ? "Enter your full name." : null;
 
-  async function onSendOtp() {
+  async function onSendOtp(event?: FormEvent) {
+    event?.preventDefault();
+    setNameTouched(true);
+    if (!name.trim()) return;
     setError(null);
     setIsSubmitting(true);
     try {
       const response = await sendOpsSetupOtp({
         token,
-        name,
+        name: name.trim(),
         ...(phone.trim() ? { phone: phone.trim() } : {}),
       });
-      setOtpSent(true);
       setExpiresAt(response.expiresAt);
     } catch (err) {
       setError(getOpsSetupErrorMessage(err));
@@ -53,7 +49,8 @@ export function OpsSetupForm({ token }: OpsSetupFormProps) {
     }
   }
 
-  async function onCompleteSetup() {
+  async function onCompleteSetup(event: FormEvent) {
+    event.preventDefault();
     setError(null);
     setIsSubmitting(true);
     try {
@@ -68,83 +65,86 @@ export function OpsSetupForm({ token }: OpsSetupFormProps) {
 
   if (completed) {
     return (
-      <OpsCard className="border-emerald-500/30 bg-emerald-500/5">
-        <div className="flex flex-col items-center gap-4 py-4 text-center">
-          <CheckCircle2 className="size-12 text-emerald-500" aria-hidden />
-          <OpsCardHeader
-            title="Setup complete"
-            description="Sign in with your email and the OTP sent to your inbox."
-          />
-          <Link href="/ops/login" className={cn(buttonVariants(), "h-11 px-6")}>
-            Continue to ops login
-          </Link>
+      <div className="flex flex-col items-start gap-4" role="status">
+        <CircleCheck className="size-6 text-success" aria-hidden />
+        <div className="flex flex-col gap-1">
+          <p className="text-base font-semibold text-foreground">Your ops account is ready</p>
+          <p className="text-sm text-muted-foreground">Sign in with your email. We&apos;ll send a code each time.</p>
         </div>
-      </OpsCard>
+        <Link href="/ops/login" className={cn(buttonVariants(), "h-10 w-full")}>
+          Go to sign in
+        </Link>
+      </div>
     );
   }
 
   return (
-    <OpsCard>
-      <OpsCardHeader
-        title="Operator onboarding"
-        description="Step 1: confirm your profile and request an email OTP. Step 2: verify and activate your account."
-      />
-      <div className="grid min-w-0 grid-cols-1 gap-5">
-        <OpsField label="Full name" htmlFor="setup-name">
-          <OpsInput
+    <form onSubmit={otpSent ? onCompleteSetup : onSendOtp} className="flex min-w-0 flex-col gap-4" noValidate>
+      <fieldset disabled={otpSent} className="flex min-w-0 flex-col gap-4">
+        <OpsField label="Full name" htmlFor="setup-name" error={nameError}>
+          <Input
             id="setup-name"
             value={name}
             onChange={(event) => setName(event.target.value)}
-            required
+            onBlur={() => setNameTouched(true)}
             autoComplete="name"
+            autoFocus
+            aria-invalid={nameError ? true : undefined}
+            className="h-10"
           />
         </OpsField>
-        <OpsField label="Phone (optional)" htmlFor="setup-phone" hint="Used for audit trail only">
-          <OpsInput
+        <OpsField label="Phone" htmlFor="setup-phone" optional hint="Kept on your account for the audit trail.">
+          <Input
             id="setup-phone"
+            type="tel"
             value={phone}
             onChange={(event) => setPhone(event.target.value)}
             autoComplete="tel"
+            className="h-10"
           />
         </OpsField>
-        {!otpSent ? (
-          <Button
-            type="button"
-            className="h-11 w-full"
-            onClick={() => void onSendOtp()}
-            disabled={isSubmitting || !name.trim()}
-          >
-            {isSubmitting ? "Sending…" : "Send OTP to invite email"}
-          </Button>
-        ) : (
-          <>
-            {expiresAt ? (
-              <OpsAlert tone="info">OTP expires at {formatOpsDateTime(expiresAt)}</OpsAlert>
-            ) : null}
-            <OpsField label="6-digit code" htmlFor="setup-otp">
-              <OpsInput
-                id="setup-otp"
-                value={otp}
-                onChange={(event) => setOtp(normalizeOtpCodeInput(event.target.value))}
-                minLength={6}
-                maxLength={6}
-                inputMode="numeric"
-                required
-                className="tracking-[0.3em]"
-              />
-            </OpsField>
-            <Button
-              type="button"
-              className="h-11 w-full"
-              onClick={() => void onCompleteSetup()}
-              disabled={isSubmitting || !isCompleteOtpCode(otp)}
-            >
-              {isSubmitting ? "Activating…" : "Complete setup"}
-            </Button>
-          </>
-        )}
-        {error ? <OpsAlert tone="error">{error}</OpsAlert> : null}
-      </div>
-    </OpsCard>
+      </fieldset>
+
+      {otpSent ? (
+        <OpsField
+          label="Verification code"
+          htmlFor="setup-otp"
+          hint={
+            secondsLeft === 0 ? (
+              <span className="text-destructive">The invite link has expired. Ask for a new invite.</span>
+            ) : (
+              <>
+                We emailed a code to your invite address. Invite expires in{" "}
+                <span className="tabular font-medium text-foreground">{formatClock(secondsLeft ?? 0)}</span>.
+              </>
+            )
+          }
+        >
+          <Input
+            id="setup-otp"
+            value={otp}
+            onChange={(event) => setOtp(normalizeOtpCodeInput(event.target.value))}
+            maxLength={6}
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            autoFocus
+            placeholder="000000"
+            className="h-11 text-center font-mono text-lg tracking-widest tabular"
+          />
+        </OpsField>
+      ) : null}
+
+      {error ? <Notice tone="danger">{error}</Notice> : null}
+
+      {otpSent ? (
+        <Button type="submit" className="h-10 w-full" loading={isSubmitting} disabled={!isCompleteOtpCode(otp)}>
+          Activate account
+        </Button>
+      ) : (
+        <Button type="submit" className="h-10 w-full" loading={isSubmitting}>
+          Email me a code
+        </Button>
+      )}
+    </form>
   );
 }

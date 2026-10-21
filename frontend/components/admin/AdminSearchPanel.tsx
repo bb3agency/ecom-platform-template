@@ -425,7 +425,7 @@ export function AdminSearchPanel({ onClose }: AdminSearchPanelProps) {
             <button
               type="button"
               onClick={onClose}
-              className="ml-1 rounded-md border border-border/60 px-2 py-1 text-[10px] font-medium text-muted-foreground hover:bg-muted/50"
+              className="ml-1 rounded-md border border-border/60 px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-muted/50"
             >
               Esc
             </button>
@@ -451,7 +451,7 @@ export function AdminSearchPanel({ onClose }: AdminSearchPanelProps) {
               {quickActions.length > 0 && (
                 <section>
                   <div className="flex items-center gap-1.5 px-4 py-2">
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                       Quick Actions
                     </span>
                   </div>
@@ -472,8 +472,8 @@ export function AdminSearchPanel({ onClose }: AdminSearchPanelProps) {
                         <div className={cn(
                           "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm",
                           isAdd
-                            ? "bg-emerald-50 text-emerald-600"
-                            : "bg-zinc-100 text-zinc-600",
+                            ? "bg-success/10 text-success"
+                            : "bg-muted text-foreground",
                         )}>
                           <Icon className="h-4 w-4" />
                         </div>
@@ -481,7 +481,7 @@ export function AdminSearchPanel({ onClose }: AdminSearchPanelProps) {
                           <span className="text-sm font-semibold text-foreground">
                             {action.label}
                           </span>
-                          <span className="text-[11px] text-muted-foreground">
+                          <span className="text-xs text-muted-foreground">
                             {action.description}
                           </span>
                         </div>
@@ -496,13 +496,13 @@ export function AdminSearchPanel({ onClose }: AdminSearchPanelProps) {
               {results && results.orders.length > 0 && (
                 <section>
                   <div className="flex items-center justify-between px-4 py-2">
-                    <span className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                       <ShoppingCart className="h-3 w-3" aria-hidden /> Orders
                     </span>
                     <Link
                       href={`/admin/orders?search=${encodeURIComponent(query)}`}
                       onClick={onClose}
-                      className="text-[10px] font-medium text-primary hover:underline flex items-center gap-0.5"
+                      className="text-xs font-medium text-primary hover:underline flex items-center gap-0.5"
                     >
                       View all <ArrowRight className="h-3 w-3" />
                     </Link>
@@ -519,23 +519,23 @@ export function AdminSearchPanel({ onClose }: AdminSearchPanelProps) {
                           activeIndex === idx && "bg-muted/70",
                         )}
                       >
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-info-soft text-info">
                           <Hash className="h-3.5 w-3.5" />
                         </div>
                         <div className="flex min-w-0 flex-1 flex-col">
                           <span className="text-sm font-semibold text-foreground truncate">
                             {order.orderNumber}
                           </span>
-                          <span className="text-[11px] text-muted-foreground truncate">
+                          <span className="text-xs text-muted-foreground truncate">
                             {order.customerName} · {formatPaise(order.total)}
                           </span>
                         </div>
                         <span className={cn(
-                          "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium",
-                          order.status === "CONFIRMED" ? "bg-amber-50 text-amber-700" :
-                          order.status === "SHIPPED" ? "bg-blue-50 text-blue-700" :
-                          order.status === "DELIVERED" ? "bg-green-50 text-green-700" :
-                          order.status === "CANCELLED" ? "bg-red-50 text-red-700" :
+                          "shrink-0 rounded-full px-2 py-0.5 text-xs font-medium",
+                          order.status === "CONFIRMED" ? "bg-warning-soft text-warning" :
+                          order.status === "SHIPPED" ? "bg-info-soft text-info" :
+                          order.status === "DELIVERED" ? "bg-success/10 text-success" :
+                          order.status === "CANCELLED" ? "bg-destructive/10 text-destructive" :
                           "bg-muted text-muted-foreground"
                         )}>
                           {order.status}
@@ -550,13 +550,13 @@ export function AdminSearchPanel({ onClose }: AdminSearchPanelProps) {
               {results && results.products.length > 0 && (
                 <section>
                   <div className="flex items-center justify-between px-4 py-2">
-                    <span className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                       <Box className="h-3 w-3" aria-hidden /> Products
                     </span>
                     <Link
                       href={`/admin/products?search=${encodeURIComponent(query)}`}
                       onClick={onClose}
-                      className="text-[10px] font-medium text-primary hover:underline flex items-center gap-0.5"
+                      className="text-xs font-medium text-primary hover:underline flex items-center gap-0.5"
                     >
                       View all <ArrowRight className="h-3 w-3" />
                     </Link>
@@ -586,12 +586,12 @@ export function AdminSearchPanel({ onClose }: AdminSearchPanelProps) {
                           <span className="text-sm font-semibold text-foreground truncate">
                             {product.name}
                           </span>
-                          <span className="text-[11px] text-muted-foreground truncate">
+                          <span className="text-xs text-muted-foreground truncate">
                             {product.category.name} · {product.variants.length} variant{product.variants.length !== 1 ? "s" : ""}
                           </span>
                         </div>
                         {!product.isActive && (
-                          <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-500">
+                          <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
                             Inactive
                           </span>
                         )}
@@ -605,13 +605,13 @@ export function AdminSearchPanel({ onClose }: AdminSearchPanelProps) {
               {results && results.customers.length > 0 && (
                 <section>
                   <div className="flex items-center justify-between px-4 py-2">
-                    <span className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                       <Users className="h-3 w-3" aria-hidden /> Customers
                     </span>
                     <Link
                       href={`/admin/customers?search=${encodeURIComponent(query)}`}
                       onClick={onClose}
-                      className="text-[10px] font-medium text-primary hover:underline flex items-center gap-0.5"
+                      className="text-xs font-medium text-primary hover:underline flex items-center gap-0.5"
                     >
                       View all <ArrowRight className="h-3 w-3" />
                     </Link>
@@ -628,18 +628,18 @@ export function AdminSearchPanel({ onClose }: AdminSearchPanelProps) {
                           activeIndex === idx && "bg-muted/70",
                         )}
                       >
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet-50 text-sm font-bold text-violet-600">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-info-soft text-sm font-bold text-info">
                           {customer.firstName?.charAt(0) || "?"}
                         </div>
                         <div className="flex min-w-0 flex-1 flex-col">
                           <span className="text-sm font-semibold text-foreground truncate">
                             {customer.firstName} {customer.lastName}
                           </span>
-                          <span className="text-[11px] text-muted-foreground truncate">
+                          <span className="text-xs text-muted-foreground truncate">
                             {customer.email ?? customer.phone ?? "No contact"} · {customer.totalOrders} order{customer.totalOrders !== 1 ? "s" : ""}
                           </span>
                         </div>
-                        <span className="shrink-0 text-[11px] text-muted-foreground">
+                        <span className="shrink-0 text-xs text-muted-foreground">
                           {formatPaise(customer.totalSpendPaise)}
                         </span>
                       </Link>
@@ -652,7 +652,7 @@ export function AdminSearchPanel({ onClose }: AdminSearchPanelProps) {
 
           {/* Footer hint */}
           {hasAnyResults && (
-            <div className="border-t border-border/40 px-4 py-2 flex items-center gap-4 text-[10px] text-muted-foreground/70">
+            <div className="border-t border-border/40 px-4 py-2 flex items-center gap-4 text-xs text-muted-foreground/70">
               <span><kbd className="font-mono">↑↓</kbd> navigate</span>
               <span><kbd className="font-mono">↵</kbd> open</span>
               <span><kbd className="font-mono">Esc</kbd> close</span>

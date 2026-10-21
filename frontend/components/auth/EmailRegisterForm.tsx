@@ -72,78 +72,78 @@ export function EmailRegisterForm({ onSuccess }: EmailRegisterFormProps) {
     <form onSubmit={handleSubmit} className="grid gap-5">
       <div className="grid gap-4 md:grid-cols-2">
         <div className="grid gap-1.5">
-          <label htmlFor="firstName" className="text-sm font-bold text-[#23403d]">
+          <label htmlFor="firstName" className="text-sm font-bold text-primary">
             First Name
           </label>
           <input
             id="firstName"
             type="text"
-            className="h-12 w-full rounded-full border border-[#efe8e4] bg-[#faf3ef] px-4 text-sm font-medium text-[#23403d] placeholder:text-[#767676] focus:border-[#23403d] focus:outline-none focus:ring-1 focus:ring-[#23403d]"
+            className="h-12 w-full rounded-full border border-border bg-muted px-4 text-sm font-medium text-primary placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
             {...form.register("firstName")}
           />
-          <p className="text-xs font-bold text-red-500">
+          <p className="text-xs font-bold text-destructive">
             {form.formState.errors.firstName?.message}
           </p>
         </div>
 
         <div className="grid gap-1.5">
-          <label htmlFor="lastName" className="text-sm font-bold text-[#23403d]">
+          <label htmlFor="lastName" className="text-sm font-bold text-primary">
             Last Name
           </label>
           <input
             id="lastName"
             type="text"
-            className="h-12 w-full rounded-full border border-[#efe8e4] bg-[#faf3ef] px-4 text-sm font-medium text-[#23403d] placeholder:text-[#767676] focus:border-[#23403d] focus:outline-none focus:ring-1 focus:ring-[#23403d]"
+            className="h-12 w-full rounded-full border border-border bg-muted px-4 text-sm font-medium text-primary placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
             {...form.register("lastName")}
           />
-          <p className="text-xs font-bold text-red-500">
+          <p className="text-xs font-bold text-destructive">
             {form.formState.errors.lastName?.message}
           </p>
         </div>
       </div>
 
       <div className="grid gap-1.5">
-        <label htmlFor="phone-reg" className="text-sm font-bold text-[#23403d]">
+        <label htmlFor="phone-reg" className="text-sm font-bold text-primary">
           Phone Number{" "}
-          <span className="font-normal text-[#767676]">(optional)</span>
+          <span className="font-normal text-muted-foreground">(optional)</span>
         </label>
         <input
           id="phone-reg"
           type="tel"
           autoComplete="tel"
           placeholder="9876543210"
-          className="h-12 w-full rounded-full border border-[#efe8e4] bg-[#faf3ef] px-4 text-sm font-medium text-[#23403d] placeholder:text-[#767676] focus:border-[#23403d] focus:outline-none focus:ring-1 focus:ring-[#23403d]"
+          className="h-12 w-full rounded-full border border-border bg-muted px-4 text-sm font-medium text-primary placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
           {...form.register("phone")}
         />
-        <p className="text-xs font-bold text-red-500">{form.formState.errors.phone?.message}</p>
+        <p className="text-xs font-bold text-destructive">{form.formState.errors.phone?.message}</p>
       </div>
 
       <div className="grid gap-1.5">
-        <label htmlFor="email-reg" className="text-sm font-bold text-[#23403d]">
+        <label htmlFor="email-reg" className="text-sm font-bold text-primary">
           Email
         </label>
         <input
           id="email-reg"
           type="email"
           autoComplete="email"
-          className="h-12 w-full rounded-full border border-[#efe8e4] bg-[#faf3ef] px-4 text-sm font-medium text-[#23403d] placeholder:text-[#767676] focus:border-[#23403d] focus:outline-none focus:ring-1 focus:ring-[#23403d]"
+          className="h-12 w-full rounded-full border border-border bg-muted px-4 text-sm font-medium text-primary placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
           {...form.register("email")}
         />
-        <p className="text-xs font-bold text-red-500">{form.formState.errors.email?.message}</p>
+        <p className="text-xs font-bold text-destructive">{form.formState.errors.email?.message}</p>
       </div>
 
       <div className="grid gap-1.5">
-        <label htmlFor="password-reg" className="text-sm font-bold text-[#23403d]">
+        <label htmlFor="password-reg" className="text-sm font-bold text-primary">
           Password
         </label>
         <input
           id="password-reg"
           type="password"
           autoComplete="new-password"
-          className="h-12 w-full rounded-full border border-[#efe8e4] bg-[#faf3ef] px-4 text-sm font-medium text-[#23403d] placeholder:text-[#767676] focus:border-[#23403d] focus:outline-none focus:ring-1 focus:ring-[#23403d]"
+          className="h-12 w-full rounded-full border border-border bg-muted px-4 text-sm font-medium text-primary placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
           {...form.register("password")}
         />
-        <p className="text-xs font-bold text-red-500">
+        <p className="text-xs font-bold text-destructive">
           {form.formState.errors.password?.message}
         </p>
       </div>
@@ -159,17 +159,17 @@ export function EmailRegisterForm({ onSuccess }: EmailRegisterFormProps) {
         </p>
       ) : null}
       {turnstileLoadError ? (
-        <p className="text-xs font-bold text-red-500" role="alert">
+        <p className="text-xs font-bold text-destructive" role="alert">
           {turnstileLoadError}
         </p>
       ) : null}
 
-      {info && !error ? <p className="text-xs font-bold text-[#00aa63]">{info}</p> : null}
+      {info && !error ? <p className="text-xs font-bold text-success">{info}</p> : null}
       <AuthErrorBanner message={error} />
 
       <button
         type="submit"
-        className="mt-2 h-12 w-full rounded-full bg-[#23403d] px-8 text-sm font-bold text-white transition-transform hover:-translate-y-1 hover:bg-[#ec6e55] hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+        className="mt-2 h-12 w-full rounded-full bg-primary px-8 text-sm font-bold text-white transition-transform hover:-translate-y-1 hover:bg-accent/90 hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
         disabled={form.formState.isSubmitting || (turnstileRequired && !turnstileReady)}
       >
         {form.formState.isSubmitting ? "Processing..." : "Create account"}

@@ -1,5 +1,6 @@
 "use client";
 
+import { useUrlFilterState } from "@/hooks/use-url-filter-state";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
@@ -46,31 +47,31 @@ const STATUS_META: Record<string, StatusMeta> = {
     label: "Requested",
     icon: Clock,
     variant: "warning",
-    pill: "border-amber-500/30 bg-amber-500/10 text-amber-700",
+    pill: "border-warning-soft bg-warning-soft text-warning",
   },
   APPROVED: {
     label: "Approved",
     icon: CheckCircle2,
     variant: "info",
-    pill: "border-sky-500/30 bg-sky-500/10 text-sky-700",
+    pill: "border-info-soft bg-info-soft text-info",
   },
   REJECTED: {
     label: "Rejected",
     icon: XCircle,
     variant: "destructive",
-    pill: "border-red-500/30 bg-red-500/10 text-red-700",
+    pill: "border-destructive/30 bg-destructive/10 text-destructive",
   },
   PICKED_UP: {
     label: "Picked Up",
     icon: Truck,
     variant: "info",
-    pill: "border-sky-500/30 bg-sky-500/10 text-sky-700",
+    pill: "border-info-soft bg-info-soft text-info",
   },
   REFUNDED: {
     label: "Refunded",
     icon: RefreshCcw,
     variant: "success",
-    pill: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700",
+    pill: "border-success/30 bg-success/10 text-success",
   },
 };
 
@@ -103,10 +104,10 @@ function KpiStrip({ items, total }: KpiStripProps) {
 
   const kpis = [
     { label: "Total", value: total, color: "text-foreground" },
-    { label: "Requested", value: counts["REQUESTED"] ?? 0, color: "text-amber-600" },
-    { label: "Approved", value: counts["APPROVED"] ?? 0, color: "text-sky-600" },
-    { label: "Rejected", value: counts["REJECTED"] ?? 0, color: "text-red-600" },
-    { label: "Refunded", value: counts["REFUNDED"] ?? 0, color: "text-emerald-600" },
+    { label: "Requested", value: counts["REQUESTED"] ?? 0, color: "text-warning" },
+    { label: "Approved", value: counts["APPROVED"] ?? 0, color: "text-info" },
+    { label: "Rejected", value: counts["REJECTED"] ?? 0, color: "text-destructive" },
+    { label: "Refunded", value: counts["REFUNDED"] ?? 0, color: "text-success" },
   ];
 
   return (
@@ -114,7 +115,7 @@ function KpiStrip({ items, total }: KpiStripProps) {
       {kpis.map((k) => (
         <div key={k.label} className="flex flex-col items-center gap-0.5 py-3 px-2">
           <span className={cn("text-lg font-bold leading-none", k.color)}>{k.value}</span>
-          <span className="text-[10px] text-muted-foreground font-medium truncate">{k.label}</span>
+          <span className="text-xs text-muted-foreground font-medium truncate">{k.label}</span>
         </div>
       ))}
     </div>
@@ -145,7 +146,7 @@ function ReturnCard({ item }: { item: AdminReturnRequestListItem }) {
             &ldquo;{item.reason}&rdquo;
           </p>
         )}
-        <p className="text-[10px] text-muted-foreground/60">
+        <p className="text-xs text-muted-foreground/60">
           {formatAdminDate(item.createdAt)}
         </p>
       </div>
@@ -159,7 +160,8 @@ function ReturnCard({ item }: { item: AdminReturnRequestListItem }) {
 export function AdminReturnsList() {
   const api = useAuthenticatedApi();
   const [page, setPage] = useState(1);
-  const [statusFilter, setStatusFilter] = useState("");
+  // URL-backed so the dashboard's "returns to review" link opens pre-filtered.
+  const [statusFilter, setStatusFilter] = useUrlFilterState("status", "", ["REQUESTED", "APPROVED", "REJECTED", "PICKED_UP", "REFUNDED"]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
