@@ -1,6 +1,7 @@
 import { PaymentProviderAdapter } from '@common/interfaces/payment-provider.interface';
 import { AppError } from '@common/errors/app-error';
 import { ERROR_CODES } from '@common/errors/error-codes';
+import { isPaymentProviderRejection } from '@common/errors/payment-provider-error';
 import { CodPaymentAdapter } from './adapters/cod-payment.adapter';
 import { NoopPaymentAdapter } from './adapters/noop-payment.adapter';
 import { RazorpayAdapter } from './adapters/razorpay.adapter';
@@ -113,7 +114,11 @@ class CircuitBreakerPaymentAdapter implements PaymentProviderAdapter {
       this.recordSuccess();
       return result;
     } catch (error) {
-      this.recordFailure();
+      // A refusal (e.g. insufficient balance for refunds) is a business answer,
+      // not an outage — it must not open the breaker and block checkout.
+      if (!isPaymentProviderRejection(error)) {
+        this.recordFailure();
+      }
       throw error;
     }
   }

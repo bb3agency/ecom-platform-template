@@ -184,6 +184,7 @@ async function main() {
     '/api/v1/admin/inventory?page=1&limit=20',
     '/api/v1/admin/inventory/low-stock',
     '/api/v1/admin/orders?page=1&limit=20',
+    '/api/v1/admin/orders?page=1&limit=20&refund=owed',
     ...(candidateOrderId ? [`/api/v1/admin/orders/${candidateOrderId}`] : []),
     '/api/v1/admin/coupons?page=1&limit=20',
     '/api/v1/admin/coupons/analytics?page=1&limit=20',

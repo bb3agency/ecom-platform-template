@@ -13,6 +13,7 @@ import {
 import { AdminOrderFulfillmentPanel } from "@/components/admin/AdminOrderFulfillmentPanel";
 import { AdminOrderItemsPanel } from "@/components/admin/AdminOrderItemsPanel";
 import { AdminOrderReturnRequestsPanel } from "@/components/admin/AdminOrderReturnRequestsPanel";
+import { AdminOrderRefundOwedNotice } from "@/components/admin/AdminOrderRefundOwedNotice";
 import { AdminOrderStatusPanel } from "@/components/admin/AdminOrderStatusPanel";
 import { AdminOrderTimelinePanel } from "@/components/admin/AdminOrderTimelinePanel";
 import { useAdminDataRefreshEffect } from "@/hooks/use-admin-data-refresh-effect";
@@ -88,6 +89,7 @@ export function AdminOrderDetailPageClient({ orderId }: { orderId: string }) {
   return (
     <ConsolePage>
       <AdminOrderDetailHeader order={order} onChanged={refreshAll} />
+      <AdminOrderRefundOwedNotice order={order} onUpdated={refreshAll} />
 
       <div className="grid min-w-0 grid-cols-1 gap-5 sm:gap-6 lg:grid-cols-3">
         <div className="grid min-w-0 grid-cols-1 content-start gap-5 sm:gap-6 lg:col-span-2">

@@ -1,12 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Check, CircleAlert, XCircle, Clock } from "lucide-react";
+import { Banknote, Check, CircleAlert, XCircle, Clock } from "lucide-react";
 import { Panel } from "@/components/ui/console";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuthenticatedApi } from "@/hooks/use-authenticated-api";
 import { ensureArray, type AdminOrderTimeline } from "@/lib/admin-api";
-import { formatAdminDateCompact, orderStatusDisplay, sentenceCaseEnum } from "@/lib/admin-format";
+import { formatAdminDateCompact, sentenceCaseEnum } from "@/lib/admin-format";
+import { describeHistoryEvent, type HistoryEventKind } from "@/lib/order-history-event";
 import { getApiErrorMessage } from "@/lib/error-messages";
 
 interface AdminOrderTimelinePanelProps {
@@ -29,6 +30,15 @@ const NODE_STYLE: Record<string, TimelineNodeStyle> = {
   REFUNDED: { circle: "bg-destructive/10 text-destructive", icon: CircleAlert },
   PAYMENT_FAILED: { circle: "bg-destructive/10 text-destructive", icon: XCircle },
   PENDING_PAYMENT: { circle: "bg-warning-soft text-warning", icon: Clock },
+};
+
+const REFUND_NODE_STYLE: Record<Exclude<HistoryEventKind, "status">, TimelineNodeStyle> = {
+  "refund-started": { circle: "bg-info-soft text-info", icon: Banknote },
+  "refund-attempted": { circle: "bg-muted text-muted-foreground", icon: Banknote },
+  "refund-retry": { circle: "bg-info-soft text-info", icon: Banknote },
+  "refund-done": { circle: "bg-success/10 text-success", icon: Banknote },
+  "refund-failed": { circle: "bg-destructive/10 text-destructive", icon: CircleAlert },
+  "refund-owed": { circle: "bg-destructive/10 text-destructive", icon: CircleAlert },
 };
 
 export function AdminOrderTimelinePanel({ orderId }: AdminOrderTimelinePanelProps) {
@@ -78,13 +88,14 @@ export function AdminOrderTimelinePanel({ orderId }: AdminOrderTimelinePanelProp
       ) : (
         <ol>
           {events.map((event, idx) => {
-            const node = NODE_STYLE[event.toStatus] ?? {
+            const view = describeHistoryEvent(event);
+            const node = (view.kind === "status" ? NODE_STYLE[event.toStatus] : REFUND_NODE_STYLE[view.kind]) ?? {
               circle: "bg-muted text-muted-foreground",
               icon: Clock,
             };
             const Icon = node.icon;
             const isLast = idx === events.length - 1;
-            const note = cleanNote(event.note);
+            const note = view.note;
             return (
               <li key={event.id} className="relative flex gap-3">
                 <div className="flex flex-col items-center">
@@ -95,7 +106,7 @@ export function AdminOrderTimelinePanel({ orderId }: AdminOrderTimelinePanelProp
                 </div>
                 <div className={`min-w-0 flex-1 ${isLast ? "" : "pb-4"}`}>
                   <p className="text-sm font-medium leading-tight text-foreground">
-                    {orderStatusDisplay(event.toStatus).label}
+                    {view.label}
                   </p>
                   {note ? <p className="mt-0.5 break-words text-sm text-muted-foreground">{note}</p> : null}
                   <p className="mt-1 text-xs text-muted-foreground">
@@ -110,9 +121,4 @@ export function AdminOrderTimelinePanel({ orderId }: AdminOrderTimelinePanelProp
       )}
     </Panel>
   );
-}
-
-/** Drop the internal `[admin:<uuid>]` audit tag the API appends to manual notes. */
-function cleanNote(note: string | null | undefined): string {
-  return (note ?? "").replace(/\s*\[admin:[^\]]+\]\s*/g, " ").trim();
 }

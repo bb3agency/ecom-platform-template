@@ -30,7 +30,7 @@ Runbook: [RAZORPAY_PAYMENTS_SETUP.md](./RAZORPAY_PAYMENTS_SETUP.md). Store `RAZO
 | `RAZORPAY_KEY_SECRET` | |
 | `RAZORPAY_WEBHOOK_SECRET` | generate 32+ char random; same in Razorpay webhook + Ops UI |
 | Webhook URL | `https://<domain>/api/v1/payments/webhook` |
-| Webhook events | `payment.captured`, `payment.failed`, `refund.processed` |
+| Webhook events | `payment.captured`, `payment.failed`, `refund.processed`, `refund.failed` |
 
 ## Shiprocket (Ops UI — Shipping)
 

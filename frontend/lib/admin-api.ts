@@ -313,6 +313,17 @@ export interface AdminOrderDetailFull {
     refundPendingAmountPaise: number;
     refundedAmountPaise: number;
   } | null;
+  /**
+   * Cancelled order whose refund has not gone back to the customer (nothing
+   * refunded, nothing with the provider). Null when no refund is owed.
+   */
+  refundOwed?: {
+    amountPaise: number;
+    /** Still on the automatic retry schedule (up to 3 days after the first failure). */
+    autoRetrying: boolean;
+    lastError: string | null;
+    lastFailedAt: string | null;
+  } | null;
   shipment: {
     id: string;
     provider: ShippingProviderEnum;
@@ -869,6 +880,8 @@ export interface AdminActionQueue {
   /** PROCESSING — matches the "Processing" tab. */
   ordersProcessing: number;
   ordersAwaitingPayment: number;
+  /** Cancelled prepaid orders whose refund never completed — matches /admin/orders?refund=owed. */
+  refundsOwed: number;
   returnsToReview: number;
   reviewsToModerate: number;
   lowStockVariants: number;

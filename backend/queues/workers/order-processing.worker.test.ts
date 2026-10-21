@@ -545,6 +545,90 @@ describe('order-processing worker error and retry behavior', () => {
     expect(state.tx.inventory.updateMany).not.toHaveBeenCalled();
   });
 
+  it('refund.processed for a CAPTURED payment is applied (was silently dropped by the duplicate-capture guard)', async () => {
+    boot();
+    state.tx.payment.findFirst.mockResolvedValue({
+      id: 'payment_1',
+      orderId: 'order_1',
+      providerPaymentId: 'pay_1',
+      status: 'CAPTURED',
+      amount: 108572,
+      refundedAmountPaise: 0,
+      refundPendingAmountPaise: 108572
+    });
+    state.tx.order.findUnique.mockResolvedValue({ id: 'order_1', status: 'CANCELLED', user: { email: null, phone: null } });
+    state.tx.order.updateMany.mockResolvedValue({ count: 1 });
+    state.tx.order.update.mockResolvedValue(undefined);
+    state.tx.payment.update.mockResolvedValue(undefined);
+    state.tx.orderStatusHistory.create.mockResolvedValue(undefined);
+
+    await state.processor?.({
+      name: 'payment-webhook',
+      data: {
+        providerOrderId: 'order_rzp_1',
+        providerPaymentId: 'pay_1',
+        providerRefundId: 'rfnd_1',
+        refundAmountPaise: 108572,
+        event: 'refund.processed',
+        payload: '{}'
+      }
+    });
+
+    expect(state.tx.payment.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: 'REFUNDED', refundedAmountPaise: 108572, refundPendingAmountPaise: 0 })
+      })
+    );
+    expect(state.tx.orderStatusHistory.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ fromStatus: 'CANCELLED', toStatus: 'REFUNDED' })
+    });
+  });
+
+  it('refund.failed releases the reservation, notes it under the current status and re-queues the refund', async () => {
+    boot();
+    state.tx.payment.findFirst.mockResolvedValue({
+      id: 'payment_1',
+      orderId: 'order_1',
+      providerPaymentId: 'pay_1',
+      status: 'CAPTURED',
+      amount: 108572,
+      refundedAmountPaise: 0,
+      refundPendingAmountPaise: 108572
+    });
+    state.tx.order.findUnique.mockResolvedValue({ id: 'order_1', status: 'CANCELLED', user: { email: null, phone: null } });
+    state.tx.payment.update.mockResolvedValue(undefined);
+    state.tx.orderStatusHistory.create.mockResolvedValue(undefined);
+
+    await state.processor?.({
+      name: 'payment-webhook',
+      data: {
+        providerOrderId: 'order_rzp_1',
+        providerPaymentId: 'pay_1',
+        providerRefundId: 'rfnd_1',
+        refundAmountPaise: 108572,
+        event: 'refund.failed',
+        payload: '{}'
+      }
+    });
+
+    expect(state.tx.payment.update).toHaveBeenCalledWith({
+      where: { id: 'payment_1' },
+      data: { refundPendingAmountPaise: 0 }
+    });
+    expect(state.tx.orderStatusHistory.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        fromStatus: 'CANCELLED',
+        toStatus: 'CANCELLED',
+        note: expect.stringMatching(/^Refund failed at provider \(108572 paise\) — ref rfnd_1/)
+      })
+    });
+    expect(state.notificationsAdd).toHaveBeenCalledWith(
+      'initiate-razorpay-refund',
+      expect.objectContaining({ orderId: 'order_1', refundAmountPaise: 108572, initiatedBy: 'PAYMENT_WEBHOOK' }),
+      { jobId: 'initiate-razorpay-refund-order_1-provider-failed-rfnd_1' }
+    );
+  });
+
   it('enqueues payment failed primary notification on failed payment webhook', async () => {
     boot();
     state.tx.payment.findFirst.mockResolvedValue({

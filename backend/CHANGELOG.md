@@ -12,6 +12,32 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-21
+
+### Fixed
+- **Refunds that failed were abandoned silently.** The refunds worker wrote a "Refund initiated" history row *before* calling Razorpay, so every failed attempt left one behind (three rows, three failures, then BullMQ gave up after ~6 s) while the money stayed with the merchant. Commonest cause: the order is cancelled after the payment was settled to the bank, so Razorpay has too little balance to refund from. Now:
+  - history is written only when the provider **accepts** the refund (`Refund sent to provider (N paise) — ref rfnd_…`);
+  - a provider **refusal** (4xx, e.g. low balance) skips the pointless fast retries and goes onto a slow automatic schedule — 15 min, 1 h, 3 h, then every 6 h for ~3 days (`src/common/payments/refund-retry-policy.ts`); transient errors keep the 3 fast BullMQ attempts first;
+  - one `Refund failed (…): <provider reason>. Retrying automatically…` note + one alert email when it first fails; after the window, `Refund still owed …` + a terminal alert;
+  - the reservation is always released on failure, so the amount is refundable again; the CAS gate still makes a double refund impossible.
+- **Refund history rows showed the pre-cancel status** ("Shipped" after "Cancelled" on courier-cancelled orders): refund rows are events and now use the order's *current* status.
+- **`refund.processed` was ignored for captured payments**: the order-processing worker's duplicate-capture guard returned early for every refund event, so a refund Razorpay completed never set the payment/order to REFUNDED. Refund events now pass; the refund entity's own amount is used.
+- **`refund.failed` is handled**: releases the reservation, notes it and re-queues the refund (auto-retry). Webhook dedupe for `refund.*` is now per refund id, so a second refund event on the same payment is not dropped.
+- **A refund refusal no longer opens the payment circuit breaker** (which would also block checkout). Razorpay error bodies are parsed (`PaymentProviderError` with code + description) instead of a bare HTTP status.
+- Customers never see merchant-side refund notes (provider errors, retries).
+
+### Added
+- **`POST /api/v1/admin/orders/:id/refund/retry`** (`orders:refund`, idempotent) — retry a refund that is still owed; 409 when nothing is owed.
+- Admin order detail: **`refundOwed`** `{ amountPaise, autoRetrying, lastError, lastFailedAt }` (null when nothing is owed). "Owed" = cancelled, provider-paid, payment CAPTURED/PARTIALLY_REFUNDED with nothing pending (`src/modules/orders/refund-owed.ts`).
+- `GET /admin/orders?refund=owed` and **`refundsOwed`** on `GET /admin/dashboard/action-queue` (same predicate — the count equals the list).
+
+**Propagation:**
+- Severity: **HIGH** (customer money owed with no visibility; refunds never finalised) - Layers: backend (`queues/workers/{refunds,order-processing}.worker.ts`, `modules/orders/**`, `modules/dashboard/**`, `modules/payments/**`, `common/errors/payment-provider-error.ts`, `common/payments/refund-retry-policy.ts`, policy registry, contract check, docs) — pairs with frontend-core 0.4.0
+- Migration: NO - Flag: none - Design impact: none - Breaking: NO (additive fields/route/filter)
+- **Ops action per client:** subscribe the Razorpay webhook to **`refund.failed`** (Dashboard → Webhooks) in addition to `payment.captured`, `payment.failed`, `refund.processed`.
+- Existing stuck refunds (cancelled + captured + nothing pending) appear under "Refunds still owed" after deploy; retry them from the order page once the Razorpay balance allows.
+- Rollback: revert the files; no data changes.
+
 ## [0.3.1] - 2026-10-21
 
 ### Fixed

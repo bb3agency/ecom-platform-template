@@ -1,4 +1,5 @@
 import { OrderStatus, ReturnRequestStatus } from '@prisma/client';
+import { refundOwedWhere } from '@modules/orders/refund-owed';
 import { FastifyInstance } from 'fastify';
 import { AppError } from '@common/errors/app-error';
 import { ERROR_CODES } from '@common/errors/error-codes';
@@ -109,11 +110,14 @@ export class DashboardService {
     const prisma = this.fastify.prisma;
     // One count per status (not CONFIRMED+PROCESSING combined) so every number
     // equals the list it links to — the orders list filters by a single status.
-    const [ordersToFulfil, ordersProcessing, ordersAwaitingPayment, returnsToReview, reviewsToModerate, inventory, reserved] =
+    const [ordersToFulfil, ordersProcessing, ordersAwaitingPayment, refundsOwed, returnsToReview, reviewsToModerate, inventory, reserved] =
       await Promise.all([
         prisma.order.count({ where: { status: OrderStatus.CONFIRMED } }),
         prisma.order.count({ where: { status: OrderStatus.PROCESSING } }),
         prisma.order.count({ where: { status: OrderStatus.PENDING_PAYMENT } }),
+        // Cancelled orders whose refund never completed — same predicate as
+        // GET /admin/orders?refund=owed.
+        prisma.order.count({ where: refundOwedWhere() }),
         prisma.returnRequest.count({ where: { status: ReturnRequestStatus.REQUESTED } }),
         prisma.review.count({ where: { approved: false } }),
         prisma.inventory.findMany({ select: { variantId: true, quantity: true, lowStockThreshold: true } }),
@@ -138,6 +142,7 @@ export class DashboardService {
       ordersToFulfil,
       ordersProcessing,
       ordersAwaitingPayment,
+      refundsOwed,
       returnsToReview,
       reviewsToModerate,
       lowStockVariants,

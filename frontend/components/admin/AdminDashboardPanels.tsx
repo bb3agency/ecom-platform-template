@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   AlertTriangle,
   ArrowRight,
+  Banknote,
   CheckCircle2,
   CreditCard,
   LineChart as LineChartIcon,
@@ -107,6 +108,7 @@ interface QueueItem {
 const QUEUE_ITEMS: QueueItem[] = [
   { key: "ordersToFulfil", label: (n) => (n === 1 ? "order to fulfil" : "orders to fulfil"), href: "/admin/orders?status=CONFIRMED&range=all", icon: ShoppingCart, tone: "brand" },
   { key: "ordersProcessing", label: (n) => (n === 1 ? "order being processed" : "orders being processed"), href: "/admin/orders?status=PROCESSING&range=all", icon: Package, tone: "brand" },
+  { key: "refundsOwed", label: (n) => (n === 1 ? "refund still owed" : "refunds still owed"), href: "/admin/orders?refund=owed&range=all", icon: Banknote, tone: "danger" },
   { key: "returnsToReview", label: (n) => (n === 1 ? "return to review" : "returns to review"), href: "/admin/returns?status=REQUESTED", icon: RotateCcw, tone: "warning" },
   { key: "outOfStockVariants", label: (n) => (n === 1 ? "variant out of stock" : "variants out of stock"), href: "/admin/inventory?stock=out", icon: PackageX, tone: "danger" },
   { key: "lowStockVariants", label: (n) => (n === 1 ? "variant running low" : "variants running low"), href: "/admin/inventory?stock=low", icon: AlertTriangle, tone: "warning" },
@@ -128,7 +130,7 @@ export function AdminActionQueuePanel() {
   return (
     <Panel title="Needs attention" flush>
       {loading && !data ? (
-        <div className="grid grid-cols-1 gap-px bg-border sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-px bg-border sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {Array.from({ length: 3 }).map((_, i) => (
             <div key={i} className="flex items-center gap-3 bg-card p-4 sm:px-5">
               <Skeleton className="size-9 rounded-lg" />
@@ -150,7 +152,7 @@ export function AdminActionQueuePanel() {
       ) : (
         // Each cell draws its own right/bottom hairline; the negative margin tucks the
         // outer edge under the panel border, so any item count leaves no gaps.
-        <ul className="-mb-px -mr-px grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+        <ul className="-mb-px -mr-px grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {QUEUE_ITEMS.map((item) => {
             const count = data?.[item.key] ?? 0;
             if (count === 0) {

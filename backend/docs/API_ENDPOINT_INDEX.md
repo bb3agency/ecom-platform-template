@@ -124,7 +124,7 @@ Admin UI should be served under `/admin/*` in the frontend and call `/api/v1/adm
 | GET | `/api/v1/admin/dashboard/kpis` | KPI cards |
 | GET | `/api/v1/admin/dashboard/sales-chart` | Sales chart |
 | GET | `/api/v1/admin/dashboard/top-products` | Top products table |
-| GET | `/api/v1/admin/dashboard/action-queue` | Counts needing action (fulfil, payment, returns, reviews, stock) |
+| GET | `/api/v1/admin/dashboard/action-queue` | Counts needing action (fulfil, payment, refunds owed, returns, reviews, stock) |
 | GET | `/api/v1/admin/dashboard/order-status-counts` | Per-status order counts for a window + previous window (`orders:read`) |
 
 ### Products and categories
@@ -157,7 +157,7 @@ Admin UI should be served under `/admin/*` in the frontend and call `/api/v1/adm
 
 | Method | Endpoint | UI use |
 |---|---|---|
-| GET | `/api/v1/admin/orders` | Orders table; query: `status`, `search`, `paymentMode` (PREPAID\|COD), `sort` (newest\|oldest), `from`, `to`, `page`, `limit` |
+| GET | `/api/v1/admin/orders` | Orders table; query: `status`, `search`, `paymentMode` (PREPAID\|COD), `sort` (newest\|oldest), `refund` (owed), `from`, `to`, `page`, `limit` |
 | GET | `/api/v1/admin/orders/board` | Pipeline/kanban board |
 | GET | `/api/v1/admin/orders/export` | CSV export; query: `from`, `to`, `status`, `search`, **`paymentMode`** |
 | GET | `/api/v1/admin/orders/:id` | Order detail |
@@ -168,6 +168,7 @@ Admin UI should be served under `/admin/*` in the frontend and call `/api/v1/adm
 | POST | `/api/v1/admin/orders/:id/schedule-pickup` | Schedule pickup |
 | POST | `/api/v1/admin/orders/:id/print-label` | Print shipping label — requires `orders:read` permission; uses `adminWrite` rate limit + `idempotencyPreHandler` because it mutates `Shipment.labelUrl` and calls an external courier provider |
 | POST | `/api/v1/admin/orders/:id/cancel` | Cancel/refund-sensitive action |
+| POST | `/api/v1/admin/orders/:id/refund/retry` | Retry a refund that is still owed (`orders:refund`) |
 | POST | `/api/v1/admin/orders/:id/notifications/retrigger` | Resend order notification. `template` is OPTIONAL — when omitted, the backend derives it from the order's CURRENT status (Resend notification button) |
 | GET | `/api/v1/admin/orders/:id/timeline` | Order status transition timeline |
 | GET | `/api/v1/admin/return-requests` | Return request queue |

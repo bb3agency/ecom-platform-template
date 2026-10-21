@@ -12,6 +12,22 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-21
+
+### Added
+- **Refund still owed** banner on the admin order page (reason, whether it is still retrying automatically, **Retry refund** with confirm, `orders:refund` only).
+- Dashboard *Needs attention*: **refunds still owed** → `/admin/orders?refund=owed&range=all`; the orders list gains a *Refund* filter and labels cancelled-but-paid orders "Not refunded yet".
+
+### Fixed
+- **History showed "Shipped" after "Cancelled"**: refund rows are labelled by what happened to the money (Refund started / failed / still owed / retried / attempted for legacy rows), amounts shown in rupees (`lib/order-history-event.ts`).
+- Order progress ignores event rows, so a refund note no longer re-dates a passed stage.
+
+**Propagation:**
+- Severity: HIGH (pairs with backend-core 0.4.0) - Layers: `components/admin/{AdminOrderRefundOwedNotice (new),AdminOrderDetailPageClient,AdminOrderTimelinePanel,AdminOrdersList,AdminDashboardPanels}.tsx`, `lib/{admin-api,order-history-event (new),order-journey}.ts`
+- Requires: **backend-core >= 0.4.0**
+- Migration: NO - Flag: none - Design impact: none - Breaking: NO
+- Rollback: revert the files.
+
 ## [0.3.0] - 2026-10-21
 
 ### Changed — admin, ops and checkout redesign

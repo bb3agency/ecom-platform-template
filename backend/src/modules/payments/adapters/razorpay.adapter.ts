@@ -1,6 +1,5 @@
 import { createHmac, timingSafeEqual } from 'crypto';
-import { AppError } from '@common/errors/app-error';
-import { ERROR_CODES } from '@common/errors/error-codes';
+import { PaymentProviderError } from '@common/errors/payment-provider-error';
 import {
   CreatePaymentOrderInput,
   CreatePaymentOrderResult,
@@ -113,7 +112,22 @@ export class RazorpayAdapter implements PaymentProviderAdapter {
     });
 
     if (!response.ok) {
-      throw new AppError(ERROR_CODES.INTERNAL_ERROR, `Razorpay request failed: ${response.status}`, 502);
+      // Razorpay error body: { error: { code, description, reason, ... } }.
+      let providerCode: string | null = null;
+      let providerDescription: string | null = null;
+      try {
+        const body = (await response.json()) as { error?: { code?: unknown; description?: unknown } };
+        providerCode = typeof body.error?.code === 'string' ? body.error.code : null;
+        providerDescription = typeof body.error?.description === 'string' ? body.error.description : null;
+      } catch {
+        // Non-JSON error body — the HTTP status is all we have.
+      }
+      throw new PaymentProviderError({
+        provider: 'Razorpay',
+        httpStatus: response.status,
+        providerCode,
+        providerDescription
+      });
     }
 
     return (await response.json()) as T;

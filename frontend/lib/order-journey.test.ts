@@ -23,6 +23,19 @@ describe("buildOrderJourney", () => {
     expect(j.stages[1].source).toBe("Manual");
   });
 
+  it("ignores event rows (refund notes) so they never re-date a stage", () => {
+    const j = buildOrderJourney({
+      status: "CANCELLED",
+      createdAt: created,
+      history: [
+        { fromStatus: "PROCESSING", toStatus: "SHIPPED", createdAt: "2026-10-20T11:00:00.000Z", triggeredBy: "ADMIN" },
+        { fromStatus: "SHIPPED", toStatus: "CANCELLED", createdAt: "2026-10-22T11:00:00.000Z", triggeredBy: "SHIPPING_WEBHOOK" },
+        { fromStatus: "SHIPPED", toStatus: "SHIPPED", createdAt: "2026-10-22T11:01:00.000Z", triggeredBy: "SHIPPING_WEBHOOK" },
+      ],
+    });
+    expect(j.stages.find((s) => s.status === "SHIPPED")?.at).toBe("2026-10-20T11:00:00.000Z");
+  });
+
   it("labels courier-driven stages as courier updates", () => {
     const j = buildOrderJourney({
       status: "OUT_FOR_DELIVERY",

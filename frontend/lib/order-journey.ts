@@ -14,6 +14,8 @@ import { manualNextStatuses, type OrderStatusValue } from "@/lib/order-state-mac
 export type JourneyStageState = "done" | "current" | "next" | "locked";
 
 export interface JourneyHistoryEntry {
+  /** Same as toStatus on event rows (refund notes, syncs) — those are not stage changes. */
+  fromStatus?: string | null;
   toStatus: string;
   createdAt: string;
   triggeredBy?: string | null;
@@ -82,7 +84,12 @@ export function buildOrderJourney(input: {
 
   // Latest time each status was reached (history is oldest → newest).
   const reached = new Map<string, JourneyHistoryEntry>();
-  for (const entry of input.history) reached.set(entry.toStatus, entry);
+  // Rows where from === to are events (refund notes, courier syncs), not moves — a
+  // refund note written while the order was SHIPPED must not re-date "Shipped".
+  for (const entry of input.history) {
+    if (entry.fromStatus && entry.fromStatus === entry.toStatus) continue;
+    reached.set(entry.toStatus, entry);
+  }
 
   const currentIndex = flow.indexOf(status);
   // Off the main track: before payment, or cancelled/refunded. Progress made before a

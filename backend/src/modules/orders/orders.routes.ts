@@ -12,6 +12,7 @@ import { loadShedGuard } from '@common/reliability/load-shed.guard';
 import { hasAdminPermission } from '@common/auth/admin-permissions';
 import {
   adminCancelOrderSchema,
+  adminRetryRefundSchema,
   adminExportOrdersCsvSchema,
   adminGetInvoicePdfSchema,
   adminGetOrderByIdSchema,
@@ -472,6 +473,22 @@ export async function registerOrdersRoutes(fastify: FastifyInstance): Promise<vo
         ...body,
         reason
       });
+    }
+  );
+
+  fastify.post(
+    '/api/v1/admin/orders/:id/refund/retry',
+    {
+      schema: adminRetryRefundSchema,
+      preHandler: [...adminGuard, adminPermissionGuard('orders:refund'), loadShedGuard, idempotencyPreHandler],
+      config: {
+        rateLimit: routeRateLimitProfiles.adminWrite
+      }
+    },
+    async (request) => {
+      const adminUser = getCurrentUser(request);
+      const params = request.params as { id: string };
+      return ordersService.adminRetryRefund(params.id, adminUser.sub);
     }
   );
 

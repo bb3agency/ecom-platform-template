@@ -3,6 +3,7 @@ import { type Prisma, PrismaClient as RealPrismaClient } from '@prisma/client';
 import { sendTechnicalFailureAlert } from '../../src/modules/notifications/notification-failure-alert';
 import { canTransitionOrder } from '@common/orders/order-state-machine';
 import { mapPaymentEventToStatuses } from '@common/orders/webhook-status-mappers';
+import { REFUND_NOTE } from '@common/payments/refund-retry-policy';
 import { AppError } from '@common/errors/app-error';
 import { ERROR_CODES } from '@common/errors/error-codes';
 import { type InvoiceStorageAdapter } from '@common/interfaces/invoice-storage.interface';
@@ -69,6 +70,9 @@ type PaymentWebhookJobData = {
   event: string;
   providerOrderId: string;
   providerPaymentId: string;
+  /** refund.* events only: the refund entity's id and amount (paise). */
+  providerRefundId?: string;
+  refundAmountPaise?: number;
   payload?: string;
   payloadMetadata?: Record<string, unknown>;
 };
@@ -398,7 +402,15 @@ export function createOrderProcessingWorker(
           return;
         }
 
-        if (payment.providerPaymentId === data.providerPaymentId && payment.status === PAYMENT_STATUS.CAPTURED) {
+        // Ignore late payment.* events for an already-captured payment. refund.*
+        // events are ABOUT a captured payment, so they must pass — this guard
+        // used to drop every refund.processed, so refunds never finalised.
+        const isRefundEvent = normalizedEvent.startsWith('refund.');
+        if (
+          !isRefundEvent &&
+          payment.providerPaymentId === data.providerPaymentId &&
+          payment.status === PAYMENT_STATUS.CAPTURED
+        ) {
           return;
         }
 
@@ -417,6 +429,51 @@ export function createOrderProcessingWorker(
           return;
         }
 
+        if (normalizedEvent === 'refund.failed') {
+          // The provider accepted the refund earlier, then could not complete
+          // it. Release the reservation (the money is owed again) and hand it
+          // back to the refunds worker, which retries on its slow schedule.
+          const pendingRefundAmount = payment.refundPendingAmountPaise;
+          const releasedAmount = Math.min(pendingRefundAmount, data.refundAmountPaise ?? pendingRefundAmount);
+          if (releasedAmount <= 0) {
+            return;
+          }
+          await tx.payment.update({
+            where: { id: payment.id },
+            data: { refundPendingAmountPaise: Math.max(pendingRefundAmount - releasedAmount, 0) }
+          });
+          await tx.orderStatusHistory.create({
+            data: {
+              orderId: order.id,
+              fromStatus: order.status,
+              toStatus: order.status,
+              triggeredBy: 'PAYMENT_WEBHOOK',
+              note: `${REFUND_NOTE.failedAtProvider} (${releasedAmount} paise)${data.providerRefundId ? ` — ref ${data.providerRefundId}` : ''}. Retrying automatically.`
+            }
+          });
+          const retryPayload = {
+            orderId: order.id,
+            reason: 'Retry after the provider failed a refund',
+            refundAmountPaise: releasedAmount,
+            initiatedBy: 'PAYMENT_WEBHOOK'
+          };
+          const retryJobId = `initiate-razorpay-refund-${order.id}-provider-failed-${data.providerRefundId ?? Date.now()}`;
+          const outboxDelegate = (tx as unknown as { outboxMessage?: Prisma.TransactionClient['outboxMessage'] }).outboxMessage;
+          if (outboxDelegate) {
+            await outboxDelegate.create({
+              data: {
+                queueName: 'refunds',
+                jobName: 'initiate-razorpay-refund',
+                payload: retryPayload as Prisma.InputJsonValue,
+                jobId: retryJobId
+              }
+            });
+          } else {
+            await refundsQueue.add('initiate-razorpay-refund', retryPayload, { jobId: retryJobId });
+          }
+          return;
+        }
+
         const mapped = mapPaymentEventToStatuses(data.event);
         if (!mapped) {
           return;
@@ -430,8 +487,13 @@ export function createOrderProcessingWorker(
         if (normalizedEvent === 'refund.processed') {
           const pendingRefundAmount = payment.refundPendingAmountPaise;
           const remainingRefundable = Math.max(payment.amount - payment.refundedAmountPaise, 0);
+          // Prefer the refund entity's own amount; fall back to the reservation.
           const processedRefundAmount =
-            pendingRefundAmount > 0 ? Math.min(pendingRefundAmount, remainingRefundable) : remainingRefundable;
+            data.refundAmountPaise !== undefined
+              ? Math.min(data.refundAmountPaise, remainingRefundable)
+              : pendingRefundAmount > 0
+                ? Math.min(pendingRefundAmount, remainingRefundable)
+                : remainingRefundable;
           if (processedRefundAmount <= 0) {
             return;
           }

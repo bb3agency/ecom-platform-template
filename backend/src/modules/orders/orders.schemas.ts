@@ -557,6 +557,22 @@ const adminOrderDetailSchema = {
         { type: 'null' }
       ]
     },
+    refundOwed: {
+      anyOf: [
+        {
+          type: 'object',
+          additionalProperties: false,
+          required: ['amountPaise', 'autoRetrying', 'lastError', 'lastFailedAt'],
+          properties: {
+            amountPaise: { type: 'integer', minimum: 0, maximum: 1000000000 },
+            autoRetrying: { type: 'boolean' },
+            lastError: { anyOf: [{ type: 'string', maxLength: 2000 }, { type: 'null' }] },
+            lastFailedAt: { anyOf: [{ type: 'string', maxLength: 64 }, { type: 'null' }] }
+          }
+        },
+        { type: 'null' }
+      ]
+    },
     customer: {
       type: 'object',
       additionalProperties: false,
@@ -752,7 +768,8 @@ export const adminListOrdersSchema = {
       to: { type: 'string', format: 'date-time', maxLength: 64 },
       search: { type: 'string', maxLength: 100 },
       paymentMode: { type: 'string', enum: ['PREPAID', 'COD'], maxLength: 10 },
-      sort: { type: 'string', enum: ['newest', 'oldest'], maxLength: 10 }
+      sort: { type: 'string', enum: ['newest', 'oldest'], maxLength: 10 },
+      refund: { type: 'string', enum: ['owed'], maxLength: 10 }
     }
   },
   response: {
@@ -1205,6 +1222,22 @@ export const adminCancelOrderSchema = {
       refundAmountPaise: { type: 'integer', minimum: 1, maximum: 1000000000 }
     }
   },
+  response: {
+    200: adminOrderDetailSchema,
+    ...standardAdminErrorResponses
+  }
+} as const;
+
+export const adminRetryRefundSchema = {
+  params: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['id'],
+    properties: {
+      id: { type: 'string', maxLength: 64 }
+    }
+  },
+  querystring: emptyQuerystringSchema,
   response: {
     200: adminOrderDetailSchema,
     ...standardAdminErrorResponses

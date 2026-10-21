@@ -59,6 +59,7 @@ export const ADMIN_ENDPOINT_POLICY_REGISTRY: readonly EndpointPolicy[] = [
   { method: 'POST', path: '/api/v1/admin/orders/:id/schedule-pickup', permission: 'orders:write', layer: 'A' },
   { method: 'POST', path: '/api/v1/admin/orders/:id/print-label', permission: 'orders:read', layer: 'A' },
   { method: 'POST', path: '/api/v1/admin/orders/:id/cancel', permission: 'orders:refund', layer: 'B' },
+  { method: 'POST', path: '/api/v1/admin/orders/:id/refund/retry', permission: 'orders:refund', layer: 'B' },
   { method: 'POST', path: '/api/v1/admin/orders/:id/notifications/retrigger', permission: 'orders:notify', layer: 'A' },
   { method: 'GET', path: '/api/v1/admin/return-requests', permission: 'orders:read', layer: 'A' },
   { method: 'GET', path: '/api/v1/admin/return-requests/:id', permission: 'orders:read', layer: 'A' },

@@ -1,4 +1,6 @@
 import { createHash, timingSafeEqual, randomUUID } from 'crypto';
+import { buildRefundOwed, refundOwedWhere } from './refund-owed';
+import { isMerchantOnlyRefundNote } from '@common/payments/refund-retry-policy';
 import {
   AnalyticsEventType,
   Coupon,
@@ -1939,21 +1941,16 @@ export class OrdersService {
             order_id?: string;
           };
         };
-      };
-    };
-    try {
-      parsed = JSON.parse(webhookRawBytes.toString('utf8')) as {
-        event?: string;
-        created_at?: number;
-        payload?: {
-          payment?: {
-            entity?: {
-              id?: string;
-              order_id?: string;
-            };
+        refund?: {
+          entity?: {
+            id?: string;
+            amount?: number;
           };
         };
       };
+    };
+    try {
+      parsed = JSON.parse(webhookRawBytes.toString('utf8')) as typeof parsed;
     } catch {
       throw new AppError(ERROR_CODES.VALIDATION_ERROR, 'Invalid payment webhook payload', 400);
     }
@@ -1990,6 +1987,16 @@ export class OrdersService {
 
     const eventName = parsed.event ?? 'unknown';
     const normalizedEvent = eventName.trim().toLowerCase();
+    // refund.* events carry the refund entity. A payment can see several refund
+    // events (partial refunds, a failed refund then a retried one), so their
+    // dedupe identity is event + refund id, not event + payment id.
+    const refundEntity = normalizedEvent.startsWith('refund.') ? parsed.payload?.refund?.entity : undefined;
+    const providerRefundId = typeof refundEntity?.id === 'string' && refundEntity.id.length > 0 ? refundEntity.id : null;
+    const refundAmountPaise =
+      typeof refundEntity?.amount === 'number' && Number.isInteger(refundEntity.amount) && refundEntity.amount > 0
+        ? refundEntity.amount
+        : null;
+    const markerEvent = providerRefundId ? `${normalizedEvent}#${providerRefundId}` : normalizedEvent;
     const normalizedEventId = eventIdHeader?.trim();
     let eventIdKey: string | null = null;
     if (normalizedEventId) {
@@ -2006,7 +2013,7 @@ export class OrdersService {
       }
     }
 
-    const inboxEventKey = normalizedEventId ?? `${normalizedEvent}:${providerPaymentId}`;
+    const inboxEventKey = normalizedEventId ?? `${markerEvent}:${providerPaymentId}`;
     const payloadHash = createHash('sha256').update(webhookRawBytes).digest('hex');
     const inboxState = await this.claimWebhookInboxEvent(
       'razorpay',
@@ -2032,7 +2039,7 @@ export class OrdersService {
         .map((entry) => entry.trim())
         .filter((entry) => entry.length > 0)
     );
-    if (processedEvents.has(normalizedEvent)) {
+    if (processedEvents.has(markerEvent)) {
       await this.markWebhookInboxEvent('razorpay', inboxEventKey, 'PROCESSED');
       recordWebhookEvent({
         provider: 'razorpay',
@@ -2042,7 +2049,7 @@ export class OrdersService {
       });
       return { received: true };
     }
-    const nextMarker = [...processedEvents, normalizedEvent].join(',');
+    const nextMarker = [...processedEvents, markerEvent].join(',');
     let createdMarker = false;
     if (!existingMarker) {
       const lock = await this.fastify.redis.set(idempotencyKey, nextMarker, 'EX', 86400, 'NX');
@@ -2054,7 +2061,7 @@ export class OrdersService {
             .map((entry) => entry.trim())
             .filter((entry) => entry.length > 0)
         );
-        if (concurrentEvents.has(normalizedEvent)) {
+        if (concurrentEvents.has(markerEvent)) {
           await this.markWebhookInboxEvent('razorpay', inboxEventKey, 'PROCESSED');
           recordWebhookEvent({
             provider: 'razorpay',
@@ -2064,7 +2071,7 @@ export class OrdersService {
           });
           return { received: true };
         }
-        concurrentEvents.add(normalizedEvent);
+        concurrentEvents.add(markerEvent);
         await this.fastify.redis.set(idempotencyKey, [...concurrentEvents].join(','), 'EX', 86400);
       } else {
         createdMarker = true;
@@ -2106,6 +2113,8 @@ export class OrdersService {
           event: eventName,
           providerOrderId,
           providerPaymentId,
+          ...(providerRefundId ? { providerRefundId } : {}),
+          ...(refundAmountPaise !== null ? { refundAmountPaise } : {}),
           payloadMetadata: {
             source: 'razorpay-webhook',
             payloadHash,
@@ -2483,7 +2492,7 @@ export class OrdersService {
     const skip = (page - 1) * limit;
     const fromDate = query.from ? new Date(query.from) : undefined;
     const toDate = query.to ? new Date(query.to) : undefined;
-    const whereClause = {
+    const baseWhere = {
       ...(query.status !== undefined ? { status: query.status } : {}),
       ...(query.paymentMode !== undefined ? { paymentMode: query.paymentMode } : {}),
       ...((fromDate || toDate) && {
@@ -2510,6 +2519,10 @@ export class OrdersService {
           }
         : {})
     };
+    // Same predicate as the dashboard's refundsOwed count, so the count and the
+    // list it links to always agree.
+    const whereClause: Prisma.OrderWhereInput =
+      query.refund === 'owed' ? { AND: [baseWhere, refundOwedWhere()] } : baseWhere;
 
     const sortDir = query.sort === 'oldest' ? ('asc' as const) : ('desc' as const);
 
@@ -3533,6 +3546,48 @@ export class OrdersService {
       data: { labelUrl: result.labelUrl } as Record<string, unknown>
     });
     return { labelUrl: result.labelUrl };
+  }
+
+  /**
+   * Admin "Retry refund" for a cancelled order whose refund never completed
+   * (see refund-owed.ts). Re-queues the refund job; the worker's CAS gate makes
+   * a double refund impossible even if an automatic retry runs at the same time.
+   * A failure restarts the automatic retry schedule.
+   */
+  async adminRetryRefund(orderId: string, adminUserId: string) {
+    const order = await this.fastify.prisma.order.findUnique({
+      where: { id: orderId },
+      include: { payment: true, statusHistory: { orderBy: { createdAt: 'desc' }, take: 50 } }
+    });
+    if (!order) {
+      throw new AppError(ERROR_CODES.NOT_FOUND, 'Order not found', 404);
+    }
+    const owed = buildRefundOwed(order, new Date(), { ignoreGracePeriod: true });
+    if (!owed) {
+      throw new AppError(ERROR_CODES.CONFLICT, 'No refund is owed on this order', 409);
+    }
+
+    await this.fastify.prisma.orderStatusHistory.create({
+      data: {
+        orderId: order.id,
+        fromStatus: order.status,
+        toStatus: order.status,
+        triggeredBy: 'ADMIN',
+        note: `Refund retry requested (${owed.amountPaise} paise) [admin:${adminUserId}]`
+      }
+    });
+    await this.enqueueOutboxMessage(
+      'refunds',
+      'initiate-razorpay-refund',
+      {
+        orderId: order.id,
+        reason: 'Refund retried by admin',
+        refundAmountPaise: owed.amountPaise,
+        initiatedBy: 'ADMIN'
+      },
+      `initiate-razorpay-refund:${order.id}:admin-retry:${randomUUID()}`
+    );
+    return this.adminGetOrderById(order.id);
   }
 
   async adminCancelOrder(orderId: string, input?: CancelOrderInput) {
@@ -4875,7 +4930,9 @@ export class OrdersService {
             : {})
         };
       }),
-      statusHistory: order.statusHistory.map((history) => ({
+      statusHistory: order.statusHistory
+        .filter((history) => exposeInternalReferences || !isMerchantOnlyRefundNote(history.note))
+        .map((history) => ({
         ...history,
         note: exposeInternalReferences
           ? history.note
@@ -4906,6 +4963,8 @@ export class OrdersService {
             refundedAmountPaise: order.payment.refundedAmountPaise
           }
         : null,
+      // Admin-only: a cancelled order whose refund never went through.
+      ...(exposeInternalReferences ? { refundOwed: buildRefundOwed(order) } : {}),
       // The invoice CTA is gated on the invoice RECORD existing — a record is only ever
       // created when invoicing was effectively enabled at generation time (worker gate),
       // and existing invoices stay downloadable even if the merchant later toggles it off.
