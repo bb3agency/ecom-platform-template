@@ -63,7 +63,8 @@ const BOOLEAN_KEYS = new Set([
   "SHIPPING_PROVIDER_FAILOVER_ENABLED",
 ]);
 
-function isSecretKey(key: string): boolean {
+/** Secret-classified keys never have their stored value loaded into the page. */
+export function isSecretKey(key: string): boolean {
   if (
     key.endsWith("_KEY_ID") ||
     key.endsWith("_FROM") ||
@@ -72,7 +73,7 @@ function isSecretKey(key: string): boolean {
   ) {
     return false;
   }
-  return /(_SECRET|_TOKEN|_PASSWORD|_AUTH_KEY|_API_KEY|_APP_SECRET|OPS_METRICS_TOKEN|REPLAY_APPROVAL_TOKEN|OPS_COOKIE_SECRET)/.test(
+  return /(_SECRET|_TOKEN|_PASSWORD|_AUTH_KEY|_API_KEY|_APP_SECRET|_ENCRYPTION_KEY|_PRIVATE_KEY|_SIGNING_KEY|OPS_METRICS_TOKEN|REPLAY_APPROVAL_TOKEN|OPS_COOKIE_SECRET)/.test(
     key,
   );
 }
