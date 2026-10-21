@@ -12,6 +12,17 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-21
+
+### Fixed
+- **`core-manifest.json` did not list the ops console.** `frontend/components/ops/**` was never core, so ops fixes (including the 0.3.0 rebuild) never reached clients through the sync — 0.3.0 had to be hand-carried. Now core, together with `frontend/components/maintenance/**`, `frontend/components/providers/**` and `frontend/contexts/**` (engine code that is already identical in every client).
+
+**Propagation:**
+- Severity: MEDIUM (sync coverage) - Layers: `core-manifest.json` only
+- Migration: NO - Flag: none - Design impact: none - Breaking: NO
+- Note: the manifest change takes effect from the next release after this one (each client syncs against its previous manifest). Clients already on 0.3.0 have these files identical to core.
+- Rollback: revert the manifest entries.
+
 ## [0.3.0] - 2026-10-21
 
 ### Fixed
