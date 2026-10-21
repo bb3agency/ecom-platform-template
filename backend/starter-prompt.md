@@ -49,9 +49,9 @@ These are non-negotiable principles distilled from thousands of developer hours:
 
 ## 2. The Master System Prompt
 
-Copy this into your AI tool's system prompt (`.cursorrules`, `.agents/rules/dev-rules.md` for Antigravity, or chat preamble) before starting any frontend work.
+Copy this into your AI tool's system prompt (or chat preamble) before starting any frontend work.
 
-> **Shortcut:** The file `frontend-agent-rules.md` in this repo is a ready-to-use Antigravity rules file. Copy it to `.agents/rules/dev-rules.md` in your frontend project and it auto-activates.
+> **Shortcut:** The repo-root `CLAUDE.md` is the ready-to-use rules file (frontend rules + backend appendix). It is the only agent-rules file; there is nothing to copy.
 
 ```markdown
 You are a Senior Frontend Architect specializing in high-conversion e-commerce 
@@ -432,19 +432,9 @@ OPS_UI_BASIC_AUTH_PASSWORD=<set-on-shared-vps>
 
 ## 4. IDE Agent Setup (Cursor + Antigravity)
 
-### Antigravity (Google) Setup
+### Agent rules
 
-```bash
-# Assuming sibling folders: root/backend and root/frontend
-# Run this inside your frontend project folder:
-mkdir -p .agents/rules
-cp ../backend/frontend-agent-rules.md .agents/rules/dev-rules.md
-diff -u ../backend/frontend-agent-rules.md .agents/rules/dev-rules.md
-```
-
-The rules file auto-activates on every interaction ("Always On" mode). It covers tech stack, architecture, code standards, performance, conversion optimization, and 20+ forbidden actions.
-
-If `diff` output shows differences, re-copy and commit `.agents/rules/dev-rules.md` before generating new frontend code.
+Agent rules live in the repo-root `CLAUDE.md` (single rules file since 2026-10-21; nothing to copy or diff). It covers tech stack, architecture, code standards, performance, conversion optimization and the forbidden actions.
 
 ### Co-Development Backend Upstream (manual command protocol)
 
@@ -470,7 +460,6 @@ git clone https://github.com/your-org/ecom-backend-template.git ../backend
 # Sync backend changes (run from frontend repo)
 rsync -av --exclude='.git' --exclude='node_modules' \
   ../backend/docs/ ../docs/
-rsync -av ../backend/frontend-agent-rules.md .agents/rules/dev-rules.md
 
 # Safety checklist before any backend changes
 echo "=== Backend Sync Safety Checklist ==="
@@ -494,19 +483,6 @@ read -p "Continue? (y/N): " confirm
 
 **Agent Rule:** Always propose commands and wait for user approval/execution for remote mutations.
 
-### Cursor IDE Setup
-
-#### `.cursor/rules/` Directory Structure
-
-```
-.cursor/
-└── rules/
-    ├── project-context.mdc      # Always active — stack & architecture
-    ├── components.mdc           # Component naming & structure
-    ├── api-integration.mdc      # Backend API connection patterns
-    ├── seo-ecommerce.mdc        # SEO & structured data rules
-    └── design-system.mdc        # Colors, typography, spacing tokens
-```
 
 ### Key IDE Workflows
 
@@ -526,7 +502,7 @@ Before any major prompt, ensure the AI has access to:
 - [ ] Your `types/` directory (TypeScript interfaces)
 - [ ] At least one existing component (to learn your style)
 - [ ] The backend API endpoint schema (from this repo's TRD.md)
-- [ ] `.agents/rules/dev-rules.md` (Antigravity) or `.cursor/rules/*.mdc` (Cursor)
+- [ ] Repo-root `CLAUDE.md` (the single agent-rules file)
 - [ ] `docs/ROUTE_SURFACE_COMPLETE_REFERENCE.md` — when building admin, ops, or any API-integrated surface: what every route does, required permissions, hard boundaries, setup flows, and what each layer cannot do
 
 ---

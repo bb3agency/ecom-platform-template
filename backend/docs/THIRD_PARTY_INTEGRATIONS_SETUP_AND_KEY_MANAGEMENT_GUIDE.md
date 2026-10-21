@@ -674,26 +674,9 @@ Success criteria:
 - No long-lived outage on critical checkout/shipping/notification path.
 - Register and incident notes updated with exact timestamps.
 
-## 8) Frontend rules sync control (for every frontend repo)
+## 8) Frontend rules (for every frontend repo)
 
-Before frontend release, ensure latest rules are synced from backend template:
-
-1. Copy latest rules file:
-   - `cp ../backend/frontend-agent-rules.md .agents/rules/dev-rules.md`
-2. Verify file is current (hash or diff check).
-3. Commit rules update in frontend repo when changed.
-
-Recommended verification commands:
-
-```bash
-diff -u ../backend/frontend-agent-rules.md .agents/rules/dev-rules.md
-```
-
-Windows PowerShell equivalent:
-
-```powershell
-Compare-Object (Get-Content ..\backend\frontend-agent-rules.md) (Get-Content .agents\rules\dev-rules.md)
-```
+Agent rules live in the repo-root `CLAUDE.md` (single rules file since 2026-10-21; nothing to copy or diff). A client repo inherits it from the template; client-specific rule changes are made in that repo's `CLAUDE.md`.
 
 ## 9) Official references used (web research)
 

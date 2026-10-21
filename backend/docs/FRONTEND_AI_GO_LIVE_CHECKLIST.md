@@ -19,7 +19,7 @@ Pair this with `docs/BACKEND_GO_LIVE_CHECKLIST.md` for final go-live sign-off. T
   - `NODE_ENV=development` or `test` => development-like
   - Any other value (`production`, `staging`, `qa`, `uat`, custom, or unset) => production-like
 - [ ] `PAYMENT_PROVIDER=noop` is treated as local simulation only — never production. For shipping, `SHIPPING_PROVIDER` env var is ignored; at least one provider's credentials must be set for production (Delhivery and/or Shiprocket).
-- [ ] Frontend repo has latest AI rules synced from backend: `frontend-agent-rules.md` -> `.agents/rules/dev-rules.md`.
+- [ ] Repo-root `CLAUDE.md` (the single agent-rules file) reflects the current conventions.
 
 ### 1.1) CSP & Security Headers Verification
 

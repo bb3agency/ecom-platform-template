@@ -40,7 +40,7 @@ These docs are retained for engineering reuse and future builds, but should not 
 - `README.md`
 - `docs/MASTER_DEPLOYMENT_PLAYBOOK.md`
 - `starter-prompt.md`
-- `frontend-agent-rules.md`
+- `CLAUDE.md` (repo root — agent rules)
 - `docs/NEXTJS_FRONTEND_INTEGRATION_GUIDE.md`
 
 ## Agent Rule (Phase-Aware Precedence)

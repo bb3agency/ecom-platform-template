@@ -1443,7 +1443,7 @@ In a new tab, Zustand starts empty (`accessToken = null`). `useSessionBootstrap`
 - **Checkout:** compact header, sticky summary on desktop, sticky total + Place order bar on phones (`form="checkout-form"`), 16px inputs on phones.
 - **Ops:**
   - Rebuilt on the same system, with one-call `GET /ops/overview` and the shared OTP dialog.
-  - Secrets are not loaded into the page (see `OPS_CONTROL_PLANE_GUIDE.md` §6).
+  - Secrets were briefly not loaded into the page (0.3.0). Since 0.4.1 they are prefilled again behind a password field with an eye toggle, per owner decision (see `OPS_CONTROL_PLANE_GUIDE.md` §6).
   - Ops/auth/maintenance/providers/contexts became core in 0.3.1. 0.3.0 had to hand-carry ops/auth.
 - **Backend bug found:** `PATCH /admin/orders/:id/status` hung (sync preHandler). Fixed in 0.3.0.
 - **Verified:** 29 admin routes at 375px with zero horizontal overflow; ops at 1280/768/375; checkout end to end on phone and desktop.

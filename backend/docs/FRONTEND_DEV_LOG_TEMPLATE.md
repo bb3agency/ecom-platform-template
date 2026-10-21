@@ -43,7 +43,7 @@
 ## Environment Setup
 
 - [ ] `.env.local` generated with all required values
-- [ ] `frontend-agent-rules.md` copied to `.agents/rules/dev-rules.md` and diff is clean
+- [ ] Repo-root `CLAUDE.md` present (single agent-rules file)
 - [ ] Backend is running locally (`npm run dev:e2e` + workers) and health check passes
 - [ ] Postman E2E baseline passes (Phase 2 gate already cleared before this log was created)
 
@@ -202,7 +202,7 @@ Tier 6 contract-specific checks:
 - [ ] No placeholder secrets — all provider keys confirmed real
 - [ ] All provider dry-run evidence logged in `CLIENT_INTEGRATION_CREDENTIAL_REGISTER_TEMPLATE.md`
 - [ ] Backend Phase 7 readiness confirms `docs/PHASE7_VPS_DEPLOY_INCIDENT_PLAYBOOK.md` gates are green before frontend VPS deploy begins
-- [ ] `frontend-agent-rules.md` diff vs `.agents/rules/dev-rules.md` is clean
+- [ ] Repo-root `CLAUDE.md` reflects current conventions
 
 **Phase 5 gate cleared on:** [DATE] — signed off by: [NAME]
 

@@ -618,7 +618,7 @@ Provider lifecycle controls for this stage:
 | Check | Pass criteria |
 | --- | --- |
 | API env naming | Frontend uses `NEXT_PUBLIC_API_BASE_URL` (includes `/api/v1`) and `NEXT_PUBLIC_STOREFRONT_URL` |
-| Frontend rules sync | Frontend repo copies latest `frontend-agent-rules.md` to `.agents/rules/dev-rules.md` and verifies via `diff` before release |
+| Agent rules | Repo-root `CLAUDE.md` is current (single rules file; no copies to sync) |
 | Response parser | Handles both success modes (enveloped/raw) via `FEATURE_RESPONSE_ENVELOPE_ENABLED` |
 | Mutation idempotency | Critical order/payment/admin writes send `idempotency-key` |
 | Checkout split | PREPAID uses `/payments/initiate` + `/payments/verify`; COD skips Razorpay init path |

@@ -97,7 +97,7 @@ For any AI agent generating frontend code, enforce these constraints:
 
 Before release sign-off, execute `docs/FRONTEND_AI_GO_LIVE_CHECKLIST.md` and attach it with `docs/BACKEND_GO_LIVE_CHECKLIST.md` in the deployment evidence package. The backend checklist must cover full environment-to-implementation parity for all required backend env groups, not only payment/shipping provider checks. It also includes audit-hardened gates: Nginx security headers verification, JSON schema `additionalProperties: false` enforcement, SLO alert test coverage, JWT fail-fast validation, script credential env var usage, and admin route rate-limit/load-shed guards.
 
-Also include provider lifecycle evidence from `docs/CLIENT_INTEGRATION_CREDENTIAL_REGISTER_TEMPLATE.md` (owner, vault path, created/rotated/expiry, last-tested) and ensure frontend rules sync is verified (`frontend-agent-rules.md` -> `.agents/rules/dev-rules.md`).
+Also include provider lifecycle evidence from `docs/CLIENT_INTEGRATION_CREDENTIAL_REGISTER_TEMPLATE.md` (owner, vault path, created/rotated/expiry, last-tested) and ensure the repo-root `CLAUDE.md` (agent rules) is current.
 
 For provider onboarding, frontend/public-vs-secret env boundaries, and key rotation/incident procedures, follow `docs/THIRD_PARTY_INTEGRATIONS_SETUP_AND_KEY_MANAGEMENT_GUIDE.md`.
 

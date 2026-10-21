@@ -24,13 +24,13 @@ Before syncing, classify backend changes:
 Only template-worthy changes should be upstreamed to template repo.
 Documentation-only reliability fixes are also template-worthy when they change baseline deployment behavior.
 
-**Frontend agent rules sync:** When ops/admin auth UX conventions change (for example ops console routes gated post-login, or new load-shed modes like `maintenance` that require a storefront banner), update `backend/frontend-agent-rules.md` in the template/backend repo and re-sync into each client frontend via `cp ../backend/frontend-agent-rules.md .agents/rules/dev-rules.md` (see workspace dev-rules sync verification).
+**Agent rules:** When ops/admin auth UX conventions change (for example ops console routes gated post-login, or new load-shed modes like `maintenance` that require a storefront banner), update the repo-root `CLAUDE.md` (the single agent-rules file) in the same change.
 
 **Template-worthy reliability changes pattern (e.g. May 2026 persistent maintenance mode):** When a client repo adds new durable runtime state (new Prisma model, migration, worker job, Nginx subrequest, dedicated public routes, frontend banner component), classify and propagate every layer together:
 
 - Backend: Prisma model + migration, runtime-state helpers, route handlers, worker job, rate-limit/load-shed/Nginx integration, unit + end-to-end route-matrix tests.
 - Frontend: typed client (`lib/*.ts`), banner / control panel components, layout mount, test for any countdown / state-derivation helper.
-- Docs: `OPS_CONTROL_PLANE_GUIDE.md`, `ROUTE_SURFACE_COMPLETE_REFERENCE.md`, `API_ENDPOINT_INDEX.md`, `ENV_VS_DB_CONFIG_REFERENCE.md`, `HARDENING_HISTORY.md`, `DECISIONS.md`, `BRD.md`, `ECOM_MASTER.md`, `TRD.md`, `README.md`, `frontend-agent-rules.md`, `starter-prompt.md`, this guide.
+- Docs: `OPS_CONTROL_PLANE_GUIDE.md`, `ROUTE_SURFACE_COMPLETE_REFERENCE.md`, `API_ENDPOINT_INDEX.md`, `ENV_VS_DB_CONFIG_REFERENCE.md`, `HARDENING_HISTORY.md`, `DECISIONS.md`, `BRD.md`, `ECOM_MASTER.md`, `TRD.md`, `README.md`, `CLAUDE.md` (repo root), `starter-prompt.md`, this guide.
 - Tests: both unit-level mocks and an end-to-end Fastify-inject test that exercises the real guard + route matrix against an in-memory Prisma/Redis pair, so the audit can confirm the actual implementation matches the docs (not just the mocks).
 
 ---
@@ -183,7 +183,7 @@ When an incident reveals a reusable deployment fix, update these documents toget
 - `TRD.md`
 - `BRD.md` (business impact wording)
 - `starter-prompt.md`
-- `frontend-agent-rules.md`
+- `CLAUDE.md` (repo root)
 - `docs/CLIENT_ONBOARDING_EXECUTION_ORDER.md`
 - `docs/CLIENT_VPS_SETUP_GUIDE.md` and linked playbook/template docs
 

@@ -480,23 +480,9 @@ NEXT_PUBLIC_STOREFRONT_URL=http://localhost:3000
 NEXT_PUBLIC_RAZORPAY_KEY_ID=rzp_test_xxxxx
 ```
 
-### 3.2.1 Sync latest frontend AI rules (mandatory)
+### 3.2.1 Frontend AI rules
 
-Before generating frontend code, sync backend rules into frontend repo:
-
-```bash
-cd ../frontend
-mkdir -p .agents/rules
-cp ../backend/frontend-agent-rules.md .agents/rules/dev-rules.md
-```
-
-Verify synced file is up to date:
-
-```bash
-diff -u ../backend/frontend-agent-rules.md .agents/rules/dev-rules.md
-```
-
-If diff output is non-empty, commit the updated `.agents/rules/dev-rules.md` in frontend repo before continuing feature work.
+Agent rules live in the repo-root `CLAUDE.md` (single rules file since 2026-10-21; nothing to copy or diff). Read it before generating frontend code.
 
 ### 3.2.2 Co-development backend upstream SOP (manual commands)
 

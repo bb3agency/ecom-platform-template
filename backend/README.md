@@ -504,8 +504,7 @@ The `npm run ci:reliability-gates` command runs the full quality pipeline:
 | [`docs/postman/E2E-FLOW-TEST-LOG.md`](docs/postman/E2E-FLOW-TEST-LOG.md) | Postman E2E simulation guide & failure-mode log |
 | [`.env.example`](.env.example) | Complete environment variable reference (90+ vars) |
 | [`starter-prompt.md`](starter-prompt.md) | Build-time AI prompting playbook (internal SOP, not client-facing handoff doc) |
-| [`frontend-agent-rules.md`](frontend-agent-rules.md) | Build-time Antigravity rules file — copy to frontend `.agents/rules/dev-rules.md` |
-| [`.agents/rules/dev-rules.md`](.agents/rules/dev-rules.md) | Antigravity rules for this backend repo |
+| [`../CLAUDE.md`](../CLAUDE.md) | The single agent-rules file (frontend rules + backend appendix) |
 
 ---
 
@@ -616,7 +615,7 @@ These rules are **non-negotiable** across all client deployments:
 
 ---
 
-> **Note:** This template currently includes AI agent rules for **Antigravity** only (`.agents/rules/dev-rules.md` for backend, `frontend-agent-rules.md` for frontend). Cursor-specific `.cursor/rules/*.mdc` files are not included — refer to `starter-prompt.md` §3 for Cursor IDE setup instructions if needed.
+> **Note:** Agent rules live in the repo-root `CLAUDE.md` (single rules file since 2026-10-21; nothing to copy or diff).
 
 ## License
 

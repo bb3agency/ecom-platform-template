@@ -12,6 +12,17 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-21
+
+### Changed
+- **Ops config: saved secrets are viewable again** (owner decision, restoring the May 2026 policy that 0.3.0 had reversed). Every field, secrets included, is prefilled with the stored value. Secret fields render as password inputs with an eye toggle to show or hide them. `OpsConfigFieldRow.tsx`, `OpsConfigEditor.tsx`, `lib/ops-config-fields.ts` (+ test).
+
+**Propagation:**
+- Severity: LOW - Layers: `components/ops/OpsConfig{FieldRow,Editor,PagePanel}.tsx`, `lib/ops-config-fields.ts`
+- Requires: backend-core >= 0.4.0 (unchanged API — `GET /ops/config/stored` already returns `plaintextValue`)
+- Migration: NO - Flag: none - Design impact: none - Breaking: NO
+- Rollback: revert the files.
+
 ## [0.4.0] - 2026-10-21
 
 ### Added

@@ -313,7 +313,7 @@ Perform each dry-run as part of the vertical slice that builds the relevant fron
 - `CO_DEVELOPMENT_SYNC_GUIDE.md` (for template-worthy backend upstreams) + `docs/PLATFORM_VERSIONING_AND_SYNC_GUIDE.md` (versioned core + changelog propagation + design isolation across client sites)
 
 **Execution steps (condensed):**
-1. Create frontend repo and sync rules (`frontend-agent-rules.md` -> `.agents/rules/dev-rules.md`).
+1. Create frontend repo; agent rules come with the repo-root `CLAUDE.md` (nothing to copy).
 2. Configure `.env.local` with local backend base URL (`NEXT_PUBLIC_API_BASE_URL` including `/api/v1`).
 3. Build slices in strict order: Foundation -> Ops -> Admin read -> Admin mutation -> Reliability -> Storefront.
 4. For each slice: lock contract -> typed client -> UI states -> real backend integration -> provider dry-run -> checklist ticks.
@@ -1071,7 +1071,7 @@ These rules come from `ECOM_MASTER.md` §5 and `TRD.md` §2.3. They are not sugg
 | `docs/THIRD_PARTY_INTEGRATIONS_SETUP_AND_KEY_MANAGEMENT_GUIDE.md` | Provider setup, credential lifecycle, rotation (Phases 1, 3, 11, 14) |
 | `docs/CLIENT_INTEGRATION_CREDENTIAL_REGISTER_TEMPLATE.md` | Per-client credential ownership record (filled across Phases 1, 3, 11) |
 | `starter-prompt.md` | AI prompting playbook for frontend agent (Phase 4) |
-| `frontend-agent-rules.md` | Antigravity rules to copy into frontend repo (Phase 4) |
+| `CLAUDE.md` (repo root) | The single agent-rules file (frontend + backend appendix) |
 | `.env.example` | Complete environment variable reference used in Phase 2 |
 | `docs/CLIENT_DEV_LOG_TEMPLATE.md` | **Copy to `client-<id>/CLIENT_DEV_LOG.md` at Phase 0** — persistent dev context for Phases 0–5 (backend config, provider dry-runs, frontend milestones, Phase 5 gate) |
 | `docs/FRONTEND_DEV_LOG_TEMPLATE.md` | **Copy to `frontend/docs/FRONTEND_DEV_LOG.md` at Phase 4 start** — frontend slice-level tracker |

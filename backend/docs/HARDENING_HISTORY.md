@@ -14,7 +14,7 @@ Found while redesigning the admin console and investigating a courier-cancelled 
 - **`refund.processed` was swallowed (0.4.0).** The order-processing worker's duplicate-capture guard returned for any event on a captured payment with a matching id. Successful refunds never reached REFUNDED. `refund.failed` was unhandled, and refund webhook dedupe was per payment.
 - **A Razorpay refusal tripped the payment circuit breaker (0.4.0)**, which also guards checkout order creation. Refusals (`PaymentProviderError.rejected`) are now excluded; Razorpay error bodies are parsed.
 - **Merchant finances leaked to customers (0.4.0, preventive).** Customer order responses now drop refund failure/retry notes.
-- **Ops console stopped loading secret values into the page (0.3.0).** The UI shows the masked value and keeps the saved value when the field is left empty. `GET /ops/config/stored` still returns `plaintextValue` (see `OPS_CONTROL_PLANE_GUIDE.md`). `/ops/metrics` always 403'd (server fetch without the path-scoped cookie); it is now fetched in the browser.
+- **Ops console secrets:** 0.3.0 stopped loading secret values into the page. The owner then chose to keep them viewable, so 0.4.1 prefills them again behind a password field with an eye toggle (see `OPS_CONTROL_PLANE_GUIDE.md`). `/ops/metrics` always 403'd (server fetch without the path-scoped cookie); it is now fetched in the browser.
 - **Admin sign-in `?next=` (0.3.0)** returns to the page being opened. It is validated to same-origin `/admin` paths only: no `//`, no backslash, no control chars, no auth guest pages.
 - **Smaller fixes:**
   - Order items were hidden from read-only admins.

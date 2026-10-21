@@ -15,14 +15,12 @@ export interface OpsConfigFieldDefinition {
   /** Masked representation of the DB-stored value, retained for list/summary views. */
   storedMasked?: string;
   /**
-   * Plaintext DB-stored value, used to prefill NON-secret inputs (provider
-   * names, booleans, sender addresses) so the operator edits what is saved.
-   *
-   * Never populated for secret-classified keys (`inputKind === "secret"`):
-   * the console shows `storedMasked` instead and an empty input means "keep
-   * the saved value". The backend still returns plaintext for every row
-   * (see `getStoredConfigSecrets`); the UI deliberately drops it for secrets
-   * so a plaintext secret never sits in React state or the DOM.
+   * Plaintext DB-stored value, used to prefill EVERY input — secrets included —
+   * so the operator sees and edits what is actually saved (owner policy, May
+   * 2026; restored in frontend-core 0.4.1 after 0.3.0 had hidden secrets).
+   * Secret-classified inputs (`inputKind === "secret"`) render as password
+   * fields with an explicit reveal toggle, so the value is not on screen by
+   * default. Ops-only surface: gated by ops login, OTP on save, audit chain.
    */
   storedPlaintext?: string;
   /**
@@ -136,7 +134,7 @@ export function buildOpsConfigFieldDefinitions(
           envLocked,
           restartPending: item.restartPending ?? (!item.present && Boolean(storedItem)),
           ...(storedItem ? { storedMasked: storedItem.maskedValue } : {}),
-          ...(storedItem && inputKind !== "secret" ? { storedPlaintext: storedItem.plaintextValue } : {}),
+          ...(storedItem ? { storedPlaintext: storedItem.plaintextValue } : {}),
         };
       }),
   );
