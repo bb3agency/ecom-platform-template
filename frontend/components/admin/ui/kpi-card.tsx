@@ -42,20 +42,20 @@ export function KpiCard({
     <div
       data-slot="kpi-card"
       className={cn(
-        "flex min-w-0 flex-col justify-between rounded-2xl border border-border bg-card p-4 transition-shadow hover:shadow-sm sm:p-5",
+        "flex min-w-0 flex-col justify-between rounded-xl border border-border bg-card p-4 sm:p-5",
         className,
       )}
       {...props}
     >
       <div className="flex items-center justify-between gap-2">
-        <p className="truncate text-xs font-medium text-muted-foreground sm:text-sm">{label}</p>
+        <p className="text-xs font-medium text-muted-foreground">{label}</p>
         {Icon && <Icon className="size-4 shrink-0 text-muted-foreground/70" aria-hidden />}
       </div>
 
       {loading ? (
         <div className="mt-2 h-8 w-24 animate-pulse rounded-md bg-muted" />
       ) : (
-        <p className="mt-1.5 truncate font-heading text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+        <p className="mt-1 break-words font-heading text-xl font-semibold tracking-tight text-foreground tabular sm:text-2xl">
           {value}
         </p>
       )}
@@ -76,7 +76,7 @@ export function KpiTrendLine({ trend }: { trend: KpiTrend }) {
       <span
         className={cn(
           "flex items-center gap-0.5 font-medium",
-          flat ? "text-muted-foreground" : up ? "text-emerald-600" : "text-red-600",
+          flat ? "text-muted-foreground" : up ? "text-success" : "text-destructive",
         )}
       >
         <Arrow className="size-3.5" aria-hidden />

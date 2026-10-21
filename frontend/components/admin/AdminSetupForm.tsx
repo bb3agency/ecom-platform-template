@@ -141,10 +141,10 @@ export function AdminSetupForm({ token }: AdminSetupFormProps) {
     (otpChannel === "email" || phone.trim().length > 0);
 
   return (
-    <section className="mx-auto grid w-full max-w-xl gap-5 rounded-xl border border-[#efe8e4] bg-white p-6 shadow-sm">
+    <section className="mx-auto grid w-full max-w-xl gap-5 rounded-xl border border-border bg-white p-6 shadow-sm">
       <div>
-        <h1 className="font-heading text-2xl font-semibold text-[#23403d]">Admin setup</h1>
-        <p className="mt-1 text-sm text-[#769b97]">
+        <h1 className="font-heading text-2xl font-semibold text-primary">Admin setup</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
           Complete your invite onboarding using OTP via{" "}
           {otpChannel === "sms" ? "SMS" : otpChannel === "whatsapp" ? "WhatsApp" : "email"}.
         </p>
@@ -154,68 +154,68 @@ export function AdminSetupForm({ token }: AdminSetupFormProps) {
       <div className="flex items-center gap-2">
         <div
           className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold ${
-            step === "details"
-              ? "bg-[#23403d] text-white"
-              : "bg-[#23403d] text-white"
+ step === "details"
+              ? "bg-primary text-white"
+              : "bg-primary text-white"
           }`}
         >
           {step === "otp" ? <CheckCircle2 className="h-4 w-4" /> : "1"}
         </div>
-        <div className="h-0.5 flex-1 bg-[#efe8e4]">
+        <div className="h-0.5 flex-1 bg-border">
           <div
-            className={`h-full bg-[#23403d] transition-all ${
-              step === "otp" ? "w-full" : "w-0"
+            className={`h-full bg-primary transition-all ${
+ step === "otp" ? "w-full" : "w-0"
             }`}
           />
         </div>
         <div
           className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold ${
-            step === "otp"
-              ? "bg-[#23403d] text-white"
-              : "border border-[#efe8e4] text-[#769b97]"
+ step === "otp"
+              ? "bg-primary text-white"
+              : "border border-border text-muted-foreground"
           }`}
         >
           2
         </div>
       </div>
-      <div className="flex justify-between text-xs text-[#769b97]">
+      <div className="flex justify-between text-xs text-muted-foreground">
         <span>Account details</span>
         <span>Verify OTP</span>
       </div>
 
       {step === "details" ? (
         <div className="grid min-w-0 grid-cols-1 gap-4">
-          <label className="grid min-w-0 grid-cols-1 gap-1.5 text-sm font-medium text-[#23403d]">
+          <label className="grid min-w-0 grid-cols-1 gap-1.5 text-sm font-medium text-primary">
             <span className="flex items-center gap-1.5">
-              <User className="h-3.5 w-3.5 text-[#769b97]" />
+              <User className="h-3.5 w-3.5 text-muted-foreground" />
               Full name
             </span>
             <input
               value={name}
               onChange={(event) => setName(event.target.value)}
               placeholder="John Doe"
-              className="h-11 rounded-lg border border-[#efe8e4] bg-[#faf3ef]/30 px-3 text-sm text-[#23403d] placeholder:text-[#769b97]/60 focus:border-[#23403d] focus:outline-none"
+              className="h-11 rounded-lg border border-border bg-muted/30 px-3 text-sm text-primary placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none"
               required
             />
           </label>
 
-          <label className="grid min-w-0 grid-cols-1 gap-1.5 text-sm font-medium text-[#23403d]">
+          <label className="grid min-w-0 grid-cols-1 gap-1.5 text-sm font-medium text-primary">
             <span className="flex items-center gap-1.5">
-              <Phone className="h-3.5 w-3.5 text-[#769b97]" />
+              <Phone className="h-3.5 w-3.5 text-muted-foreground" />
               Phone {otpChannel === "email" ? "(optional)" : "(required)"}
             </span>
             <input
               value={phone}
               onChange={(event) => setPhone(event.target.value)}
               placeholder="+91 98765 43210"
-              className="h-11 rounded-lg border border-[#efe8e4] bg-[#faf3ef]/30 px-3 text-sm text-[#23403d] placeholder:text-[#769b97]/60 focus:border-[#23403d] focus:outline-none"
+              className="h-11 rounded-lg border border-border bg-muted/30 px-3 text-sm text-primary placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none"
               required={otpChannel !== "email"}
             />
           </label>
 
-          <label className="grid min-w-0 grid-cols-1 gap-1.5 text-sm font-medium text-[#23403d]">
+          <label className="grid min-w-0 grid-cols-1 gap-1.5 text-sm font-medium text-primary">
             <span className="flex items-center gap-1.5">
-              <Lock className="h-3.5 w-3.5 text-[#769b97]" />
+              <Lock className="h-3.5 w-3.5 text-muted-foreground" />
               Password
             </span>
             <div className="relative">
@@ -225,14 +225,14 @@ export function AdminSetupForm({ token }: AdminSetupFormProps) {
                 type={showPassword ? "text" : "password"}
                 placeholder="Min. 8 characters"
                 minLength={8}
-                className="h-11 w-full rounded-lg border border-[#efe8e4] bg-[#faf3ef]/30 px-3 pr-10 text-sm text-[#23403d] placeholder:text-[#769b97]/60 focus:border-[#23403d] focus:outline-none"
+                className="h-11 w-full rounded-lg border border-border bg-muted/30 px-3 pr-10 text-sm text-primary placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none"
                 required
               />
               <button
                 type="button"
                 tabIndex={-1}
                 onClick={() => setShowPassword((v) => !v)}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#769b97] hover:text-[#23403d]"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary"
                 aria-label={showPassword ? "Hide password" : "Show password"}
               >
                 {showPassword ? (
@@ -248,7 +248,7 @@ export function AdminSetupForm({ token }: AdminSetupFormProps) {
             type="button"
             onClick={requestOtp}
             disabled={isLoading || !canSubmitDetails}
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[#23403d] px-4 text-sm font-medium text-white transition-colors hover:bg-[#1a3330] disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-white transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isLoading ? (
               <>
@@ -262,20 +262,20 @@ export function AdminSetupForm({ token }: AdminSetupFormProps) {
         </div>
       ) : (
         <div className="grid min-w-0 grid-cols-1 gap-4">
-          <p className="text-sm text-[#769b97]">
+          <p className="text-sm text-muted-foreground">
             Enter the 6-digit OTP sent to{" "}
             {otpChannel === "email" ? "your email" : "your phone"}.
             {otpRemainingSec > 0 ? (
-              <span className="ml-1 text-amber-600">
+              <span className="ml-1 text-warning">
                 Expires in {Math.floor(otpRemainingSec / 60)}:
                 {(otpRemainingSec % 60).toString().padStart(2, "0")}
               </span>
             ) : expiresAt ? (
-              <span className="ml-1 text-red-600">Expired</span>
+              <span className="ml-1 text-destructive">Expired</span>
             ) : null}
           </p>
 
-          <label className="grid min-w-0 grid-cols-1 gap-1.5 text-sm font-medium text-[#23403d]">
+          <label className="grid min-w-0 grid-cols-1 gap-1.5 text-sm font-medium text-primary">
             OTP code
             <input
               value={otp}
@@ -285,7 +285,7 @@ export function AdminSetupForm({ token }: AdminSetupFormProps) {
               placeholder="000000"
               minLength={6}
               maxLength={6}
-              className="h-11 rounded-lg border border-[#efe8e4] bg-[#faf3ef]/30 px-3 text-center text-sm tracking-[0.3em] text-[#23403d] placeholder:text-[#769b97]/60 focus:border-[#23403d] focus:outline-none"
+              className="h-11 rounded-lg border border-border bg-muted/30 px-3 text-center text-sm tracking-[0.3em] text-primary placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none"
               required
             />
           </label>
@@ -293,7 +293,7 @@ export function AdminSetupForm({ token }: AdminSetupFormProps) {
           <div className="flex items-center justify-between">
             <button
               type="button"
-              className="text-sm text-[#769b97] underline-offset-4 hover:underline"
+              className="text-sm text-muted-foreground underline-offset-4 hover:underline"
               onClick={() => setStep("details")}
             >
               Back to details
@@ -302,7 +302,7 @@ export function AdminSetupForm({ token }: AdminSetupFormProps) {
               type="button"
               disabled={resendCooldown > 0}
               onClick={() => void handleResendOtp()}
-              className="text-sm text-[#23403d] underline-offset-4 hover:underline disabled:text-[#769b97] disabled:no-underline"
+              className="text-sm text-primary underline-offset-4 hover:underline disabled:text-muted-foreground disabled:no-underline"
             >
               {resendCooldown > 0
                 ? `Resend in ${resendCooldown}s`
@@ -314,7 +314,7 @@ export function AdminSetupForm({ token }: AdminSetupFormProps) {
             type="button"
             onClick={consumeInvite}
             disabled={isLoading || !isCompleteOtpCode(otp)}
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[#23403d] px-4 text-sm font-medium text-white transition-colors hover:bg-[#1a3330] disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-white transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isLoading ? (
               <>
@@ -332,7 +332,7 @@ export function AdminSetupForm({ token }: AdminSetupFormProps) {
       )}
 
       {error ? (
-        <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {error}
         </p>
       ) : null}

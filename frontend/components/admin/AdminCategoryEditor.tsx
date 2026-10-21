@@ -30,7 +30,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 
 const inputClass =
-  "h-10 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none disabled:cursor-not-allowed disabled:opacity-60";
+  "h-10 w-full rounded-lg border border-input bg-card px-3 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none disabled:cursor-not-allowed disabled:opacity-60";
 
 function slugify(value: string): string {
   return value
@@ -435,6 +435,7 @@ export function AdminCategoryEditor({ categoryId }: AdminCategoryEditorProps) {
                     src={pendingPreviewUrl ?? resolveProductImageUrl(imageUrl.trim())}
                     alt={name || "Category image preview"}
                     fill
+                    sizes="96px"
                     className="object-cover"
                     unoptimized={Boolean(pendingPreviewUrl)}
                   />

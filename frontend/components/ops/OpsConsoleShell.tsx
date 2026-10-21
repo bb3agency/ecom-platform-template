@@ -1,21 +1,60 @@
 "use client";
 
+/**
+ * Ops console chrome. Spec: docs/CONSOLE_DESIGN_SYSTEM.md → Shell.
+ *
+ *  - lg+: 240px sidebar (collapsible to a 64px icon rail) + 56px top bar.
+ *  - below lg: top bar + bottom tab bar (4 most-used destinations + "More" sheet).
+ *  - `main` is the only scroll container; the page never scrolls sideways.
+ *
+ * The session is cookie-only (`GET /ops/session` with credentials: "include");
+ * a 401 sends the operator to /ops/login before any console UI renders.
+ * The traffic mode is polled here so every screen shows a maintenance warning.
+ */
+
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-import { LogOut, Menu, Shield, X } from "lucide-react";
-import { OPS_NAV_ITEMS, isOpsNavActive } from "@/components/ops/ops-nav-config";
+import { useCallback, useEffect, useState } from "react";
+import { LogOut, Menu, PanelLeftClose, PanelLeftOpen, ShieldCheck, TriangleAlert } from "lucide-react";
+import { OPS_NAV_GROUPS, OPS_TAB_ITEMS, isOpsNavActive, type OpsNavItem } from "@/components/ops/ops-nav-config";
 import { OpsSessionProvider } from "@/components/ops/OpsSessionProvider";
-import { OpsBadge, OpsLoadingBlock } from "@/components/ops/ui/ops-ui";
+import { OPS_POPUP_CLASS, formatClock, useSecondsUntil } from "@/components/ops/ui/ops-ui";
+import { Monogram, StatusDot } from "@/components/ui/console";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { cn } from "@/lib/utils";
+import { loadShedLabel, loadShedTone } from "@/lib/ops-status-maps";
+import {
+  getOpsLoadShedStatusClient,
   getOpsSessionClient,
   isOpsUnauthorisedError,
   logoutOpsSession,
+  type OpsLoadShedStatus,
   type OpsSession,
 } from "@/lib/ops-client-api";
+
+const SIDEBAR_STORAGE_KEY = "ops-console:sidebar-collapsed";
+const LOAD_SHED_POLL_MS = 30_000;
+const LOAD_SHED_PENDING_POLL_MS = 5_000;
+
+function readCollapsed(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(SIDEBAR_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
 
 interface OpsConsoleShellProps {
   children: ReactNode;
@@ -25,71 +64,63 @@ export function OpsConsoleShell({ children }: OpsConsoleShellProps) {
   const router = useRouter();
   const pathname = usePathname();
   const [session, setSession] = useState<OpsSession | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [sessionError, setSessionError] = useState<string | null>(null);
+  const [loadShed, setLoadShed] = useState<OpsLoadShedStatus | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
-  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(readCollapsed);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
-
-    async function load() {
-      try {
-        const nextSession = await getOpsSessionClient();
+    getOpsSessionClient()
+      .then((next) => {
         if (!cancelled) {
-          setSession(nextSession);
+          setSession(next);
+          setSessionError(null);
         }
-      } catch (err) {
-        if (!cancelled) {
-          setSession(null);
-          if (isOpsUnauthorisedError(err)) {
-            router.replace("/ops/login");
-          }
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        if (isOpsUnauthorisedError(err)) {
+          router.replace("/ops/login");
+          return;
         }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    }
-
-    void load();
+        setSessionError("The ops API didn't respond. Check that the backend is running, then try again.");
+      });
     return () => {
       cancelled = true;
     };
+  }, [router, attempt]);
+
+  const refreshLoadShed = useCallback(async () => {
+    try {
+      setLoadShed(await getOpsLoadShedStatusClient());
+    } catch (err) {
+      if (isOpsUnauthorisedError(err)) router.replace("/ops/login");
+      // Other failures: keep the last known mode; the next poll retries.
+    }
   }, [router]);
 
-  const closeMobileNav = () => setMobileNavOpen(false);
-
+  const pending = loadShed?.mode === "maintenance" && loadShed.phase === "pending";
   useEffect(() => {
-    if (!mobileNavOpen) {
-      return;
-    }
-    const scrollY = window.scrollY;
-    const { style } = document.body;
-    const previous = {
-      position: style.position,
-      top: style.top,
-      left: style.left,
-      right: style.right,
-      overflow: style.overflow,
-      width: style.width,
-    };
-    style.position = "fixed";
-    style.top = `-${scrollY}px`;
-    style.left = "0";
-    style.right = "0";
-    style.width = "100%";
-    style.overflow = "hidden";
-    return () => {
-      style.position = previous.position;
-      style.top = previous.top;
-      style.left = previous.left;
-      style.right = previous.right;
-      style.overflow = previous.overflow;
-      style.width = previous.width;
-      window.scrollTo(0, scrollY);
-    };
-  }, [mobileNavOpen]);
+    if (!session) return;
+    void refreshLoadShed();
+    const timer = window.setInterval(() => void refreshLoadShed(), pending ? LOAD_SHED_PENDING_POLL_MS : LOAD_SHED_POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [session, pending, refreshLoadShed]);
+
+  function toggleCollapsed() {
+    setCollapsed((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem(SIDEBAR_STORAGE_KEY, next ? "1" : "0");
+      } catch {
+        // Storage blocked — the preference just won't persist.
+      }
+      return next;
+    });
+  }
 
   async function handleLogout() {
     setLoggingOut(true);
@@ -97,239 +128,301 @@ export function OpsConsoleShell({ children }: OpsConsoleShellProps) {
       await logoutOpsSession();
     } finally {
       router.replace("/ops/login");
-      setLoggingOut(false);
     }
-  }
-
-  if (loading) {
-    return (
-      <div className="dark ops-console flex min-h-dvh w-full items-center justify-center bg-background">
-        <OpsLoadingBlock label="Authenticating ops session…" />
-      </div>
-    );
   }
 
   if (!session) {
     return (
-      <div className="dark ops-console flex min-h-dvh w-full items-center justify-center bg-background">
-        <OpsLoadingBlock label="Redirecting to sign in…" />
+      <div className="console-theme ops-console flex min-h-dvh w-full items-center justify-center bg-background px-4 text-foreground">
+        {sessionError ? (
+          <div className="flex max-w-sm flex-col items-center gap-3 text-center" role="alert">
+            <TriangleAlert className="size-6 text-destructive" aria-hidden />
+            <p className="text-sm text-foreground">{sessionError}</p>
+            <Button type="button" variant="outline" onClick={() => setAttempt((n) => n + 1)}>
+              Try again
+            </Button>
+          </div>
+        ) : (
+          <p className="flex items-center gap-2 text-sm text-muted-foreground" aria-live="polite">
+            <span className="size-2 animate-pulse rounded-full bg-primary" aria-hidden />
+            Checking your ops session…
+          </p>
+        )}
       </div>
     );
   }
 
-  const canWrite = session.permissions.includes("ops:write");
-
   return (
-    <OpsSessionProvider session={session}>
-      <div className="dark ops-console flex h-dvh max-h-dvh w-full max-w-[100vw] overflow-hidden bg-background text-foreground">
+    <OpsSessionProvider session={session} loadShed={loadShed} refreshLoadShed={refreshLoadShed}>
+      <div className="console-theme ops-console flex h-dvh w-full overflow-hidden bg-background text-foreground">
         {/* Desktop sidebar */}
         <aside
-          className="hidden h-full min-h-0 w-64 shrink-0 flex-col overflow-hidden border-r border-border/60 bg-sidebar lg:flex"
           aria-label="Ops navigation"
-        >
-          <OpsSidebarBrand />
-          <nav className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-3 py-4 [-webkit-overflow-scrolling:touch]">
-            <div className="flex flex-col gap-1">
-            {OPS_NAV_ITEMS.map((item) => (
-              <OpsNavLink
-                key={item.href}
-                item={item}
-                active={isOpsNavActive(pathname, item.href)}
-                onNavigate={closeMobileNav}
-              />
-            ))}
-            </div>
-          </nav>
-          <OpsSidebarFooter
-            session={session}
-            canWrite={canWrite}
-            loggingOut={loggingOut}
-            onLogout={() => void handleLogout()}
-          />
-        </aside>
-
-        {/* Mobile drawer — scroll only inside nav; backdrop does not scroll */}
-        {mobileNavOpen ? (
-          <button
-            type="button"
-            className="fixed inset-0 z-40 touch-none bg-background/80 backdrop-blur-sm lg:hidden"
-            aria-label="Close navigation"
-            onClick={() => setMobileNavOpen(false)}
-          />
-        ) : null}
-        <aside
           className={cn(
-            "fixed inset-y-0 left-0 z-50 flex h-dvh max-h-dvh w-[min(20rem,calc(100vw-1rem))] max-w-full flex-col overflow-hidden border-r border-border/60 bg-sidebar shadow-xl transition-transform duration-300 lg:hidden",
-            mobileNavOpen ? "translate-x-0" : "pointer-events-none -translate-x-full",
+            "hidden h-full min-h-0 shrink-0 flex-col border-r border-border bg-sidebar transition-[width] duration-200 lg:flex",
+            collapsed ? "w-16" : "w-60",
           )}
-          aria-hidden={!mobileNavOpen}
-          aria-label="Ops mobile navigation"
         >
-          <div className="flex shrink-0 items-center justify-between border-b border-border/60 px-4 py-4 pt-[max(1rem,env(safe-area-inset-top))]">
-            <OpsSidebarBrand compact />
+          <div className={cn("flex h-14 shrink-0 items-center gap-2.5 border-b border-border", collapsed ? "justify-center px-2" : "px-4")}>
+            <BrandMark />
+            {!collapsed ? (
+              <div className="min-w-0 leading-tight">
+                <p className="truncate text-sm font-semibold text-foreground">Ops console</p>
+                <p className="truncate text-xs text-muted-foreground">Platform control</p>
+              </div>
+            ) : null}
+          </div>
+          <nav className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-3">
+            <NavGroups pathname={pathname} collapsed={collapsed} />
+          </nav>
+          <div className={cn("shrink-0 border-t border-border p-2", collapsed ? "flex justify-center" : "")}>
             <Button
               type="button"
               variant="ghost"
-              size="icon"
-              onClick={() => setMobileNavOpen(false)}
-              aria-label="Close menu"
+              onClick={toggleCollapsed}
+              aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+              title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+              className={cn("h-9 gap-2 text-muted-foreground", collapsed ? "w-9 px-0" : "w-full justify-start px-2.5")}
             >
-              <X className="size-5" />
+              {collapsed ? <PanelLeftOpen aria-hidden /> : <PanelLeftClose aria-hidden />}
+              {!collapsed ? <span>Collapse</span> : null}
             </Button>
-          </div>
-          <nav className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-3 py-4 [-webkit-overflow-scrolling:touch]">
-            <div className="flex flex-col gap-1 pb-2">
-              {OPS_NAV_ITEMS.map((item) => (
-                <OpsNavLink
-                  key={item.href}
-                  item={item}
-                  active={isOpsNavActive(pathname, item.href)}
-                  onNavigate={closeMobileNav}
-                />
-              ))}
-            </div>
-          </nav>
-          <div className="shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-            <OpsSidebarFooter
-              session={session}
-              canWrite={canWrite}
-              loggingOut={loggingOut}
-              onLogout={() => void handleLogout()}
-            />
           </div>
         </aside>
 
-        <div
-          className={cn(
-            "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
-            mobileNavOpen && "max-lg:pointer-events-none max-lg:touch-none",
-          )}
-          aria-hidden={mobileNavOpen}
-        >
-          <header className="z-30 flex shrink-0 items-center justify-between gap-2 border-b border-border/60 bg-background/90 px-3 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] sm:gap-3 sm:px-4 lg:px-8">
-            <div className="flex items-center gap-3">
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                className="lg:hidden"
-                onClick={() => setMobileNavOpen(true)}
-                aria-label="Open navigation"
-              >
-                <Menu className="size-5" />
-              </Button>
-              <div className="lg:hidden">
-                <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
-                  Control plane
-                </p>
-                <p className="font-heading text-sm font-semibold">Ops Console</p>
-              </div>
-            </div>
-            <div className="flex min-w-0 items-center gap-2">
-              <OpsBadge tone={canWrite ? "info" : "muted"}>
-                {canWrite ? "ops:write" : "ops:read"}
-              </OpsBadge>
-              <span className="hidden truncate text-sm text-muted-foreground sm:inline">
-                {session.email}
-              </span>
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border bg-card px-4 sm:px-6 lg:px-8">
+            <Link href="/ops" className="flex min-w-0 items-center gap-2.5 lg:hidden" aria-label="Ops console overview">
+              <BrandMark />
+              <span className="truncate text-sm font-semibold text-foreground">Ops console</span>
+            </Link>
+            <div className="hidden min-w-0 lg:block" />
+            <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+              {loadShed ? (
+                <Link
+                  href="/ops/load-shed"
+                  className="flex h-9 min-w-0 items-center rounded-full border border-border px-3 text-sm transition-colors hover:bg-muted"
+                  title="Traffic mode"
+                >
+                  <StatusDot tone={loadShedTone(loadShed.mode)} className="min-w-0">
+                    <span className="truncate">
+                      <span className="sr-only">Traffic mode: </span>
+                      {loadShedLabel(loadShed)}
+                    </span>
+                  </StatusDot>
+                </Link>
+              ) : null}
+              <AccountMenu session={session} loggingOut={loggingOut} onLogout={() => void handleLogout()} />
             </div>
           </header>
 
-          <main className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain px-3 py-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] [-webkit-overflow-scrolling:touch] sm:px-4 sm:py-6 lg:px-8 lg:py-10">
-            <div className="mx-auto w-full min-w-0 max-w-6xl">{children}</div>
+          {loadShed?.mode === "maintenance" ? <MaintenanceStrip status={loadShed} /> : null}
+
+          <main
+            id="ops-main"
+            className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-4 py-5 sm:px-6 sm:py-6 lg:px-8 lg:py-8"
+          >
+            {children}
           </main>
+
+          {/* Phone/tablet tab bar */}
+          <nav aria-label="Ops sections" className="console-tabbar shrink-0 border-t border-border bg-card lg:hidden">
+            <ul className="mx-auto grid max-w-lg grid-cols-5">
+              {OPS_TAB_ITEMS.map((item) => (
+                <li key={item.href} className="min-w-0">
+                  <TabLink item={item} active={isOpsNavActive(pathname, item.href)} />
+                </li>
+              ))}
+              <li className="min-w-0">
+                <button
+                  type="button"
+                  onClick={() => setMoreOpen(true)}
+                  aria-haspopup="dialog"
+                  className={cn(
+                    "flex h-14 w-full flex-col items-center justify-center gap-0.5 text-xs font-medium transition-colors",
+                    isMoreActive(pathname) ? "text-primary" : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  <Menu className="size-5" aria-hidden />
+                  More
+                </button>
+              </li>
+            </ul>
+          </nav>
         </div>
+
+        <Sheet open={moreOpen} onOpenChange={setMoreOpen}>
+          <SheetContent side="bottom" className={OPS_POPUP_CLASS}>
+            <SheetHeader>
+              <SheetTitle>All sections</SheetTitle>
+            </SheetHeader>
+            <SheetBody className="px-3 pb-6">
+              <NavGroups pathname={pathname} collapsed={false} onNavigate={() => setMoreOpen(false)} />
+            </SheetBody>
+          </SheetContent>
+        </Sheet>
       </div>
     </OpsSessionProvider>
   );
 }
 
-interface OpsSidebarBrandProps {
-  compact?: boolean;
+function isMoreActive(pathname: string): boolean {
+  return !OPS_TAB_ITEMS.some((item) => isOpsNavActive(pathname, item.href));
 }
 
-function OpsSidebarBrand({ compact = false }: OpsSidebarBrandProps) {
+function BrandMark() {
   return (
-    <div className={cn("border-b border-border/60 px-4", compact ? "py-0" : "py-5")}>
-      <div className="flex items-center gap-3">
-        <div className="flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
-          <Shield className="size-5" aria-hidden />
+    <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground" aria-hidden>
+      <ShieldCheck className="size-4" />
+    </span>
+  );
+}
+
+function NavGroups({
+  pathname,
+  collapsed,
+  onNavigate,
+}: {
+  pathname: string;
+  collapsed: boolean;
+  onNavigate?: () => void;
+}) {
+  return (
+    <div className="flex flex-col gap-4">
+      {OPS_NAV_GROUPS.map((group) => (
+        <div key={group.label} className="flex flex-col gap-0.5">
+          {collapsed ? (
+            <span className="mx-auto mb-1 h-px w-6 bg-border first:hidden" aria-hidden />
+          ) : (
+            <p className="px-2.5 pb-1 text-xs font-medium text-muted-foreground">{group.label}</p>
+          )}
+          {group.items.map((item) => (
+            <NavLink
+              key={item.href}
+              item={item}
+              active={isOpsNavActive(pathname, item.href)}
+              collapsed={collapsed}
+              onNavigate={onNavigate}
+            />
+          ))}
         </div>
-        {!compact ? (
-          <div>
-            <p className="font-heading text-base font-semibold">Ops Console</p>
-            <p className="text-xs text-muted-foreground">Platform control plane</p>
-          </div>
-        ) : null}
-      </div>
+      ))}
     </div>
   );
 }
 
-interface OpsNavLinkProps {
-  item: (typeof OPS_NAV_ITEMS)[number];
+function NavLink({
+  item,
+  active,
+  collapsed,
+  onNavigate,
+}: {
+  item: OpsNavItem;
   active: boolean;
+  collapsed: boolean;
   onNavigate?: () => void;
-}
-
-function OpsNavLink({ item, active, onNavigate }: OpsNavLinkProps) {
+}) {
   const Icon = item.icon;
   return (
     <Link
       href={item.href}
       onClick={onNavigate}
+      aria-current={active ? "page" : undefined}
+      title={collapsed ? item.label : undefined}
+      aria-label={collapsed ? item.label : undefined}
       className={cn(
-        "group flex items-start gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors",
+        "relative flex h-10 items-center gap-3 rounded-lg text-sm transition-colors",
+        collapsed ? "mx-auto w-10 justify-center" : "px-2.5",
         active
-          ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm"
-          : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground",
+          ? "bg-sidebar-accent font-medium text-foreground"
+          : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground",
       )}
     >
-      <Icon
-        className={cn(
-          "mt-0.5 size-4 shrink-0",
-          active ? "text-primary" : "text-muted-foreground group-hover:text-foreground",
-        )}
-        aria-hidden
-      />
-      <span className="grid min-w-0 grid-cols-1 gap-0.5">
-        <span className="font-medium leading-none">{item.label}</span>
-        <span className="text-xs leading-snug opacity-80">{item.description}</span>
-      </span>
+      {active && !collapsed ? (
+        <span className="absolute inset-y-2 left-0 w-0.5 rounded-full bg-primary" aria-hidden />
+      ) : null}
+      <Icon className={cn("size-4 shrink-0", active ? "text-primary" : "")} aria-hidden />
+      {!collapsed ? <span className="truncate">{item.label}</span> : null}
     </Link>
   );
 }
 
-interface OpsSidebarFooterProps {
-  session: OpsSession;
-  canWrite: boolean;
-  loggingOut: boolean;
-  onLogout: () => void;
+function TabLink({ item, active }: { item: OpsNavItem; active: boolean }) {
+  const Icon = item.icon;
+  return (
+    <Link
+      href={item.href}
+      aria-current={active ? "page" : undefined}
+      className={cn(
+        "flex h-14 w-full flex-col items-center justify-center gap-0.5 text-xs font-medium transition-colors",
+        active ? "text-primary" : "text-muted-foreground hover:text-foreground",
+      )}
+    >
+      <Icon className="size-5" aria-hidden />
+      <span className="max-w-full truncate px-1">{item.shortLabel ?? item.label}</span>
+    </Link>
+  );
 }
 
-function OpsSidebarFooter({ session, canWrite, loggingOut, onLogout }: OpsSidebarFooterProps) {
+function AccountMenu({
+  session,
+  loggingOut,
+  onLogout,
+}: {
+  session: OpsSession;
+  loggingOut: boolean;
+  onLogout: () => void;
+}) {
+  const canWrite = session.permissions.includes("ops:write");
   return (
-    <div className="border-t border-border/60 p-4">
-      <div className="mb-3 rounded-lg bg-muted/40 px-3 py-2.5">
-        <p className="truncate text-sm font-medium text-foreground">{session.name}</p>
-        <p className="truncate text-xs text-muted-foreground">{session.email}</p>
-        <div className="mt-2 flex flex-wrap gap-1">
-          <OpsBadge tone={canWrite ? "info" : "muted"}>
-            {canWrite ? "Write access" : "Read only"}
-          </OpsBadge>
-          {session.mfaEnabled ? <OpsBadge tone="success">MFA</OpsBadge> : null}
-        </div>
-      </div>
-      <Button
-        type="button"
-        variant="outline"
-        className="w-full justify-center gap-2"
-        onClick={onLogout}
-        disabled={loggingOut}
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        className="flex h-9 min-w-0 items-center gap-2 rounded-full pr-1 text-sm outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring sm:pr-3"
+        aria-label={`Account: ${session.name}`}
       >
-        <LogOut className="size-4" />
-        {loggingOut ? "Signing out…" : "Sign out"}
-      </Button>
+        <Monogram name={session.name} className="bg-primary/10 text-primary" />
+        <span className="hidden max-w-40 truncate font-medium text-foreground sm:inline">{session.name}</span>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className={cn(OPS_POPUP_CLASS, "w-64")}>
+        <DropdownMenuGroup>
+          <DropdownMenuLabel className="flex flex-col gap-0.5 px-2 py-2">
+            <span className="truncate text-sm font-medium text-foreground">{session.name}</span>
+            <span className="truncate text-xs font-normal text-muted-foreground" title={session.email}>
+              {session.email}
+            </span>
+            <span className="pt-1 text-xs font-normal text-muted-foreground">
+              {canWrite ? "Can view and change settings" : "View only"}
+              {session.mfaEnabled ? " · MFA on" : ""}
+            </span>
+          </DropdownMenuLabel>
+        </DropdownMenuGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={onLogout} disabled={loggingOut} className="h-9 px-2">
+          <LogOut aria-hidden />
+          {loggingOut ? "Signing out…" : "Sign out"}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/** Console-wide warning while maintenance is starting or active. */
+function MaintenanceStrip({ status }: { status: OpsLoadShedStatus }) {
+  const seconds = useSecondsUntil(status.phase === "pending" ? status.pendingUntil : null);
+  const pending = status.phase === "pending";
+  return (
+    <div className="console-notice shrink-0 border-x-0 border-t-0 px-4 py-2 text-sm sm:px-6 lg:px-8" data-tone={pending ? "warning" : "danger"} role="status">
+      <p className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+        <TriangleAlert className="size-4 shrink-0" aria-hidden />
+        <span className="font-medium">
+          {pending
+            ? `Storefront goes into maintenance in ${seconds != null ? formatClock(seconds) : "a moment"}.`
+            : "Storefront is in maintenance — shoppers see the maintenance page."}
+        </span>
+        <Link href="/ops/load-shed" className="font-medium text-primary underline-offset-4 hover:underline">
+          {pending ? "Cancel or change" : "Restore traffic"}
+        </Link>
+      </p>
     </div>
   );
 }

@@ -17,10 +17,10 @@ export function AdminBadge({
   status: "success" | "warning" | "destructive" | "default";
 }) {
   const styles = {
-    success: "bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/20",
-    warning: "bg-amber-500/10 text-amber-500 hover:bg-amber-500/20",
-    destructive: "bg-red-500/10 text-red-500 hover:bg-red-500/20",
-    default: "bg-slate-500/10 text-slate-500 hover:bg-slate-500/20",
+    success: "bg-success/10 text-success hover:bg-success/10",
+    warning: "bg-warning-soft text-warning hover:bg-warning-soft",
+    destructive: "bg-destructive/10 text-destructive hover:bg-destructive/10",
+    default: "bg-foreground text-muted-foreground hover:bg-foreground",
   };
 
   return (

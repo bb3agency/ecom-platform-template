@@ -2,11 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Check, CircleAlert, XCircle, Clock } from "lucide-react";
-import { AdminStatusBadge } from "@/components/admin/AdminStatusBadge";
+import { Panel } from "@/components/ui/console";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuthenticatedApi } from "@/hooks/use-authenticated-api";
 import { ensureArray, type AdminOrderTimeline } from "@/lib/admin-api";
-import { formatAdminDate, orderStatusTone } from "@/lib/admin-format";
+import { formatAdminDateCompact, orderStatusDisplay, sentenceCaseEnum } from "@/lib/admin-format";
 import { getApiErrorMessage } from "@/lib/error-messages";
 
 interface AdminOrderTimelinePanelProps {
@@ -19,16 +19,16 @@ interface TimelineNodeStyle {
 }
 
 const NODE_STYLE: Record<string, TimelineNodeStyle> = {
-  CONFIRMED: { circle: "bg-emerald-500/10 text-emerald-600", icon: Check },
-  DELIVERED: { circle: "bg-emerald-500/10 text-emerald-600", icon: Check },
-  SHIPPED: { circle: "bg-sky-500/10 text-sky-600", icon: Check },
-  PROCESSING: { circle: "bg-sky-500/10 text-sky-600", icon: Check },
-  OUT_FOR_DELIVERY: { circle: "bg-sky-500/10 text-sky-600", icon: Check },
-  PICKED_UP: { circle: "bg-sky-500/10 text-sky-600", icon: Check },
-  CANCELLED: { circle: "bg-red-500/10 text-red-600", icon: XCircle },
-  REFUNDED: { circle: "bg-red-500/10 text-red-600", icon: CircleAlert },
-  PAYMENT_FAILED: { circle: "bg-red-500/10 text-red-600", icon: XCircle },
-  PENDING_PAYMENT: { circle: "bg-amber-500/10 text-amber-600", icon: Clock },
+  CONFIRMED: { circle: "bg-success/10 text-success", icon: Check },
+  DELIVERED: { circle: "bg-success/10 text-success", icon: Check },
+  SHIPPED: { circle: "bg-info-soft text-info", icon: Check },
+  PROCESSING: { circle: "bg-info-soft text-info", icon: Check },
+  OUT_FOR_DELIVERY: { circle: "bg-info-soft text-info", icon: Check },
+  PICKED_UP: { circle: "bg-info-soft text-info", icon: Check },
+  CANCELLED: { circle: "bg-destructive/10 text-destructive", icon: XCircle },
+  REFUNDED: { circle: "bg-destructive/10 text-destructive", icon: CircleAlert },
+  PAYMENT_FAILED: { circle: "bg-destructive/10 text-destructive", icon: XCircle },
+  PENDING_PAYMENT: { circle: "bg-warning-soft text-warning", icon: Clock },
 };
 
 export function AdminOrderTimelinePanel({ orderId }: AdminOrderTimelinePanelProps) {
@@ -58,29 +58,12 @@ export function AdminOrderTimelinePanel({ orderId }: AdminOrderTimelinePanelProp
   const events = ensureArray<AdminOrderTimeline["timeline"][number]>(data?.timeline);
 
   return (
-    <section className="rounded-xl border border-border bg-card p-5">
-      <div className="mb-4 flex items-start justify-between gap-2">
-        <div>
-          <h2 className="font-heading text-sm font-semibold">Status timeline</h2>
-          {data ? (
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              Current: {data.currentStatus}
-            </p>
-          ) : null}
-        </div>
-        {data ? (
-          <AdminStatusBadge
-            label={data.currentStatus}
-            tone={orderStatusTone(data.currentStatus)}
-          />
-        ) : null}
-      </div>
-
+    <Panel title="History">
       {loading ? (
         <div className="space-y-4">
           {[1, 2, 3].map((i) => (
             <div key={i} className="flex gap-3">
-              <Skeleton className="mt-0.5 h-6 w-6 shrink-0 rounded-full" />
+              <Skeleton className="mt-0.5 size-6 shrink-0 rounded-full" />
               <div className="grid min-w-0 flex-1 grid-cols-1 gap-1.5">
                 <Skeleton className="h-3.5 w-24" />
                 <Skeleton className="h-3 w-32" />
@@ -89,9 +72,9 @@ export function AdminOrderTimelinePanel({ orderId }: AdminOrderTimelinePanelProp
           ))}
         </div>
       ) : error ? (
-        <p className="text-xs text-destructive">{error}</p>
+        <p className="text-sm text-destructive">{error}</p>
       ) : events.length === 0 ? (
-        <p className="text-xs text-muted-foreground">No status transitions recorded.</p>
+        <p className="text-sm text-muted-foreground">No status changes yet.</p>
       ) : (
         <ol>
           {events.map((event, idx) => {
@@ -101,35 +84,23 @@ export function AdminOrderTimelinePanel({ orderId }: AdminOrderTimelinePanelProp
             };
             const Icon = node.icon;
             const isLast = idx === events.length - 1;
+            const note = cleanNote(event.note);
             return (
               <li key={event.id} className="relative flex gap-3">
                 <div className="flex flex-col items-center">
-                  <span
-                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${node.circle}`}
-                  >
-                    <Icon className="h-3.5 w-3.5" />
+                  <span className={`flex size-6 shrink-0 items-center justify-center rounded-full ${node.circle}`}>
+                    <Icon className="size-3.5" aria-hidden />
                   </span>
-                  {!isLast ? (
-                    <span className="my-1 min-h-3 flex-1 border-l border-border" />
-                  ) : null}
+                  {!isLast ? <span className="my-1 min-h-3 flex-1 border-l border-border" /> : null}
                 </div>
                 <div className={`min-w-0 flex-1 ${isLast ? "" : "pb-4"}`}>
                   <p className="text-sm font-medium leading-tight text-foreground">
-                    {event.toStatus.replace(/_/g, " ")}
+                    {orderStatusDisplay(event.toStatus).label}
                   </p>
-                  {event.fromStatus ? (
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      from {event.fromStatus.replace(/_/g, " ")}
-                    </p>
-                  ) : null}
-                  {event.note ? (
-                    <p className="mt-0.5 text-xs italic text-muted-foreground">{event.note}</p>
-                  ) : null}
+                  {note ? <p className="mt-0.5 break-words text-sm text-muted-foreground">{note}</p> : null}
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {formatAdminDate(event.createdAt)}
-                    {event.triggeredBy ? (
-                      <span className="ml-1 font-mono uppercase">{event.triggeredBy}</span>
-                    ) : null}
+                    {formatAdminDateCompact(event.createdAt)}
+                    {event.triggeredBy ? ` · ${sentenceCaseEnum(event.triggeredBy)}` : null}
                   </p>
                 </div>
               </li>
@@ -137,6 +108,11 @@ export function AdminOrderTimelinePanel({ orderId }: AdminOrderTimelinePanelProp
           })}
         </ol>
       )}
-    </section>
+    </Panel>
   );
+}
+
+/** Drop the internal `[admin:<uuid>]` audit tag the API appends to manual notes. */
+function cleanNote(note: string | null | undefined): string {
+  return (note ?? "").replace(/\s*\[admin:[^\]]+\]\s*/g, " ").trim();
 }

@@ -81,9 +81,9 @@ import {
 } from "@/lib/media-url";
 
 const inputClass =
-  "h-9 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground transition-colors placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-60";
+  "h-9 w-full rounded-lg border border-input bg-card px-3 text-sm text-foreground transition-colors placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-60";
 const textareaClass =
-  "min-h-[96px] w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground transition-colors placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-60";
+  "min-h-[96px] w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-foreground transition-colors placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-60";
 
 function slugify(value: string): string {
   return value
@@ -1353,9 +1353,9 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
         <div
           role="status"
           aria-live="polite"
-          className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-700 shadow-lg animate-in fade-in slide-in-from-bottom-2"
+          className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-xl border border-success/30 bg-success/10 px-4 py-3 text-sm font-semibold text-success shadow-lg animate-in fade-in slide-in-from-bottom-2"
         >
-          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-600 text-white">
+          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-success text-white">
             <Check className="h-4 w-4" />
           </span>
           Image uploaded
@@ -1401,7 +1401,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                     getFieldError("name") && "rounded-md ring-2 ring-destructive/20",
                   )}
                 >
-                  Product Name <span className="text-destructive">*</span>
+                  <span className="inline-flex flex-wrap items-baseline gap-x-1">Product Name <span className="text-destructive" aria-hidden>*</span></span>
                   <input
                     data-admin-field="name"
                     aria-invalid={Boolean(getFieldError("name"))}
@@ -1415,7 +1415,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                     disabled={!canWrite}
                   />
                   {getFieldError("name") ? (
-                    <span className="text-[11px] font-semibold normal-case text-destructive">
+                    <span className="text-xs font-semibold normal-case text-destructive">
                       {getFieldError("name")}
                     </span>
                   ) : null}
@@ -1428,7 +1428,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                     getFieldError("sku") && "rounded-md ring-2 ring-destructive/20",
                   )}
                 >
-                  SKU <span className="text-destructive">*</span>
+                  <span className="inline-flex flex-wrap items-baseline gap-x-1">SKU <span className="text-destructive" aria-hidden>*</span></span>
                   <input
                     data-admin-field="sku"
                     aria-invalid={Boolean(getFieldError("sku"))}
@@ -1447,7 +1447,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                     disabled={!isCreate || !canWrite}
                   />
                   {getFieldError("sku") ? (
-                    <span className="text-[11px] font-semibold normal-case text-destructive">
+                    <span className="text-xs font-semibold normal-case text-destructive">
                       {getFieldError("sku")}
                     </span>
                   ) : null}
@@ -1462,7 +1462,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                     getFieldError("categoryId") && "rounded-md ring-2 ring-destructive/20",
                   )}
                 >
-                  Category <span className="text-destructive">*</span>
+                  <span className="inline-flex flex-wrap items-baseline gap-x-1">Category <span className="text-destructive" aria-hidden>*</span></span>
                   <select
                     data-admin-field="categoryId"
                     aria-invalid={Boolean(getFieldError("categoryId"))}
@@ -1486,13 +1486,13 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                     ))}
                   </select>
                   {categories.length === 0 ? (
-                    <span className="text-[11px] font-semibold normal-case text-amber-700">
+                    <span className="text-xs font-semibold normal-case text-warning">
                       Categories could not be loaded. Ensure the backend is running
                       and refresh this page.
                     </span>
                   ) : null}
                   {getFieldError("categoryId") ? (
-                    <span className="text-[11px] font-semibold normal-case text-destructive">
+                    <span className="text-xs font-semibold normal-case text-destructive">
                       {getFieldError("categoryId")}
                     </span>
                   ) : null}
@@ -1505,7 +1505,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                     getFieldError("slug") && "rounded-md ring-2 ring-destructive/20",
                   )}
                 >
-                  URL Slug <span className="text-destructive">*</span>
+                  <span className="inline-flex flex-wrap items-baseline gap-x-1">URL Slug <span className="text-destructive" aria-hidden>*</span></span>
                   <input
                     data-admin-field="slug"
                     aria-invalid={Boolean(getFieldError("slug"))}
@@ -1520,7 +1520,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                     disabled={!canWrite}
                   />
                   {getFieldError("slug") ? (
-                    <span className="text-[11px] font-semibold normal-case text-destructive">
+                    <span className="text-xs font-semibold normal-case text-destructive">
                       {getFieldError("slug")}
                     </span>
                   ) : null}
@@ -1543,14 +1543,14 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                 Short Description
                 <div className="relative">
                   <textarea
-                    className={`${textareaClass}  resize-none pr-12`}
+                    className={`${textareaClass} resize-none pr-12`}
                     placeholder="A short description about the product..."
                     maxLength={500}
                     value={shortDesc}
                     onChange={(event) => setShortDesc(event.target.value)}
                     disabled={!canWrite}
                   />
-                  <span className="absolute bottom-2.5 right-3 text-[10px] text-muted-foreground font-semibold">
+                  <span className="absolute bottom-2.5 right-3 text-xs text-muted-foreground font-semibold">
                     {shortDesc.length}/500
                   </span>
                 </div>
@@ -1574,7 +1574,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                     </label>
                   </div>
                   {canWrite && rateSuggestion && String(rateSuggestion.ratePercent) !== gstRate.trim() ? (
-                    <div className="flex flex-wrap items-center gap-1.5 rounded-lg bg-sky-500/10 p-2">
+                    <div className="flex flex-wrap items-center gap-1.5 rounded-lg bg-info-soft p-2">
                       <button
                         type="button"
                         onClick={() => setGstRate(String(rateSuggestion.ratePercent))}
@@ -1585,11 +1585,11 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                         Apply {rateSuggestion.ratePercent}% (HSN {rateSuggestion.forHsn})
                       </button>
                       {rateSuggestion.note ? (
-                        <span className="min-w-0 text-[11px] normal-case font-normal text-muted-foreground">
+                        <span className="min-w-0 text-xs normal-case font-normal text-muted-foreground">
                           {rateSuggestion.note}. Verify with your CA.
                         </span>
                       ) : (
-                        <span className="text-[11px] normal-case font-normal text-muted-foreground">
+                        <span className="text-xs normal-case font-normal text-muted-foreground">
                           Per CBIC GST 2.0 schedules — verify with your CA.
                         </span>
                       )}
@@ -1609,7 +1609,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                     const base = (priceRupees * 100) / (100 + rate);
                     const gst = priceRupees - base;
                     return (
-                      <p className="text-[11px] normal-case font-normal text-muted-foreground">
+                      <p className="text-xs normal-case font-normal text-muted-foreground">
                         Price is GST-inclusive: ₹{priceRupees.toFixed(2)} = base ₹{base.toFixed(2)} + GST ₹
                         {gst.toFixed(2)} ({rate}%). The invoice shows this split; customers always pay exactly the
                         price you set.
@@ -1673,14 +1673,14 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                       {hsnSuggestLoading ? "Finding HSN codes…" : "Suggest HSN from product name"}
                     </button>
                     {hsnSuggestQueried && !hsnSuggestLoading && hsnSuggestions.length === 0 ? (
-                      <p className="text-[11px] normal-case font-normal text-muted-foreground">
+                      <p className="text-xs normal-case font-normal text-muted-foreground">
                         No matches — try typing a more generic product word (e.g. “spice”, “sweets”)
                         or the first digits of a code.
                       </p>
                     ) : null}
                     {hsnSuggestions.length > 0 ? (
-                      <div className="rounded-lg bg-sky-500/10 p-2.5">
-                        <p className="mb-1.5 text-xs font-medium text-sky-700">
+                      <div className="rounded-lg bg-info-soft p-2.5">
+                        <p className="mb-1.5 text-xs font-medium text-info">
                           {gstInvoicingEnabled
                             ? "Click a suggestion to fill the HSN + GST rate fields"
                             : "Click a suggestion to fill the HSN field"}
@@ -1709,7 +1709,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                                 {s.description}
                               </span>
                               {gstInvoicingEnabled && s.gstRatePercent !== null ? (
-                                <span className="shrink-0 rounded-full bg-sky-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700">
+                                <span className="shrink-0 rounded-full bg-info-soft px-1.5 py-0.5 text-xs font-semibold text-info">
                                   {s.gstRatePercent}% GST
                                 </span>
                               ) : null}
@@ -1729,10 +1729,10 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                   getFieldError("description") && "rounded-md ring-2 ring-destructive/20",
                 )}
               >
-                Description <span className="text-destructive">*</span>
+                <span className="inline-flex flex-wrap items-baseline gap-x-1">Description <span className="text-destructive" aria-hidden>*</span></span>
                 <div
                   className={`rounded-lg border bg-background overflow-hidden ${
-                    getFieldError("description")
+ getFieldError("description")
                       ? "border-destructive ring-2 ring-destructive/25"
                       : "border-input"
                   }`}
@@ -1845,13 +1845,13 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                       }}
                       disabled={!canWrite}
                     />
-                    <span className="absolute bottom-2.5 right-3 text-[10px] text-muted-foreground font-semibold">
+                    <span className="absolute bottom-2.5 right-3 text-xs text-muted-foreground font-semibold">
                       {description.length}/5000
                     </span>
                   </div>
                 </div>
                 {getFieldError("description") ? (
-                  <span className="text-[11px] font-semibold normal-case text-destructive">
+                  <span className="text-xs font-semibold normal-case text-destructive">
                     {getFieldError("description")}
                   </span>
                 ) : null}
@@ -1884,7 +1884,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                 </p>
               ) : null}
 
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 <label
                   data-admin-field-label="price"
                   className={cn(
@@ -1892,7 +1892,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                     getFieldError("price") && "rounded-md ring-2 ring-destructive/20",
                   )}
                 >
-                  Price <span className="text-destructive">*</span>
+                  <span className="inline-flex flex-wrap items-baseline gap-x-1">Price <span className="text-destructive" aria-hidden>*</span></span>
                   <div className="relative flex items-center">
                     <span className="absolute left-3 text-muted-foreground font-medium text-sm">
                       ₹
@@ -1919,7 +1919,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                     />
                   </div>
                   {getFieldError("price") ? (
-                    <span className="text-[11px] font-semibold normal-case text-destructive">
+                    <span className="text-xs font-semibold normal-case text-destructive">
                       {getFieldError("price")}
                     </span>
                   ) : null}
@@ -1927,10 +1927,12 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
 
                 <label className="grid min-w-0 grid-cols-1 gap-1.5 text-sm font-medium text-foreground">
                   <span className="flex items-center gap-1">
-                    Compare at Price
-                    <span className="normal-case font-medium text-muted-foreground/70">(optional)</span>
-                    <span title="Original price before discount. Leave blank if there is no discount; must be higher than the price.">
-                      <HelpCircle className="h-3.5 w-3.5 text-muted-foreground/60 cursor-help" />
+                    <span className="inline-flex flex-wrap items-center gap-x-1">
+                      Compare-at price
+                      <span className="font-normal text-muted-foreground">(optional)</span>
+                      <span title="Original price before discount. Leave blank if there is no discount; must be higher than the price.">
+                        <HelpCircle className="size-3.5 cursor-help text-muted-foreground" aria-hidden />
+                      </span>
                     </span>
                   </span>
                   <div className="relative flex items-center">
@@ -1938,7 +1940,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                       ₹
                     </span>
                     <input
-                      className={`${inputClass}  pl-7`}
+                      className={`${inputClass} pl-7`}
                       placeholder="0.00"
                       value={
                         isCreate
@@ -1961,7 +1963,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                 </label>
               </div>
 
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 items-center">
+              <div className="grid grid-cols-1 items-center gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 <label className="grid min-w-0 grid-cols-1 gap-1.5 text-sm font-medium text-foreground">
                   <span className="flex items-center gap-1">
                     Weight (g) {isCreate ? <span className="text-destructive">*</span> : null}
@@ -2078,7 +2080,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                   Keep upright (fragile / this-side-up)
                 </label>
                 <label className="grid min-w-0 grid-cols-1 gap-1.5 text-sm font-medium text-foreground">
-                  Stock Quantity <span className="text-destructive">*</span>
+                  <span className="inline-flex flex-wrap items-baseline gap-x-1">Stock Quantity <span className="text-destructive" aria-hidden>*</span></span>
                   <input
                     className={`${inputClass} `}
                     type="text"
@@ -2136,10 +2138,10 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                 {atImageLimit ? (
                   <div className="relative flex flex-col items-center justify-center border-2 border-dashed border-border/40 rounded-xl bg-muted/5 p-4 text-center min-h-[120px]">
                     <UploadCloud className="h-6 w-6 text-muted-foreground/50 mb-1.5" />
-                    <span className="text-[10px] font-bold text-muted-foreground">
+                    <span className="text-xs font-bold text-muted-foreground">
                       Maximum {MAX_PRODUCT_IMAGES} images
                     </span>
-                    <span className="text-[9px] text-muted-foreground mt-0.5 font-medium">
+                    <span className="text-xs text-muted-foreground mt-0.5 font-medium">
                       Remove one to add more
                     </span>
                   </div>
@@ -2164,10 +2166,10 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                       }}
                     />
                     <UploadCloud className="h-6 w-6 text-muted-foreground group-hover:text-primary transition-colors mb-1.5" />
-                    <span className="text-[10px] font-bold text-muted-foreground group-hover:text-foreground">
+                    <span className="text-xs font-bold text-muted-foreground group-hover:text-foreground">
                       Drag & drop here
                     </span>
-                    <span className="text-[9px] text-muted-foreground mt-0.5 font-medium">
+                    <span className="text-xs text-muted-foreground mt-0.5 font-medium">
                       or{" "}
                       <span className="text-primary underline font-semibold">
                         Browse Files
@@ -2187,11 +2189,12 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                           src={entry.previewUrl}
                           alt={entry.altText}
                           fill
+                          sizes="(max-width: 640px) 50vw, 200px"
                           unoptimized
                           className="object-cover"
                         />
                         {index === 0 && (
-                          <span className="absolute top-2 left-2 bg-primary text-[9px] font-bold text-primary-foreground px-2 py-0.5 rounded-full shadow-sm">
+                          <span className="absolute top-2 left-2 bg-primary text-xs font-bold text-primary-foreground px-2 py-0.5 rounded-full shadow-sm">
                             Primary
                           </span>
                         )}
@@ -2221,10 +2224,11 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                             src={resolveProductImageUrl(image.url)}
                             alt={image.altText}
                             fill
+                            sizes="(max-width: 640px) 50vw, 200px"
                             className="object-cover"
                           />
                           {index === 0 && (
-                            <span className="absolute top-2 left-2 bg-primary text-[9px] font-bold text-primary-foreground px-2 py-0.5 rounded-full shadow-sm z-10">
+                            <span className="absolute top-2 left-2 bg-primary text-xs font-bold text-primary-foreground px-2 py-0.5 rounded-full shadow-sm z-10">
                               Primary
                             </span>
                           )}
@@ -2251,7 +2255,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                               <button
                                 type="button"
                                 onClick={() => void removeImage(image.id)}
-                                className="h-6 w-6 rounded bg-red-600 text-white flex items-center justify-center text-xs hover:bg-red-700"
+                                className="h-6 w-6 rounded bg-destructive text-white flex items-center justify-center text-xs hover:bg-destructive"
                                 title="Remove"
                       aria-label="Remove"
                               >
@@ -2288,13 +2292,13 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                       }}
                     />
                     <Plus className="h-5 w-5 text-muted-foreground mb-1" />
-                    <span className="text-[10px] font-bold text-muted-foreground">
+                    <span className="text-xs font-bold text-muted-foreground">
                       Add more
                     </span>
                   </div>
                 )}
               </div>
-              <span className="text-[10px] text-muted-foreground font-semibold mt-1 block">
+              <span className="text-xs text-muted-foreground font-semibold mt-1 block">
                 Upload up to {MAX_PRODUCT_IMAGES} images. Recommended size:
                 1200x1200px. Max file size: 5MB each.
               </span>
@@ -2306,7 +2310,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                   </summary>
                   <div className="mt-2.5 flex gap-2">
                     <input
-                      className={`${inputClass}  text-xs flex-1`}
+                      className={`${inputClass} text-xs flex-1`}
                       placeholder="https://example.com/banana.jpg"
                       value={newImage.url}
                       onChange={(e) =>
@@ -2381,7 +2385,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                 {canWrite ? (
                   <div className="mt-4 grid grid-cols-1 items-center gap-3 rounded-lg border border-dashed border-border bg-muted/30 p-4 sm:grid-cols-2 md:grid-cols-6">
                     <input
-                      className={`${inputClass}  font-mono`}
+                      className={`${inputClass} font-mono`}
                       placeholder="New SKU"
                       value={newVariant.sku}
                       onChange={(event) =>
@@ -2407,7 +2411,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                         ₹
                       </span>
                       <input
-                        className={`${inputClass}  pl-7`}
+                        className={`${inputClass} pl-7`}
                         placeholder="Price"
                         value={newVariant.pricePaise}
                         onChange={(event) =>
@@ -2423,7 +2427,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                         ₹
                       </span>
                       <input
-                        className={`${inputClass}  pl-7`}
+                        className={`${inputClass} pl-7`}
                         placeholder="Compare-at"
                         value={newVariant.compareAtPricePaise}
                         onChange={(event) =>
@@ -2548,7 +2552,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                 <label className="grid min-w-0 grid-cols-1 gap-1 text-muted-foreground">
                   Status
                   <select
-                    className={`${inputClass}  mt-1.5 font-bold`}
+                    className={`${inputClass} mt-1.5 font-bold`}
                     value={status}
                     onChange={(e) => setStatus(e.target.value)}
                     disabled={!canWrite}
@@ -2569,13 +2573,13 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                     onClick={() => setIsFeatured(!isFeatured)}
                     disabled={!canWrite}
                     className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                      isFeatured ? "bg-emerald-600" : "bg-muted-foreground/30"
+ isFeatured ? "bg-success" : "bg-muted-foreground/30"
                     }`}
                   >
                     <span
                       aria-hidden="true"
                       className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                        isFeatured ? "translate-x-5" : "translate-x-0"
+ isFeatured ? "translate-x-5" : "translate-x-0"
                       }`}
                     />
                   </button>
@@ -2596,19 +2600,19 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                       onClick={() => setIsLocalDeliveryOnly(!isLocalDeliveryOnly)}
                       disabled={!canWrite}
                       className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                        isLocalDeliveryOnly ? "bg-sky-600" : "bg-muted-foreground/30"
+ isLocalDeliveryOnly ? "bg-info" : "bg-muted-foreground/30"
                       }`}
                     >
                       <span
                         aria-hidden="true"
                         className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                          isLocalDeliveryOnly ? "translate-x-5" : "translate-x-0"
+ isLocalDeliveryOnly ? "translate-x-5" : "translate-x-0"
                         }`}
                       />
                     </button>
                   </div>
                   {isLocalDeliveryOnly && (
-                    <p className="rounded-lg border border-sky-500/30 bg-sky-500/10 p-3 text-xs font-medium text-sky-700 dark:text-sky-300">
+                    <p className="rounded-lg border border-info-soft bg-info-soft p-3 text-xs font-medium text-info ">
                       Delivered by you, never by a courier. Customers can only buy this to
                       pincodes on your local delivery whitelist. If their cart also has
                       courier items, checkout places two separate orders.
@@ -2619,9 +2623,9 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                 {/* Status helper banner */}
                 <div
                   className={`rounded-xl border p-3 flex items-center gap-2 text-xs font-semibold ${
-                    status === "Active"
-                      ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-700"
-                      : "bg-amber-500/10 border-amber-500/30 text-amber-700"
+ status === "Active"
+                      ? "bg-success/10 border-success/30 text-success"
+                      : "bg-warning-soft border-warning-soft text-warning"
                   }`}
                 >
                   <Check className="h-4 w-4 shrink-0" />
@@ -2649,11 +2653,12 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                         src={createImageFiles[0].previewUrl}
                         alt={name}
                         fill
+                        sizes="80px"
                         unoptimized
                         className="object-cover"
                       />
                     ) : (
-                      <div className="h-full w-full flex items-center justify-center text-[10px] text-muted-foreground font-semibold">
+                      <div className="h-full w-full flex items-center justify-center text-xs text-muted-foreground font-semibold">
                         No Image
                       </div>
                     )
@@ -2662,10 +2667,11 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                       src={resolveProductImageUrl(product.images[0].url)}
                       alt={name}
                       fill
+                      sizes="80px"
                       className="object-cover"
                     />
                   ) : (
-                    <div className="h-full w-full flex items-center justify-center text-[10px] text-muted-foreground font-semibold">
+                    <div className="h-full w-full flex items-center justify-center text-xs text-muted-foreground font-semibold">
                       No Image
                     </div>
                   )}
@@ -2685,7 +2691,7 @@ export function AdminProductEditor({ productId }: AdminProductEditorProps) {
                         : "0.00"}
                   </p>
 
-                  <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2 leading-tight">
+                  <p className="text-xs text-muted-foreground mt-1 line-clamp-2 leading-tight">
                     {shortDesc ||
                       description.slice(0, 100) ||
                       "No description yet."}

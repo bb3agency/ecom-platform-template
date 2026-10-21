@@ -163,7 +163,7 @@ export function AdminBulkInventoryForm() {
         {error ? <p className="text-xs text-destructive">{error}</p> : null}
         {result ? (
           <p className="flex items-center gap-1.5 text-sm text-foreground">
-            <CheckCircle2 className="size-4 text-emerald-600" aria-hidden />
+            <CheckCircle2 className="size-4 text-success" aria-hidden />
             Updated {result.updated} variant(s).
             {result.failed.length > 0 ? ` Failed: ${result.failed.join(", ")}` : ""}
           </p>

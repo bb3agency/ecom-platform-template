@@ -7,6 +7,7 @@ import { opsAuthGuard } from '@common/guards/ops-auth.guard';
 import { opsPermissionGuard } from '@common/guards/ops-permissions.guard';
 import { OPS_OTP_INPUT_JSON_SCHEMA, parseOpsOtpCodeInput } from './ops-otp-code.js';
 import { OpsService, OPS_BROWSER_SESSION_COOKIE_NAME } from './ops.service';
+import { OPS_AUDIT_ACTION_TYPES } from './ops-audit-actions';
 import { resolveNotificationRuntimeConfig } from '@common/notifications/notification-runtime-config';
 import { computeWhatsappOtpCost } from '@common/notifications/whatsapp-otp-cost';
 
@@ -17,6 +18,159 @@ export async function registerOpsRoutes(fastify: FastifyInstance): Promise<void>
     additionalProperties: false,
     properties: {}
   } as const;
+  const opsAuditActorSchema = {
+    anyOf: [
+      {
+        type: 'object',
+        additionalProperties: false,
+        required: ['id', 'name', 'email'],
+        properties: {
+          id: { type: 'string', maxLength: 80 },
+          name: { type: 'string', maxLength: 160 },
+          email: { type: 'string', maxLength: 160 }
+        }
+      },
+      { type: 'null' }
+    ]
+  } as const;
+  const nonNegativeInteger = { type: 'integer', minimum: 0 } as const;
+
+  // One read for the console landing screen (replaces separate load-shed, DLQ,
+  // pending-OTP and audit calls). Read-only and not audited: key names and counts only.
+  fastify.get(
+    '/api/v1/ops/overview',
+    {
+      preHandler: [opsAuthGuard, opsPermissionGuard('ops:read')],
+      config: { rateLimit: routeRateLimitProfiles.opsRead },
+      schema: {
+        params: emptyObjectSchema,
+        querystring: emptyObjectSchema,
+        response: {
+          200: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['generatedAt', 'loadShed', 'config', 'queues', 'people', 'audit', 'pendingOtpChallenges'],
+            properties: {
+              generatedAt: { type: 'string', maxLength: 40 },
+              loadShed: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['mode', 'phase', 'pendingUntil', 'activatedAt', 'reason'],
+                properties: {
+                  mode: { type: 'string', enum: ['normal', 'reduced', 'emergency', 'maintenance'], maxLength: 20 },
+                  phase: { type: ['string', 'null'], enum: ['pending', 'active', null], maxLength: 16 },
+                  pendingUntil: { type: ['string', 'null'], maxLength: 40 },
+                  activatedAt: { type: ['string', 'null'], maxLength: 40 },
+                  reason: { type: ['string', 'null'], maxLength: 500 }
+                }
+              },
+              config: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['runtimeProfile', 'missingRequiredKeys', 'restartPendingKeys'],
+                properties: {
+                  runtimeProfile: { type: 'string', enum: ['development-like', 'production-like'], maxLength: 20 },
+                  missingRequiredKeys: { type: 'array', maxItems: 200, items: { type: 'string', maxLength: 120 } },
+                  restartPendingKeys: { type: 'array', maxItems: 200, items: { type: 'string', maxLength: 120 } }
+                }
+              },
+              queues: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['deadLetterTotal', 'deadLetterBySource', 'items'],
+                properties: {
+                  deadLetterTotal: nonNegativeInteger,
+                  deadLetterBySource: {
+                    type: 'array',
+                    maxItems: 100,
+                    items: {
+                      type: 'object',
+                      additionalProperties: false,
+                      required: ['queue', 'count'],
+                      properties: {
+                        queue: { type: 'string', maxLength: 120 },
+                        count: nonNegativeInteger
+                      }
+                    }
+                  },
+                  items: {
+                    type: 'array',
+                    maxItems: 50,
+                    items: {
+                      type: 'object',
+                      additionalProperties: false,
+                      required: ['name', 'waiting', 'active', 'delayed', 'failed'],
+                      properties: {
+                        name: { type: 'string', maxLength: 120 },
+                        waiting: nonNegativeInteger,
+                        active: nonNegativeInteger,
+                        delayed: nonNegativeInteger,
+                        failed: nonNegativeInteger
+                      }
+                    }
+                  }
+                }
+              },
+              people: {
+                type: 'object',
+                additionalProperties: false,
+                required: [
+                  'operatorsActive',
+                  'operatorsTotal',
+                  'merchantAdminsActive',
+                  'merchantAdminsTotal',
+                  'pendingOpsInvites',
+                  'pendingAdminInvites'
+                ],
+                properties: {
+                  operatorsActive: nonNegativeInteger,
+                  operatorsTotal: nonNegativeInteger,
+                  merchantAdminsActive: nonNegativeInteger,
+                  merchantAdminsTotal: nonNegativeInteger,
+                  pendingOpsInvites: nonNegativeInteger,
+                  pendingAdminInvites: nonNegativeInteger
+                }
+              },
+              audit: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['failedLast24h', 'recent'],
+                properties: {
+                  failedLast24h: nonNegativeInteger,
+                  recent: {
+                    type: 'array',
+                    maxItems: 20,
+                    items: {
+                      type: 'object',
+                      additionalProperties: false,
+                      required: ['id', 'actionType', 'actionStatus', 'createdAt', 'actor'],
+                      properties: {
+                        id: { type: 'string', maxLength: 80 },
+                        actionType: { type: 'string', maxLength: 64 },
+                        actionStatus: { type: 'string', maxLength: 32 },
+                        createdAt: { type: 'string', maxLength: 40 },
+                        actor: opsAuditActorSchema
+                      }
+                    }
+                  }
+                }
+              },
+              pendingOtpChallenges: nonNegativeInteger
+            }
+          },
+          ...standardAdminErrorResponses
+        }
+      }
+    },
+    async (request) => {
+      const opsUser = request.opsUser;
+      if (!opsUser) {
+        throw new AppError(ERROR_CODES.UNAUTHORISED, 'Ops authentication required', 401);
+      }
+      return opsService.getOpsOverview(opsUser.id);
+    }
+  );
+
 
   fastify.get(
     '/api/v1/ops/config/overview',
@@ -56,7 +210,8 @@ export async function registerOpsRoutes(fastify: FastifyInstance): Promise<void>
                           mutableViaOps: { type: 'boolean' },
                           requiresRestart: { type: 'boolean' },
                           runtimeSource: { type: 'string', enum: ['env-bootstrap', 'db-overlay'], maxLength: 24 },
-                          note: { type: 'string', maxLength: 300 }
+                          note: { type: 'string', maxLength: 300 },
+                          restartPending: { type: 'boolean' }
                         }
                       }
                     }
@@ -1248,7 +1403,7 @@ export async function registerOpsRoutes(fastify: FastifyInstance): Promise<void>
           additionalProperties: false,
           properties: {
             actionStatus: { type: 'string', enum: ['EXECUTED', 'FAILED'], maxLength: 32 },
-            actionType: { type: 'string', maxLength: 64 },
+            actionType: { type: 'string', enum: [...OPS_AUDIT_ACTION_TYPES], maxLength: 64 },
             opsUserId: { type: 'string', maxLength: 80 },
             page: { type: 'number', minimum: 1, maximum: 100000 },
             limit: { type: 'number', minimum: 1, maximum: 100 }
@@ -1274,7 +1429,8 @@ export async function registerOpsRoutes(fastify: FastifyInstance): Promise<void>
                     requestPath: { type: 'string', maxLength: 300 },
                     method: { type: 'string', maxLength: 16 },
                     summary: { anyOf: [{ type: 'object' }, { type: 'null' }] },
-                    createdAt: { type: 'string', maxLength: 40 }
+                    createdAt: { type: 'string', maxLength: 40 },
+                    actor: opsAuditActorSchema
                   }
                 }
               },

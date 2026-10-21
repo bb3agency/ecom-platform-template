@@ -12,6 +12,34 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-21
+
+### Changed — admin, ops and checkout redesign
+- **One console design system** for admin and ops: `components/ui/console-theme.css` (tokens) + `components/ui/console.tsx` (PageHeader, Panel, StatStrip, StatusDot, Notice, KeyValueList, FilterBar, DataTable, FormSection, StickyActions, Monogram) + `docs/CONSOLE_DESIGN_SYSTEM.md`. Console styling now lives in **core** instead of each client's `globals.css` (client-owned, so it drifted and never received fixes). Neutral work surface; the client's brand `--primary` is the only accent, so every client's console looks like the same product in its own colour. Dialogs, sheets and menus pick up the console tokens automatically.
+- **Admin shell:** grouped navigation (Sales / Catalog / Customers / Store), collapsible rail, top-bar search on every size, and a **phone bottom tab bar** (Dashboard, Orders, Products, Customers, More).
+- **Dashboard** leads with *Needs attention* (one call to the new action-queue endpoint; each count links to the matching filtered list), a hairline KPI strip, a zero-filled sales chart, and ranked best sellers / category bars (no donut, no icon blobs).
+- **Orders:** status tabs with live counts (one call instead of eight), URL-driven filters (`?status=`, `?payment=`, `?sort=`, `?range=all`), debounced search, stacked rows on phones. Removed checkboxes that selected rows no action used.
+- **Order detail:** single fetch; header with status/total/invoice; fulfilment steps as full-width buttons (next step filled); context sidebar (customer, address, payment, shipping, history). **New Order progress tracker** — every stage in order, passed stages show when/how (courier update / manual) and are not clickable, only valid next moves are offered (frontend mirror of the backend state machine, parity-tested against the backend file), each move confirms because the customer is notified. The page re-reads every 30s / on focus so courier webhooks show up without a reload; "Check courier" pulls the latest status on demand.
+- **Products:** status tabs with counts (Active / Hidden / Out of stock / All), row menu (view/copy store link, hide/show, delete permanently); removed the dead "More filters" button and unused checkboxes; "Deactivate" is no longer the most prominent row action. Thumbnails request 40px images (they were downloading 1920px).
+- **Checkout:** marketing hero replaced by a compact header + 3-step progress; details left, **sticky summary right** on desktop; **sticky total + Place order bar on phones**; payment options shown once (the duplicate sidebar is gone); sentence-case labels, 16px inputs on phones (no iOS zoom), quantity badges no longer clipped, duplicated totals removed.
+- **Ops console** rebuilt on the same system (light theme, phone tab bar, one-call overview, OTP dialog shared by all critical actions with countdown/attempts/auto-retry on audit-lock timeout). Secret config values are **no longer loaded into the page** — fields show the masked value and an empty field keeps the saved one.
+- 723 raw palette / hard-coded hex classes (incl. Raghava's `#23403d` baked into core) replaced with tokens across admin, checkout and auth.
+
+### Fixed
+- **Items on order detail were hidden from read-only admins** (`if (!canWrite) return null`).
+- **Admin sign-in dropped you on the dashboard** after a session expired or a link was opened cold; it now returns to the page you were on (`?next=`, validated: same-origin `/admin` paths only — no open redirect).
+- **Orders list used UTC day boundaries** while the dashboard used local time — in IST an order placed before 5:30 am landed on different days on the two screens.
+- **Customers / Coupons / Reviews defaulted to the last 7 days**, so a store with 26 customers showed "No customers yet". Directories and work queues now default to *All time*; activity views keep 7 days.
+- **`/ops/metrics` always 403'd** (server fetch without the path-scoped `ops_session` cookie) — now fetched in the browser.
+- **Dev only:** `next.config.ts` sent `Cache-Control: immutable` for un-hashed dev chunks, so browsers kept running stale code after edits. Now production-only.
+
+**Propagation:**
+- Severity: **HIGH** (order-status control + fixes above) - Layers: frontend core — `components/ui/console*.{css,tsx}` (new), `components/admin/**`, `components/ops/**`, `components/checkout/**`, `components/auth/**`, `app/(admin)/**`, `app/(ops)/**`, `app/(storefront)/checkout/**`, `app/layout.tsx`, `lib/{admin-format,admin-auth-navigation,order-state-machine,order-journey,url-filter-params,ops-*}.ts`, `hooks/use-url-filter-state.ts`, `next.config.ts`
+- Requires: **backend-core >= 0.3.0** (action-queue, order-status-counts, ops overview, fixed status route)
+- Migration: NO - Flag: none - Breaking: NO (no component props removed for external callers; `AdminOrderStatusPanel` now takes `order` instead of `orderId` — only used by the order detail page)
+- **Design impact:** no new required tokens. Clients may delete the now-redundant `.admin-console { … }` and `.ops-console { … }` blocks from `app/globals.css` (core rules win either way); the legacy `.ops-console { max-width: 100% }` there overrides `max-w-*` on portalled ops dialogs and should be removed.
+- Rollback: revert the files.
+
 ## [0.2.4] - 2026-08-18
 
 ### Fixed

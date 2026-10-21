@@ -1,220 +1,275 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { ArrowRight } from "lucide-react";
-import { useOpsSession } from "@/components/ops/OpsSessionProvider";
+import { ChevronRight, CircleCheck, RefreshCw } from "lucide-react";
+import { useState } from "react";
+import { DEGRADATION_COPY, OpsServiceHealthPanel } from "@/components/ops/OpsServiceHealthPanel";
+import { useOpsOverview } from "@/components/ops/use-ops-overview";
+import { OpsLinesSkeleton, OpsLoadError, formatRelativeTime } from "@/components/ops/ui/ops-ui";
 import {
-  OpsAlert,
-  OpsBadge,
-  OpsCard,
-  OpsCardHeader,
-  OpsLoadingBlock,
-  OpsStatCard,
-} from "@/components/ops/ui/ops-ui";
-import { buttonVariants } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
-import { formatOpsDateTime } from "@/lib/ops-format";
-import { getApiErrorMessageWithHint } from "@/lib/error-messages";
-import { loadShedBadgeTone } from "@/lib/ops-status-maps";
-import { OpsRuntimeReadinessCard } from "@/components/ops/OpsRuntimeReadinessCard";
-import {
-  getOpsAuditLogsClient,
-  getOpsDlqSummaryClient,
-  getOpsLoadShedStatusClient,
-  getOpsPendingOtps,
-  type OpsAuditRecord,
-  type OpsLoadShedStatus,
-} from "@/lib/ops-client-api";
+  ConsolePage,
+  KeyValueList,
+  Monogram,
+  PageHeader,
+  Panel,
+  StatStrip,
+  StatusDot,
+  type StatusTone,
+} from "@/components/ui/console";
+import { Button } from "@/components/ui/button";
+import { auditActionLabel, auditStatusTone, loadShedLabel, loadShedTone } from "@/lib/ops-status-maps";
+import type { OpsOverview } from "@/lib/ops-client-api";
+import type { ReadinessStatus } from "@/types/api";
 
-function formatPermissionsHint(permissions: string[]): string {
-  if (permissions.length === 0) {
-    return "No permissions";
+interface AttentionItem {
+  key: string;
+  tone: StatusTone;
+  text: string;
+  href: string;
+  cta: string;
+}
+
+/** What an operator should look at next, most severe first. */
+function buildAttention(overview: OpsOverview, readiness: ReadinessStatus | null): AttentionItem[] {
+  const items: AttentionItem[] = [];
+  if (readiness && readiness.status !== "ready") {
+    items.push({
+      key: "health",
+      tone: "danger",
+      text: DEGRADATION_COPY[readiness.degradationMode],
+      href: "#service-health",
+      cta: "Details",
+    });
   }
-  if (permissions.length <= 2) {
-    return permissions.join(", ");
+  const { loadShed, config, queues, audit, people } = overview;
+  if (config.missingRequiredKeys.length > 0) {
+    const n = config.missingRequiredKeys.length;
+    items.push({
+      key: "missing",
+      tone: "danger",
+      text: `${n} required ${n === 1 ? "setting is" : "settings are"} missing: ${config.missingRequiredKeys.slice(0, 3).join(", ")}${n > 3 ? "…" : ""}`,
+      href: "/ops/config?show=missing",
+      cta: "Fix settings",
+    });
   }
-  return `${permissions.length} permissions (${permissions.slice(0, 2).join(", ")}…)`;
+  if (loadShed.mode === "emergency" || loadShed.mode === "reduced") {
+    items.push({
+      key: "mode",
+      tone: loadShed.mode === "emergency" ? "danger" : "warning",
+      text: `Traffic is in ${loadShed.mode} mode${loadShed.reason ? ` — “${loadShed.reason}”` : ""}.`,
+      href: "/ops/load-shed",
+      cta: "Review",
+    });
+  }
+  if (config.restartPendingKeys.length > 0) {
+    const n = config.restartPendingKeys.length;
+    items.push({
+      key: "restart",
+      tone: "warning",
+      text: `${n} saved ${n === 1 ? "setting waits" : "settings wait"} for a restart before they take effect.`,
+      href: "/ops/system",
+      cta: "Schedule restart",
+    });
+  }
+  if (queues.deadLetterTotal > 0) {
+    items.push({
+      key: "dlq",
+      tone: "warning",
+      text: `${queues.deadLetterTotal} background ${queues.deadLetterTotal === 1 ? "job" : "jobs"} failed after all retries.`,
+      href: "/ops/queues",
+      cta: "Inspect",
+    });
+  }
+  if (audit.failedLast24h > 0) {
+    items.push({
+      key: "audit",
+      tone: "info",
+      text: `${audit.failedLast24h} privileged ${audit.failedLast24h === 1 ? "action" : "actions"} failed in the last 24 hours.`,
+      href: "/ops/audit?status=FAILED",
+      cta: "View",
+    });
+  }
+  const pendingInvites = people.pendingOpsInvites + people.pendingAdminInvites;
+  if (pendingInvites > 0) {
+    items.push({
+      key: "invites",
+      tone: "neutral",
+      text: `${pendingInvites} ${pendingInvites === 1 ? "invite is" : "invites are"} waiting to be accepted.`,
+      href: "/ops/invites",
+      cta: "View",
+    });
+  }
+  return items;
 }
 
 export function OpsDashboard() {
-  const session = useOpsSession();
-  const [loadShed, setLoadShed] = useState<OpsLoadShedStatus | null>(null);
-  const [dlqTotal, setDlqTotal] = useState<number | null>(null);
-  const [pendingOtps, setPendingOtps] = useState(0);
-  const [recentAudit, setRecentAudit] = useState<OpsAuditRecord[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      try {
-        const [shed, dlq, otps, audit] = await Promise.all([
-          getOpsLoadShedStatusClient(),
-          getOpsDlqSummaryClient(),
-          getOpsPendingOtps(),
-          getOpsAuditLogsClient({ limit: 5 }),
-        ]);
-        if (!cancelled) {
-          setLoadShed(shed);
-          setDlqTotal(dlq.total);
-          setPendingOtps(Array.isArray(otps.items) ? otps.items.length : 0);
-          setRecentAudit(Array.isArray(audit.items) ? audit.items : []);
-          setError(null);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setError(getApiErrorMessageWithHint(err));
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    }
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  if (loading) {
-    return <OpsLoadingBlock label="Loading platform overview…" />;
-  }
+  const { overview, error, loading, refreshing, reload } = useOpsOverview(60_000);
+  const [readiness, setReadiness] = useState<ReadinessStatus | null>(null);
+  const attention = overview ? buildAttention(overview, readiness) : [];
+  const failedJobs = overview?.queues.items.reduce((sum, q) => sum + q.failed, 0) ?? 0;
 
   return (
-    <div className="grid min-w-0 grid-cols-1 gap-5 sm:gap-6 lg:gap-8">
-      {error ? <OpsAlert tone="error">{error}</OpsAlert> : null}
+    <ConsolePage>
+      <PageHeader
+        title="Overview"
+        description="Platform health and anything that needs an operator."
+        actions={
+          <Button type="button" variant="outline" onClick={() => void reload()} disabled={refreshing} className="gap-1.5">
+            <RefreshCw className={refreshing ? "animate-spin" : undefined} aria-hidden />
+            Refresh
+          </Button>
+        }
+      />
 
-      <OpsRuntimeReadinessCard />
+      {error && !overview ? <OpsLoadError message={error} onRetry={() => void reload()} /> : null}
 
-      <div className="grid min-w-0 grid-cols-1 gap-3 min-[420px]:grid-cols-2 xl:grid-cols-4">
-        <OpsStatCard
-          label="Load-shed mode"
-          value={loadShed?.mode ?? "—"}
-          hint={loadShed ? loadShed.mode : undefined}
-          tone={loadShed ? loadShedBadgeTone(loadShed.mode) : "muted"}
-        />
-        <OpsStatCard
-          label="DLQ jobs"
-          value={dlqTotal ?? "—"}
-          hint={dlqTotal && dlqTotal > 0 ? "Review queues" : "Healthy"}
-          tone={dlqTotal && dlqTotal > 0 ? "warning" : "success"}
-        />
-        <OpsStatCard
-          label="Pending OTPs"
-          value={pendingOtps}
-          hint={pendingOtps > 0 ? "In progress" : "None"}
-          tone={pendingOtps > 0 ? "info" : "muted"}
-        />
-        <OpsStatCard
-          label="Your access"
-          value={session.permissions.length}
-          hint={formatPermissionsHint(session.permissions)}
-          tone="info"
-        />
-      </div>
-
-      <div className="grid min-w-0 grid-cols-1 gap-5 lg:grid-cols-2 lg:gap-6">
-        <OpsCard className="min-w-0">
-          <OpsCardHeader title="Operator profile" description="Live session from GET /ops/session" />
-          <dl className="grid min-w-0 grid-cols-1 gap-4 text-sm sm:grid-cols-2">
-            <div className="min-w-0">
-              <dt className="text-xs uppercase tracking-wider text-muted-foreground">Name</dt>
-              <dd className="mt-1 break-words font-medium">{session.name}</dd>
-            </div>
-            <div className="min-w-0">
-              <dt className="text-xs uppercase tracking-wider text-muted-foreground">Email</dt>
-              <dd className="mt-1 break-all font-medium">{session.email}</dd>
-            </div>
-            <div className="min-w-0">
-              <dt className="text-xs uppercase tracking-wider text-muted-foreground">Last login</dt>
-              <dd className="mt-1 break-words">{formatOpsDateTime(session.lastLoginAt)}</dd>
-            </div>
-            <div>
-              <dt className="text-xs uppercase tracking-wider text-muted-foreground">MFA</dt>
-              <dd className="mt-1">
-                <OpsBadge tone={session.mfaEnabled ? "success" : "muted"}>
-                  {session.mfaEnabled ? "Enabled" : "Not enabled"}
-                </OpsBadge>
-              </dd>
-            </div>
-            <div className="min-w-0 sm:col-span-2">
-              <dt className="text-xs uppercase tracking-wider text-muted-foreground">IP allowlist</dt>
-              <dd className="mt-1 break-words text-muted-foreground">
-                {session.ipAllowlist.length > 0 ? session.ipAllowlist.join(", ") : "None configured"}
-              </dd>
-            </div>
-          </dl>
-        </OpsCard>
-
-        <OpsCard className="min-w-0">
-          <OpsCardHeader
-            title="Recent audit"
-            description="Latest privileged actions"
-            actions={
-              <Link
-                href="/ops/audit"
-                className={cn(
-                  buttonVariants({ variant: "outline", size: "sm" }),
-                  "inline-flex w-full justify-center gap-1.5 sm:w-auto",
-                )}
-              >
-                View all
-                <ArrowRight className="size-4 shrink-0" />
-              </Link>
-            }
-          />
-          {recentAudit.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No audit entries yet.</p>
-          ) : (
-            <ul className="grid min-w-0 grid-cols-1 gap-3">
-              {recentAudit.map((entry) => (
-                <li
-                  key={entry.id}
-                  className="flex flex-col gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2.5 sm:flex-row sm:items-start sm:justify-between sm:gap-3"
+      <Panel title="Needs attention" flush>
+        {loading ? (
+          <div className="p-4 sm:p-5">
+            <OpsLinesSkeleton lines={2} />
+          </div>
+        ) : attention.length === 0 && overview ? (
+          <p className="flex items-center gap-2 px-4 py-4 text-sm text-muted-foreground sm:px-5">
+            <CircleCheck className="size-4 shrink-0 text-success" aria-hidden />
+            Nothing needs attention right now.
+          </p>
+        ) : (
+          <ul className="divide-y divide-border">
+            {attention.map((item) => (
+              <li key={item.key} className="min-w-0">
+                <Link
+                  href={item.href}
+                  className="group flex min-w-0 items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/50 sm:px-5"
                 >
+                  {/* Dot and text are separate: .console-status is nowrap, and these lines must wrap. */}
+                  <StatusDot tone={item.tone} aria-hidden className="shrink-0 self-start pt-2" />
+                  <span className="min-w-0 flex-1 break-words text-sm text-foreground">{item.text}</span>
+                  <span className="hidden shrink-0 text-sm font-medium text-primary sm:inline">{item.cta}</span>
+                  <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Panel>
+
+      <StatStrip
+        loading={loading}
+        items={[
+          {
+            label: "Traffic mode",
+            value: overview ? (
+              <StatusDot tone={loadShedTone(overview.loadShed.mode)} className="text-xl font-semibold sm:text-2xl">
+                {loadShedLabel(overview.loadShed)}
+              </StatusDot>
+            ) : (
+              "—"
+            ),
+            hint: overview?.loadShed.activatedAt ? `Since ${formatRelativeTime(overview.loadShed.activatedAt)}` : undefined,
+            href: "/ops/load-shed",
+          },
+          {
+            label: "Failed background jobs",
+            value: overview ? overview.queues.deadLetterTotal + failedJobs : "—",
+            hint: overview ? `${overview.queues.deadLetterTotal} in dead-letter queue` : undefined,
+            href: "/ops/queues",
+          },
+          {
+            label: "Failed actions · 24 h",
+            value: overview?.audit.failedLast24h ?? "—",
+            href: "/ops/audit?status=FAILED",
+          },
+          {
+            label: "Waiting for restart",
+            value: overview?.config.restartPendingKeys.length ?? "—",
+            hint: "Saved settings not live yet",
+            href: "/ops/system",
+          },
+        ]}
+      />
+
+      <div className="grid min-w-0 grid-cols-1 items-start gap-5 sm:gap-6 lg:grid-cols-5">
+        <OpsServiceHealthPanel id="service-health" className="scroll-mt-4 lg:col-span-2" onReadiness={setReadiness} />
+        <Panel
+          className="lg:col-span-3"
+          title="Recent activity"
+          flush
+          actions={
+            <Link href="/ops/audit" className="text-sm font-medium text-primary underline-offset-4 hover:underline">
+              Audit log
+            </Link>
+          }
+        >
+          {loading ? (
+            <div className="p-4 sm:p-5">
+              <OpsLinesSkeleton lines={5} />
+            </div>
+          ) : overview && overview.audit.recent.length > 0 ? (
+            <ul className="divide-y divide-border">
+              {overview.audit.recent.map((entry) => (
+                <li key={entry.id} className="flex min-w-0 items-center gap-3 px-4 py-3 sm:px-5">
+                  <Monogram name={entry.actor?.name ?? "?"} />
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium break-words">
-                      {entry.actionType ?? entry.requestPath}
-                    </p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      {entry.method} · {formatOpsDateTime(entry.createdAt)}
+                    <p className="truncate text-sm font-medium text-foreground">{auditActionLabel(entry.actionType)}</p>
+                    <p className="truncate text-xs text-muted-foreground" title={entry.actor?.email}>
+                      {entry.actor?.name ?? "Unknown operator"} · {formatRelativeTime(entry.createdAt)}
                     </p>
                   </div>
-                  <OpsBadge
-                    tone={entry.actionStatus === "EXECUTED" ? "success" : "danger"}
-                    className="self-start shrink-0"
-                  >
-                    {entry.actionStatus}
-                  </OpsBadge>
+                  {entry.actionStatus === "FAILED" ? (
+                    <StatusDot tone={auditStatusTone(entry.actionStatus)} className="shrink-0 text-xs">
+                      Failed
+                    </StatusDot>
+                  ) : null}
                 </li>
               ))}
             </ul>
+          ) : (
+            <p className="px-4 py-4 text-sm text-muted-foreground sm:px-5">No privileged actions recorded yet.</p>
           )}
-        </OpsCard>
+        </Panel>
       </div>
 
-      <OpsCard className="min-w-0">
-        <OpsCardHeader title="Quick links" description="Jump to common control-plane tasks" />
-        <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {[
-            { href: "/ops/config", label: "Runtime config", desc: "Validate and save DB overlay keys" },
-            { href: "/ops/queues", label: "Queue monitor", desc: "Bull Board and DLQ summary" },
-            { href: "/ops/system", label: "System restart", desc: "Payment-safe rolling restart" },
-          ].map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              className="group min-w-0 rounded-lg border border-border/60 bg-muted/20 p-4 transition-colors hover:border-primary/40 hover:bg-muted/40"
-            >
-              <p className="font-medium text-foreground group-hover:text-primary">{link.label}</p>
-              <p className="mt-1 text-xs text-pretty text-muted-foreground">{link.desc}</p>
-            </Link>
-          ))}
-        </div>
-      </OpsCard>
-    </div>
+      <Panel title="Access">
+        {overview ? (
+          <KeyValueList
+            className="lg:grid-cols-3"
+            items={[
+              {
+                label: "Operators",
+                value: (
+                  <Link href="/ops/users" className="hover:underline">
+                    {overview.people.operatorsActive} active
+                    {overview.people.operatorsTotal > overview.people.operatorsActive
+                      ? ` · ${overview.people.operatorsTotal - overview.people.operatorsActive} deactivated`
+                      : ""}
+                  </Link>
+                ),
+              },
+              {
+                label: "Merchant admins",
+                value: (
+                  <Link href="/ops/admin-users" className="hover:underline">
+                    {overview.people.merchantAdminsActive} active
+                    {overview.people.merchantAdminsTotal > overview.people.merchantAdminsActive
+                      ? ` · ${overview.people.merchantAdminsTotal - overview.people.merchantAdminsActive} deactivated`
+                      : ""}
+                  </Link>
+                ),
+              },
+              {
+                label: "Open invites",
+                value: (
+                  <Link href="/ops/invites" className="hover:underline">
+                    {overview.people.pendingOpsInvites} operator · {overview.people.pendingAdminInvites} merchant admin
+                  </Link>
+                ),
+              },
+            ]}
+          />
+        ) : (
+          <OpsLinesSkeleton lines={2} />
+        )}
+      </Panel>
+    </ConsolePage>
   );
 }

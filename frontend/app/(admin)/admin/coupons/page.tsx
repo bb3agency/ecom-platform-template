@@ -20,7 +20,7 @@ import {
   type AdminCouponAnalyticsItem,
 } from "@/lib/admin-api";
 import {
-  defaultDateRange,
+  allTimeRange,
   rangeToISO,
   type DateRange,
 } from "@/components/admin/AdminDateRangePicker";
@@ -60,7 +60,7 @@ function KpiCard({
           {icon}
         </div>
         <div className="flex flex-col gap-0.5 sm:gap-1 min-w-0">
-          <p className="text-[10px] sm:text-xs font-medium text-muted-foreground truncate">{label}</p>
+          <p className="text-xs sm:text-xs font-medium text-muted-foreground truncate">{label}</p>
           {loading ? (
             <div className="h-6 sm:h-7 w-16 sm:w-24 animate-pulse rounded bg-muted" />
           ) : (
@@ -71,10 +71,10 @@ function KpiCard({
         </div>
       </div>
       {!loading && trend !== undefined ? (
-        <div className="mt-3 sm:mt-4 flex flex-wrap items-center gap-1 sm:gap-1.5 text-[9px] sm:text-[11px] font-medium">
+        <div className="mt-3 sm:mt-4 flex flex-wrap items-center gap-1 sm:gap-1.5 text-xs sm:text-[11px] font-medium">
           {trendUp ? (
             <svg
-              className="h-3 w-3 text-emerald-500"
+              className="h-3 w-3 text-success"
               viewBox="0 0 20 20"
               fill="currentColor"
             >
@@ -86,7 +86,7 @@ function KpiCard({
             </svg>
           ) : (
             <svg
-              className="h-3 w-3 text-rose-500"
+              className="h-3 w-3 text-destructive"
               viewBox="0 0 20 20"
               fill="currentColor"
             >
@@ -97,7 +97,7 @@ function KpiCard({
               />
             </svg>
           )}
-          <span className={trendUp ? "text-emerald-600" : "text-rose-600"}>
+          <span className={trendUp ? "text-success" : "text-destructive"}>
             {trend}
           </span>
           <span className="text-muted-foreground">
@@ -105,7 +105,7 @@ function KpiCard({
           </span>
         </div>
       ) : !loading && description ? (
-        <p className="mt-3 text-[9px] sm:text-[11px] text-muted-foreground">{description}</p>
+        <p className="mt-3 text-xs sm:text-[11px] text-muted-foreground">{description}</p>
       ) : null}
     </div>
   );
@@ -192,24 +192,24 @@ function AdminCouponsKpis({ from, to }: AdminCouponsKpisProps) {
       <KpiCard
         label="Total Coupons"
         value={fmt(counts?.total)}
-        icon={<Tag className="h-5 w-5 text-emerald-600" />}
-        iconBg="bg-emerald-100"
+        icon={<Tag className="h-5 w-5 text-success" />}
+        iconBg="bg-success/10"
         loading={loading}
         description="All time"
       />
       <KpiCard
         label="Active Coupons"
         value={fmt(counts?.active)}
-        icon={<CheckCircle2 className="h-5 w-5 text-blue-600" />}
-        iconBg="bg-blue-100"
+        icon={<CheckCircle2 className="h-5 w-5 text-info" />}
+        iconBg="bg-info-soft"
         loading={loading}
         description="Currently live"
       />
       <KpiCard
         label="Total Uses"
         value={fmt(counts?.totalUses)}
-        icon={<Clock className="h-5 w-5 text-purple-600" />}
-        iconBg="bg-purple-100"
+        icon={<Clock className="h-5 w-5 text-info" />}
+        iconBg="bg-info-soft"
         loading={loading}
         description="In selected period"
       />
@@ -218,8 +218,8 @@ function AdminCouponsKpis({ from, to }: AdminCouponsKpisProps) {
         value={
           counts ? formatPaise(counts.totalDiscountPaise) : "—"
         }
-        icon={<DollarSign className="h-5 w-5 text-amber-600" />}
-        iconBg="bg-amber-100"
+        icon={<DollarSign className="h-5 w-5 text-warning" />}
+        iconBg="bg-warning-soft"
         loading={loading}
         description="In selected period"
       />
@@ -230,8 +230,8 @@ function AdminCouponsKpis({ from, to }: AdminCouponsKpisProps) {
             ? formatPaise(Math.round(counts.totalDiscountPaise / counts.totalUses))
             : "—"
         }
-        icon={<ClipboardList className="h-5 w-5 text-rose-600" />}
-        iconBg="bg-rose-100"
+        icon={<ClipboardList className="h-5 w-5 text-destructive" />}
+        iconBg="bg-destructive/10"
         loading={loading}
         description="In selected period"
       />
@@ -242,7 +242,7 @@ function AdminCouponsKpis({ from, to }: AdminCouponsKpisProps) {
 // ---------- Page ----------
 
 export default function AdminCouponsPage() {
-  const [range, setRange] = useState<DateRange>(defaultDateRange);
+  const [range, setRange] = useState<DateRange>(allTimeRange);
   const { registerExportHandler } = useAdminShell();
   const [exporting, setExporting] = useState(false);
   const api = useAuthenticatedApi();

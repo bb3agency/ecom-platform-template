@@ -106,7 +106,7 @@ export function AdminReplayActions({
       </div>
       {error ? <p className="text-xs text-destructive">{error}</p> : null}
       {message ? (
-        <pre className="max-h-24 overflow-auto rounded bg-muted/40 p-2 text-[10px]">
+        <pre className="max-h-24 overflow-auto rounded bg-muted/40 p-2 text-xs">
           {message}
         </pre>
       ) : null}

@@ -79,6 +79,16 @@ describe('dashboard routes', () => {
     expect(topProducts?.preHandler).toBeDefined();
     expect((topProducts?.schema as { response?: Record<number, unknown> }).response?.[200]).toBeDefined();
 
+    for (const url of ['/api/v1/admin/dashboard/action-queue', '/api/v1/admin/dashboard/order-status-counts']) {
+      const route = routes.find((r) => r.url === url && r.method === 'GET');
+      expect(route, url).toBeDefined();
+      expect(route?.preHandler).toBeDefined();
+      expect((route?.schema as { response?: Record<number, unknown> }).response?.[200]).toBeDefined();
+    }
+
+    const statusCounts = routes.find((r) => r.url === '/api/v1/admin/dashboard/order-status-counts');
+    expect((statusCounts?.schema as { querystring?: { required?: string[] } }).querystring?.required).toEqual(['from', 'to']);
+
     await app.close();
   });
 });

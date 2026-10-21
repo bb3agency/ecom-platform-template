@@ -1,7 +1,9 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { AdminLoadingBlock } from "@/components/admin/ui/admin-ui";
+import { Loader2 } from "lucide-react";
+
+import { Notice, Panel } from "@/components/ui/console";
 
 interface AdminSectionProps {
   title: string;
@@ -11,9 +13,17 @@ interface AdminSectionProps {
   error?: string | null;
   empty?: boolean;
   emptyMessage?: string;
+  /** Body runs edge to edge (tables, lists). */
+  flush?: boolean;
+  className?: string;
   children?: ReactNode;
 }
 
+/**
+ * Titled section with loading / error / empty states, on the console Panel.
+ * Panel's grid-cols-1 + min-w-0 keeps wide children (tables, long AWBs/emails)
+ * from inflating the section past a phone viewport.
+ */
 export function AdminSection({
   title,
   description,
@@ -21,34 +31,29 @@ export function AdminSection({
   loading,
   error,
   empty,
-  emptyMessage = "No data yet.",
+  emptyMessage = "Nothing here yet.",
+  flush,
+  className,
   children,
 }: AdminSectionProps) {
+  const showBody = !loading && !error && !empty;
   return (
-    // grid-cols-1 (minmax(0,1fr)) + min-w-0 are load-bearing: an implicit auto
-    // track lets any wide child (table, long AWB/email, unwrapped filter row)
-    // inflate the section past the mobile viewport — reads as broken padding.
-    <section className="grid min-w-0 grid-cols-1 gap-3 rounded-lg border border-border bg-card p-4">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="font-heading text-lg font-semibold">{title}</h2>
-          {description ? (
-            <p className="mt-1 text-sm text-muted-foreground">{description}</p>
-          ) : null}
+    <Panel
+      title={title}
+      description={description}
+      actions={actions}
+      flush={flush && showBody}
+      className={className}
+    >
+      {loading ? (
+        <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground" role="status">
+          <Loader2 className="size-4 animate-spin" aria-hidden />
+          Loading…
         </div>
-        {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
-      </header>
-
-      {loading ? <AdminLoadingBlock label="Loading…" /> : null}
-      {!loading && error ? (
-        <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive" role="alert">
-          {error}
-        </p>
       ) : null}
-      {!loading && !error && empty ? (
-        <p className="text-sm text-muted-foreground">{emptyMessage}</p>
-      ) : null}
-      {!loading && !error && !empty ? children : null}
-    </section>
+      {!loading && error ? <Notice tone="danger">{error}</Notice> : null}
+      {!loading && !error && empty ? <p className="py-2 text-sm text-muted-foreground">{emptyMessage}</p> : null}
+      {showBody ? children : null}
+    </Panel>
   );
 }

@@ -17,7 +17,7 @@ interface BoxPresetsPanelProps {
 }
 
 const inputClass =
-  "h-10 w-full rounded-md border border-border/50 bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-zinc-900/20";
+  "h-10 w-full rounded-md border border-border/50 bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring";
 
 export function BoxPresetsPanel({ canWrite }: BoxPresetsPanelProps) {
   const api = useAuthenticatedApi();
@@ -316,7 +316,7 @@ export function BoxPresetsPanel({ canWrite }: BoxPresetsPanelProps) {
             <button
               onClick={() => void addPreset()}
               disabled={saving}
-              className="h-10 rounded-md bg-zinc-900 px-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-zinc-800 disabled:opacity-60 flex items-center justify-center gap-1.5"
+              className="h-10 rounded-md bg-foreground px-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-foreground disabled:opacity-60 flex items-center justify-center gap-1.5"
             >
               <Plus className="h-4 w-4" />
               Add
@@ -357,7 +357,7 @@ export function BoxPresetsPanel({ canWrite }: BoxPresetsPanelProps) {
             <button
               onClick={() => void savePackagingWeight()}
               disabled={saving}
-              className="h-10 rounded-md bg-zinc-900 px-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-zinc-800 disabled:opacity-60"
+              className="h-10 rounded-md bg-foreground px-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-foreground disabled:opacity-60"
             >
               Save packaging weight
             </button>

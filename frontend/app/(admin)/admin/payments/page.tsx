@@ -72,7 +72,7 @@ function KpiCard({
           {icon}
         </div>
         <div className="flex flex-col gap-0.5 sm:gap-1 min-w-0">
-          <p className="text-[10px] sm:text-xs font-medium text-muted-foreground truncate">{label}</p>
+          <p className="text-xs sm:text-xs font-medium text-muted-foreground truncate">{label}</p>
           {loading ? (
             <div className="h-6 sm:h-7 w-16 sm:w-24 animate-pulse rounded bg-muted" />
           ) : (
@@ -83,10 +83,10 @@ function KpiCard({
         </div>
       </div>
       {!loading && trend !== undefined ? (
-        <div className="mt-3 sm:mt-4 flex flex-wrap items-center gap-1 sm:gap-1.5 text-[9px] sm:text-[11px] font-medium">
+        <div className="mt-3 sm:mt-4 flex flex-wrap items-center gap-1 sm:gap-1.5 text-xs sm:text-[11px] font-medium">
           {trendUp ? (
             <svg
-              className="h-3 w-3 text-emerald-500"
+              className="h-3 w-3 text-success"
               viewBox="0 0 20 20"
               fill="currentColor"
             >
@@ -98,7 +98,7 @@ function KpiCard({
             </svg>
           ) : (
             <svg
-              className="h-3 w-3 text-rose-500"
+              className="h-3 w-3 text-destructive"
               viewBox="0 0 20 20"
               fill="currentColor"
             >
@@ -109,7 +109,7 @@ function KpiCard({
               />
             </svg>
           )}
-          <span className={trendUp ? "text-emerald-600" : "text-rose-600"}>
+          <span className={trendUp ? "text-success" : "text-destructive"}>
             {trend}
           </span>
           <span className="text-muted-foreground">
@@ -279,8 +279,8 @@ function AdminPaymentsKpis({ from, to, trendLabel }: AdminPaymentsKpisProps) {
       <KpiCard
         label="Total Transactions"
         value={fmt(counts?.total)}
-        icon={<CreditCard className="h-5 w-5 text-emerald-600" />}
-        iconBg="bg-emerald-100"
+        icon={<CreditCard className="h-5 w-5 text-success" />}
+        iconBg="bg-success/10"
         loading={loading}
         trend={trend("total")}
         trendUp={trendUp("total")}
@@ -293,8 +293,8 @@ function AdminPaymentsKpis({ from, to, trendLabel }: AdminPaymentsKpisProps) {
             ? `₹${(counts.capturedAmountPaise / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
             : "—"
         }
-        icon={<DollarSign className="h-5 w-5 text-blue-600" />}
-        iconBg="bg-blue-100"
+        icon={<DollarSign className="h-5 w-5 text-info" />}
+        iconBg="bg-info-soft"
         loading={loading}
         trend={
           counts && prevCounts
@@ -313,8 +313,8 @@ function AdminPaymentsKpis({ from, to, trendLabel }: AdminPaymentsKpisProps) {
       <KpiCard
         label="Successful Payments"
         value={fmt(counts?.captured)}
-        icon={<CheckCircle2 className="h-5 w-5 text-purple-600" />}
-        iconBg="bg-purple-100"
+        icon={<CheckCircle2 className="h-5 w-5 text-info" />}
+        iconBg="bg-info-soft"
         loading={loading}
         trend={trend("captured")}
         trendUp={trendUp("captured")}
@@ -323,8 +323,8 @@ function AdminPaymentsKpis({ from, to, trendLabel }: AdminPaymentsKpisProps) {
       <KpiCard
         label="Failed Payments"
         value={fmt(counts?.failed)}
-        icon={<AlertTriangle className="h-5 w-5 text-rose-600" />}
-        iconBg="bg-rose-100"
+        icon={<AlertTriangle className="h-5 w-5 text-destructive" />}
+        iconBg="bg-destructive/10"
         loading={loading}
         trend={trend("failed")}
         trendUp={trendUp("failed")}

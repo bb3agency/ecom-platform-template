@@ -140,7 +140,7 @@ export function AdminRowActionsMenu({
                   onClick={() => void handleCopyLink()}
                 >
                   {copied ? (
-                    <Check className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                    <Check className="h-3.5 w-3.5 shrink-0 text-success" />
                   ) : (
                     <Copy className="h-3.5 w-3.5 shrink-0" />
                   )}

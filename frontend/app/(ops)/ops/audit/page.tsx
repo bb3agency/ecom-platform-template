@@ -1,13 +1,11 @@
 import { OpsAuditPanel } from "@/components/ops/OpsAuditPanel";
-import { OpsPageFrame } from "@/components/ops/ui/ops-ui";
 
-export default function OpsAuditPage() {
-  return (
-    <OpsPageFrame
-      title="Audit log"
-      description="Tamper-evident timeline of privileged ops actions and API mutations."
-    >
-      <OpsAuditPanel />
-    </OpsPageFrame>
-  );
+interface OpsAuditPageProps {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}
+
+export default async function OpsAuditPage({ searchParams }: OpsAuditPageProps) {
+  const params = await searchParams;
+  const status = Array.isArray(params.status) ? params.status[0] : params.status;
+  return <OpsAuditPanel initialStatus={status === "FAILED" || status === "EXECUTED" ? status : ""} />;
 }

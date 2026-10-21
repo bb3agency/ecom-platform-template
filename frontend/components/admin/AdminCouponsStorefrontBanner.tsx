@@ -85,8 +85,8 @@ export function AdminCouponsStorefrontBanner() {
     <div
       className={
         enabled
-          ? "rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-4 text-sm text-emerald-700 dark:text-emerald-400"
-          : "rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-4 text-sm text-amber-700 dark:text-amber-400"
+          ? "rounded-xl border border-success/30 bg-success/10 px-4 py-4 text-sm text-success "
+          : "rounded-xl border border-warning-soft bg-warning-soft px-4 py-4 text-sm text-warning "
       }
     >
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">

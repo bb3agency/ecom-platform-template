@@ -25,8 +25,8 @@ export function AccountGuard({ children }: AccountGuardProps) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center">
         <div className="flex flex-col items-center gap-3">
-          <div className="size-8 animate-spin rounded-full border-2 border-[#23403d] border-t-transparent" aria-hidden />
-          <p className="text-sm font-medium text-[#767676]" role="status" aria-live="polite">
+          <div className="size-8 animate-spin rounded-full border-2 border-primary border-t-transparent" aria-hidden />
+          <p className="text-sm font-medium text-muted-foreground" role="status" aria-live="polite">
             Restoring your session…
           </p>
         </div>
@@ -37,7 +37,7 @@ export function AccountGuard({ children }: AccountGuardProps) {
   if (status === "failed" || !accessToken) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center">
-        <p className="text-sm text-[#767676]" role="status" aria-live="polite">
+        <p className="text-sm text-muted-foreground" role="status" aria-live="polite">
           Redirecting to sign in…
         </p>
       </div>

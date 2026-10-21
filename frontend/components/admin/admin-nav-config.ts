@@ -17,12 +17,26 @@ import {
 } from "lucide-react";
 import type { AdminRouteKey } from "@/lib/permissions";
 
+export type AdminNavGroup = "overview" | "sell" | "catalog" | "customers" | "store";
+
+/** Section headings in the sidebar, in display order. */
+export const ADMIN_NAV_GROUPS: { id: AdminNavGroup; label: string | null }[] = [
+  { id: "overview", label: null },
+  { id: "sell", label: "Sales" },
+  { id: "catalog", label: "Catalog" },
+  { id: "customers", label: "Customers" },
+  { id: "store", label: "Store" },
+];
+
 export interface AdminNavItem {
   href: string;
   label: string;
   description: string;
   icon: LucideIcon;
   routeKey: AdminRouteKey;
+  group: AdminNavGroup;
+  /** Shown in the phone bottom tab bar (max 4; the 5th slot is "More"). */
+  mobileTab?: boolean;
 }
 
 export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
@@ -32,6 +46,8 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
     description: "Overview and core metrics",
     icon: LayoutDashboard,
     routeKey: "dashboard",
+    group: "overview",
+    mobileTab: true,
   },
   {
     href: "/admin/orders",
@@ -39,6 +55,8 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
     description: "Manage and process orders",
     icon: ShoppingCart,
     routeKey: "orders",
+    group: "sell",
+    mobileTab: true,
   },
   {
     href: "/admin/shipments",
@@ -46,6 +64,7 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
     description: "Fulfillment and tracking",
     icon: Truck,
     routeKey: "shipments",
+    group: "sell",
   },
   {
     href: "/admin/payments",
@@ -53,6 +72,7 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
     description: "Refunds and payment states",
     icon: Wallet,
     routeKey: "payments",
+    group: "sell",
   },
   {
     href: "/admin/returns",
@@ -60,6 +80,7 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
     description: "Customer return requests",
     icon: RefreshCcw,
     routeKey: "returns",
+    group: "sell",
   },
   {
     href: "/admin/products",
@@ -67,6 +88,8 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
     description: "Catalog and variants",
     icon: Box,
     routeKey: "products",
+    group: "catalog",
+    mobileTab: true,
   },
   {
     href: "/admin/categories",
@@ -74,6 +97,7 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
     description: "Product taxonomy",
     icon: Layers,
     routeKey: "categories",
+    group: "catalog",
   },
   {
     href: "/admin/inventory",
@@ -81,6 +105,7 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
     description: "Stock levels and alerts",
     icon: ClipboardList,
     routeKey: "inventory",
+    group: "catalog",
   },
   {
     href: "/admin/customers",
@@ -88,6 +113,8 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
     description: "User accounts and addresses",
     icon: Users,
     routeKey: "customers",
+    group: "customers",
+    mobileTab: true,
   },
   {
     href: "/admin/reviews",
@@ -95,6 +122,7 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
     description: "Moderate product reviews",
     icon: Star,
     routeKey: "reviews",
+    group: "customers",
   },
   {
     href: "/admin/coupons",
@@ -102,13 +130,15 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
     description: "Discounts and campaigns",
     icon: Percent,
     routeKey: "coupons",
+    group: "customers",
   },
   {
     href: "/admin/analytics",
     label: "Analytics",
     description: "Deep dive reporting",
     icon: BarChart3,
-    routeKey: "dashboard", // Tied to dashboard for now
+    routeKey: "dashboard",
+    group: "overview",
   },
   {
     href: "/admin/gallery",
@@ -116,6 +146,7 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
     description: "Brand and farm images",
     icon: Images,
     routeKey: "gallery",
+    group: "catalog",
   },
   {
     href: "/admin/settings",
@@ -123,6 +154,7 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
     description: "Store profile and config",
     icon: Settings,
     routeKey: "settings",
+    group: "store",
   },
 ];
 
@@ -133,13 +165,15 @@ const DEV_NAV_ITEMS: AdminNavItem[] = [
     description: "JSON catalog mutations",
     icon: Layers,
     routeKey: "products",
+    group: "store",
   },
   {
     href: "/admin/mutations",
-    label: "Mutations Data",
+    label: "Mutations",
     description: "Direct backend actions",
     icon: Layers,
     routeKey: "mutations",
+    group: "store",
   },
 ];
 

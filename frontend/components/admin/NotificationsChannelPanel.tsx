@@ -92,14 +92,14 @@ interface ProviderBadgeProps {
 function ProviderBadge({ provisioned, label }: ProviderBadgeProps) {
   if (provisioned) {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-[11px] font-semibold text-green-700 ring-1 ring-green-200">
+      <span className="inline-flex items-center gap-1 rounded-full bg-success/10 px-2 py-0.5 text-xs font-semibold text-success ring-1 ring-success/30">
         <CheckCircle2 className="size-3" aria-hidden />
         {label}
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 ring-1 ring-amber-200">
+    <span className="inline-flex items-center gap-1 rounded-full bg-warning-soft px-2 py-0.5 text-xs font-semibold text-warning ring-1 ring-ring">
       <ShieldAlert className="size-3" aria-hidden />
       Not configured
     </span>
@@ -127,8 +127,8 @@ function UnconfiguredCallout({ channel, smsProvider }: UnconfiguredCalloutProps)
   };
 
   return (
-    <div className="mt-1.5 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-      <ShieldAlert className="mt-0.5 size-3.5 shrink-0 text-amber-600" aria-hidden />
+    <div className="mt-1.5 flex items-start gap-2 rounded-lg border border-warning-soft bg-warning-soft p-3 text-xs text-warning">
+      <ShieldAlert className="mt-0.5 size-3.5 shrink-0 text-warning" aria-hidden />
       <p>{msgs[channel]}</p>
     </div>
   );
@@ -164,9 +164,9 @@ function ChannelCard({
       className={cn(
         "rounded-xl border p-4 sm:p-5 transition-colors",
         enabled && provisioned
-          ? "border-green-200 bg-green-50/50"
+          ? "border-success/30 bg-success/10"
           : enabled && !provisioned
-          ? "border-amber-200 bg-amber-50/30"
+          ? "border-warning-soft bg-warning-soft"
           : "border-border bg-card"
       )}
     >
@@ -175,7 +175,7 @@ function ChannelCard({
           <div
             className={cn(
               "flex size-9 shrink-0 items-center justify-center rounded-lg",
-              provisioned ? "bg-green-100 text-green-700" : "bg-muted text-muted-foreground"
+              provisioned ? "bg-success/10 text-success" : "bg-muted text-muted-foreground"
             )}
           >
             {icon}
@@ -187,7 +187,7 @@ function ChannelCard({
             </div>
             <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
             {providerNote && (
-              <p className="mt-1 text-[11px] text-muted-foreground/70">{providerNote}</p>
+              <p className="mt-1 text-xs text-muted-foreground/70">{providerNote}</p>
             )}
           </div>
         </div>
@@ -215,8 +215,8 @@ function ChannelCard({
 
       {/* Warn when enabled but not provisioned */}
       {enabled && !provisioned && (
-        <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-white px-3 py-2.5 text-xs text-amber-800">
-          <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-amber-500" aria-hidden />
+        <div className="mt-3 flex items-start gap-2 rounded-lg border border-warning-soft bg-white px-3 py-2.5 text-xs text-warning">
+          <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-warning" aria-hidden />
           <span>
             This channel is enabled in your store settings but{" "}
             <strong>has not been configured by your platform admin</strong>. Notifications using
@@ -431,7 +431,7 @@ export function NotificationsChannelPanel() {
             Per-template routing
           </h3>
           {misconfiguredTemplates > 0 && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-semibold text-amber-700">
+            <span className="inline-flex items-center gap-1 rounded-full bg-warning-soft px-2.5 py-0.5 text-xs font-semibold text-warning">
               <AlertTriangle className="size-3" aria-hidden />
               {misconfiguredTemplates} misconfigured
             </span>
@@ -456,7 +456,7 @@ export function NotificationsChannelPanel() {
                 key={tmpl.id}
                 className={cn(
                   "rounded-xl border p-3 sm:p-4",
-                  !firstUnavailable ? "border-border bg-card" : "border-amber-200 bg-amber-50/30"
+                  !firstUnavailable ? "border-border bg-card" : "border-warning-soft bg-warning-soft"
                 )}
               >
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -485,11 +485,11 @@ export function NotificationsChannelPanel() {
                               : `${ch} is not configured — set up the provider in ops first`
                           }
                           className={cn(
-                            "rounded-md px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider transition-colors",
+                            "rounded-md px-2.5 py-1 text-xs font-bold uppercase tracking-wider transition-colors",
                             isOn && avail
                               ? "bg-primary text-primary-foreground shadow-sm"
                               : isOn && !avail
-                              ? "bg-amber-500 text-white shadow-sm"
+                              ? "bg-warning text-white shadow-sm"
                               : "text-muted-foreground hover:bg-background disabled:cursor-not-allowed disabled:opacity-40"
                           )}
                         >
@@ -500,7 +500,7 @@ export function NotificationsChannelPanel() {
                   </div>
                 </div>
                 {otpWhatsappSelectedButGated ? (
-                  <p className="mt-2 text-[11px] text-amber-700">
+                  <p className="mt-2 text-xs text-warning">
                     WhatsApp OTP won&apos;t send until a platform operator enables{" "}
                     <code>OTP_WHATSAPP_ENABLED</code> in Ops → Config (paid-feature gate).
                   </p>
@@ -524,14 +524,14 @@ export function NotificationsChannelPanel() {
         (!availability.smsProvisioned && smsEnabled) ||
         (!availability.whatsappProvisioned && whatsappEnabled) ||
         misconfiguredTemplates > 0) && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm">
+        <div className="rounded-xl border border-warning-soft bg-warning-soft p-4 text-sm">
           <div className="flex items-start gap-2">
-            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600" aria-hidden />
+            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden />
             <div className="space-y-1.5">
-              <p className="font-semibold text-amber-800">
+              <p className="font-semibold text-warning">
                 Some notifications won&apos;t send
               </p>
-              <ul className="space-y-1 text-xs text-amber-700">
+              <ul className="space-y-1 text-xs text-warning">
                 {!availability.emailProvisioned && emailEnabled && (
                   <li>
                     • Email is enabled but RESEND_API_KEY is not set in ops config. All email
@@ -561,7 +561,7 @@ export function NotificationsChannelPanel() {
                   </li>
                 )}
               </ul>
-              <p className="text-[11px] text-amber-600">
+              <p className="text-xs text-warning">
                 Ask your platform admin to configure the missing provider keys in the Ops panel
                 under Settings → Notifications.
               </p>
@@ -575,8 +575,8 @@ export function NotificationsChannelPanel() {
         availability.smsProvisioned === smsEnabled &&
         availability.whatsappProvisioned === whatsappEnabled &&
         misconfiguredTemplates === 0 && (
-          <div className="flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 p-4 text-sm text-green-800">
-            <CheckCircle2 className="size-4 shrink-0 text-green-600" aria-hidden />
+          <div className="flex items-center gap-2 rounded-xl border border-success/30 bg-success/10 p-4 text-sm text-success">
+            <CheckCircle2 className="size-4 shrink-0 text-success" aria-hidden />
             <span className="font-medium">All active channels are configured and ready to send.</span>
           </div>
         )}

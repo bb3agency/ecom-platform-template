@@ -44,32 +44,32 @@ const COLUMN_META: Record<OrderBoardColumnKey, ColumnMeta> = {
   CONFIRMED: {
     label: "Confirmed",
     icon: Package,
-    dot: "bg-amber-500",
-    iconColor: "text-amber-600 dark:text-amber-400",
+    dot: "bg-warning",
+    iconColor: "text-warning ",
   },
   PROCESSING: {
     label: "Processing",
     icon: Clock,
-    dot: "bg-sky-500",
-    iconColor: "text-sky-600 dark:text-sky-400",
+    dot: "bg-info",
+    iconColor: "text-info ",
   },
   SHIPPED: {
     label: "Shipped",
     icon: Truck,
-    dot: "bg-sky-500",
-    iconColor: "text-sky-600 dark:text-sky-400",
+    dot: "bg-info",
+    iconColor: "text-info ",
   },
   OUT_FOR_DELIVERY: {
     label: "Out for Delivery",
     icon: MapPin,
-    dot: "bg-sky-500",
-    iconColor: "text-sky-600 dark:text-sky-400",
+    dot: "bg-info",
+    iconColor: "text-info ",
   },
   DELIVERED: {
     label: "Delivered",
     icon: CheckCircle2,
-    dot: "bg-emerald-500",
-    iconColor: "text-emerald-600 dark:text-emerald-400",
+    dot: "bg-success",
+    iconColor: "text-success ",
   },
   CANCELLED: {
     label: "Cancelled",
@@ -117,30 +117,30 @@ function OrderCard({ order }: { order: AdminBoardOrderItem }) {
 
       {/* Ship status / action */}
       {order.isLocalDelivery ? (
-        <div className="flex items-center gap-1.5 rounded-lg bg-emerald-500/10 px-2 py-1">
-          <Truck className="h-3 w-3 shrink-0 text-emerald-600 dark:text-emerald-400" />
-          <span className="text-xs font-medium text-emerald-700 dark:text-emerald-400">
+        <div className="flex items-center gap-1.5 rounded-lg bg-success/10 px-2 py-1">
+          <Truck className="h-3 w-3 shrink-0 text-success " />
+          <span className="text-xs font-medium text-success ">
             Local delivery — fulfil directly
           </span>
         </div>
       ) : order.canShipNow ? (
-        <div className="flex items-center gap-1.5 rounded-lg bg-emerald-500/10 px-2 py-1">
-          <Zap className="h-3 w-3 shrink-0 text-emerald-600 dark:text-emerald-400" />
-          <span className="text-xs font-medium text-emerald-700 dark:text-emerald-400">
+        <div className="flex items-center gap-1.5 rounded-lg bg-success/10 px-2 py-1">
+          <Zap className="h-3 w-3 shrink-0 text-success " />
+          <span className="text-xs font-medium text-success ">
             Ready to ship
           </span>
         </div>
       ) : order.shipBlockReason ? (
-        <div className="flex items-center gap-1.5 rounded-lg bg-amber-500/10 px-2 py-1">
-          <AlertTriangle className="h-3 w-3 shrink-0 text-amber-600 dark:text-amber-400" />
-          <span className="truncate text-xs text-amber-700 dark:text-amber-400">
+        <div className="flex items-center gap-1.5 rounded-lg bg-warning-soft px-2 py-1">
+          <AlertTriangle className="h-3 w-3 shrink-0 text-warning " />
+          <span className="truncate text-xs text-warning ">
             {order.shipBlockReason}
           </span>
         </div>
       ) : order.awbNumber ? (
-        <div className="flex items-center gap-1.5 rounded-lg bg-sky-500/10 px-2 py-1">
-          <Truck className="h-3 w-3 shrink-0 text-sky-600 dark:text-sky-400" />
-          <span className="truncate font-mono text-xs text-sky-700 dark:text-sky-400">
+        <div className="flex items-center gap-1.5 rounded-lg bg-info-soft px-2 py-1">
+          <Truck className="h-3 w-3 shrink-0 text-info " />
+          <span className="truncate font-mono text-xs text-info ">
             {order.awbNumber}
           </span>
         </div>
@@ -289,7 +289,7 @@ function MobileColumnPicker({
             {meta.label}
             <span
               className={cn(
-                "flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-[10px] font-bold",
+                "flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-xs font-bold",
                 active
                   ? "bg-primary/10 text-primary"
                   : "bg-muted text-muted-foreground",
@@ -464,9 +464,9 @@ export function AdminOrderBoard() {
 
             {/* Mobile action needed banner */}
             {totalActionNeeded > 0 && (
-              <div className="flex items-center gap-2 rounded-xl bg-emerald-500/10 px-3 py-2">
-                <Zap className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-                <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">
+              <div className="flex items-center gap-2 rounded-xl bg-success/10 px-3 py-2">
+                <Zap className="h-4 w-4 shrink-0 text-success " />
+                <p className="text-xs font-semibold text-success ">
                   {totalActionNeeded} order{totalActionNeeded !== 1 ? "s" : ""} ready to ship
                 </p>
               </div>

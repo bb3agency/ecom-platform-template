@@ -17,17 +17,17 @@ const badgeVariants = cva(
         /** Neutral/default label. */
         default: "bg-muted text-muted-foreground",
         /** Positive: Active, In Stock, Paid, Delivered. */
-        success: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+        success: "bg-success/10 text-success ",
         /** Attention: Pending, Low Stock, Processing. */
-        warning: "bg-amber-500/10 text-amber-700 dark:text-amber-400",
+        warning: "bg-warning-soft text-warning ",
         /** Negative: Banned, Failed, Out of Stock, Cancelled. */
-        destructive: "bg-red-500/10 text-red-700 dark:text-red-400",
+        destructive: "bg-destructive/10 text-destructive ",
         /** Informational: Sync states, counts. */
-        info: "bg-sky-500/10 text-sky-700 dark:text-sky-400",
+        info: "bg-info-soft text-info ",
         /** Marketing: Featured, Offer. */
-        feature: "bg-violet-500/10 text-violet-700 dark:text-violet-400",
+        feature: "bg-info-soft text-info ",
         /** Marketing: Bestseller, Hot. */
-        highlight: "bg-orange-500/10 text-orange-700 dark:text-orange-400",
+        highlight: "bg-warning-soft text-warning ",
         /** Outlined neutral (roles, secondary metadata). */
         outline: "border border-border bg-transparent text-foreground",
       },
@@ -40,12 +40,12 @@ const badgeVariants = cva(
 
 const DOT_COLOR: Record<string, string> = {
   default: "bg-muted-foreground",
-  success: "bg-emerald-500",
-  warning: "bg-amber-500",
-  destructive: "bg-red-500",
-  info: "bg-sky-500",
-  feature: "bg-violet-500",
-  highlight: "bg-orange-500",
+  success: "bg-success",
+  warning: "bg-warning",
+  destructive: "bg-destructive",
+  info: "bg-info",
+  feature: "bg-info",
+  highlight: "bg-warning",
   outline: "bg-muted-foreground",
 };
 

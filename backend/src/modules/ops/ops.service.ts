@@ -29,6 +29,7 @@ import {
   resolveOpsConfigDomainForKey
 } from './ops-config-contract';
 import { normalizeOpsOtpCode } from './ops-otp-code.js';
+import { computeRestartPendingKeys, summarizeOpsQueues, type OpsOverviewQueueLike, type OpsOverviewQueueSummary } from './ops-overview';
 
 type LoadShedMode = LoadShedModeWithMaintenance;
 
@@ -66,6 +67,42 @@ type OpsActionTypeValue =
   | 'OPS_USER_LOGGED_OUT';
 
 type OpsActionStatusValue = 'EXECUTED' | 'FAILED';
+
+
+/** Response of GET /api/v1/ops/overview. */
+export interface OpsOverviewSnapshot {
+  generatedAt: string;
+  loadShed: LoadShedStatusSnapshot;
+  config: {
+    runtimeProfile: 'development-like' | 'production-like';
+    /** Required keys missing in a production-like profile (always [] in development). */
+    missingRequiredKeys: string[];
+    /** Saved config keys waiting for an API/worker restart. */
+    restartPendingKeys: string[];
+  };
+  queues: OpsOverviewQueueSummary;
+  people: {
+    operatorsActive: number;
+    operatorsTotal: number;
+    merchantAdminsActive: number;
+    merchantAdminsTotal: number;
+    /** Unexpired invites still waiting to be accepted. */
+    pendingOpsInvites: number;
+    pendingAdminInvites: number;
+  };
+  audit: {
+    failedLast24h: number;
+    recent: Array<{
+      id: string;
+      actionType: OpsActionTypeValue;
+      actionStatus: OpsActionStatusValue;
+      createdAt: string;
+      actor: { id: string; name: string; email: string } | null;
+    }>;
+  };
+  /** The caller's own unexpired, unused OTP challenges. */
+  pendingOtpChallenges: number;
+}
 
 type OpsConfigValidationInputValue = string | number | boolean | null | undefined;
 
@@ -339,8 +376,9 @@ type OpsPrismaLike = {
         method: true;
         summary: true;
         createdAt: true;
+        opsUser?: { select: { id: true; name: true; email: true } };
       };
-    }): Promise<Array<Omit<OpsAuditLogRecord, 'chainHash'>>>;
+    }): Promise<Array<Omit<OpsAuditLogRecord, 'chainHash'> & { opsUser?: { id: string; name: string; email: string } | null }>>;
     count(args: { where?: { actionStatus?: OpsActionStatusValue; actionType?: OpsActionTypeValue; opsUserId?: string } }): Promise<number>;
   };
 };
@@ -1374,6 +1412,8 @@ export class OpsService {
         requiresRestart: boolean;
         runtimeSource?: 'env-bootstrap' | 'db-overlay';
         note?: string;
+        /** A saved DB-overlay value differs from what this process is running with. */
+        restartPending: boolean;
       }>;
     }>;
     strictProfileHealth: {
@@ -1382,6 +1422,7 @@ export class OpsService {
     };
   }> {
     const profile = isProductionLikeProfile() ? 'production-like' : 'development-like';
+    const restartPending = new Set(await this.resolveRestartPendingConfigKeys());
     const strictMissing = profile === 'production-like' ? findMissingStrictOpsConfigKeys(process.env) : [];
     const strictPlaceholderViolations =
       profile === 'production-like'
@@ -1417,7 +1458,8 @@ export class OpsService {
             mutableViaOps: item.mutableViaOps,
             requiresRestart: item.requiresRestart,
             ...(item.runtimeSource ? { runtimeSource: item.runtimeSource } : {}),
-            ...(item.note ? { note: item.note } : {})
+            ...(item.note ? { note: item.note } : {}),
+            restartPending: restartPending.has(item.key)
           };
         })
       })),
@@ -2285,6 +2327,93 @@ export class OpsService {
     };
   }
 
+  /**
+   * Saved config keys the running process has not loaded yet (needs an API/worker
+   * restart). Never throws: an undecryptable row (e.g. mid key rotation) yields [].
+   */
+  private async resolveRestartPendingConfigKeys(): Promise<string[]> {
+    try {
+      const stored = await this.getStoredConfigSecrets();
+      return computeRestartPendingKeys(stored, process.env);
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Everything the ops console landing screen needs, in one read-only call:
+   * traffic mode, config health, queue backlog, people/invite counts, failed
+   * privileged actions in the last 24h and the latest audit entries.
+   * Not audited (it reveals no values — only key names and counts, which the
+   * public readiness endpoint already exposes).
+   */
+  async getOpsOverview(opsUserId: string): Promise<OpsOverviewSnapshot> {
+    const prisma = this.fastify.prisma;
+    const now = new Date();
+    const since = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const pendingInviteWhere = { status: { in: ['CREATED', 'EMAIL_SENT'] as Array<'CREATED' | 'EMAIL_SENT'> }, expiresAt: { gt: now } };
+    const profile = isProductionLikeProfile() ? 'production-like' : 'development-like';
+    const missingRequiredKeys = profile === 'production-like' ? findMissingStrictOpsConfigKeys(process.env) : [];
+
+    const [
+      loadShed,
+      restartPendingKeys,
+      queues,
+      operatorsTotal,
+      operatorsActive,
+      merchantAdminsTotal,
+      merchantAdminsActive,
+      pendingOpsInvites,
+      pendingAdminInvites,
+      failedLast24h,
+      pendingOtpChallenges,
+      recent
+    ] = await Promise.all([
+      this.getLoadShedStatus(),
+      this.resolveRestartPendingConfigKeys(),
+      summarizeOpsQueues((this.fastify.queues ?? {}) as unknown as Record<string, OpsOverviewQueueLike | undefined>),
+      prisma.opsUser.count(),
+      prisma.opsUser.count({ where: { isActive: true } }),
+      prisma.user.count({ where: { role: 'ADMIN' } }),
+      prisma.user.count({ where: { role: 'ADMIN', isBanned: false } }),
+      prisma.opsUserInvite.count({ where: pendingInviteWhere }),
+      prisma.adminUserInvite.count({ where: pendingInviteWhere }),
+      prisma.opsAuditLog.count({ where: { actionStatus: 'FAILED', createdAt: { gte: since } } }),
+      prisma.opsOtpChallenge.count({ where: { opsUserId, status: 'PENDING', expiresAt: { gt: now } } }),
+      this.listAuditLogs({ page: 1, limit: 6 })
+    ]);
+
+    return {
+      generatedAt: now.toISOString(),
+      loadShed,
+      config: {
+        runtimeProfile: profile,
+        missingRequiredKeys,
+        restartPendingKeys
+      },
+      queues,
+      people: {
+        operatorsActive,
+        operatorsTotal,
+        merchantAdminsActive,
+        merchantAdminsTotal,
+        pendingOpsInvites,
+        pendingAdminInvites
+      },
+      audit: {
+        failedLast24h,
+        recent: recent.items.map((item) => ({
+          id: item.id,
+          actionType: item.actionType,
+          actionStatus: item.actionStatus,
+          createdAt: item.createdAt,
+          actor: item.actor
+        }))
+      },
+      pendingOtpChallenges
+    };
+  }
+
   async listAuditLogs(query: {
     actionStatus?: OpsActionStatusValue;
     actionType?: OpsActionTypeValue;
@@ -2301,6 +2430,8 @@ export class OpsService {
       method: string;
       summary: unknown;
       createdAt: string;
+      /** Operator who performed the action. Null only if the row predates the relation. */
+      actor: { id: string; name: string; email: string } | null;
     }>;
     page: number;
     limit: number;
@@ -2328,7 +2459,8 @@ export class OpsService {
           requestPath: true,
           method: true,
           summary: true,
-          createdAt: true
+          createdAt: true,
+          opsUser: { select: { id: true, name: true, email: true } }
         }
       }),
       this.prisma().opsAuditLog.count({ where })
@@ -2343,7 +2475,8 @@ export class OpsService {
         requestPath: item.requestPath,
         method: item.method,
         summary: item.summary,
-        createdAt: item.createdAt.toISOString()
+        createdAt: item.createdAt.toISOString(),
+        actor: item.opsUser ? { id: item.opsUser.id, name: item.opsUser.name, email: item.opsUser.email } : null
       })),
       page,
       limit,

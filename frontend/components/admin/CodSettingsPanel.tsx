@@ -120,7 +120,7 @@ export function CodSettingsPanel() {
           
           {/* Fail-case warnings */}
           {isCodEnabled && !settings?.sellerState?.trim() && (
-            <div className="flex min-w-0 items-start gap-2.5 rounded-lg border border-amber-500/20 bg-amber-500/10 p-3.5 text-xs text-amber-800 overflow-hidden">
+            <div className="flex min-w-0 items-start gap-2.5 rounded-lg border border-warning-soft bg-warning-soft p-3.5 text-xs text-warning overflow-hidden">
               <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" aria-hidden />
               <span>
                 <strong>Seller operating state is not set.</strong> GST invoice tax splits require

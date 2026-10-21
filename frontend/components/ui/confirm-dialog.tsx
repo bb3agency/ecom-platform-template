@@ -164,7 +164,7 @@ export function ConfirmDialog({
           <div
             className={cn(
               "flex size-14 items-center justify-center rounded-full",
-              tone === "destructive" ? "bg-red-500/10 text-red-600" : "bg-primary/10 text-primary",
+              tone === "destructive" ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary",
             )}
           >
             <HeaderIcon className="size-6" />
@@ -212,7 +212,7 @@ export function ConfirmDialog({
           <Button
             className={cn(
               "min-w-28",
-              tone === "destructive" && "bg-red-600 text-white hover:bg-red-700",
+              tone === "destructive" && "bg-destructive text-white hover:bg-destructive",
             )}
             variant={tone === "destructive" ? undefined : "default"}
             disabled={!canConfirm}

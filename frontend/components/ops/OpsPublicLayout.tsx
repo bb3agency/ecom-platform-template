@@ -1,74 +1,40 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { Shield } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
 
 interface OpsPublicLayoutProps {
   title: string;
-  description: string;
+  description: ReactNode;
   children: ReactNode;
 }
 
+/**
+ * Sign-in and invite setup. Deliberately bare: no console navigation exists
+ * before an ops session does.
+ */
 export function OpsPublicLayout({ title, description, children }: OpsPublicLayoutProps) {
   return (
-    <div className="dark ops-console min-h-screen bg-background text-foreground">
-      <div className="grid min-h-screen lg:grid-cols-2">
-        <div className="relative hidden flex-col justify-between overflow-hidden bg-sidebar p-10 text-sidebar-foreground lg:flex">
-          <div className="relative z-10 flex items-center gap-3">
-            <div className="flex size-11 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-              <Shield className="size-6" aria-hidden />
-            </div>
-            <div>
-              <p className="font-heading text-lg font-semibold">Ops Control Plane</p>
-              <p className="text-sm text-muted-foreground">Secure platform operations</p>
+    <div className="console-theme ops-console flex min-h-dvh w-full flex-col bg-background text-foreground">
+      <main className="flex flex-1 flex-col items-center justify-center px-4 py-10 sm:py-16">
+        <div className="flex w-full max-w-sm flex-col gap-6">
+          <div className="flex flex-col gap-4">
+            <span className="flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground" aria-hidden>
+              <ShieldCheck className="size-5" />
+            </span>
+            <div className="flex flex-col gap-1.5">
+              <h1 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">{title}</h1>
+              <p className="text-sm text-muted-foreground">{description}</p>
             </div>
           </div>
-          <div className="relative z-10 grid max-w-md gap-4">
-            <h1 className="font-heading text-3xl font-semibold leading-tight">
-              Operate your commerce stack with confidence
-            </h1>
-            <p className="text-sm leading-relaxed text-muted-foreground">
-              Browser-session authentication, email OTP for privileged actions, and encrypted
-              configuration overlays — aligned with the Fastify ops API contract.
-            </p>
-            <ul className="grid min-w-0 grid-cols-1 gap-2 text-sm text-muted-foreground">
-              <li>HttpOnly session cookies — no API keys in the browser</li>
-              <li>Secondary OTP for config, load-shed, restarts, and user lifecycle</li>
-              <li>Masked secrets and restart-aware config saves</li>
-            </ul>
-          </div>
-          <p className="relative z-10 text-xs text-muted-foreground">
-            Layer C · Platform operators only
+          <div className="rounded-xl border border-border bg-card p-5 sm:p-6">{children}</div>
+          <p className="text-center text-sm text-muted-foreground">
+            Not an operator?{" "}
+            <Link href="/" className="font-medium text-foreground underline-offset-4 hover:underline">
+              Go to the store
+            </Link>
           </p>
-          <div
-            className="pointer-events-none absolute -right-24 -top-24 size-80 rounded-full bg-primary/10 blur-3xl"
-            aria-hidden
-          />
-          <div
-            className="pointer-events-none absolute -bottom-32 -left-16 size-72 rounded-full bg-chart-1/20 blur-3xl"
-            aria-hidden
-          />
         </div>
-
-        <div className="flex flex-col justify-center px-6 py-12 sm:px-10 lg:px-14">
-          <div className="mx-auto w-full max-w-md">
-            <div className="mb-8 lg:hidden">
-              <div className="mb-4 flex size-11 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-                <Shield className="size-6" aria-hidden />
-              </div>
-            </div>
-            <div className="mb-8 grid gap-2">
-              <h2 className="font-heading text-2xl font-semibold tracking-tight">{title}</h2>
-              <p className="text-sm leading-relaxed text-muted-foreground">{description}</p>
-            </div>
-            {children}
-            <p className="mt-8 text-center text-sm text-muted-foreground">
-              <Link href="/" className="font-medium text-primary underline-offset-4 hover:underline">
-                Return to storefront
-              </Link>
-            </p>
-          </div>
-        </div>
-      </div>
+      </main>
     </div>
   );
 }

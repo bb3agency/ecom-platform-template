@@ -209,11 +209,11 @@ const FUNNEL_STEP_LABELS: Record<string, string> = {
 
 // Status accents only (design system): sky → violet → primary → amber → emerald.
 const FUNNEL_STEP_COLORS: Record<string, string> = {
-  PRODUCT_VIEW: "bg-sky-500",
-  ADD_TO_CART: "bg-violet-500",
+  PRODUCT_VIEW: "bg-info",
+  ADD_TO_CART: "bg-info",
   CHECKOUT_STARTED: "bg-primary",
-  PAYMENT_INITIATED: "bg-amber-500",
-  PURCHASE: "bg-emerald-500",
+  PAYMENT_INITIATED: "bg-warning",
+  PURCHASE: "bg-success",
 };
 
 function AdminFunnelPanel({ from, to }: { from: string; to: string }) {
@@ -343,7 +343,7 @@ function AdminFunnelPanel({ from, to }: { from: string; to: string }) {
           <div className="h-10 w-px self-center bg-border" />
           <div className="text-center">
             <p className="text-xs text-muted-foreground">Total purchases</p>
-            <p className="font-heading text-xl font-semibold tracking-tight text-emerald-600">
+            <p className="font-heading text-xl font-semibold tracking-tight text-success">
               {(steps.find((s) => s.eventType === "PURCHASE")?.count ?? 0).toLocaleString()}
             </p>
           </div>

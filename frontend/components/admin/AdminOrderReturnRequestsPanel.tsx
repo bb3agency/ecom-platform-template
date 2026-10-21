@@ -15,11 +15,11 @@ interface AdminOrderReturnRequestsPanelProps {
 }
 
 const STATUS_CLASS: Record<string, string> = {
-  REQUESTED: "text-amber-600",
-  APPROVED: "text-emerald-600",
+  REQUESTED: "text-warning",
+  APPROVED: "text-success",
   REJECTED: "text-destructive",
-  PICKED_UP: "text-blue-600",
-  REFUNDED: "text-emerald-600",
+  PICKED_UP: "text-info",
+  REFUNDED: "text-success",
 };
 
 export function AdminOrderReturnRequestsPanel({ orderId }: AdminOrderReturnRequestsPanelProps) {

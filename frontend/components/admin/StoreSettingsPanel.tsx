@@ -372,17 +372,17 @@ export function StoreSettingsPanel() {
             <Lock className="h-4 w-4 text-muted-foreground/70" aria-hidden />
             Brand Identity
           </h4>
-          <span className="rounded-full bg-muted/60 px-2 py-0.5 text-[10px] font-medium text-muted-foreground/70 whitespace-nowrap">
+          <span className="rounded-full bg-muted/60 px-2 py-0.5 text-xs font-medium text-muted-foreground/70 whitespace-nowrap">
             Read only — deployment config
           </span>
         </div>
 
-        <div className="flex min-w-0 items-start gap-2.5 rounded-lg border border-blue-200/60 bg-blue-50/60 p-3 text-xs text-blue-800 overflow-hidden">
-          <Info className="h-3.5 w-3.5 shrink-0 mt-0.5 text-blue-500" aria-hidden />
+        <div className="flex min-w-0 items-start gap-2.5 rounded-lg border border-info-soft bg-info-soft p-3 text-xs text-info overflow-hidden">
+          <Info className="h-3.5 w-3.5 shrink-0 mt-0.5 text-info" aria-hidden />
           <span className="break-words min-w-0">
             Store name and website URL are set in the deployment environment by your platform
-            admin (<code className="font-mono text-[10px] break-all">NEXT_PUBLIC_STORE_NAME</code> and{" "}
-            <code className="font-mono text-[10px] break-all">NEXT_PUBLIC_STOREFRONT_URL</code>). To
+            admin (<code className="font-mono text-xs break-all">NEXT_PUBLIC_STORE_NAME</code> and{" "}
+            <code className="font-mono text-xs break-all">NEXT_PUBLIC_STOREFRONT_URL</code>). To
             update these values, ask your platform admin to update the deployment config.
           </span>
         </div>
@@ -395,7 +395,7 @@ export function StoreSettingsPanel() {
               <span className="text-sm text-foreground font-medium truncate">{DEPLOYED_STORE_NAME}</span>
             </div>
             <span className="text-xs text-muted-foreground/70 truncate">
-              From <code className="font-mono text-[10px]">NEXT_PUBLIC_STORE_NAME</code>
+              From <code className="font-mono text-xs">NEXT_PUBLIC_STORE_NAME</code>
             </span>
           </div>
 
@@ -405,7 +405,7 @@ export function StoreSettingsPanel() {
               <span className="text-sm text-foreground truncate">{DEPLOYED_WEBSITE_URL}</span>
             </div>
             <span className="text-xs text-muted-foreground/70 truncate">
-              From <code className="font-mono text-[10px]">NEXT_PUBLIC_STOREFRONT_URL</code>
+              From <code className="font-mono text-xs">NEXT_PUBLIC_STOREFRONT_URL</code>
             </span>
           </div>
         </div>
@@ -428,7 +428,7 @@ export function StoreSettingsPanel() {
           <h4 className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             <Store className="h-4 w-4 text-primary" aria-hidden />
             Store Details &amp; Address
-            <span className="ml-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+            <span className="ml-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
               Shown on storefront
             </span>
           </h4>
@@ -545,7 +545,7 @@ export function StoreSettingsPanel() {
                         onError={() => setLogoPreviewFailed(true)}
                       />
                     ) : (
-                      <span className="text-[10px] font-normal text-muted-foreground">
+                      <span className="text-xs font-normal text-muted-foreground">
                         {logoPreviewFailed ? "?" : "No logo"}
                       </span>
                     )}
@@ -713,8 +713,8 @@ export function StoreSettingsPanel() {
             GSTIN and FSSAI are OPTIONAL — they print on invoices when provided but never
             block generation. */}
         {loaded && missingSellerDetails && (
-          <div className="flex min-w-0 items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3.5 text-xs text-amber-800 overflow-hidden">
-            <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-amber-600" aria-hidden />
+          <div className="flex min-w-0 items-start gap-2.5 rounded-lg border border-warning-soft bg-warning-soft p-3.5 text-xs text-warning overflow-hidden">
+            <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-warning" aria-hidden />
             <span>
               <strong>GST invoicing is enabled</strong> but the seller identity is incomplete.
               Invoice PDF generation will fail until seller legal name, address, and operating
@@ -727,7 +727,7 @@ export function StoreSettingsPanel() {
           <h4 className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             <FileText className="h-4 w-4 text-primary" aria-hidden />
             Taxation &amp; Compliance IDs
-            <span className="ml-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+            <span className="ml-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
               Required for invoices
             </span>
           </h4>

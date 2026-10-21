@@ -1,27 +1,28 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { OpsCriticalOtpForm } from "@/components/ops/OpsCriticalOtpForm";
+import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import { CircleCheck, UserPlus } from "lucide-react";
+import { OpsOtpDialog } from "@/components/ops/OpsOtpDialog";
+import { OpsPersonCell } from "@/components/ops/OpsPersonCell";
+import { OpsReasonField, REASON_MIN_LENGTH } from "@/components/ops/OpsReasonField";
 import { useOpsCanWrite, useOpsSession } from "@/components/ops/OpsSessionProvider";
+import { OpsLoadError, formatRelativeTime } from "@/components/ops/ui/ops-ui";
 import {
-  OpsAlert,
-  OpsBadge,
-  OpsCard,
-  OpsCardHeader,
-  OpsDataTable,
-  OpsField,
-  OpsInput,
-  OpsLoadingBlock,
-  OpsTextarea,
-} from "@/components/ops/ui/ops-ui";
-import { Button } from "@/components/ui/button";
+  ConsolePage,
+  DataTable,
+  KeyValueList,
+  Notice,
+  PageHeader,
+  Panel,
+  StatusDot,
+  type DataColumn,
+} from "@/components/ui/console";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { formatOpsDateTime } from "@/lib/ops-format";
 import { getApiErrorMessageWithHint } from "@/lib/error-messages";
-import {
-  deactivateOpsUserClient,
-  listOpsUsersClient,
-  type OpsUserListItem,
-} from "@/lib/ops-client-api";
+import { deactivateOpsUserClient, listOpsUsersClient, type OpsUserListItem } from "@/lib/ops-client-api";
 
 export function OpsUsersPanel() {
   const session = useOpsSession();
@@ -30,163 +31,153 @@ export function OpsUsersPanel() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [deactivateUser, setDeactivateUser] = useState<OpsUserListItem | null>(null);
+  const [target, setTarget] = useState<OpsUserListItem | null>(null);
+  const [reason, setReason] = useState("");
 
-  async function reload() {
-    const result = await listOpsUsersClient({ limit: 50 });
-    setUsers(Array.isArray(result.items) ? result.items : []);
-  }
-
-  useEffect(() => {
-    let active = true;
-
-    async function loadUsers() {
-      try {
-        const result = await listOpsUsersClient({ limit: 50 });
-        if (active) setUsers(Array.isArray(result.items) ? result.items : []);
-      } catch (err) {
-        if (active) setError(getApiErrorMessageWithHint(err));
-      } finally {
-        if (active) setLoading(false);
-      }
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const result = await listOpsUsersClient({ limit: 100 });
+      setUsers(Array.isArray(result.items) ? result.items : []);
+      setError(null);
+    } catch (err) {
+      setError(getApiErrorMessageWithHint(err));
+    } finally {
+      setLoading(false);
     }
-
-    void loadUsers();
-
-    return () => { active = false; };
   }, []);
 
-  if (loading) {
-    return <OpsLoadingBlock label="Loading operators…" />;
+  useEffect(() => {
+    const timer = window.setTimeout(() => void load(), 0);
+    return () => window.clearTimeout(timer);
+  }, [load]);
+
+  const activeCount = users.filter((u) => u.isActive).length;
+
+  const columns: DataColumn<OpsUserListItem>[] = [
+    {
+      key: "operator",
+      header: "Operator",
+      hideOnMobile: true,
+      cell: (row) => <OpsPersonCell name={row.name} email={row.email} you={row.id === session.id} />,
+    },
+    {
+      key: "access",
+      header: "Access",
+      cell: (row) => (row.permissions.includes("ops:write") ? "View and change" : "View only"),
+    },
+    {
+      key: "status",
+      header: "Status",
+      cell: (row) => <StatusDot tone={row.isActive ? "success" : "neutral"}>{row.isActive ? "Active" : "Deactivated"}</StatusDot>,
+    },
+    {
+      key: "login",
+      header: "Last sign-in",
+      cell: (row) => (
+        <span title={row.lastLoginAt ? formatOpsDateTime(row.lastLoginAt) : undefined}>
+          {row.lastLoginAt ? formatRelativeTime(row.lastLoginAt) : "Never"}
+        </span>
+      ),
+    },
+    ...(canWrite
+      ? [
+          {
+            key: "actions",
+            header: <span className="sr-only">Actions</span>,
+            mobileLabel: "Actions",
+            align: "right" as const,
+            hideOnMobile: true,
+            cell: (row: OpsUserListItem) =>
+              row.isActive && row.id !== session.id ? (
+                <Button type="button" variant="ghost" size="sm" className="text-destructive" onClick={() => openDeactivate(row)}>
+                  Deactivate
+                </Button>
+              ) : null,
+          },
+        ]
+      : []),
+  ];
+
+  function openDeactivate(user: OpsUserListItem) {
+    setMessage(null);
+    setReason("");
+    setTarget(user);
   }
 
   return (
-    <div className="grid min-w-0 grid-cols-1 gap-6">
-      {message ? <OpsAlert tone="success">{message}</OpsAlert> : null}
-      {error ? <OpsAlert tone="error">{error}</OpsAlert> : null}
+    <ConsolePage>
+      <PageHeader
+        title="Operators"
+        description="People who can sign in to this ops console."
+        meta={!loading ? <span className="text-sm text-muted-foreground tabular">{activeCount} active</span> : null}
+        actions={
+          canWrite ? (
+            <Link href="/ops/invites?invite=operator" className={cn(buttonVariants(), "gap-1.5")}>
+              <UserPlus aria-hidden />
+              Invite operator
+            </Link>
+          ) : null
+        }
+      />
 
-      <OpsCard>
-        <OpsCardHeader title="Operators" description={`${users.length} accounts`} />
-        <OpsDataTable
+      {message ? (
+        <Notice tone="success" icon={CircleCheck}>
+          {message}
+        </Notice>
+      ) : null}
+      {error ? <OpsLoadError message={error} onRetry={() => void load()} /> : null}
+
+      <Panel flush>
+        <DataTable
           rows={users}
+          columns={columns}
           rowKey={(row) => row.id}
-          mobileCardTitle={(row) => row.name}
-          mobileCardDescription={(row) => row.email}
-          emptyTitle="No operators"
-          emptyDescription="Invite operators from the invites screen to grant ops access."
-          columns={[
-            { key: "name", header: "Name", cell: (row) => row.name },
-            {
-              key: "email",
-              header: "Email",
-              cell: (row) => <span className="break-all">{row.email}</span>,
-            },
-            {
-              key: "active",
-              header: "Status",
-              cell: (row) => (
-                <OpsBadge tone={row.isActive ? "success" : "muted"}>
-                  {row.isActive ? "Active" : "Inactive"}
-                </OpsBadge>
-              ),
-            },
-            {
-              key: "perms",
-              header: "Permissions",
-              cell: (row) => (
-                <div className="flex flex-wrap gap-1">
-                  {row.permissions.map((p) => (
-                    <OpsBadge key={p} tone="info">
-                      {p}
-                    </OpsBadge>
-                  ))}
-                </div>
-              ),
-            },
-            {
-              key: "login",
-              header: "Last login",
-              cell: (row) => formatOpsDateTime(row.lastLoginAt),
-            },
-            {
-              key: "id",
-              header: "ID",
-              cell: (row) => (
-                <code className="break-all text-xs text-muted-foreground">{row.id}</code>
-              ),
-            },
-            ...(canWrite
-              ? [
-                  {
-                    key: "actions",
-                    header: "Actions",
-                    cell: (row: OpsUserListItem) => {
-                      if (!row.isActive || row.id === session.id) {
-                        return <span className="text-xs text-muted-foreground">—</span>;
-                      }
-                      return (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setDeactivateUser(row);
-                            setMessage(null);
-                            setError(null);
-                          }}
-                        >
-                          Deactivate…
-                        </Button>
-                      );
-                    },
-                  },
-                ]
-              : []),
-          ]}
+          loading={loading}
+          caption="Ops operators"
+          mobileTitle={(row) => (
+            <div className="flex min-w-0 items-center justify-between gap-3">
+              <OpsPersonCell name={row.name} email={row.email} you={row.id === session.id} />
+              {canWrite && row.isActive && row.id !== session.id ? (
+                <Button type="button" variant="outline" size="sm" className="shrink-0 text-destructive" onClick={() => openDeactivate(row)}>
+                  Deactivate
+                </Button>
+              ) : null}
+            </div>
+          )}
+          empty={<p className="text-sm text-muted-foreground">No operators yet. Invite one to share the work.</p>}
         />
-      </OpsCard>
+      </Panel>
 
-      {canWrite && deactivateUser ? (
-        <OpsCriticalOtpForm
-          actionType="user-deactivate"
-          title="Deactivate operator"
-          description={`Deactivates ${deactivateUser.name} (${deactivateUser.email}). They must be re-invited to return.`}
-          buttonLabel="Confirm deactivation"
-          variant="danger"
-          onExecute={async ({ challengeId, otpCode }) => {
-            const reason = String(
-              (document.getElementById("deactivate-reason") as HTMLTextAreaElement | null)?.value ??
-                "",
-            ).trim();
-            await deactivateOpsUserClient({
-              opsUserId: deactivateUser.id,
-              reason,
-              challengeId,
-              otpCode,
-            });
-            setDeactivateUser(null);
-            setMessage(`${deactivateUser.email} was deactivated.`);
-            await reload();
-          }}
-        >
-          <OpsField label="Ops user ID" htmlFor="deactivate-user-id">
-            <OpsInput
-              id="deactivate-user-id"
-              value={deactivateUser.id}
-              readOnly
-              className="font-mono text-xs"
+      <OpsOtpDialog
+        open={target !== null}
+        onOpenChange={(open) => (!open ? setTarget(null) : undefined)}
+        action="user-deactivate"
+        title="Deactivate this operator?"
+        description="They're signed out and can't sign in again. To restore access, send a new invite."
+        confirmLabel="Deactivate"
+        tone="danger"
+        canProceed={reason.trim().length >= REASON_MIN_LENGTH}
+        proceedHint={`Add a reason of at least ${REASON_MIN_LENGTH} characters to continue.`}
+        onConfirm={async ({ challengeId, otpCode }) => {
+          if (!target) return;
+          await deactivateOpsUserClient({ opsUserId: target.id, reason: reason.trim(), challengeId, otpCode });
+          setMessage(`${target.name} was deactivated.`);
+          await load();
+        }}
+      >
+        {target ? (
+          <>
+            <KeyValueList
+              items={[
+                { label: "Name", value: target.name },
+                { label: "Email", value: target.email },
+              ]}
             />
-          </OpsField>
-          <OpsField label="Reason" htmlFor="deactivate-reason" hint="Minimum 10 characters">
-            <OpsTextarea id="deactivate-reason" minLength={10} required />
-          </OpsField>
-          <Button type="button" variant="ghost" size="sm" onClick={() => setDeactivateUser(null)}>
-            Cancel
-          </Button>
-        </OpsCriticalOtpForm>
-      ) : canWrite ? null : (
-        <OpsAlert tone="warning">Read-only — deactivation requires ops:write.</OpsAlert>
-      )}
-    </div>
+            <OpsReasonField id="deactivate-operator-reason" value={reason} onChange={setReason} />
+          </>
+        ) : null}
+      </OpsOtpDialog>
+    </ConsolePage>
   );
 }

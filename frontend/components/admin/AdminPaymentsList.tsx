@@ -295,7 +295,7 @@ export function AdminPaymentsList({ from, to }: AdminPaymentsListProps = {}) {
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2">
-                            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-[9px] font-bold text-foreground uppercase">
+                            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-bold text-foreground uppercase">
                               {payment.customerName?.charAt(0) || "?"}
                             </div>
                             <div className="min-w-0">
@@ -303,7 +303,7 @@ export function AdminPaymentsList({ from, to }: AdminPaymentsListProps = {}) {
                                 {payment.customerName || "—"}
                               </p>
                               {payment.customerEmail && (
-                                <p className="truncate text-[10px] text-muted-foreground">
+                                <p className="truncate text-xs text-muted-foreground">
                                   {payment.customerEmail}
                                 </p>
                               )}
@@ -312,7 +312,7 @@ export function AdminPaymentsList({ from, to }: AdminPaymentsListProps = {}) {
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2">
-                            <span className="rounded border border-border bg-background px-1.5 py-0.5 text-[10px] font-bold text-foreground shadow-sm">
+                            <span className="rounded border border-border bg-background px-1.5 py-0.5 text-xs font-bold text-foreground shadow-sm">
                               {payment.provider === "razorpay" ? "RZP" : payment.provider.toUpperCase()}
                             </span>
                             <span className="text-xs text-muted-foreground">{payment.method || "—"}</span>

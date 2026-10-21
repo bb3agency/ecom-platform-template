@@ -2,31 +2,30 @@
 
 import type { ReactNode } from "react";
 import { useState } from "react";
-import {
-  AdminDateRangePicker,
-  type DateRange,
-} from "@/components/admin/AdminDateRangePicker";
-import { useAdminShell } from "@/contexts/admin-shell-context";
 import { Download, Loader2 } from "lucide-react";
-import { cn } from "@/lib/utils";
-import Link from "next/link";
+
+import { AdminDateRangePicker, type DateRange } from "@/components/admin/AdminDateRangePicker";
+import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/ui/console";
+import { useAdminShell } from "@/contexts/admin-shell-context";
 
 interface AdminPageHeaderProps {
   title: string;
   description?: string;
+  /** Parent trail for detail pages. Top-level pages have none — the nav shows where you are. */
   breadcrumb?: ReactNode;
   range?: DateRange;
   onRangeChange?: (range: DateRange) => void;
-  /** Extra actions (board link, etc.) — shown below the date bar */
+  /** Page actions (board view, create…). Sit beside the date range. */
   actions?: ReactNode;
   className?: string;
 }
 
 /**
- * Standard admin page header.
- *
- * Mobile:  date picker (left) + Export button (right) — single row
- * Desktop: title (left) + date picker + Export (right)
+ * Admin page header on the console kit. Title + one-line description on the left;
+ * date range, export and page actions on the right (a wrapping row under the title
+ * on phones). Kept as a thin adapter so every existing admin page picks up the
+ * console design without call-site changes.
  */
 export function AdminPageHeader({
   title,
@@ -40,86 +39,40 @@ export function AdminPageHeader({
   const { triggerExport } = useAdminShell();
   const [exporting, setExporting] = useState(false);
 
-  async function handleExport() {
+  function handleExport() {
     setExporting(true);
     try {
       triggerExport();
     } finally {
-      setTimeout(() => setExporting(false), 800);
+      window.setTimeout(() => setExporting(false), 800);
     }
   }
 
+  const hasRange = Boolean(range && onRangeChange);
+
   return (
-    <header className={cn("flex flex-col gap-3", className)}>
-      {/* Title block: page title above, breadcrumb below — identical on every page. */}
-      <div className="flex flex-col gap-1">
-        <h1 className="font-heading text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
-          {title}
-        </h1>
-        {/* Breadcrumb: Home / Page, muted with the current page slightly darker. */}
-        <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-          {breadcrumb ? (
-            breadcrumb
-          ) : title !== "Dashboard" ? (
+    <div className={className}>
+      {breadcrumb ? <div className="mb-1 text-sm text-muted-foreground">{breadcrumb}</div> : null}
+      <PageHeader
+        title={title}
+        description={description}
+        actions={
+          hasRange || actions ? (
             <>
-              <Link href="/admin" className="transition-colors hover:text-foreground">
-                Home
-              </Link>
-              <span className="text-muted-foreground/50">/</span>
-              <span className="font-medium text-foreground/80">{title}</span>
+              {range && onRangeChange ? (
+                <AdminDateRangePicker from={range.from} to={range.to} onChange={onRangeChange} menuAlign="end" />
+              ) : null}
+              {hasRange ? (
+                <Button type="button" variant="outline" size="lg" onClick={handleExport} disabled={exporting} aria-label="Export CSV">
+                  {exporting ? <Loader2 className="animate-spin" aria-hidden /> : <Download aria-hidden />}
+                  <span className="sr-only sm:not-sr-only">Export</span>
+                </Button>
+              ) : null}
+              {actions}
             </>
-          ) : (
-            <>
-              <span>Home</span>
-              <span className="text-muted-foreground/50">/</span>
-              <span className="font-medium text-foreground/80">Dashboard</span>
-            </>
-          )}
-        </div>
-        {description ? (
-          <p className="text-sm text-muted-foreground">{description}</p>
-        ) : null}
-      </div>
-
-      {/* Action bar: date range + Export on the left, page actions on the right.
-          Positions are fixed so controls never move between pages. */}
-      {(range && onRangeChange) || actions ? (
-        <div className="flex flex-row flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-row items-center gap-2">
-            {range && onRangeChange ? (
-              <>
-                <div className="min-w-0">
-                  <AdminDateRangePicker
-                    from={range.from}
-                    to={range.to}
-                    onChange={onRangeChange}
-                    menuAlign="start"
-                  />
-                </div>
-                <button
-                  type="button"
-                  className="flex h-[38px] shrink-0 items-center gap-2 rounded-lg border border-border bg-card px-3 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-muted/50 disabled:opacity-50"
-                  disabled={exporting}
-                  onClick={() => void handleExport()}
-                  aria-label={exporting ? "Exporting" : "Export data"}
-                >
-                  {exporting ? (
-                    <Loader2 className="size-4 animate-spin text-muted-foreground" />
-                  ) : (
-                    <Download className="size-4 text-muted-foreground" />
-                  )}
-                  <span className="hidden sm:inline">{exporting ? "Exporting…" : "Export"}</span>
-                  <span className="inline sm:hidden">{exporting ? "..." : "Export"}</span>
-                </button>
-              </>
-            ) : null}
-          </div>
-
-          {actions ? (
-            <div className="flex flex-row items-center gap-2">{actions}</div>
-          ) : null}
-        </div>
-      ) : null}
-    </header>
+          ) : undefined
+        }
+      />
+    </div>
   );
 }

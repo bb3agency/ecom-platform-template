@@ -1,14 +1,18 @@
-import { OrderStatus } from '@prisma/client';
+import { OrderStatus, ReturnRequestStatus } from '@prisma/client';
 import { FastifyInstance } from 'fastify';
 import { AppError } from '@common/errors/app-error';
 import { ERROR_CODES } from '@common/errors/error-codes';
 import {
   DashboardGranularity,
   DashboardKpisQuery,
+  DashboardOrderStatusCountsQuery,
   DashboardPeriod,
   DashboardSalesChartQuery,
   DashboardTopProductsQuery
 } from './dashboard.types';
+
+/** Upper bound on zero-filled chart buckets, so a wide hourly range cannot balloon the payload. */
+const MAX_CHART_BUCKETS = 1000;
 
 const includedStatuses: OrderStatus[] = [
   OrderStatus.CONFIRMED,
@@ -81,14 +85,137 @@ export class DashboardService {
       }
     }
 
-    return {
-      granularity,
-      points: Array.from(buckets.entries()).map(([bucket, value]) => ({
+    // Zero-fill every bucket in the range. Sparse points made charts draw a straight
+    // line across quiet days and spaced the x-axis by data, not by time.
+    const keys = this.enumerateBucketKeys(from, to, granularity);
+    const points = (keys ?? Array.from(buckets.keys()).sort()).map((bucket) => {
+      const value = buckets.get(bucket);
+      return {
         bucket,
-        ordersCount: value.ordersCount,
-        revenuePaise: value.revenuePaise
-      }))
+        ordersCount: value?.ordersCount ?? 0,
+        revenuePaise: value?.revenuePaise ?? 0
+      };
+    });
+
+    return { granularity, points };
+  }
+
+  /**
+   * What needs the merchant's attention right now — the admin dashboard leads with this.
+   * Each count matches the list it links to (same filters), so a click-through never
+   * shows a different number.
+   */
+  async getActionQueue() {
+    const prisma = this.fastify.prisma;
+    // One count per status (not CONFIRMED+PROCESSING combined) so every number
+    // equals the list it links to — the orders list filters by a single status.
+    const [ordersToFulfil, ordersProcessing, ordersAwaitingPayment, returnsToReview, reviewsToModerate, inventory, reserved] =
+      await Promise.all([
+        prisma.order.count({ where: { status: OrderStatus.CONFIRMED } }),
+        prisma.order.count({ where: { status: OrderStatus.PROCESSING } }),
+        prisma.order.count({ where: { status: OrderStatus.PENDING_PAYMENT } }),
+        prisma.returnRequest.count({ where: { status: ReturnRequestStatus.REQUESTED } }),
+        prisma.review.count({ where: { approved: false } }),
+        prisma.inventory.findMany({ select: { variantId: true, quantity: true, lowStockThreshold: true } }),
+        prisma.cartReservation.groupBy({
+          by: ['variantId'],
+          where: { expiresAt: { gt: new Date() } },
+          _sum: { quantity: true }
+        })
+      ]);
+
+    // Same rule as GET /admin/inventory/low-stock: available = on hand − live cart holds.
+    const reservedByVariant = new Map(reserved.map((row) => [row.variantId, row._sum.quantity ?? 0]));
+    let lowStockVariants = 0;
+    let outOfStockVariants = 0;
+    for (const item of inventory) {
+      const available = item.quantity - (reservedByVariant.get(item.variantId) ?? 0);
+      if (available <= 0) outOfStockVariants += 1;
+      else if (available <= item.lowStockThreshold) lowStockVariants += 1;
+    }
+
+    return {
+      ordersToFulfil,
+      ordersProcessing,
+      ordersAwaitingPayment,
+      returnsToReview,
+      reviewsToModerate,
+      lowStockVariants,
+      outOfStockVariants,
+      generatedAt: new Date().toISOString()
     };
+  }
+
+  /**
+   * Order counts per status for a window and the equally long window before it — one
+   * round trip for the orders overview strip (it previously took eight list calls).
+   */
+  async getOrderStatusCounts(query: DashboardOrderStatusCountsQuery) {
+    const from = new Date(query.from);
+    const to = new Date(query.to);
+    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || from > to) {
+      throw new AppError(ERROR_CODES.VALIDATION_ERROR, 'Invalid date range', 400);
+    }
+    const span = to.getTime() - from.getTime();
+    const previousTo = new Date(from.getTime() - 1);
+    const previousFrom = new Date(previousTo.getTime() - span);
+
+    const [current, previous] = await Promise.all([
+      this.fastify.prisma.order.groupBy({
+        by: ['status'],
+        where: { createdAt: { gte: from, lte: to } },
+        _count: { _all: true }
+      }),
+      this.fastify.prisma.order.groupBy({
+        by: ['status'],
+        where: { createdAt: { gte: previousFrom, lte: previousTo } },
+        _count: { _all: true }
+      })
+    ]);
+
+    return {
+      from: from.toISOString(),
+      to: to.toISOString(),
+      previousFrom: previousFrom.toISOString(),
+      previousTo: previousTo.toISOString(),
+      current: this.toStatusCounts(current),
+      previous: this.toStatusCounts(previous)
+    };
+  }
+
+  private toStatusCounts(rows: { status: OrderStatus; _count: { _all: number } }[]) {
+    const byStatus = Object.fromEntries(Object.values(OrderStatus).map((status) => [status, 0])) as Record<
+      OrderStatus,
+      number
+    >;
+    let total = 0;
+    for (const row of rows) {
+      byStatus[row.status] = row._count._all;
+      total += row._count._all;
+    }
+    return { total, byStatus };
+  }
+
+  /** Every bucket key from `from` to `to`, or null when the range would exceed MAX_CHART_BUCKETS. */
+  private enumerateBucketKeys(from: Date, to: Date, granularity: DashboardGranularity): string[] | null {
+    const keys: string[] = [];
+    const cursor = new Date(from);
+    if (granularity === 'hour') {
+      cursor.setUTCMinutes(0, 0, 0);
+    } else {
+      cursor.setUTCHours(0, 0, 0, 0);
+      if (granularity === 'week') {
+        const day = cursor.getUTCDay();
+        cursor.setUTCDate(cursor.getUTCDate() + (day === 0 ? -6 : 1 - day));
+      }
+    }
+    while (cursor <= to) {
+      keys.push(this.getBucketKey(cursor, granularity));
+      if (keys.length > MAX_CHART_BUCKETS) return null;
+      if (granularity === 'hour') cursor.setUTCHours(cursor.getUTCHours() + 1);
+      else cursor.setUTCDate(cursor.getUTCDate() + (granularity === 'week' ? 7 : 1));
+    }
+    return keys;
   }
 
   async getTopProducts(query: DashboardTopProductsQuery) {

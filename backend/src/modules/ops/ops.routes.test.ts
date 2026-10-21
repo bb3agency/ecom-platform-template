@@ -113,6 +113,37 @@ const opsServiceState = vi.hoisted(() => ({
   scheduleRestart: vi.fn(async () => ({
     jobId: 'ops-restart:test-uuid',
     scheduledFor: new Date(Date.now() + 5 * 60 * 1000).toISOString()
+  })),
+  getOpsOverview: vi.fn(async () => ({
+    generatedAt: new Date().toISOString(),
+    loadShed: { mode: 'normal', phase: null, pendingUntil: null, activatedAt: null, reason: null },
+    config: { runtimeProfile: 'development-like', missingRequiredKeys: [], restartPendingKeys: ['RAZORPAY_KEY_ID'] },
+    queues: {
+      deadLetterTotal: 1,
+      deadLetterBySource: [{ queue: 'notifications', count: 1 }],
+      items: [{ name: 'notifications', waiting: 0, active: 0, delayed: 0, failed: 1 }]
+    },
+    people: {
+      operatorsActive: 1,
+      operatorsTotal: 1,
+      merchantAdminsActive: 2,
+      merchantAdminsTotal: 2,
+      pendingOpsInvites: 0,
+      pendingAdminInvites: 1
+    },
+    audit: {
+      failedLast24h: 0,
+      recent: [
+        {
+          id: 'a1',
+          actionType: 'OPS_USER_LOGGED_IN',
+          actionStatus: 'EXECUTED',
+          createdAt: new Date().toISOString(),
+          actor: { id: 'ops_1', name: 'Ops User', email: 'ops@example.com' }
+        }
+      ]
+    },
+    pendingOtpChallenges: 0
   }))
 }));
 
@@ -143,6 +174,7 @@ vi.mock('./ops.service', () => {
     resolveBrowserSession = opsServiceState.resolveBrowserSession;
     logoutBrowserSession = opsServiceState.logoutBrowserSession;
     scheduleRestart = opsServiceState.scheduleRestart;
+    getOpsOverview = opsServiceState.getOpsOverview;
     constructor(_fastify: unknown) {}
   }
   return { OpsService: MockOpsService, OPS_BROWSER_SESSION_COOKIE_NAME: 'ops_session' };
@@ -175,6 +207,7 @@ vi.mock('./ops.service.js', () => {
     resolveBrowserSession = opsServiceState.resolveBrowserSession;
     logoutBrowserSession = opsServiceState.logoutBrowserSession;
     scheduleRestart = opsServiceState.scheduleRestart;
+    getOpsOverview = opsServiceState.getOpsOverview;
     constructor(_fastify: unknown) {}
   }
   return { OpsService: MockOpsService, OPS_BROWSER_SESSION_COOKIE_NAME: 'ops_session' };
@@ -207,6 +240,7 @@ vi.mock('./ops.service.ts', () => {
     resolveBrowserSession = opsServiceState.resolveBrowserSession;
     logoutBrowserSession = opsServiceState.logoutBrowserSession;
     scheduleRestart = opsServiceState.scheduleRestart;
+    getOpsOverview = opsServiceState.getOpsOverview;
     constructor(_fastify: unknown) {}
   }
   return { OpsService: MockOpsService, OPS_BROWSER_SESSION_COOKIE_NAME: 'ops_session' };
@@ -214,7 +248,9 @@ vi.mock('./ops.service.ts', () => {
 
 import { registerOpsRoutes } from './ops.routes';
 
-describe('ops routes schema and handlers', () => {
+// Each test registers (and AJV-compiles) the full ops route set; under a parallel full-suite
+// run that exceeds the 5 s default even though nothing is slow in isolation.
+describe('ops routes schema and handlers', { timeout: 20_000 }, () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -542,6 +578,48 @@ describe('ops routes schema and handlers', () => {
     expect(restartSchema.body?.properties?.otpCode).toBeDefined();
     expect(restartSchema.response?.[200]).toBeDefined();
 
+    await app.close();
+  });
+
+  it('GET /ops/overview returns the aggregated landing snapshot through its response schema', async () => {
+    const app = Fastify();
+    await registerOpsRoutes(app);
+    const response = await app.inject({ method: 'GET', url: '/api/v1/ops/overview' });
+    expect(response.statusCode).toBe(200);
+    const body = response.json() as {
+      config: { restartPendingKeys: string[] };
+      queues: { deadLetterTotal: number };
+      audit: { recent: Array<{ actor: { email: string } | null }> };
+    };
+    expect(body.config.restartPendingKeys).toEqual(['RAZORPAY_KEY_ID']);
+    expect(body.queues.deadLetterTotal).toBe(1);
+    expect(body.audit.recent[0]?.actor?.email).toBe('ops@example.com');
+    expect(opsServiceState.getOpsOverview).toHaveBeenCalledWith('ops_1');
+    await app.close();
+  });
+
+  it('GET /ops/audit/logs rejects an unknown actionType with 400 instead of reaching Prisma', async () => {
+    const app = Fastify();
+    // The real app installs the envelope error handler; mirror its shape for the 400 schema.
+    app.setErrorHandler((error: { statusCode?: number; message: string }, _request, reply) => {
+      const statusCode = error.statusCode ?? 500;
+      void reply.status(statusCode).send({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: error.message.slice(0, 300),
+          statusCode,
+          details: { retryable: false, remediation: 'Fix the request.' }
+        }
+      });
+    });
+    await registerOpsRoutes(app);
+    const bad = await app.inject({ method: 'GET', url: '/api/v1/ops/audit/logs?actionType=config-save' });
+    expect(bad.statusCode, bad.body).toBe(400);
+    expect(bad.body).toContain('actionType');
+    expect(opsServiceState.listAuditLogs).not.toHaveBeenCalled();
+    const good = await app.inject({ method: 'GET', url: '/api/v1/ops/audit/logs?actionType=LOAD_SHED_CHANGE' });
+    expect(good.statusCode).toBe(200);
     await app.close();
   });
 

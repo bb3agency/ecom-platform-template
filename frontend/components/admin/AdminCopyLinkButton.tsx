@@ -59,12 +59,12 @@ export function AdminCopyLinkButton({
       <button
         type="button"
         onClick={() => void handleCopy()}
-        className="flex shrink-0 items-center gap-1 rounded-md bg-zinc-900 px-2.5 py-1 text-xs font-semibold text-white transition-colors hover:bg-zinc-700"
+        className="flex shrink-0 items-center gap-1 rounded-md bg-foreground px-2.5 py-1 text-xs font-semibold text-white transition-colors hover:bg-foreground"
         aria-label={label}
       >
         {copied ? (
           <>
-            <Check className="size-3.5 text-emerald-400" />
+            <Check className="size-3.5 text-success" />
             Copied!
           </>
         ) : (

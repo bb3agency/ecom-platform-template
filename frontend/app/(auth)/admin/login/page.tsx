@@ -8,23 +8,26 @@ import { AdminLoginForm } from "@/components/auth/AdminLoginForm";
 import type { AuthSession } from "@/types/user";
 import { useAuthStore } from "@/stores/auth";
 import { resetAuthSessionRestoreState } from "@/hooks/use-auth-session-restore";
+import { safeAdminNextPath } from "@/lib/admin-auth-navigation";
 
 function AdminLoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const setSession = useAuthStore((state) => state.setSession);
   const enrollmentHint = searchParams.get("mfaEnrollment") === "1";
+  // Return to the admin page that sent us here (validated: same-origin /admin paths only).
+  const nextPath = safeAdminNextPath(searchParams.get("next"));
 
   const handleSuccess = async (session: AuthSession) => {
     resetAuthSessionRestoreState();
     setSession(session.accessToken, session.user);
     // Keep the in-memory session — a hard reload would wipe Zustand and force
     // cookie restore, which races with guest restore on this page.
-    router.replace("/admin");
+    router.replace(nextPath);
   };
 
   return (
-    <AdminGuestOnly>
+    <AdminGuestOnly redirectTo={nextPath}>
       <div className="flex min-w-0 flex-col gap-6 rounded-lg border border-border p-5 sm:p-8">
         <div>
           <h1 className="font-heading text-2xl font-semibold">Admin sign in</h1>

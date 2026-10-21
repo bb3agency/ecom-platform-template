@@ -1,123 +1,113 @@
 "use client";
 
-import Link from "next/link";
-
 import { useCallback, useEffect, useState } from "react";
-
-import { Eye, FileDown, Loader2, Search, SlidersHorizontal } from "lucide-react";
+import { FileDown, Loader2, ShoppingCart } from "lucide-react";
 
 import { AdminPagination } from "@/components/admin/AdminPagination";
-
-import { AdminSection } from "@/components/admin/AdminSection";
-import { AdminTableScroll } from "@/components/admin/AdminTableScroll";
-
-import { AdminStatusBadge } from "@/components/admin/AdminStatusBadge";
-
-import { Badge } from "@/components/ui/badge";
-
+import { rangeToISO } from "@/components/admin/AdminDateRangePicker";
 import { Button } from "@/components/ui/button";
-
+import { EmptyState } from "@/components/ui/empty-state";
+import {
+  DataTable,
+  FilterBar,
+  FilterSelect,
+  Notice,
+  Panel,
+  StatusDot,
+  type DataColumn,
+} from "@/components/ui/console";
 import { useAuthenticatedApi } from "@/hooks/use-authenticated-api";
 import { useAdminDataRefreshEffect } from "@/hooks/use-admin-data-refresh-effect";
-
+import { useUrlFilterState } from "@/hooks/use-url-filter-state";
 import {
   buildAdminQuery,
   buildOrdersExportQuery,
   coercePaginatedResponse,
   ORDER_FILTER_STATUSES,
-  type AdminOrderListItem,
   readPaginatedItems,
+  type AdminOrderListItem,
+  type AdminOrderStatusCounts,
+  type AdminOrderStatusKey,
   type PaginatedResponse,
 } from "@/lib/admin-api";
-
 import {
-  formatAdminDate,
+  formatAdminDateCompact,
   formatPaise,
-  orderStatusTone,
+  orderStatusDisplay,
+  sentenceCaseEnum,
+  type AdminDotTone,
 } from "@/lib/admin-format";
-
 import { getBrowserApiBaseUrl, resolveApiBaseUrl } from "@/lib/api-base";
 import { resolveDownloadFilename } from "@/lib/download-filename";
-
 import { parseApiErrorFromResponse } from "@/lib/api";
-
 import { getApiErrorMessage } from "@/lib/error-messages";
 import { isInvoiceEligibleOrderStatus } from "@/lib/order-status-ui";
 import { toast } from "@/lib/toast";
-
 import { useAuthStore } from "@/stores/auth";
 import { useAdminShell } from "@/contexts/admin-shell-context";
 import { useAdminAuth } from "@/contexts/admin-auth-context";
 import { ADMIN_PERMISSIONS, hasAdminPermission } from "@/lib/permissions";
+import { cn } from "@/lib/utils";
 
 const PAGE_SIZE = 20;
 
-const inputClass =
-  "h-9 rounded-lg border border-border bg-background px-2 text-sm";
+/** Tab order follows the merchant's workflow, not the enum order. */
+const STATUS_TABS: { value: "" | AdminOrderStatusKey; label: string }[] = [
+  { value: "", label: "All" },
+  { value: "CONFIRMED", label: "To fulfil" },
+  { value: "PROCESSING", label: "Processing" },
+  { value: "SHIPPED", label: "Shipped" },
+  { value: "OUT_FOR_DELIVERY", label: "Out for delivery" },
+  { value: "DELIVERED", label: "Delivered" },
+  { value: "PENDING_PAYMENT", label: "Awaiting payment" },
+  { value: "PAYMENT_FAILED", label: "Payment failed" },
+  { value: "CANCELLED", label: "Cancelled" },
+  { value: "REFUNDED", label: "Refunded" },
+];
+
+const PAYMENT_FILTERS = ["", "PREPAID", "COD"] as const;
+const SORTS = ["newest", "oldest"] as const;
 
 function defaultExportDates() {
   const to = new Date();
-
   const from = new Date();
-
   from.setDate(from.getDate() - 30);
-
-  return {
-    from: from.toISOString().slice(0, 10),
-
-    to: to.toISOString().slice(0, 10),
-  };
+  return { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) };
 }
 
-function paymentBadge(order: AdminOrderListItem) {
+function paymentDisplay(order: AdminOrderListItem): { label: string; tone: AdminDotTone } {
   if (order.paymentMode === "COD") {
-    return (
-      <Badge variant="info">
-        {order.paymentStatus === "CAPTURED" ? "COD Collected" : "COD"}
-      </Badge>
-    );
+    return order.paymentStatus === "CAPTURED"
+      ? { label: "COD · collected", tone: "success" }
+      : { label: "Cash on delivery", tone: "neutral" };
   }
-  if (order.paymentStatus === "CAPTURED") {
-    return <Badge variant="success">Paid</Badge>;
+  switch (order.paymentStatus) {
+    case "CAPTURED":
+      return { label: "Paid", tone: "success" };
+    case "FAILED":
+      return { label: "Failed", tone: "danger" };
+    case "REFUNDED":
+      return { label: "Refunded", tone: "neutral" };
+    case "PARTIALLY_REFUNDED":
+      return { label: "Partly refunded", tone: "warning" };
+    default:
+      return { label: "Pending", tone: "warning" };
   }
-  if (order.paymentStatus === "FAILED") {
-    return <Badge variant="destructive">Failed</Badge>;
-  }
-  if (
-    order.paymentStatus === "REFUNDED" ||
-    order.paymentStatus === "PARTIALLY_REFUNDED"
-  ) {
-    return (
-      <Badge variant="default">
-        {order.paymentStatus === "PARTIALLY_REFUNDED"
-          ? "Part. Refunded"
-          : "Refunded"}
-      </Badge>
-    );
-  }
-  return <Badge variant="warning">Pending</Badge>;
 }
 
-function deliveryBadge(order: AdminOrderListItem) {
-  if (order.isLocalDelivery) {
-    return <Badge variant="success">LOCAL</Badge>;
-  }
-  if (!order.shipmentStatus) {
-    return <span className="text-xs text-muted-foreground">—</span>;
-  }
-  const variant =
-    order.shipmentStatus === "DELIVERED"
+function deliveryDisplay(order: AdminOrderListItem): { label: string; tone: AdminDotTone } | null {
+  if (order.isLocalDelivery) return { label: "Local delivery", tone: "brand" };
+  if (!order.shipmentStatus) return null;
+  const s = order.shipmentStatus;
+  const tone: AdminDotTone =
+    s === "DELIVERED"
       ? "success"
-      : ["CANCELLED", "FAILED_DELIVERY", "RTO_INITIATED"].includes(
-            order.shipmentStatus,
-          )
-        ? "destructive"
-        : ["IN_TRANSIT", "OUT_FOR_DELIVERY"].includes(order.shipmentStatus)
+      : ["CANCELLED", "FAILED_DELIVERY", "RTO_INITIATED", "RTO_DELIVERED"].includes(s)
+        ? "danger"
+        : ["IN_TRANSIT", "OUT_FOR_DELIVERY", "PICKED_UP", "BOOKED"].includes(s)
           ? "info"
-          : "default";
-  return (
-    <Badge variant={variant}>{order.shipmentStatus.replace(/_/g, " ")}</Badge>
-  );
+          : "neutral";
+  return { label: sentenceCaseEnum(s), tone };
 }
 
 interface AdminOrdersListProps {
@@ -130,55 +120,104 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
   const { registerExportHandler } = useAdminShell();
   const { adminUser } = useAdminAuth();
   const canExport = hasAdminPermission(adminUser, ADMIN_PERMISSIONS.ordersExport);
-
   const accessToken = useAuthStore((s) => s.accessToken);
 
+  const [status, setStatus] = useUrlFilterState("status", "", ORDER_FILTER_STATUSES);
+  const [paymentFilter, setPaymentFilter] = useUrlFilterState("payment", "", PAYMENT_FILTERS);
+  const [sortOrder, setSortOrder] = useUrlFilterState("sort", "newest", SORTS);
   const [page, setPage] = useState(1);
 
-  const [status, setStatus] = useState("");
-
-  // `searchInput` is the live text field; `search` is the committed query used by the
-  // fetch. Decoupling them means typing does NOT refetch on every keystroke (which blanked
-  // the table and read as a full-page refresh) — the search runs on submit, like Shipments.
+  // `searchInput` is the live field; `search` is what the fetch uses. It is committed
+  // after a 400ms pause so typing doesn't refetch (and dim the table) on every keystroke.
   const [search, setSearch] = useState("");
   const [searchInput, setSearchInput] = useState("");
-
-  const [fromDate, setFromDate] = useState(from ?? "");
-
-  const [toDate, setToDate] = useState(to ?? "");
+  useEffect(() => {
+    const next = searchInput.trim();
+    if (next === search) return;
+    const id = window.setTimeout(() => setSearch(next), 400);
+    return () => window.clearTimeout(id);
+  }, [searchInput, search]);
 
   const [loading, setLoading] = useState(true);
-
-
   const [error, setError] = useState<string | null>(null);
+  const [data, setData] = useState<PaginatedResponse<AdminOrderListItem> | null>(null);
+  const [counts, setCounts] = useState<AdminOrderStatusCounts | null>(null);
+  const [invoiceBusyId, setInvoiceBusyId] = useState<string | null>(null);
 
-  const [data, setData] =
-    useState<PaginatedResponse<AdminOrderListItem> | null>(null);
-
-  // Export follows the SAME committed range as the list (page-level date picker /
-  // pills). Falls back to the default window when no range is set.
+  const fromDate = from ?? "";
+  const toDate = to ?? "";
   const exportFrom = fromDate || defaultExportDates().from;
   const exportTo = toDate || defaultExportDates().to;
+  // Local-day boundaries, same as the dashboard (rangeToISO). UTC midnight split IST
+  // days at 5:30 am, so the two screens disagreed about which day an order was on.
+  const isoRange = fromDate && toDate ? rangeToISO(fromDate, toDate) : null;
+  const fromISO = isoRange?.fromISO;
+  const toISO = isoRange?.toISO;
 
-  const [paymentFilter, setPaymentFilter] = useState("");
+  // Any filter change returns to the first page.
+  useEffect(() => {
+    setPage(1);
+  }, [status, paymentFilter, sortOrder, search, fromDate, toDate]);
 
-  const [sortOrder, setSortOrder] = useState("newest");
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await api<PaginatedResponse<AdminOrderListItem>>(
+        `/admin/orders${buildAdminQuery({
+          page,
+          limit: PAGE_SIZE,
+          status: status || undefined,
+          search: search.trim() || undefined,
+          paymentMode: paymentFilter || undefined,
+          sort: sortOrder,
+          from: fromISO,
+          to: toISO,
+        })}`,
+      );
+      setData(coercePaginatedResponse(response));
+    } catch (err) {
+      setError(getApiErrorMessage(err));
+    } finally {
+      setLoading(false);
+    }
+  }, [api, page, status, search, paymentFilter, sortOrder, fromISO, toISO]);
 
-  const [selectedIds, setSelectedIds] = useState<Record<string, boolean>>({});
-  const [invoiceBusyId, setInvoiceBusyId] = useState<string | null>(null);
+  // Tab counts: one call for every status in the same window as the list.
+  const loadCounts = useCallback(async () => {
+    if (!fromISO || !toISO) {
+      setCounts(null);
+      return;
+    }
+    try {
+      setCounts(
+        await api<AdminOrderStatusCounts>(
+          `/admin/dashboard/order-status-counts${buildAdminQuery({ from: fromISO, to: toISO })}`,
+        ),
+      );
+    } catch {
+      setCounts(null); // Counts are a convenience — the list still works without them.
+    }
+  }, [api, fromISO, toISO]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+  useEffect(() => {
+    void loadCounts();
+  }, [loadCounts]);
+  useAdminDataRefreshEffect(load, ["orders", "dashboard"]);
+  useAdminDataRefreshEffect(loadCounts, ["orders", "dashboard"]);
 
   async function downloadRowInvoice(order: AdminOrderListItem) {
     if (!accessToken || invoiceBusyId) return;
     setInvoiceBusyId(order.id);
     try {
       // Generated on demand by the backend when the PDF does not exist yet.
-      const response = await fetch(
-        `${getBrowserApiBaseUrl()}/admin/orders/${order.id}/invoice.pdf`,
-        {
-          headers: { Authorization: `Bearer ${accessToken}` },
-          credentials: "include",
-        },
-      );
+      const response = await fetch(`${getBrowserApiBaseUrl()}/admin/orders/${order.id}/invoice.pdf`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        credentials: "include",
+      });
       if (!response.ok) {
         throw await parseApiErrorFromResponse(response, "Unable to download invoice.");
       }
@@ -186,8 +225,6 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
       const objectUrl = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = objectUrl;
-      // The list has no invoice number in state — take the server's, which names
-      // the file after the invoice it just rendered.
       anchor.download = resolveDownloadFilename(response, `${order.orderNumber}-invoice.pdf`);
       anchor.click();
       // Deferred: revoking synchronously can abort the save in Firefox/Safari.
@@ -199,68 +236,8 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
     }
   }
 
-  useEffect(() => {
-    if (from !== undefined) {
-      setFromDate(from);
-      setPage(1);
-    }
-  }, [from]);
-
-  useEffect(() => {
-    if (to !== undefined) {
-      setToDate(to);
-    }
-  }, [to]);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-
-    setError(null);
-
-    try {
-      const response = await api<PaginatedResponse<AdminOrderListItem>>(
-        `/admin/orders${buildAdminQuery({
-          page,
-
-          limit: PAGE_SIZE,
-
-          status: status || undefined,
-
-          search: search.trim() || undefined,
-
-          paymentMode: paymentFilter === "Paid"
-            ? "PREPAID"
-            : paymentFilter === "COD"
-              ? "COD"
-              : undefined,
-
-          sort: sortOrder === "oldest" ? "oldest" : "newest",
-
-          from: fromDate ? `${fromDate}T00:00:00.000Z` : undefined,
-
-          to: toDate ? `${toDate}T23:59:59.999Z` : undefined,
-        })}`,
-      );
-
-      setData(coercePaginatedResponse(response));
-    } catch (err) {
-      setError(getApiErrorMessage(err));
-
-      setData(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [api, page, status, search, paymentFilter, sortOrder, fromDate, toDate]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  useAdminDataRefreshEffect(load, ["orders", "dashboard"]);
-
   async function exportCsv() {
     if (!canExport) return;
-    setError(null);
     try {
       const base = resolveApiBaseUrl();
       if (!base) throw new Error("API base URL not configured");
@@ -269,12 +246,7 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
         to: exportTo,
         status: status || undefined,
         search: search.trim() || undefined,
-        paymentMode:
-          paymentFilter === "Paid"
-            ? "PREPAID"
-            : paymentFilter === "COD"
-              ? "COD"
-              : undefined,
+        paymentMode: paymentFilter || undefined,
       });
       const response = await fetch(`${base}/admin/orders/export${query}`, {
         headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
@@ -287,353 +259,261 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
       anchor.href = url;
       anchor.download = `orders-${exportFrom}-to-${exportTo}.csv`;
       anchor.click();
-      URL.revokeObjectURL(url);
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Export failed");
+      toast.error(err instanceof Error ? err.message : "Export failed");
     }
   }
 
-  // Register this component's export function with the shell Export button
+  // Wire the page header's Export button to this list's current filters.
   useEffect(() => {
     if (!canExport) return;
     return registerExportHandler(() => void exportCsv());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    registerExportHandler,
-    exportFrom,
-    exportTo,
-    status,
-    search,
-    paymentFilter,
-    accessToken,
-    canExport,
-  ]);
+  }, [registerExportHandler, exportFrom, exportTo, status, search, paymentFilter, accessToken, canExport]);
 
-  const rawItems = readPaginatedItems(data);
-  const items = rawItems;
+  const items = readPaginatedItems(data);
+  const filtersActive = Boolean(search || paymentFilter || sortOrder !== "newest");
+
+  const columns: DataColumn<AdminOrderListItem>[] = [
+    {
+      key: "order",
+      header: "Order",
+      hideOnMobile: true,
+      cell: (o) => (
+        <div className="min-w-0">
+          <p className="whitespace-nowrap font-medium text-foreground tabular">{o.orderNumber}</p>
+          <p className="whitespace-nowrap text-xs text-muted-foreground">{formatAdminDateCompact(o.createdAt)}</p>
+        </div>
+      ),
+    },
+    {
+      key: "customer",
+      header: "Customer",
+      hideOnMobile: true,
+      cell: (o) => (
+        <div className="min-w-0 max-w-56">
+          <p className="truncate text-foreground">{o.customerName?.trim() || "Guest"}</p>
+          <p className="truncate text-xs text-muted-foreground" title={o.customerEmail}>
+            {o.customerEmail}
+          </p>
+        </div>
+      ),
+    },
+    {
+      key: "status",
+      header: "Status",
+      hideOnMobile: true,
+      cell: (o) => {
+        const d = orderStatusDisplay(o.status);
+        return <StatusDot tone={d.tone}>{d.label}</StatusDot>;
+      },
+    },
+    {
+      key: "payment",
+      header: "Payment",
+      hideOnMobile: true,
+      cell: (o) => {
+        const d = paymentDisplay(o);
+        return <StatusDot tone={d.tone}>{d.label}</StatusDot>;
+      },
+    },
+    {
+      key: "delivery",
+      header: "Delivery",
+      hideBelow: "lg",
+      hideOnMobile: true,
+      cell: (o) => {
+        const d = deliveryDisplay(o);
+        return d ? <StatusDot tone={d.tone}>{d.label}</StatusDot> : <span className="whitespace-nowrap text-muted-foreground">Not shipped</span>;
+      },
+    },
+    {
+      key: "total",
+      header: "Total",
+      align: "right",
+      hideOnMobile: true,
+      cell: (o) => <span className="whitespace-nowrap font-medium text-foreground tabular">{formatPaise(o.total)}</span>,
+    },
+    {
+      key: "actions",
+      header: <span className="sr-only">Invoice</span>,
+      mobileLabel: "Invoice",
+      hideOnMobile: true,
+      align: "right",
+      className: "w-12",
+      cell: (o) =>
+        isInvoiceEligibleOrderStatus(o.status) ? (
+          <button
+            type="button"
+            className="inline-flex size-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+            title="Download invoice"
+            aria-label={`Download invoice for order ${o.orderNumber}`}
+            disabled={invoiceBusyId !== null}
+            onClick={() => void downloadRowInvoice(o)}
+          >
+            {invoiceBusyId === o.id ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <FileDown className="size-4" aria-hidden />}
+          </button>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        ),
+    },
+  ];
 
   return (
-    <AdminSection
-      title="Orders"
-      description="Recent orders with payment and shipment summary."
-      loading={loading}
-      error={error}
-      empty={!loading && !error && items.length === 0}
-      emptyMessage="No orders found."
-    >
-      <div className="mb-4 grid min-w-0 grid-cols-1 gap-3 rounded-xl border border-border bg-card p-4 shadow-sm">
-        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-4">
-          <div className="flex w-full min-w-0 flex-col gap-3 sm:flex-1 sm:flex-row sm:flex-wrap">
-            <div className="relative w-full min-w-0 sm:max-w-sm sm:flex-1">
-              <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                <Search
-                  className="h-4 w-4 text-muted-foreground"
-                  aria-hidden="true"
-                />
-              </div>
-              <input
-                className={`${inputClass} w-full pl-9`}
-                placeholder="Search orders by ID, customer..."
-                value={searchInput}
-                onChange={(event) => setSearchInput(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    setSearch(searchInput.trim());
-                    setPage(1);
-                  }
-                }}
-                onBlur={() => {
-                  if (searchInput.trim() !== search) {
-                    setSearch(searchInput.trim());
-                    setPage(1);
-                  }
-                }}
-              />
-            </div>
-
-            <select
-              className={`${inputClass} w-full font-medium text-foreground sm:w-auto`}
-              value={status}
-              onChange={(event) => {
-                setStatus(event.target.value);
-                setPage(1);
-              }}
-            >
-              <option value="">All Status</option>
-              {ORDER_FILTER_STATUSES.map((value) => (
-                <option key={value} value={value}>
-                  {value}
-                </option>
-              ))}
-            </select>
-
-            <select
-              className={`${inputClass} w-full font-medium text-foreground sm:w-auto`}
-              value={paymentFilter}
-              onChange={(e) => { setPaymentFilter(e.target.value); setPage(1); }}
-            >
-              <option value="">All Payment</option>
-              <option value="Paid">Paid (Prepaid)</option>
-              <option value="COD">Cash on Delivery</option>
-            </select>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <Button
+    <Panel flush>
+      {/* Status tabs with live counts — scroll sideways on phones, never widen the page. */}
+      <div role="tablist" aria-label="Order status" className="flex min-w-0 gap-1 overflow-x-auto border-b border-border px-2 scrollbar-hide sm:px-3">
+        {STATUS_TABS.map((tab) => {
+          const active = status === tab.value;
+          const count = counts ? (tab.value ? counts.current.byStatus[tab.value] : counts.current.total) : null;
+          return (
+            <button
+              key={tab.value || "all"}
               type="button"
-              variant="outline"
-              size="sm"
-              className="h-9 gap-2 font-medium"
-              onClick={() => {
-                setSearch("");
-                setSearchInput("");
-                setStatus("");
-                setPaymentFilter("");
-                setSortOrder("newest");
-                setFromDate("");
-                setToDate("");
-                setPage(1);
-              }}
+              role="tab"
+              aria-selected={active}
+              onClick={() => setStatus(tab.value)}
+              className={cn(
+                "relative flex h-11 shrink-0 items-center gap-1.5 whitespace-nowrap px-2.5 text-sm transition-colors",
+                active ? "font-medium text-foreground" : "text-muted-foreground hover:text-foreground",
+              )}
             >
-              <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
-              Clear filters
-            </Button>
-
-            <select
-              className={`${inputClass} font-medium text-foreground`}
-              value={sortOrder}
-              onChange={(e) => { setSortOrder(e.target.value); setPage(1); }}
-            >
-              <option value="newest">Sort: Newest First</option>
-              <option value="oldest">Sort: Oldest First</option>
-            </select>
-          </div>
-        </div>
-
-        {(search || status || paymentFilter || fromDate || toDate) && (
-          <div className="flex flex-wrap items-center gap-2">
-            {search && (
-              <FilterPill
-                label={`Search: ${search}`}
-                onRemove={() => {
-                  setSearch("");
-                  setSearchInput("");
-                  setPage(1);
-                }}
-              />
-            )}
-            {status && (
-              <FilterPill
-                label={status}
-                onRemove={() => {
-                  setStatus("");
-                  setPage(1);
-                }}
-              />
-            )}
-            {paymentFilter && (
-              <FilterPill
-                label={paymentFilter === "Paid" ? "Paid (Prepaid)" : "COD"}
-                onRemove={() => {
-                  setPaymentFilter("");
-                  setPage(1);
-                }}
-              />
-            )}
-            {fromDate && (
-              <FilterPill
-                label={`From ${fromDate}`}
-                onRemove={() => {
-                  setFromDate("");
-                  setPage(1);
-                }}
-              />
-            )}
-            {toDate && (
-              <FilterPill
-                label={`To ${toDate}`}
-                onRemove={() => {
-                  setToDate("");
-                  setPage(1);
-                }}
-              />
-            )}
-          </div>
-        )}
-
+              {tab.label}
+              {count !== null ? (
+                <span
+                  className={cn(
+                    "rounded-full px-1.5 text-xs tabular",
+                    active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground",
+                    count === 0 && !active ? "opacity-60" : "",
+                  )}
+                >
+                  {count}
+                </span>
+              ) : null}
+              {active ? <span aria-hidden className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-primary" /> : null}
+            </button>
+          );
+        })}
       </div>
 
-      {data ? (
-        <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
-          <AdminTableScroll>
-            <table className="w-full min-w-[500px] text-left text-sm md:min-w-[900px]">
-              <thead className="sticky top-0 z-10 border-b border-border bg-card text-xs font-medium text-muted-foreground">
-                <tr>
-                  <th className="w-10 px-3 py-3">
-                    <input
-                      type="checkbox"
-                      className="rounded border-border accent-primary"
-                      aria-label="Select all orders"
-                      checked={
-                        items.length > 0 &&
-                        items.every((o) => selectedIds[o.id])
-                      }
-                      onChange={(e) => {
-                        const next: Record<string, boolean> = {};
-                        items.forEach((o) => {
-                          next[o.id] = e.target.checked;
-                        });
-                        setSelectedIds(next);
-                      }}
-                    />
-                  </th>
-                  <th className="px-3 py-3">Order ID</th>
-                  <th className="px-3 py-3">Customer</th>
-                  <th className="hidden px-3 py-3 sm:table-cell">Date</th>
-                  <th className="px-3 py-3 text-right">Amount</th>
-                  <th className="hidden px-3 py-3 md:table-cell">Payment</th>
-                  <th className="hidden px-3 py-3 md:table-cell">Delivery</th>
-                  <th className="px-3 py-3">Order Status</th>
-                  <th className="px-3 py-3 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((order) => (
-                  <tr
-                    key={order.id}
-                    className="group border-b border-border transition-colors duration-150 hover:bg-muted/50"
-                  >
-                    <td className="px-3 py-3">
-                      <input
-                        type="checkbox"
-                        className="rounded border-border accent-primary"
-                        aria-label={`Select order ${order.orderNumber}`}
-                        checked={Boolean(selectedIds[order.id])}
-                        onChange={(e) =>
-                          setSelectedIds((prev) => ({
-                            ...prev,
-                            [order.id]: e.target.checked,
-                          }))
-                        }
-                      />
-                    </td>
-                    <td className="px-3 py-3">
-                      <Link
-                        href={`/admin/orders/${order.id}`}
-                        className="font-semibold text-foreground transition-colors hover:text-primary"
-                      >
-                        {order.orderNumber}
-                      </Link>
-                    </td>
-                    <td className="px-3 py-3">
-                      <div className="flex items-center gap-2.5">
-                        <span
-                          aria-hidden="true"
-                          className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary"
-                        >
-                          {(order.customerName || "?").charAt(0).toUpperCase()}
-                        </span>
-                        <div className="min-w-0">
-                          <p className="truncate font-medium text-foreground">
-                            {order.customerName}
-                          </p>
-                          <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                            {order.customerEmail}
-                          </p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="hidden whitespace-pre-wrap px-3 py-3 text-xs text-muted-foreground sm:table-cell">
-                      {formatAdminDate(order.createdAt).replace(", ", "\n")}
-                    </td>
-                    <td className="px-3 py-3 text-right font-medium text-foreground">
-                      {formatPaise(order.total)}
-                    </td>
-                    <td className="hidden px-3 py-3 md:table-cell">
-                      {paymentBadge(order)}
-                    </td>
-                    <td className="hidden px-3 py-3 md:table-cell">
-                      {deliveryBadge(order)}
-                    </td>
-                    <td className="px-3 py-3">
-                      <AdminStatusBadge
-                        label={
-                          order.status === "DELIVERED"
-                            ? "Completed"
-                            : order.status
-                        }
-                        tone={orderStatusTone(order.status)}
-                      />
-                    </td>
-                    <td className="px-3 py-3 text-right">
-                      <div className="inline-flex items-center gap-0.5">
-                        {isInvoiceEligibleOrderStatus(order.status) ? (
-                          <button
-                            type="button"
-                            className="inline-flex items-center justify-center rounded-md p-2 text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground disabled:opacity-50 sm:p-1.5"
-                            title="Download invoice"
-                            aria-label={`Download invoice for order ${order.orderNumber}`}
-                            disabled={invoiceBusyId !== null}
-                            onClick={() => void downloadRowInvoice(order)}
-                          >
-                            {invoiceBusyId === order.id ? (
-                              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                            ) : (
-                              <FileDown className="h-4 w-4" aria-hidden="true" />
-                            )}
-                          </button>
-                        ) : null}
-                        <Link
-                          href={`/admin/orders/${order.id}`}
-                          className="inline-flex items-center justify-center rounded-md p-2 text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground sm:p-1.5"
-                          title="View order"
-                          aria-label={`View order ${order.orderNumber}`}
-                        >
-                          <Eye className="h-4 w-4" aria-hidden="true" />
-                        </Link>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </AdminTableScroll>
-          <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
-            <p className="text-xs text-muted-foreground">
-              Showing{" "}
-              {Math.min(
-                (data.meta.page - 1) * data.meta.limit + 1,
-                data.meta.total,
-              )}
-              –{Math.min(data.meta.page * data.meta.limit, data.meta.total)} of{" "}
-              {data.meta.total.toLocaleString("en-IN")} orders
-            </p>
-            <AdminPagination meta={data.meta} onPageChange={setPage} />
-          </div>
+      <div className="border-b border-border p-3 sm:px-5">
+        <FilterBar
+          search={{
+            value: searchInput,
+            onChange: (v) => {
+              setSearchInput(v);
+              if (v === "") setSearch("");
+            },
+            placeholder: "Search orders",
+            label: "Search orders by number, customer, phone or AWB",
+          }}
+          trailing={
+            filtersActive ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="lg"
+                onClick={() => {
+                  setSearch("");
+                  setSearchInput("");
+                  setPaymentFilter("");
+                  setSortOrder("newest");
+                }}
+              >
+                Clear
+              </Button>
+            ) : null
+          }
+        >
+          <FilterSelect
+            label="Payment"
+            value={paymentFilter}
+            onChange={setPaymentFilter}
+            options={[
+              { value: "", label: "Any payment" },
+              { value: "PREPAID", label: "Prepaid" },
+              { value: "COD", label: "Cash on delivery" },
+            ]}
+          />
+          <FilterSelect
+            label="Sort"
+            value={sortOrder}
+            onChange={setSortOrder}
+            options={[
+              { value: "newest", label: "Newest first" },
+              { value: "oldest", label: "Oldest first" },
+            ]}
+          />
+        </FilterBar>
+      </div>
+
+      {error ? (
+        <div className="p-4 sm:p-5">
+          <Notice
+            tone="danger"
+            title="Couldn't load orders"
+            action={
+              <Button type="button" variant="outline" size="lg" onClick={() => void load()}>
+                Try again
+              </Button>
+            }
+          >
+            {error}
+          </Notice>
+        </div>
+      ) : (
+      <DataTable
+            rows={items}
+            columns={columns}
+            rowKey={(o) => o.id}
+            rowHref={(o) => `/admin/orders/${o.id}`}
+            loading={loading}
+            caption="Orders"
+            mobileTitle={(o) => {
+              const d = orderStatusDisplay(o.status);
+              const pay = paymentDisplay(o);
+              return (
+                <div className="flex min-w-0 items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-foreground">{o.customerName?.trim() || "Guest"}</p>
+                    <p className="text-xs text-muted-foreground tabular">
+                      {o.orderNumber} · {formatAdminDateCompact(o.createdAt)}
+                    </p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">{pay.label}</p>
+                  </div>
+                  <div className="flex shrink-0 flex-col items-end gap-0.5">
+                    <span className="font-semibold text-foreground tabular">{formatPaise(o.total)}</span>
+                    <StatusDot tone={d.tone} className="text-xs">
+                      {d.label}
+                    </StatusDot>
+                  </div>
+                </div>
+              );
+            }}
+            empty={
+              <EmptyState
+                icon={ShoppingCart}
+                headline={search || paymentFilter || status ? "No orders match these filters" : "No orders in this period"}
+                description={
+                  search || paymentFilter || status
+                    ? "Try another status tab, clear the search, or widen the date range."
+                    : "Orders appear here as soon as customers check out."
+                }
+              />
+            }
+          />
+      )}
+
+      {data && data.meta.total > 0 ? (
+        <div className="flex min-w-0 flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3 sm:px-5">
+          <p className="text-sm text-muted-foreground tabular">
+            {Math.min((data.meta.page - 1) * data.meta.limit + 1, data.meta.total)}–
+            {Math.min(data.meta.page * data.meta.limit, data.meta.total)} of {data.meta.total.toLocaleString("en-IN")}
+          </p>
+          <AdminPagination meta={data.meta} onPageChange={setPage} />
         </div>
       ) : null}
-    </AdminSection>
-  );
-}
-
-interface FilterPillProps {
-  label: string;
-  onRemove: () => void;
-}
-
-function FilterPill({ label, onRemove }: FilterPillProps) {
-  return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-0.5 text-xs text-foreground">
-      {label}
-      <button
-        type="button"
-        onClick={onRemove}
-        aria-label={`Remove filter ${label}`}
-        className="rounded-full text-muted-foreground transition-colors hover:text-foreground"
-      >
-        ×
-      </button>
-    </span>
+    </Panel>
   );
 }

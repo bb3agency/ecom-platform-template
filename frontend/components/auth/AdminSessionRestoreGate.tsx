@@ -6,6 +6,7 @@ import { AdminLoadingBlock } from "@/components/admin/ui/admin-ui";
 import { Button } from "@/components/ui/button";
 import { redirectToAdminLogin } from "@/lib/admin-auth-navigation";
 import { useAuthStore } from "@/stores/auth";
+import "@/components/ui/console-theme.css";
 
 const SLOW_RESTORE_MS = 3_000;
 const RESTORE_ESCAPE_MS = 12_000;
@@ -23,7 +24,7 @@ interface AdminSessionRestoreGateProps {
  */
 export function AdminSessionRestoreGate({
   label,
-  className = "admin-console flex min-h-[100dvh] flex-col items-center justify-center gap-4 bg-background px-4 pb-[max(1rem,env(safe-area-inset-bottom))]",
+  className = "console-theme admin-console flex min-h-dvh flex-col items-center justify-center gap-4 bg-background px-4 pb-[max(1rem,env(safe-area-inset-bottom))]",
   autoRedirectOnTimeout = true,
 }: AdminSessionRestoreGateProps) {
   const [slow, setSlow] = useState(false);

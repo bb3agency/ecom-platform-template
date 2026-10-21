@@ -15,15 +15,14 @@ export interface OpsConfigFieldDefinition {
   /** Masked representation of the DB-stored value, retained for list/summary views. */
   storedMasked?: string;
   /**
-   * Plaintext DB-stored value — populated for **every** key with an active
-   * DB-overlay row, INCLUDING real cryptographic secrets (`_SECRET`,
-   * `_TOKEN`, `_PASSWORD`, `_API_KEY`, `_AUTH_KEY`, `_APP_SECRET`, signed
-   * approval tokens, ops cookie secret). Used to prefill the form input so
-   * the operator can see and edit what is actually saved without retyping
-   * from an external vault. Secret-classified fields still render as
-   * `<input type="password">` with an eye toggle, so the rendered DOM stays
-   * bullet-masked until the operator opts to peek. See backend
-   * `getStoredConfigSecrets` JSDoc for the full rationale.
+   * Plaintext DB-stored value, used to prefill NON-secret inputs (provider
+   * names, booleans, sender addresses) so the operator edits what is saved.
+   *
+   * Never populated for secret-classified keys (`inputKind === "secret"`):
+   * the console shows `storedMasked` instead and an empty input means "keep
+   * the saved value". The backend still returns plaintext for every row
+   * (see `getStoredConfigSecrets`); the UI deliberately drops it for secrets
+   * so a plaintext secret never sits in React state or the DOM.
    */
   storedPlaintext?: string;
   /**
@@ -35,6 +34,8 @@ export interface OpsConfigFieldDefinition {
    * values into `process.env` and makes them look env-locked.
    */
   envLocked: boolean;
+  /** Saved value isn't live yet — the API/workers need a restart. */
+  restartPending: boolean;
 }
 
 const SELECT_OPTIONS: Record<string, Array<{ value: string; label: string }>> = {
@@ -62,7 +63,8 @@ const BOOLEAN_KEYS = new Set([
   "SHIPPING_PROVIDER_FAILOVER_ENABLED",
 ]);
 
-function isSecretKey(key: string): boolean {
+/** Secret-classified keys never have their stored value loaded into the page. */
+export function isSecretKey(key: string): boolean {
   if (
     key.endsWith("_KEY_ID") ||
     key.endsWith("_FROM") ||
@@ -71,16 +73,26 @@ function isSecretKey(key: string): boolean {
   ) {
     return false;
   }
-  return /(_SECRET|_TOKEN|_PASSWORD|_AUTH_KEY|_API_KEY|_APP_SECRET|OPS_METRICS_TOKEN|REPLAY_APPROVAL_TOKEN|OPS_COOKIE_SECRET)/.test(
+  return /(_SECRET|_TOKEN|_PASSWORD|_AUTH_KEY|_API_KEY|_APP_SECRET|_ENCRYPTION_KEY|_PRIVATE_KEY|_SIGNING_KEY|OPS_METRICS_TOKEN|REPLAY_APPROVAL_TOKEN|OPS_COOKIE_SECRET)/.test(
     key,
   );
 }
 
+/** Kept upper-case when a key is turned into a label. */
+const ACRONYMS = new Set([
+  "API", "CDN", "DB", "DLQ", "GST", "GSTIN", "ID", "IP", "JWT", "OTP", "R2", "S3", "SMS", "SMTP", "TTL", "URL", "UPI",
+]);
+
+/** "RAZORPAY_KEY_ID" → "Razorpay key ID" (sentence case, acronyms kept). */
 function humanizeKey(key: string): string {
   return key
-    .toLowerCase()
     .split("_")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .filter(Boolean)
+    .map((part, index) => {
+      if (ACRONYMS.has(part)) return part;
+      const lower = part.toLowerCase();
+      return index === 0 ? lower.charAt(0).toUpperCase() + lower.slice(1) : lower;
+    })
     .join(" ");
 }
 
@@ -122,8 +134,9 @@ export function buildOpsConfigFieldDefinitions(
           requiresRestart: item.requiresRestart,
           present: item.present,
           envLocked,
+          restartPending: item.restartPending ?? (!item.present && Boolean(storedItem)),
           ...(storedItem ? { storedMasked: storedItem.maskedValue } : {}),
-          ...(storedItem ? { storedPlaintext: storedItem.plaintextValue } : {}),
+          ...(storedItem && inputKind !== "secret" ? { storedPlaintext: storedItem.plaintextValue } : {}),
         };
       }),
   );
@@ -133,12 +146,12 @@ export function groupOpsConfigFieldsByDomain(
   fields: OpsConfigFieldDefinition[],
 ): Array<{ domain: OpsConfigDomain; label: string; fields: OpsConfigFieldDefinition[] }> {
   const domainLabels: Record<OpsConfigDomain, string> = {
-    core: "Core Runtime",
-    media: "Product Media (Cloudflare R2)",
+    core: "Core runtime",
+    media: "Product media (Cloudflare R2)",
     payments: "Payments",
     shipping: "Shipping",
     notifications: "Notifications",
-    opsSecurity: "Ops Security",
+    opsSecurity: "Ops security",
   };
 
   const order: OpsConfigDomain[] = [

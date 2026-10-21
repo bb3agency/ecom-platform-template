@@ -28,6 +28,8 @@ import { toast } from "@/lib/toast";
 import { shippingProviderLabel } from "@/lib/shipping-provider-labels";
 import { ADMIN_PERMISSIONS, hasAdminPermission } from "@/lib/permissions";
 import { useAuthStore } from "@/stores/auth";
+import { cn } from "@/lib/utils";
+import { orderStatusDisplay, paymentStatusDisplay, sentenceCaseEnum } from "@/lib/admin-format";
 import { getPaginatedItems } from "@/lib/admin-api";
 import {
   Dialog,
@@ -535,7 +537,7 @@ export function AdminOrderFulfillmentPanel({
   ];
 
   return (
-    <section className="min-w-0 rounded-xl border border-border bg-card">
+    <section className="grid min-w-0 grid-cols-1 overflow-hidden rounded-xl border border-border bg-card">
       {/* Cancel-order modal: reason + optional note. Cancelling recalls the shipment,
           restocks items and auto-refunds prepaid payments (backend side-effects). */}
       <Dialog open={cancelOpen} onOpenChange={(open) => busyAction === null && setCancelOpen(open)}>
@@ -608,12 +610,12 @@ export function AdminOrderFulfillmentPanel({
         </DialogContent>
       </Dialog>
       {/* Header */}
-      <header className="border-b border-border px-4 py-4 sm:px-6">
+      <header className="border-b border-border px-4 py-3 sm:px-5">
         <div className="flex items-center justify-between gap-2">
-          <h2 className="font-heading text-sm font-semibold">
-            Order fulfillment
+          <h2 className="text-base font-semibold">
+            Fulfilment
             {isLocal ? (
-              <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300">
+              <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-success/10 px-2 py-0.5 text-xs font-medium text-success ">
                 <Bike className="h-3 w-3" aria-hidden />
                 Local delivery
               </span>
@@ -633,14 +635,14 @@ export function AdminOrderFulfillmentPanel({
             </Link>
           ) : null}
         </div>
-        <p className="mt-0.5 text-xs text-muted-foreground">
+        <p className="mt-0.5 text-sm text-muted-foreground">
           {isLocal
-            ? "This order is from a whitelisted local pincode — you deliver it yourself. No courier is booked; advance the status in “Update order status” and print the invoice below."
-            : "COD cash collection is synced automatically on delivery via the shipping provider webhook — do not mark COD collected manually."}
+            ? "Local pincode — you deliver this yourself. No courier is booked."
+            : "Book the courier, schedule pickup, then print the label."}
         </p>
       </header>
 
-      <div className="grid min-w-0 gap-6 p-4 sm:p-6">
+      <div className="grid min-w-0 gap-5 p-4 sm:p-5">
         {/* Order picker */}
         {!hideOrderPicker ? (
           <label className="grid min-w-0 grid-cols-1 gap-1.5 text-sm font-medium">
@@ -662,11 +664,6 @@ export function AdminOrderFulfillmentPanel({
               ))}
             </select>
           </label>
-        ) : detail ? (
-          <div className="text-sm">
-            <span className="text-muted-foreground">Order </span>
-            <span className="font-semibold">{detail.orderNumber}</span>
-          </div>
         ) : null}
 
         {loadingDetail ? (
@@ -678,27 +675,16 @@ export function AdminOrderFulfillmentPanel({
 
         {/* Order info grid */}
         {detail && detail.id === selectedOrderId ? (
-          <div className="grid min-w-0 grid-cols-1 gap-3 rounded-xl border border-border bg-muted/20 p-4 sm:grid-cols-2">
-            <InfoChip
-              label="Payment mode"
-              value={detail.paymentMode}
-            />
-            <InfoChip
-              label="Order status"
-              value={detail.status}
-              valueClass={
-                detail.status === "CANCELLED" || detail.status === "REFUNDED"
-                  ? "text-destructive"
-                  : detail.status === "DELIVERED"
-                    ? "text-emerald-600"
-                    : undefined
-              }
-            />
-            <InfoChip
-              label="Payment status"
-              value={detail.payment?.status ?? "—"}
-              valueClass={detail.payment?.status === "CAPTURED" ? "text-emerald-600" : undefined}
-            />
+          <div className="grid min-w-0 grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
+            {/* Order and payment status live in the page header / sidebar on the detail
+                page; the picker variant (no header) still shows them here. */}
+            {!hideOrderPicker ? (
+              <>
+                <InfoChip label="Payment mode" value={sentenceCaseEnum(detail.paymentMode)} />
+                <InfoChip label="Order status" value={orderStatusDisplay(detail.status).label} />
+                <InfoChip label="Payment status" value={paymentStatusDisplay(detail.payment?.status).label} />
+              </>
+            ) : null}
             <InfoChip
               label="COD / collection"
               value={codCollectionCopy(
@@ -710,8 +696,8 @@ export function AdminOrderFulfillmentPanel({
               )}
             />
             {isLocal && detail.shippingAddress ? (
-              <div className="sm:col-span-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-900/50 dark:bg-emerald-950/20">
-                <p className="mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-emerald-800 dark:text-emerald-300">
+              <div className="sm:col-span-2 rounded-lg border border-success/30 bg-success/10 p-3">
+                <p className="mb-1 flex items-center gap-1.5 text-xs font-medium text-success">
                   <MapPin className="h-3.5 w-3.5" aria-hidden />
                   Deliver to
                 </p>
@@ -737,7 +723,7 @@ export function AdminOrderFulfillmentPanel({
                   label="Can ship now"
                   valueNode={
                     detail.canShipNow ? (
-                      <span className="flex items-center gap-1 text-emerald-600">
+                      <span className="flex items-center gap-1 text-success">
                         <CheckCircle2 className="h-3.5 w-3.5" /> Yes
                       </span>
                     ) : (
@@ -755,7 +741,7 @@ export function AdminOrderFulfillmentPanel({
                       <span className="flex items-center gap-1.5">
                         <span className="font-medium">{shippingProviderLabel(detail.selectedShippingProvider)}</span>
                         {!shipment?.awb && (
-                          <span className="rounded-sm bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800">
+                          <span className="rounded-sm bg-warning-soft px-1.5 py-0.5 text-xs font-medium text-warning">
                             Awaiting AWB
                           </span>
                         )}
@@ -788,11 +774,11 @@ export function AdminOrderFulfillmentPanel({
                       shipment?.status === "CANCELLED"
                         ? "text-destructive"
                         : shipment?.status === "DELIVERED"
-                          ? "text-emerald-600"
+                          ? "text-success"
                           : undefined
                     }
                   >
-                    {shipment?.status ?? "—"}
+                    {shipment?.status ? sentenceCaseEnum(shipment.status) : "—"}
                   </span>
                   {canSync ? (
                     <button
@@ -838,7 +824,7 @@ export function AdminOrderFulfillmentPanel({
             packed bill) and advance the status manually from "Update order status". */}
         {isLocal && detail ? (
           <div className="grid min-w-0 grid-cols-1 gap-3">
-            <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="grid min-w-0 grid-cols-1 gap-2">
               <ActionButton
                 step={1}
                 label="Print invoice"
@@ -858,7 +844,7 @@ export function AdminOrderFulfillmentPanel({
                 primary
               />
             </div>
-            <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
+            <div className="rounded-lg bg-muted px-4 py-3 text-sm text-muted-foreground">
               {delivered
                 ? "This local order has been delivered. Nothing more to do here."
                 : orderTerminal
@@ -871,7 +857,7 @@ export function AdminOrderFulfillmentPanel({
         {/* Primary action steps — hidden entirely once the order/shipment is terminal
             (cancelled/refunded): shipping, pickup and label no longer apply. */}
         {isLocal ? null : fulfilmentActive ? (
-          <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="grid min-w-0 grid-cols-1 gap-2">
             <ActionButton
               step={1}
               label="Ship order"
@@ -912,7 +898,7 @@ export function AdminOrderFulfillmentPanel({
             />
           </div>
         ) : (
-          <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
+          <div className="rounded-lg bg-muted px-4 py-3 text-sm text-muted-foreground">
             {delivered
               ? "This package has been delivered. Fulfilment actions (ship, schedule pickup, print label) are no longer needed."
               : `This order is ${(detail?.status ?? "cancelled").toLowerCase()}. Fulfilment actions (ship, schedule pickup, print label) are no longer available.`}
@@ -945,9 +931,7 @@ export function AdminOrderFulfillmentPanel({
 
         {/* Secondary actions */}
         <div className="border-t border-border pt-4">
-          <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Other actions
-          </p>
+          <p className="mb-3 text-sm font-medium text-foreground">More actions</p>
           {/* NOTE: the standalone "Request refund" button was removed intentionally — refunds
               are issued via "Cancel order" (auto-refunds prepaid payments); a separate refund
               action on a live order only invited mistakes. Refund state still shows in the
@@ -985,8 +969,9 @@ export function AdminOrderFulfillmentPanel({
                 }
               />
             ) : null}
-            {detail?.invoice?.hasPdf ||
-            (detail && isInvoiceEligibleOrderStatus(detail.status)) ? (
+            {/* On the detail page the header already carries "Download invoice". */}
+            {!hideOrderPicker &&
+            (detail?.invoice?.hasPdf || (detail && isInvoiceEligibleOrderStatus(detail.status))) ? (
               <SecondaryButton
                 icon={<FileDown className="h-3.5 w-3.5" />}
                 label="Download invoice"
@@ -1049,28 +1034,40 @@ function ActionButton({
   primary?: boolean;
   title?: string;
 }) {
+  // Full-width step row: the next actionable step is filled with the brand colour,
+  // blocked steps recede and say why. Clear on a phone, scannable on desktop.
+  const filled = primary && !disabled;
   return (
     <button
       type="button"
       disabled={disabled}
       onClick={onClick}
       title={title}
-      className={`flex flex-col items-start gap-1 rounded-xl border p-4 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50
-        ${primary
-          ? "border-primary/30 bg-primary/5 hover:bg-primary/10 disabled:hover:bg-primary/5"
-          : "border-border bg-background hover:bg-muted/50 disabled:hover:bg-background"
-        }`}
+      aria-busy={busy || undefined}
+      className={cn(
+        "flex min-h-14 w-full items-center gap-3 rounded-lg border px-4 py-3 text-left transition-colors disabled:cursor-not-allowed",
+        filled
+          ? "border-primary bg-primary text-primary-foreground hover:bg-primary/90"
+          : "border-border bg-card text-foreground hover:bg-muted/60 disabled:bg-muted/40 disabled:text-muted-foreground",
+      )}
     >
-      <div className="flex w-full items-center justify-between">
-        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">
-          {busy ? <Clock className="h-3.5 w-3.5 animate-pulse" /> : step}
+      <span
+        className={cn(
+          "flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold tabular",
+          filled ? "bg-primary-foreground/15" : "bg-muted text-muted-foreground",
+        )}
+      >
+        {busy ? <Clock className="size-3.5 animate-pulse" aria-hidden /> : step}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-medium leading-tight">{busy ? `${label}…` : label}</span>
+        <span className={cn("block text-xs", filled ? "text-primary-foreground/80" : "text-muted-foreground")}>
+          {sublabel}
         </span>
-        <span className={primary ? "text-primary" : "text-muted-foreground"}>{icon}</span>
-      </div>
-      <p className="text-sm font-semibold leading-tight">
-        {busy ? `${label.split(" ")[0]}ing…` : label}
-      </p>
-      <p className="text-xs text-muted-foreground">{sublabel}</p>
+      </span>
+      <span className="shrink-0" aria-hidden>
+        {icon}
+      </span>
     </button>
   );
 }
@@ -1090,23 +1087,17 @@ function SecondaryButton({
   variant?: "danger" | "warning";
   title?: string;
 }) {
-  const variantClass =
-    variant === "danger"
-      ? "border-destructive/30 text-destructive hover:bg-destructive/5"
-      : variant === "warning"
-        ? "border-amber-300 text-amber-700 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/20"
-        : "border-border text-foreground hover:bg-muted/50";
-
   return (
-    <button
+    <Button
       type="button"
+      size="lg"
+      variant={variant ? "destructive" : "outline"}
       disabled={disabled}
       onClick={onClick}
       title={title}
-      className={`flex h-9 items-center gap-1.5 rounded-lg border px-3 text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${variantClass}`}
     >
       {icon}
       {label}
-    </button>
+    </Button>
   );
 }
