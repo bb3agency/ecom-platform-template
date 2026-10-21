@@ -1897,7 +1897,7 @@ When you need deeper context on any area, reference these files (they are the so
 ### 9. Forbidden Actions — NEVER Do These
 
 - ❌ NEVER delete or modify files in `docs/` without explicit user approval
-- ❌ NEVER delete `.agents/`, `.cursor/`, or any IDE config directories
+- ❌ NEVER delete IDE config directories (`.vscode/`, `.idea/`); agent rules live only in the root `CLAUDE.md`
 - ❌ NEVER commit `.env` files (only `.env.example`)
 - ❌ NEVER use `console.log` in source code
 - ❌ NEVER use `any` type in TypeScript
