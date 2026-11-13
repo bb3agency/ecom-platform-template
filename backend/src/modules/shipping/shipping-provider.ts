@@ -1,4 +1,4 @@
-import { ShippingProviderAdapter } from '@common/interfaces/shipping-provider.interface';
+import type { ShipmentLookupResult, ShippingProviderAdapter } from '@common/interfaces/shipping-provider.interface';
 import { AppError } from '@common/errors/app-error';
 import { ERROR_CODES } from '@common/errors/error-codes';
 import DelhiveryAdapter from './adapters/delhivery.adapter';
@@ -52,6 +52,10 @@ class MissingConfigShippingAdapter implements ShippingProviderAdapter {
   async generateLabel(): Promise<never> {
     this.fail();
   }
+
+  async findShipmentByReference(): Promise<never> {
+    this.fail();
+  }
 }
 
 function parseBooleanFlag(value: string | undefined): boolean {
@@ -66,7 +70,22 @@ class CircuitBreakerShippingAdapter implements ShippingProviderAdapter {
     private readonly delegate: ShippingProviderAdapter,
     private readonly failureThreshold = 5,
     private readonly cooldownMs = 30_000
-  ) {}
+  ) {
+    const lookup = delegate.findShipmentByReference?.bind(delegate);
+    if (lookup) {
+      this.findShipmentByReference = async (clientReference: string) => {
+        this.assertClosed();
+        try {
+          const result = await lookup(clientReference);
+          this.recordSuccess();
+          return result;
+        } catch (error) {
+          this.recordFailure();
+          throw error;
+        }
+      };
+    }
+  }
 
   private assertClosed(): void {
     if (Date.now() < this.openUntil) {
@@ -176,6 +195,12 @@ class CircuitBreakerShippingAdapter implements ShippingProviderAdapter {
       throw error;
     }
   }
+
+  /**
+   * Only defined when the delegate supports lookups, so callers can feature-detect
+   * with `adapter.findShipmentByReference` exactly as on the raw adapter.
+   */
+  findShipmentByReference?: (clientReference: string) => Promise<ShipmentLookupResult>;
 }
 
 export function resolveShippingProviderRuntime(runtimeConfig: NodeJS.ProcessEnv = process.env): ShippingProviderRuntime {

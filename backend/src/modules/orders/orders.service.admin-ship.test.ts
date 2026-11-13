@@ -146,4 +146,26 @@ describe('OrdersService admin ship enqueue', () => {
     });
     expect(shippingAdd).not.toHaveBeenCalled();
   });
+
+  it('blocks re-ship while a courier booking intent is in flight (PENDING shipment, no AWB)', async () => {
+    const shippingAdd = vi.fn().mockResolvedValue(undefined);
+    const order = buildOrder({
+      shipment: { id: 'ship_intent', provider: 'DELHIVERY', status: 'PENDING', awbNumber: null }
+    });
+    const fastify = {
+      prisma: {
+        storeSettings: { findUnique: vi.fn().mockResolvedValue({ pickupPincode: '500001' }) },
+        order: { findUnique: vi.fn().mockResolvedValue(order) }
+      },
+      queues: { shipping: { add: shippingAdd }, notifications: { add: vi.fn() } },
+      log: { error: vi.fn() }
+    } as unknown as FastifyInstance;
+
+    const service = new OrdersService(fastify);
+    await expect(service.adminShipOrder('order_1')).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'Shipment booking is in progress.'
+    });
+    expect(shippingAdd).not.toHaveBeenCalled();
+  });
 });

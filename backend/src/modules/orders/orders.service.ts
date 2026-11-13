@@ -294,6 +294,11 @@ export class OrdersService {
         shipBlockReason: reasonByStatus[input.status] ?? 'Order is not in a shippable state.'
       };
     }
+    if (!input.awbNumber && input.shipmentStatus === 'PENDING') {
+      // Booking intent: a courier booking is in flight (or awaiting recovery by the
+      // booking-intent sweep). Re-shipping now could double-book at the courier.
+      return { canShipNow: false, shipBlockReason: 'Shipment booking is in progress.' };
+    }
     if (input.awbNumber || input.shipmentStatus) {
       return { canShipNow: false, shipBlockReason: 'Shipment is already booked for this order.' };
     }

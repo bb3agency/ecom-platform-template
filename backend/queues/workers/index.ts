@@ -475,7 +475,11 @@ async function bootstrapWorkers(): Promise<void> {
   const shiprocketActive =
     Boolean((process.env.SHIPROCKET_EMAIL ?? '').trim()) &&
     Boolean((process.env.SHIPROCKET_PASSWORD ?? '').trim());
-  if (shiprocketActive) {
+  // The booking-intent sweep (in-flight booking recovery) is needed for Delhivery
+  // too, so the scheduler queue also starts for Delhivery-only deployments; the
+  // Shiprocket-specific repeatables below stay gated on Shiprocket credentials.
+  const delhiveryActive = Boolean((process.env.DELHIVERY_API_KEY ?? '').trim());
+  if (shiprocketActive || delhiveryActive) {
     shiprocketRefreshConnection = guardRedisDuplicate(
       workerRedis,
       workerRedisLog,
@@ -494,53 +498,71 @@ async function bootstrapWorkers(): Promise<void> {
       connection: shiprocketRefreshConnection,
       defaultJobOptions
     });
-    shiprocketRefreshQueue
-      .add(
-        'shiprocket-token-refresh',
-        {},
-        {
-          repeat: { every: 9 * 24 * 60 * 60 * 1000 },
-          jobId: 'shiprocket-token-refresh-repeatable'
-        }
-      )
-      .catch((err: unknown) => {
-        logger.warn({ err }, 'Failed to register shiprocket-token-refresh repeatable job');
-        void sendTechnicalFailureAlert({
-          prisma: prismaClient,
-          template: 'ShiprocketTokenRefreshSchedule',
-          channel: 'UNKNOWN',
-          recipient: 'shiprocket-scheduler',
-          errorMessage: err instanceof Error ? err.message : String(err),
-          failureStage: 'CORE_LOGIC',
-          domain: 'shipping',
-          component: 'shiprocket-token-refresh-schedule'
+    if (shiprocketActive) {
+      shiprocketRefreshQueue
+        .add(
+          'shiprocket-token-refresh',
+          {},
+          {
+            repeat: { every: 9 * 24 * 60 * 60 * 1000 },
+            jobId: 'shiprocket-token-refresh-repeatable'
+          }
+        )
+        .catch((err: unknown) => {
+          logger.warn({ err }, 'Failed to register shiprocket-token-refresh repeatable job');
+          void sendTechnicalFailureAlert({
+            prisma: prismaClient,
+            template: 'ShiprocketTokenRefreshSchedule',
+            channel: 'UNKNOWN',
+            recipient: 'shiprocket-scheduler',
+            errorMessage: err instanceof Error ? err.message : String(err),
+            failureStage: 'CORE_LOGIC',
+            domain: 'shipping',
+            component: 'shiprocket-token-refresh-schedule'
+          });
         });
-      });
 
-    // Background shipment status polling: runs every 3 min so a status change made
-    // on the courier dashboard (e.g. a Shiprocket cancellation) — or a webhook that
-    // never arrived — propagates to the site, fires the customer notification, and
-    // triggers cancellation refunds almost immediately, not up to half an hour later.
-    const POLL_SHIPMENT_INTERVAL_MS = 3 * 60 * 1000;
-    // Remove the legacy 30-min repeatable so we don't run two overlapping schedules
-    // (BullMQ keys repeatables by their repeat options — changing `every` orphans the
-    // old one instead of replacing it).
-    void shiprocketRefreshQueue
-      .removeRepeatable('poll-shipment-statuses', { every: 30 * 60 * 1000 }, 'poll-shipment-statuses-repeatable')
-      .catch(() => {
-        // Best-effort cleanup — a missing legacy schedule is fine.
-      });
+      // Background shipment status polling: runs every 3 min so a status change made
+      // on the courier dashboard (e.g. a Shiprocket cancellation) — or a webhook that
+      // never arrived — propagates to the site, fires the customer notification, and
+      // triggers cancellation refunds almost immediately, not up to half an hour later.
+      const POLL_SHIPMENT_INTERVAL_MS = 3 * 60 * 1000;
+      // Remove the legacy 30-min repeatable so we don't run two overlapping schedules
+      // (BullMQ keys repeatables by their repeat options — changing `every` orphans the
+      // old one instead of replacing it).
+      void shiprocketRefreshQueue
+        .removeRepeatable('poll-shipment-statuses', { every: 30 * 60 * 1000 }, 'poll-shipment-statuses-repeatable')
+        .catch(() => {
+          // Best-effort cleanup — a missing legacy schedule is fine.
+        });
+      shiprocketRefreshQueue
+        .add(
+          'poll-shipment-statuses',
+          {},
+          {
+            repeat: { every: POLL_SHIPMENT_INTERVAL_MS },
+            jobId: 'poll-shipment-statuses-repeatable'
+          }
+        )
+        .catch((err: unknown) => {
+          logger.warn({ err }, 'Failed to register poll-shipment-statuses repeatable job');
+        });
+    }
+
+    // In-flight courier booking recovery: every 10 min, resolve booking intents
+    // (PENDING shipment, no AWB) that no create-shipment attempt has touched for
+    // 15 min — look the booking up at the courier and adopt / re-enqueue / release.
     shiprocketRefreshQueue
       .add(
-        'poll-shipment-statuses',
+        'reconcile-booking-intents',
         {},
         {
-          repeat: { every: POLL_SHIPMENT_INTERVAL_MS },
-          jobId: 'poll-shipment-statuses-repeatable'
+          repeat: { every: 10 * 60 * 1000 },
+          jobId: 'reconcile-booking-intents-repeatable'
         }
       )
       .catch((err: unknown) => {
-        logger.warn({ err }, 'Failed to register poll-shipment-statuses repeatable job');
+        logger.warn({ err }, 'Failed to register reconcile-booking-intents repeatable job');
       });
   }
 

@@ -6,6 +6,7 @@ import {
   type GenerateLabelResult,
   type SchedulePickupResult,
   type ServiceabilityResult,
+  type ShipmentLookupResult,
   type ShippingProviderAdapter,
   type TrackShipmentResult
 } from '@common/interfaces/shipping-provider.interface';
@@ -40,6 +41,9 @@ type DelhiveryAdapterOptions = {
   /** Seller phone (used for return_phone) */
   sellerPhone?: string;
 };
+
+// Delhivery's answer for an unknown waybill / order reference on the track API.
+const DELHIVERY_REFERENCE_NOT_FOUND_PATTERN = /no\s+such\s+(?:waybill|order)|(?:waybill|order\s*id)[^.]*not\s+found/i;
 
 export default class DelhiveryAdapter implements ShippingProviderAdapter {
   private readonly apiKey: string;
@@ -195,6 +199,81 @@ export default class DelhiveryAdapter implements ShippingProviderAdapter {
       awbNumber: packageWaybill,
       trackingUrl: `https://www.delhivery.com/track/package/${packageWaybill}`,
       providerPayload: payload
+    };
+  }
+
+  /**
+   * Looks a booking up by OUR client reference — the order number sent as the
+   * manifest `order` field — via the track API's `ref_ids` filter. Delhivery
+   * answers an unknown reference with an `Error` like "No such waybill or Order Id
+   * found" (sometimes as a non-2xx); only that explicit answer, or an empty
+   * ShipmentData list, counts as not-found. Anything else throws so the caller
+   * never books blind.
+   */
+  async findShipmentByReference(clientReference: string): Promise<ShipmentLookupResult> {
+    let payload: Record<string, unknown>;
+    try {
+      payload = await this.request(
+        `/api/v1/packages/json/?ref_ids=${encodeURIComponent(clientReference)}`
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '';
+      if (DELHIVERY_REFERENCE_NOT_FOUND_PATTERN.test(message)) {
+        return { state: 'not_found', providerPayload: { message: message.slice(0, 200) } };
+      }
+      throw error;
+    }
+
+    const errorText = typeof payload.Error === 'string' ? payload.Error : '';
+    const shipmentData = payload.ShipmentData;
+    if (!Array.isArray(shipmentData)) {
+      if (DELHIVERY_REFERENCE_NOT_FOUND_PATTERN.test(errorText)) {
+        return { state: 'not_found', providerPayload: { message: errorText.slice(0, 200) } };
+      }
+      throw new AppError(
+        ERROR_CODES.INTERNAL_ERROR,
+        `Delhivery reference lookup returned an unexpected response${errorText ? `: ${errorText.slice(0, 160)}` : ''}`,
+        422
+      );
+    }
+
+    const entries: unknown[] = shipmentData;
+    const packages = entries
+      .map((entry) =>
+        entry && typeof entry === 'object' && !Array.isArray(entry)
+          ? (entry as Record<string, unknown>).Shipment
+          : undefined
+      )
+      .filter((shipment): shipment is Record<string, unknown> =>
+        Boolean(shipment) && typeof shipment === 'object' && !Array.isArray(shipment)
+      )
+      .map((shipment) => ({
+        awb: this.pickString(shipment, [['AWB']]),
+        reference: this.pickString(shipment, [['ReferenceNo']]),
+        status:
+          this.pickString(shipment, [['Status', 'Status'], ['Status', 'StatusType']]) ?? ''
+      }))
+      .filter((pkg) => pkg.awb && (pkg.reference == null || pkg.reference.trim() === clientReference));
+
+    const providerPayload = { matchCount: packages.length };
+    if (packages.length === 0) {
+      return { state: 'not_found', providerPayload };
+    }
+    const isCancelled = (status: string) => /cancel/i.test(status) || status.trim().toUpperCase() === 'CN';
+    const live = packages.find((pkg) => !isCancelled(pkg.status));
+    if (!live?.awb) {
+      const [cancelled] = packages;
+      return {
+        state: 'cancelled',
+        ...(cancelled?.awb ? { awbNumber: cancelled.awb } : {}),
+        providerPayload
+      };
+    }
+    return {
+      state: 'found',
+      awbNumber: live.awb,
+      trackingUrl: `https://www.delhivery.com/track/package/${live.awb}`,
+      providerPayload: { ...providerPayload, status: live.status }
     };
   }
 

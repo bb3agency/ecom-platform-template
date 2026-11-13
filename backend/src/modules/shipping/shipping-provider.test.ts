@@ -128,4 +128,23 @@ describe('dual shipping runtime', () => {
     const adapter = createShippingAdapterForProvider('delhivery');
     expect(adapter).toBeNull();
   });
+
+  it('exposes the booking lookup through the circuit breaker for configured couriers', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ Error: 'No such waybill or Order Id found' })
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const adapter = createShippingAdapterForProvider('delhivery', { DELHIVERY_API_KEY: 'key' });
+
+    expect(typeof adapter?.findShipmentByReference).toBe('function');
+    await expect(adapter?.findShipmentByReference?.('ORD-1')).resolves.toMatchObject({ state: 'not_found' });
+    vi.unstubAllGlobals();
+  });
+
+  it('unconfigured adapters reject the booking lookup instead of answering not_found', async () => {
+    const runtime = resolveShippingProviderRuntime({ SHIPPING_PROVIDER: 'delhivery', DELHIVERY_API_KEY: '' });
+    await expect(runtime.adapter?.findShipmentByReference?.('ORD-1')).rejects.toMatchObject({ statusCode: 503 });
+  });
 });
