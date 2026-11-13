@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/console";
 import { useAuthenticatedApi } from "@/hooks/use-authenticated-api";
 import { useAdminDataRefreshEffect } from "@/hooks/use-admin-data-refresh-effect";
+import { useRequestSequence } from "@/hooks/use-request-sequence";
 import { useUrlFilterState } from "@/hooks/use-url-filter-state";
 import {
   buildAdminQuery,
@@ -166,7 +167,9 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
     setPage(1);
   }, [status, paymentFilter, refundFilter, sortOrder, search, fromDate, toDate]);
 
+  const listRequests = useRequestSequence();
   const load = useCallback(async () => {
+    const ticket = listRequests.begin();
     setLoading(true);
     setError(null);
     try {
@@ -183,13 +186,15 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
           to: toISO,
         })}`,
       );
+      if (!listRequests.isLatest(ticket)) return;
       setData(coercePaginatedResponse(response));
     } catch (err) {
+      if (!listRequests.isLatest(ticket)) return;
       setError(getApiErrorMessage(err));
     } finally {
-      setLoading(false);
+      if (listRequests.isLatest(ticket)) setLoading(false);
     }
-  }, [api, page, status, search, paymentFilter, refundFilter, sortOrder, fromISO, toISO]);
+  }, [api, listRequests, page, status, search, paymentFilter, refundFilter, sortOrder, fromISO, toISO]);
 
   // Tab counts: one call for every status in the same window as the list.
   const loadCounts = useCallback(async () => {

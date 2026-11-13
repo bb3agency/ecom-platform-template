@@ -26,6 +26,7 @@ import {
   ArrowUpRight,
 } from "lucide-react";
 import { useAuthenticatedApi } from "@/hooks/use-authenticated-api";
+import { useRequestSequence } from "@/hooks/use-request-sequence";
 import {
   coercePaginatedResponse,
   type AdminOrderListItem,
@@ -259,16 +260,47 @@ export function AdminSearchPanel({ onClose }: AdminSearchPanelProps) {
   const router = useRouter();
   const api = useAuthenticatedApi();
   const inputRef = useRef<HTMLInputElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const searchRequests = useRequestSequence();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResults | null>(null);
   const [loading, setLoading] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Focus input on mount
+  // Focus the input on open; hand focus back to whatever opened the overlay
+  // (search trigger, Ctrl K origin) when it closes instead of dropping to <body>.
   useEffect(() => {
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     inputRef.current?.focus();
+    return () => {
+      if (previous?.isConnected) previous.focus();
+    };
   }, []);
+
+  // aria-modal overlay: keep Tab / Shift+Tab inside the panel.
+  function trapFocus(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (e.key !== "Tab" || !panelRef.current) return;
+    const focusable = Array.from(
+      panelRef.current.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ),
+    );
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    const active = document.activeElement;
+    if (!panelRef.current.contains(active)) {
+      e.preventDefault();
+      first.focus();
+    } else if (e.shiftKey && active === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && active === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  }
 
   // Close on Escape
   useEffect(() => {
@@ -281,6 +313,7 @@ export function AdminSearchPanel({ onClose }: AdminSearchPanelProps) {
 
   const search = useCallback(
     async (q: string) => {
+      const ticket = searchRequests.begin();
       if (!q.trim()) {
         setResults(null);
         setLoading(false);
@@ -300,6 +333,8 @@ export function AdminSearchPanel({ onClose }: AdminSearchPanelProps) {
             `/admin/users?search=${encoded}&limit=3`,
           ),
         ]);
+        // A slower response for an earlier query ("ab") must not overwrite "abc".
+        if (!searchRequests.isLatest(ticket)) return;
         setResults({
           orders:
             ordersRes.status === "fulfilled"
@@ -315,17 +350,20 @@ export function AdminSearchPanel({ onClose }: AdminSearchPanelProps) {
               : [],
         });
       } finally {
-        setLoading(false);
-        setActiveIndex(-1);
+        if (searchRequests.isLatest(ticket)) {
+          setLoading(false);
+          setActiveIndex(-1);
+        }
       }
     },
-    [api],
+    [api, searchRequests],
   );
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     const val = e.target.value;
     setQuery(val);
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    searchRequests.begin(); // drop any in-flight search for the old text
     if (!val.trim()) {
       setResults(null);
       setLoading(false);
@@ -382,17 +420,18 @@ export function AdminSearchPanel({ onClose }: AdminSearchPanelProps) {
   let flatIndex = 0;
 
   return (
-    <div className="fixed inset-0 z-[60] flex flex-col" role="dialog" aria-modal="true" aria-label="Search">
-      {/* Backdrop */}
+    <div className="fixed inset-0 z-[60] flex flex-col" role="dialog" aria-modal="true" aria-label="Search" onKeyDown={trapFocus}>
+      {/* Backdrop (pointer-only; keyboard users close with Esc) */}
       <button
         type="button"
+        tabIndex={-1}
         className="absolute inset-0 bg-black/50 backdrop-blur-sm"
         aria-label="Close search"
         onClick={onClose}
       />
 
       {/* Panel */}
-      <div className="relative mx-auto mt-[5vh] w-full max-w-xl px-3 sm:px-0">
+      <div ref={panelRef} className="relative mx-auto mt-[5vh] w-full max-w-xl px-3 sm:px-0">
         <div className="rounded-2xl border border-border bg-card shadow-2xl overflow-hidden">
           {/* Input */}
           <div className="flex items-center gap-3 px-4 py-3.5 border-b border-border/50">
@@ -415,7 +454,14 @@ export function AdminSearchPanel({ onClose }: AdminSearchPanelProps) {
             {query && (
               <button
                 type="button"
-                onClick={() => { setQuery(""); setResults(null); inputRef.current?.focus(); }}
+                onClick={() => {
+                  if (debounceRef.current) clearTimeout(debounceRef.current);
+                  searchRequests.begin();
+                  setQuery("");
+                  setResults(null);
+                  setLoading(false);
+                  inputRef.current?.focus();
+                }}
                 className="rounded-md p-1 text-muted-foreground hover:text-foreground"
                 aria-label="Clear search"
               >

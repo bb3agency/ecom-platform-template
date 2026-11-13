@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Calendar } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { toIsoDateRange } from "@/lib/admin-api";
 import { cn } from "@/lib/utils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -95,17 +96,19 @@ export function prevRange(from: string, to: string): { from: string; to: string 
   prevTo.setDate(prevTo.getDate() - 1);
   const prevFrom = new Date(prevTo);
   prevFrom.setDate(prevFrom.getDate() - (n - 1));
+  // The previous window covers whole local days, ending at the last millisecond
+  // of the day before `from` (it used to stop at that day's midnight, dropping it).
   return {
-    from: prevFrom.toISOString(),
-    to:   prevTo.toISOString(),
+    from: toIsoDateRange(localISODate(prevFrom)),
+    to:   toIsoDateRange(localISODate(prevTo), true),
   };
 }
 
 /** ISO datetime strings for the selected range (for API calls) */
 export function rangeToISO(from: string, to: string) {
   return {
-    fromISO: new Date(from + "T00:00:00").toISOString(),
-    toISO:   new Date(to   + "T23:59:59").toISOString(),
+    fromISO: toIsoDateRange(from),
+    toISO:   toIsoDateRange(to, true),
   };
 }
 

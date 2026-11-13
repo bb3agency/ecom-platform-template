@@ -254,15 +254,17 @@ export function AdminOrderFulfillmentPanel({
     [api],
   );
 
+  /** Resolves true once the backend accepted the action (even if the refresh after it failed). */
   const runAction = async (
     actionKey: string,
     endpoint: string,
     options: { method?: "POST" | "PATCH"; body?: Record<string, unknown> } = {},
-  ) => {
-    if (!selectedOrderId) { setError("Select an order first."); return; }
+  ): Promise<boolean> => {
+    if (!selectedOrderId) { setError("Select an order first."); return false; }
     setBusyAction(actionKey);
     setError(null);
     setSuccess(null);
+    let accepted = false;
     try {
       const method = options.method ?? "POST";
       await api(endpoint.replace(":id", selectedOrderId), {
@@ -270,6 +272,7 @@ export function AdminOrderFulfillmentPanel({
         idempotencyKey: createIdempotencyKey(),
         body: JSON.stringify(options.body ?? {}),
       });
+      accepted = true;
       if (actionKey === "ship") {
         setSuccess("Shipment booking queued — polling for AWB (up to 60s)…");
         await loadDetail(selectedOrderId);
@@ -286,6 +289,7 @@ export function AdminOrderFulfillmentPanel({
     } finally {
       setBusyAction(null);
     }
+    return accepted;
   };
 
   const runPrintLabel = async () => {
@@ -553,6 +557,15 @@ export function AdminOrderFulfillmentPanel({
             </DialogDescription>
           </DialogHeader>
           <DialogBody className="flex flex-col gap-4">
+            {/* A failed cancel keeps the dialog (and the typed reason) open with the error here. */}
+            {error ? (
+              <p
+                role="alert"
+                className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+              >
+                {error}
+              </p>
+            ) : null}
             <label className="flex flex-col gap-1.5">
               <span className="text-sm font-medium text-foreground">Reason</span>
               <select
@@ -601,7 +614,9 @@ export function AdminOrderFulfillmentPanel({
                       ? `${cancelReason} — ${cancelNote.trim()}`
                       : cancelReason,
                   },
-                }).then(() => setCancelOpen(false));
+                }).then((accepted) => {
+                  if (accepted) setCancelOpen(false);
+                });
               }}
             >
               Cancel Order
@@ -951,6 +966,7 @@ export function AdminOrderFulfillmentPanel({
                 onClick={() => {
                   setCancelReason("Customer Request");
                   setCancelNote("");
+                  setError(null); // only this attempt's error belongs in the dialog
                   setCancelOpen(true);
                 }}
               />

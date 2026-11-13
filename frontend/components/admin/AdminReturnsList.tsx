@@ -28,6 +28,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { formatAdminDate } from "@/lib/admin-format";
 import { getApiErrorMessage } from "@/lib/error-messages";
 import { useAuthenticatedApi } from "@/hooks/use-authenticated-api";
+import { useRequestSequence } from "@/hooks/use-request-sequence";
 import { cn } from "@/lib/utils";
 
 const PAGE_SIZE = 20;
@@ -167,8 +168,10 @@ export function AdminReturnsList() {
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<FlatPaginatedResponse<AdminReturnRequestListItem> | null>(null);
 
+  const listRequests = useRequestSequence();
   const load = useCallback(
     async (silent = false) => {
+      const ticket = listRequests.begin();
       if (silent) setRefreshing(true);
       else setLoading(true);
       setError(null);
@@ -180,16 +183,20 @@ export function AdminReturnsList() {
             status: statusFilter || undefined,
           })}`,
         );
+        if (!listRequests.isLatest(ticket)) return;
         setData(response);
       } catch (err) {
+        if (!listRequests.isLatest(ticket)) return;
         setError(getApiErrorMessage(err));
         setData(null);
       } finally {
-        setLoading(false);
-        setRefreshing(false);
+        if (listRequests.isLatest(ticket)) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
     },
-    [api, page, statusFilter],
+    [api, listRequests, page, statusFilter],
   );
 
   useEffect(() => { void load(); }, [load]);
