@@ -46,6 +46,20 @@ export interface OrderLineItem {
   isPurchasable?: boolean;
 }
 
+/** Customer-visible payment fields (provider references are stripped by the backend). */
+export interface OrderPaymentSummary {
+  provider: string;
+  /** Paise. */
+  amount: number;
+  status: "CREATED" | "CAPTURED" | "FAILED" | "REFUNDED" | "PARTIALLY_REFUNDED" | string;
+  method?: string | null;
+  capturedAt?: string | null;
+  /** Paise currently with the provider as an in-flight refund. */
+  refundPendingAmountPaise?: number;
+  /** Paise already refunded. */
+  refundedAmountPaise?: number;
+}
+
 export interface OrderSummary {
   id: string;
   orderNumber: string;
@@ -75,6 +89,8 @@ export interface OrderSummary {
     updatedAt: string;
   }>;
   invoice?: { hasPdf: boolean; invoiceNumber: string; issuedAt: string } | null;
+  /** Present on order detail / confirm responses; null for orders with no payment row. */
+  payment?: OrderPaymentSummary | null;
   shipment?: {
     id: string;
     provider: string;
