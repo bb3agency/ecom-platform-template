@@ -11,12 +11,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { useToastStore } from "@/stores/toast";
 import { useAdminAuth } from "@/contexts/admin-auth-context";
-import { useAdminListResource } from "@/hooks/use-admin-list-resource";
+import { useAdminList } from "@/hooks/use-admin-list";
 import {
   buildAdminQuery,
   coercePaginatedResponse,
   fetchAllPaginatedItems,
-  readPaginatedItems,
   type AdminCategoryListItem,
   type PaginatedResponse,
 } from "@/lib/admin-api";
@@ -25,10 +24,19 @@ import { useAuthenticatedApi } from "@/hooks/use-authenticated-api";
 import { useAdminDataRefreshEffect } from "@/hooks/use-admin-data-refresh-effect";
 import { createIdempotencyKey } from "@/lib/idempotency";
 import { notifyAdminDataChanged } from "@/lib/admin-data-refresh";
+import type { AdminListFilterSpecs, AdminListQuery } from "@/lib/admin-list";
 import { ADMIN_PERMISSIONS, hasAdminPermission } from "@/lib/permissions";
 import { Layers, Tag, EyeOff, Search, Plus, Pencil, Trash2 } from "lucide-react";
 
 const PAGE_SIZE = 20;
+
+type CategoryListFilters = { status: string; search: string };
+
+/** `all` (not "") so "All" survives in the URL next to the "active" default. */
+const CATEGORY_LIST_FILTERS: AdminListFilterSpecs<CategoryListFilters> = {
+  status: { defaultValue: "active", allowed: ["active", "inactive", "all"] },
+  search: { defaultValue: "", param: false },
+};
 
 interface CategoryKpis {
   total: number;
@@ -41,9 +49,7 @@ export function AdminCategoriesList() {
   const { adminUser } = useAdminAuth();
   const canWrite = hasAdminPermission(adminUser, ADMIN_PERMISSIONS.categoriesWrite);
 
-  const [search, setSearch] = useState("");
   const [searchInput, setSearchInput] = useState("");
-  const [statusFilter, setStatusFilter] = useState("active");
   const [parentNames, setParentNames] = useState<Record<string, string>>({});
 
   // Modal state
@@ -51,26 +57,29 @@ export function AdminCategoriesList() {
   const [editingCategory, setEditingCategory] = useState<AdminCategoryListItem | null>(null);
 
   const fetchPage = useCallback(
-    async (page: number) => {
-      return api<PaginatedResponse<AdminCategoryListItem>>(
+    ({ page, filters }: AdminListQuery<CategoryListFilters>) =>
+      api<PaginatedResponse<AdminCategoryListItem>>(
         `/admin/categories${buildAdminQuery({
           page,
           limit: PAGE_SIZE,
-          search: search || undefined,
+          search: filters.search || undefined,
           isActive:
-            statusFilter === "active"
+            filters.status === "active"
               ? true
-              : statusFilter === "inactive"
+              : filters.status === "inactive"
                 ? false
                 : undefined,
         })}`,
-      );
-    },
-    [api, search, statusFilter],
+      ),
+    [api],
   );
 
-  const { data, loading, error, setPage, reload } =
-    useAdminListResource<AdminCategoryListItem>(fetchPage);
+  const { filters, setFilter, data, items, loading, error, setPage, reload } =
+    useAdminList<AdminCategoryListItem, CategoryListFilters>({
+      filters: CATEGORY_LIST_FILTERS,
+      fetchPage,
+      refreshScopes: "categories",
+    });
 
   const [isActioning, setIsActioning] = useState<string | null>(null);
   const { confirm, confirmDialog } = useConfirm();
@@ -131,14 +140,9 @@ export function AdminCategoriesList() {
     void loadKpis();
   }, [loadKpis]);
   useAdminDataRefreshEffect(loadKpis, "categories");
-  useAdminDataRefreshEffect(reload, "categories");
-
-  useEffect(() => {
-    setPage(1);
-  }, [search, statusFilter, setPage]);
 
   function handleSaved() {
-    reload();
+    void reload();
     void loadKpis();
     void loadParentNames();
   }
@@ -159,7 +163,7 @@ export function AdminCategoriesList() {
         method: "DELETE",
         idempotencyKey: createIdempotencyKey(),
       });
-      reload();
+      void reload();
       void loadKpis();
       void loadParentNames();
       notifyAdminDataChanged(["categories", "products", "dashboard"]);
@@ -179,7 +183,7 @@ export function AdminCategoriesList() {
         idempotencyKey: createIdempotencyKey(),
         body: JSON.stringify({ isActive: true }),
       });
-      reload();
+      void reload();
       void loadKpis();
       void loadParentNames();
       notifyAdminDataChanged(["categories", "products", "dashboard"]);
@@ -211,7 +215,7 @@ export function AdminCategoriesList() {
         method: "DELETE",
         idempotencyKey: createIdempotencyKey(),
       });
-      reload();
+      void reload();
       void loadKpis();
       void loadParentNames();
       notifyAdminDataChanged(["categories", "products", "dashboard"]);
@@ -222,7 +226,6 @@ export function AdminCategoriesList() {
     }
   };
 
-  const items = readPaginatedItems(data);
   const colSpan = 5;
 
   const resolveParentName = useCallback(
@@ -293,8 +296,7 @@ export function AdminCategoriesList() {
               className="relative w-full min-w-0 flex-1 sm:max-w-sm"
               onSubmit={(e) => {
                 e.preventDefault();
-                setSearch(searchInput.trim());
-                setPage(1);
+                setFilter("search", searchInput.trim());
               }}
             >
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -309,16 +311,13 @@ export function AdminCategoriesList() {
 
             <div className="flex flex-wrap items-center gap-2">
               <select
-                value={statusFilter}
-                onChange={(e) => {
-                  setStatusFilter(e.target.value);
-                  setPage(1);
-                }}
+                value={filters.status}
+                onChange={(e) => setFilter("status", e.target.value)}
                 className="h-9 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:border-ring focus:outline-none"
               >
                 <option value="active">Active (published)</option>
                 <option value="inactive">Inactive</option>
-                <option value="">All</option>
+                <option value="all">All</option>
               </select>
 
               {canWrite && (

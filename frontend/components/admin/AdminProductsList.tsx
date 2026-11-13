@@ -27,20 +27,19 @@ import {
 import { EmptyState } from "@/components/ui/empty-state";
 import { useAdminAuth } from "@/contexts/admin-auth-context";
 import { useAdminDataRefreshEffect } from "@/hooks/use-admin-data-refresh-effect";
-import { useAdminListResource } from "@/hooks/use-admin-list-resource";
+import { useAdminList } from "@/hooks/use-admin-list";
 import { useAuthenticatedApi } from "@/hooks/use-authenticated-api";
-import { useUrlFilterState } from "@/hooks/use-url-filter-state";
 import {
   buildAdminQuery,
   coercePaginatedResponse,
   ensureArray,
   fetchAllPaginatedItems,
-  readPaginatedItems,
   type AdminCategoryListItem,
   type AdminProductListItem,
   type PaginatedResponse,
 } from "@/lib/admin-api";
 import { notifyAdminDataChanged } from "@/lib/admin-data-refresh";
+import type { AdminListFilterSpecs, AdminListQuery } from "@/lib/admin-list";
 import { formatPaise } from "@/lib/admin-format";
 import { STOREFRONT_URL } from "@/lib/constants";
 import { getApiErrorMessage } from "@/lib/error-messages";
@@ -59,6 +58,14 @@ const STATUS_TABS = [
   { value: "all", label: "All" },
 ] as const;
 
+type ProductListFilters = { status: string; category: string; search: string };
+
+const PRODUCT_LIST_FILTERS: AdminListFilterSpecs<ProductListFilters> = {
+  status: { defaultValue: "active", allowed: STATUS_TABS.map((t) => t.value) },
+  category: { defaultValue: "" },
+  search: { defaultValue: "", param: false },
+};
+
 interface Counts {
   all: number;
   active: number;
@@ -72,16 +79,33 @@ export function AdminProductsList() {
   const canWrite = hasAdminPermission(adminUser, ADMIN_PERMISSIONS.productsWrite);
   const { confirm, confirmDialog } = useConfirm();
 
-  const [status, setStatus] = useUrlFilterState("status", "active", STATUS_TABS.map((t) => t.value));
-  const [categoryFilter, setCategoryFilter] = useUrlFilterState("category", "");
+  const fetchPage = useCallback(
+    ({ page, filters }: AdminListQuery<ProductListFilters>) =>
+      api<PaginatedResponse<AdminProductListItem>>(
+        `/admin/products${buildAdminQuery({
+          page,
+          limit: PAGE_SIZE,
+          search: filters.search || undefined,
+          category: filters.category || undefined,
+          isActive: filters.status === "active" ? true : filters.status === "inactive" ? false : undefined,
+          inStock: filters.status === "out_of_stock" ? false : undefined,
+        })}`,
+      ),
+    [api],
+  );
+  const { filters, setFilter, data, items, loading, error, setPage, reload } = useAdminList<
+    AdminProductListItem,
+    ProductListFilters
+  >({ filters: PRODUCT_LIST_FILTERS, fetchPage, refreshScopes: ["products"] });
+  const { status, search, category: categoryFilter } = filters;
+
   const [searchInput, setSearchInput] = useState("");
-  const [search, setSearch] = useState("");
   useEffect(() => {
     const next = searchInput.trim();
     if (next === search) return;
-    const id = window.setTimeout(() => setSearch(next), 400);
+    const id = window.setTimeout(() => setFilter("search", next), 400);
     return () => window.clearTimeout(id);
-  }, [searchInput, search]);
+  }, [searchInput, search, setFilter]);
 
   const [categories, setCategories] = useState<AdminCategoryListItem[]>([]);
   const loadCategories = useCallback(async () => {
@@ -100,25 +124,6 @@ export function AdminProductsList() {
   }, [loadCategories]);
   useAdminDataRefreshEffect(loadCategories, "categories");
 
-  const fetchPage = useCallback(
-    (page: number) =>
-      api<PaginatedResponse<AdminProductListItem>>(
-        `/admin/products${buildAdminQuery({
-          page,
-          limit: PAGE_SIZE,
-          search: search || undefined,
-          category: categoryFilter || undefined,
-          isActive: status === "active" ? true : status === "inactive" ? false : undefined,
-          inStock: status === "out_of_stock" ? false : undefined,
-        })}`,
-      ),
-    [api, search, categoryFilter, status],
-  );
-  const { data, loading, error, setPage, reload } = useAdminListResource<AdminProductListItem>(fetchPage);
-  useAdminDataRefreshEffect(reload, ["products"]);
-  useEffect(() => {
-    setPage(1);
-  }, [status, categoryFilter, search, setPage]);
 
   // Tab counts (cheap limit=1 queries; meta.total only).
   const [counts, setCounts] = useState<Counts | null>(null);
@@ -167,7 +172,7 @@ export function AdminProductsList() {
           : { method: "DELETE", idempotencyKey: createIdempotencyKey() },
       );
       toast.success(active ? "Product is visible again." : "Product hidden.");
-      reload();
+      void reload();
       notifyAdminDataChanged(["products", "inventory", "dashboard"]);
     } catch (err) {
       toast.error(getApiErrorMessage(err));
@@ -188,7 +193,7 @@ export function AdminProductsList() {
     try {
       await api(`/admin/products/${product.id}/permanent`, { method: "DELETE", idempotencyKey: createIdempotencyKey() });
       toast.success("Product deleted.");
-      reload();
+      void reload();
       notifyAdminDataChanged(["products", "inventory", "dashboard"]);
     } catch (err) {
       toast.error(getApiErrorMessage(err));
@@ -205,8 +210,6 @@ export function AdminProductsList() {
       toast.error("Couldn't copy the link.");
     }
   }
-
-  const items = readPaginatedItems(data);
 
   const productStatus = (p: AdminProductListItem) => {
     const active = ensureArray<AdminProductListItem["variants"][number]>(p.variants).filter((v) => v.isActive);
@@ -336,7 +339,7 @@ export function AdminProductsList() {
                 type="button"
                 role="tab"
                 aria-selected={active}
-                onClick={() => setStatus(tab.value)}
+                onClick={() => setFilter("status", tab.value)}
                 className={cn(
                   "relative flex h-11 shrink-0 items-center gap-1.5 whitespace-nowrap px-2.5 text-sm transition-colors",
                   active ? "font-medium text-foreground" : "text-muted-foreground hover:text-foreground",
@@ -361,7 +364,7 @@ export function AdminProductsList() {
             <FilterSelect
               label="Category"
               value={categoryFilter}
-              onChange={setCategoryFilter}
+              onChange={(v) => setFilter("category", v)}
               options={[{ value: "", label: "Any category" }, ...categories.map((c) => ({ value: c.slug, label: c.name }))]}
             />
           </FilterBar>
@@ -373,7 +376,7 @@ export function AdminProductsList() {
               tone="danger"
               title="Couldn't load products"
               action={
-                <Button type="button" variant="outline" size="lg" onClick={reload}>
+                <Button type="button" variant="outline" size="lg" onClick={() => void reload()}>
                   Try again
                 </Button>
               }

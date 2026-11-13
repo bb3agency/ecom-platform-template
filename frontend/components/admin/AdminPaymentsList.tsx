@@ -12,12 +12,11 @@ import {
   buildAdminQuery,
   PAYMENT_FILTER_STATUSES,
   toIsoDateRange,
-  coercePaginatedResponse,
   type AdminPaymentDetail,
   type AdminPaymentListItem,
-  readPaginatedItems,
   type PaginatedResponse,
 } from "@/lib/admin-api";
+import type { AdminListFilterSpecs, AdminListQuery } from "@/lib/admin-list";
 import {
   formatAdminDate,
   formatPaise,
@@ -25,8 +24,7 @@ import {
 } from "@/lib/admin-format";
 import { getApiErrorMessage } from "@/lib/error-messages";
 import { useAuthenticatedApi } from "@/hooks/use-authenticated-api";
-import { useRequestSequence } from "@/hooks/use-request-sequence";
-import { useAdminDataRefreshEffect } from "@/hooks/use-admin-data-refresh-effect";
+import { useAdminList } from "@/hooks/use-admin-list";
 import {
   AlertCircle,
   Eye,
@@ -40,6 +38,21 @@ import {
 
 const PAGE_SIZE = 50;
 
+type PaymentListFilters = { status: string; method: string; search: string; from: string; to: string };
+
+const PAYMENT_METHODS = ["upi", "card", "netbanking", "wallet"] as const;
+
+/** Dates stay out of the URL: they follow the page range picker, which owns them. */
+function paymentListFilters(from?: string, to?: string): AdminListFilterSpecs<PaymentListFilters> {
+  return {
+    status: { defaultValue: "", allowed: PAYMENT_FILTER_STATUSES },
+    method: { defaultValue: "", allowed: PAYMENT_METHODS },
+    search: { defaultValue: "", param: false },
+    from: { defaultValue: from ?? "", param: false },
+    to: { defaultValue: to ?? "", param: false },
+  };
+}
+
 interface AdminPaymentsListProps {
   from?: string;
   to?: string;
@@ -47,59 +60,40 @@ interface AdminPaymentsListProps {
 
 export function AdminPaymentsList({ from, to }: AdminPaymentsListProps = {}) {
   const api = useAuthenticatedApi();
-  const [page, setPage] = useState(1);
-  const [status, setStatus] = useState("");
-  const [method, setMethod] = useState("");
-  const [search, setSearch] = useState("");
-  const [fromDate, setFromDate] = useState(from ?? "");
-  const [toDate, setToDate] = useState(to ?? "");
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [data, setData] = useState<PaginatedResponse<AdminPaymentListItem> | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<AdminPaymentDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
 
-  useEffect(() => {
-    setFromDate(from ?? "");
-    setToDate(to ?? "");
-    setPage(1);
-  }, [from, to]);
-
-  const listRequests = useRequestSequence();
-  const load = useCallback(async () => {
-    const ticket = listRequests.begin();
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await api<PaginatedResponse<AdminPaymentListItem>>(
+  const fetchPage = useCallback(
+    ({ page, filters }: AdminListQuery<PaymentListFilters>) =>
+      api<PaginatedResponse<AdminPaymentListItem>>(
         `/admin/payments${buildAdminQuery({
           page,
           limit: PAGE_SIZE,
-          status: status || undefined,
-          method: method.trim() || undefined,
-          search: search.trim() || undefined,
-          from: fromDate ? toIsoDateRange(fromDate) : undefined,
-          to: toDate ? toIsoDateRange(toDate, true) : undefined,
+          status: filters.status || undefined,
+          method: filters.method.trim() || undefined,
+          search: filters.search.trim() || undefined,
+          from: filters.from ? toIsoDateRange(filters.from) : undefined,
+          to: filters.to ? toIsoDateRange(filters.to, true) : undefined,
         })}`,
-      );
-      if (!listRequests.isLatest(ticket)) return;
-      setData(coercePaginatedResponse(response));
-    } catch (err) {
-      if (!listRequests.isLatest(ticket)) return;
-      setError(getApiErrorMessage(err));
-      setData(null);
-    } finally {
-      if (listRequests.isLatest(ticket)) setLoading(false);
-    }
-  }, [api, listRequests, page, status, method, search, fromDate, toDate]);
+      ),
+    [api],
+  );
+  const { filters, setFilter, setFilters, data, items, loading, error, setPage } = useAdminList<
+    AdminPaymentListItem,
+    PaymentListFilters
+  >({
+    filters: paymentListFilters(from, to),
+    fetchPage,
+    refreshScopes: ["payments", "orders", "dashboard"],
+  });
+  const { status, method, search, from: fromDate, to: toDate } = filters;
 
+  // The page date range seeds the local From/To inputs (which can then be edited).
   useEffect(() => {
-    void load();
-  }, [load]);
-
-  useAdminDataRefreshEffect(load, ["payments", "orders", "dashboard"]);
+    setFilters({ from: from ?? "", to: to ?? "" });
+  }, [from, to, setFilters]);
 
   async function openDetail(paymentId: string) {
     setSelectedId(paymentId);
@@ -117,16 +111,10 @@ export function AdminPaymentsList({ from, to }: AdminPaymentsListProps = {}) {
   }
 
   function clearFilters() {
-    setStatus("");
-    setMethod("");
-    setSearch("");
-    setFromDate("");
-    setToDate("");
-    setPage(1);
+    setFilters({ status: "", method: "", search: "", from: "", to: "" });
   }
 
   const hasFilters = Boolean(status || method || search || fromDate || toDate);
-  const items = readPaginatedItems(data);
 
   return (
     <>
@@ -141,10 +129,7 @@ export function AdminPaymentsList({ from, to }: AdminPaymentsListProps = {}) {
                 className="h-9 w-full rounded-md border border-border/50 bg-muted/20 pl-9 pr-3 text-sm focus:border-primary focus:outline-none"
                 placeholder="Search by transaction ID, order ID…"
                 value={search}
-                onChange={(e) => {
-                  setSearch(e.target.value);
-                  setPage(1);
-                }}
+                onChange={(e) => setFilter("search", e.target.value)}
               />
             </div>
 
@@ -152,10 +137,7 @@ export function AdminPaymentsList({ from, to }: AdminPaymentsListProps = {}) {
             <select
               className="h-9 rounded-md border border-border/50 bg-muted/20 px-3 text-sm font-medium text-foreground focus:border-primary focus:outline-none sm:min-w-36"
               value={status}
-              onChange={(e) => {
-                setStatus(e.target.value);
-                setPage(1);
-              }}
+              onChange={(e) => setFilter("status", e.target.value)}
             >
               <option value="">All Statuses</option>
               {PAYMENT_FILTER_STATUSES.map((v) => (
@@ -167,10 +149,7 @@ export function AdminPaymentsList({ from, to }: AdminPaymentsListProps = {}) {
             <select
               className="h-9 rounded-md border border-border/50 bg-muted/20 px-3 text-sm font-medium text-foreground focus:border-primary focus:outline-none sm:min-w-44"
               value={method}
-              onChange={(e) => {
-                setMethod(e.target.value);
-                setPage(1);
-              }}
+              onChange={(e) => setFilter("method", e.target.value)}
             >
               <option value="">All Methods</option>
               <option value="upi">UPI</option>
@@ -187,10 +166,7 @@ export function AdminPaymentsList({ from, to }: AdminPaymentsListProps = {}) {
                   type="date"
                   className="h-9 rounded-md border border-border/50 bg-muted/20 px-3 text-sm text-foreground focus:border-primary focus:outline-none"
                   value={fromDate}
-                  onChange={(e) => {
-                    setFromDate(e.target.value);
-                    setPage(1);
-                  }}
+                  onChange={(e) => setFilter("from", e.target.value)}
                 />
               </label>
               <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
@@ -201,10 +177,7 @@ export function AdminPaymentsList({ from, to }: AdminPaymentsListProps = {}) {
                   value={toDate}
                   min={fromDate || undefined}
                   max={new Date().toISOString().slice(0, 10)}
-                  onChange={(e) => {
-                    setToDate(e.target.value);
-                    setPage(1);
-                  }}
+                  onChange={(e) => setFilter("to", e.target.value)}
                 />
               </label>
 

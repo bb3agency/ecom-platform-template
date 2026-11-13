@@ -651,7 +651,7 @@ Never call `.map()` / `.filter()` on a raw API response without confirming it is
 | Area | Helper / pattern | Location |
 | --- | --- | --- |
 | Admin lists | `getPaginatedItems`, `readPaginatedItems`, `coercePaginatedResponse`, `ensureArray` | `frontend/lib/admin-api.ts` |
-| Admin list hook | `useAdminListResource` normalizes all fetch results via `coercePaginatedResponse` | `frontend/hooks/use-admin-list-resource.ts` |
+| Admin list hook | `useAdminList` owns URL-synced filters + page (page resets to 1 inside the filter setter), last-request-wins loading, loading/empty/error state and refetch; results normalised via `coercePaginatedResponse` | `frontend/hooks/use-admin-list.ts` (rules + tests: `frontend/lib/admin-list.ts`) |
 | Storefront PLP/search | `mapProductListResponse` accepts array or `{ items }` | `frontend/lib/product-adapters.ts` |
 | Account addresses/orders | `unwrapItems()` in `getMyAddresses` / `getMyOrders` | `frontend/lib/users-api.ts` |
 
