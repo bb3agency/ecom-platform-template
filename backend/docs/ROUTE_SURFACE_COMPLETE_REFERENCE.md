@@ -41,6 +41,8 @@ All POST/PATCH/DELETE routes that mutate state support the `Idempotency-Key` hea
 
 **Response header on replay:** `Idempotent-Replayed: true`
 
+**Reuse vs new key (frontend rule, since 0.5.0):** a retry of the *same* request (timeout, network drop, 5xx/503, 401 refresh-and-retry, 409 "already processing") must send the **same** key, so the backend replays the first result instead of executing twice. Generate a new key only for a new user action or a changed payload. A 4xx answer (`VALIDATION_ERROR`, `PRICE_CHANGED`, …) is final for its key; the corrected next submit needs a new key. Storefront implementation: `frontend/lib/checkout-submit.ts` (`resolveSubmitAttemptKeys` / `settleSubmitAttemptKeys`, keyed by `buildCheckoutFingerprint`) and `frontend/lib/storefront-api-client.ts`.
+
 **Usage examples:**
 - Creating an order: `POST /api/v1/orders` — prevents duplicate orders on network retry
 - Payment verification: `POST /api/v1/payments/verify` — prevents double-charge on retry
@@ -138,8 +140,12 @@ Rate-limited by `authSensitive` or `authLogin` profile. Most write routes are id
 ### `POST /api/v1/auth/send-otp`
 Sends OTP to phone/email for login or signup. Body: `{ phone or email }`. Does not create any account.
 
+**Phone OTP is customer-only (backend-core 0.5.0).** If the phone belongs to a non-`CUSTOMER` user (e.g. `ADMIN`), no OTP is sent, but the response is the normal `{ message: 'OTP sent successfully' }` and the resend cooldown is set, so the endpoint does not reveal staff phone numbers. Admins sign in with password + email OTP (§3).
+
+**Verify-fail lockout:** after 3 wrong OTP guesses on one phone within 15 minutes (Redis key `otp:verify-fails:<phone>`, shared by `verify-otp` and `signup-phone`), the live OTP is deleted and `send-otp` returns `429 RATE_LIMIT_EXCEEDED` for that phone until the window expires. The counter is keyed by phone only, so rotating IP or device headers does not buy more guesses. A successful verify clears it.
+
 ### `POST /api/v1/auth/verify-otp`
-Verifies OTP for an existing customer account. Returns `{ accessToken, user }`. Sets HTTP-only `refresh_token` cookie.
+Verifies OTP for an existing customer account. Returns `{ accessToken, user }`. Sets HTTP-only `refresh_token` cookie. Wrong code → `401 INVALID_CREDENTIALS` and one strike on `otp:verify-fails:<phone>` (see `send-otp`); 3 strikes in 15 minutes delete the live OTP and block new sends. A correct code for a non-`CUSTOMER` user is refused with `401 INVALID_CREDENTIALS` and counts as a failed auth attempt: phone OTP never mints admin tokens.
 
 ### `POST /api/v1/auth/signup-phone`
 Verifies OTP **and** creates a new customer account simultaneously (phone-first signup). Returns `{ accessToken, user }`. Sets refresh cookie. Idempotent.
@@ -154,10 +160,10 @@ Email+password login. Returns `{ accessToken, user }`. Sets refresh cookie.
 Triggers password reset email. Idempotent.
 
 ### `POST /api/v1/auth/refresh`
-Reads `refresh_token` from HTTP-only cookie and issues a new access token. No body required.
+Reads `refresh_token` from HTTP-only cookie and issues a new access token. No body required. The stored token hash is `sha256:<hex>` of the full signed token (backend-core 0.5.0); rows written earlier as bcrypt hashes still verify until they expire (7 days). bcrypt was dropped because it reads only the first 72 bytes, which every refresh JWT of one user shares.
 
 ### `POST /api/v1/auth/logout`
-Invalidates the current session. Clears refresh cookie. Requires valid JWT (customer or admin).
+Invalidates the current session. Clears refresh cookie. Requires valid JWT (customer or admin). The session to revoke is taken from the signed refresh cookie's `sid` claim (an expired but genuinely signed token is accepted so its session family can still be closed).
 
 ---
 
@@ -209,7 +215,7 @@ Cancels an active (non-consumed, non-expired) admin invite. Requires an ops emai
 
 ### `POST /api/v1/admin/invites/setup/send-otp`
 **No auth required** (public — new admin is not logged in yet).  
-Called from the `/admin/setup` page. Validates the invite token, accepts `{ token, name, password, phone? }` (`phone` is optional), generates a time-limited OTP, and sends it to the admin's registered email (not phone). Returns `{ message, expiresAt }`.
+Called from the `/admin/setup` page. Validates the invite token, accepts `{ token, name, password, phone? }` (`phone` is optional), generates a time-limited OTP, and sends it to the admin's registered email (not phone). Returns `{ message, expiresAt }`. Since backend-core 0.5.0 the setup OTP goes **only** to `invite.inviteEmail`, whatever `OTP_WHATSAPP_ENABLED` or the notification channel settings say: it proves control of the invited mailbox, and the body `phone` is supplied by whoever holds the link. `phone` is stored as profile data only.
 
 ### `POST /api/v1/admin/invites/consume`
 **No auth required** (public — new admin is not logged in yet).  
@@ -310,11 +316,15 @@ All require **customer JWT**. Rate-limited by `checkoutMutation`. All write rout
 ### `POST /api/v1/orders`
 **COD only** — create a COD order from the current cart. Body includes shipping address, `paymentMode: 'COD'`, coupon if applied. Returns the created order immediately in `CONFIRMED` state. **Do not call this for PREPAID orders** — use `POST /payments/prepare-checkout` instead.
 
+**`409 PRICE_CHANGED` (backend-core 0.5.0):** checkout re-prices every cart line against the live variant price. If a line's add-time `priceSnapshot` is stale, the cart is re-priced (outside the rejected transaction, so the update sticks) and the call fails with `error.details.items = [{ variantId, previousPricePaise, currentPricePaise }]`. The frontend reloads cart + delivery quote, shows the new total, and the next submit uses a new idempotency key.
+
 ### `POST /api/v1/payments/prepare-checkout`
-**PREPAID only (new flow)** — prepare a checkout session without creating a DB order yet. Body: `{ addressId?, shippingAddress?, notes? }` (same address shape as `/orders`). Returns `{ checkoutSessionId, razorpayOrderId, amount, currency }`. Stores a Redis-backed checkout session with 30-minute TTL. **No order created** — this is stateless until payment is confirmed. Idempotent via `idempotency-key` header.
+**PREPAID only (new flow)** — prepare a checkout session without creating a DB order yet. Body: `{ addressId?, shippingAddress?, notes? }` (same address shape as `/orders`). Returns `{ checkoutSessionId, razorpayOrderId, amount, currency }`. Stores a Redis-backed checkout session with 30-minute TTL. **No order created** — this is stateless until payment is confirmed. Idempotent via `idempotency-key` header. Stock checks subtract other carts' live reservations (same as `POST /orders`). Fails with **`409 PRICE_CHANGED`** on stale cart prices (same shape as `POST /orders` above).
 
 ### `POST /api/v1/payments/confirm-prepaid`
-**PREPAID only (new flow)** — confirm a payment and create the order atomically. Body: `{ checkoutSessionId, razorpayOrderId, razorpayPaymentId, razorpaySignature }`. Verifies Razorpay signature, validates session is not expired, and creates order in `CONFIRMED` state. Returns the created order. **Idempotent** — if payment with this `razorpayOrderId` already exists as `CAPTURED`, returns the existing order without re-executing. Atomically deducts inventory, finalizes coupon, clears cart, and enqueues side effects (notifications, invoice, etc.).
+**PREPAID only (new flow)** — confirm a payment and create the order atomically. Body: `{ checkoutSessionId, razorpayOrderId, razorpayPaymentId, razorpaySignature }`. Verifies Razorpay signature, validates session is not expired, and creates order in `CONFIRMED` state. Returns the created order. **Idempotent** — if an order already exists for this `razorpayOrderId`, it is returned whatever its status (never a second order for one payment). In the order transaction it finalizes the coupon, clears the cart and writes the `process-order-update` outbox row (inventory deduction, notifications, invoice).
+
+**The returned order can be `CANCELLED` (backend-core 0.5.0).** The money is already captured, so business failures no longer throw: if the coupon's last use (total or per-user) was taken since prepare-checkout, the order is created `CANCELLED`, reservations are released, a full refund is queued (`refunds:initiate-razorpay-refund`, jobId `auto-refund-coupon-limit-<orderId>`) and the customer is notified. A post-capture stock failure can also cancel a `CONFIRMED` order shortly after this call. The storefront must branch on `order.status` and never show "Order placed" or fire a purchase event for a `CANCELLED`/`REFUNDED` order (`frontend/lib/checkout-outcome.ts`). See `REFUND_LIFECYCLE.md`.
 
 ### `GET /api/v1/orders/:id`
 Customer view of a specific order. Owner-only (cannot view another customer's order). **Filters out `PENDING_PAYMENT` and `PAYMENT_FAILED` orders** — these are not visible on customer orders page (they never progressed to a real order). Returns order with `paymentMode` field and `invoice.hasPdf` for download eligibility.
@@ -325,8 +335,11 @@ Download invoice PDF for a specific order. Owner-only. Returns PDF binary with `
 ### `POST /api/v1/orders/:id/cancel`
 Customer self-service cancel. **Allowed only from `CONFIRMED` or `PROCESSING`** (not `PENDING_PAYMENT` or `PAYMENT_FAILED`). Enforces `cancellationWindowHours` from store settings. Body: `{ reason? }`. Enqueues `cancel-shipment` when a shipment AWB exists. Restores inventory (with COD guard — see `restore-inventory-on-cancel.ts`) and releases coupon reservations.
 
+### `POST /api/v1/payments/initiate`
+**PREPAID only (old flow)** — returns Razorpay order params `{ orderId, provider, providerOrderId, amount, currency }` for an existing `PENDING_PAYMENT` order. Customer auth + `idempotency-key`. Since backend-core 0.5.0 it **reuses the Razorpay order already issued** for this order while that payment is `CREATED` or `FAILED` and the amount still equals `order.total` (a `FAILED` row is reset to `CREATED`). A new Razorpay order is created only when there is none or the amount changed. Minting a new one each time orphaned the previous `order_id`, so a customer paying from a still-open modal or a second tab was charged but could not be matched.
+
 ### `POST /api/v1/payments/retry`
-**PREPAID only (old flow)** — retry payment for an order stuck in `PAYMENT_FAILED` state. This is for legacy orders created before the new `confirm-prepaid` flow. Restores checkout cart reservations server-side before returning fresh Razorpay order params. Returns `400 VALIDATION_ERROR` for COD orders. **Do not use for new `confirm-prepaid` flow** — new flow creates no order on payment failure, so retry is not needed.
+**PREPAID only (old flow)** — retry payment for an order stuck in `PAYMENT_FAILED` state. This is for legacy orders created before the new `confirm-prepaid` flow. Restores checkout cart reservations server-side, then returns Razorpay order params via `initiate` (same reuse rule: the existing Razorpay order is returned while the amount is unchanged). Returns `400 VALIDATION_ERROR` for COD orders. **Do not use for new `confirm-prepaid` flow** — new flow creates no order on payment failure, so retry is not needed.
 
 ### `GET /api/v1/shipping/track/:awb`
 Track a shipment by AWB number. Public, no auth required. Returns courier status, tracking URL, estimated delivery date, and timeline events. Shows data from the linked order's shipment record.
@@ -566,7 +579,7 @@ Customer management includes **read** access to profiles and order history, and 
 | Route | What it does |
 |---|---|
 | `PATCH /api/v1/admin/users/:id/ban` | Ban a customer account. Body: `{ reason }`. Sets `isBanned=true`, `bannedAt`, `bannedReason` on the `User` record. Cannot ban another admin. Cannot ban an already-banned user. Banning does not cancel existing orders — those must be managed separately. |
-| `DELETE /api/v1/admin/users/:id/ban` | Unban a customer account. Clears `isBanned`, `bannedAt`, `bannedReason`. Returns 400 if the user is not currently banned. |
+| `DELETE /api/v1/admin/users/:id/ban` | Unban a customer account. Clears `isBanned`, `bannedAt`, `bannedReason`. Returns `409 CONFLICT` if the user is not currently banned. Returns **`403 FORBIDDEN` for an `ADMIN` target** (backend-core 0.5.0, mirrors ban): a banned admin is an ops deactivation and is reactivated only through an ops-issued invite. |
 | `POST /api/v1/admin/users/:id/notes` | Create an admin note on a customer account. Body: `{ content }`. Note is tagged with the creating admin's ID. Stored as `UserAdminNote`. |
 | `DELETE /api/v1/admin/users/:id/notes/:noteId` | Delete an admin note. Only the note that belongs to the specified user can be deleted (validated by `note.userId === params.id`). |
 
@@ -1128,7 +1141,8 @@ Reviews are only visible on the storefront after admin approval.
 **Key Security Principles:**
 - ✅ No tokens in `localStorage` or `sessionStorage` (memory-only access tokens)
 - ✅ All cookies are `httpOnly`, `secure`, `sameSite=strict`
-- ✅ Refresh tokens: bcrypt hashed in DB, single-use rotation
+- ✅ Refresh tokens: `sha256:<hex>` hash of the full token in DB (bcrypt before 0.5.0), single-use rotation
+- ✅ Phone OTP is customer-only; 3 wrong guesses per phone per 15 min lock that phone (`otp:verify-fails:<phone>`)
 - ✅ Ops sessions: SHA256 hashed in Redis, immediate revocation on logout
 - ✅ No API keys for ops (browser session only)
 

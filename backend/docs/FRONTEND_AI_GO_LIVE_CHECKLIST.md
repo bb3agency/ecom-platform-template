@@ -71,6 +71,8 @@ Pair this with `docs/BACKEND_GO_LIVE_CHECKLIST.md` for final go-live sign-off. T
 - [ ] Refresh token remains backend-controlled (HTTP-only cookie flow).
 - [ ] Access token handling is ephemeral (memory/state), not long-term browser storage.
 - [ ] 401 flow is implemented: refresh -> retry original request -> logout if refresh fails.
+- [ ] Customer API modules call `storefrontApiClient` (`lib/storefront-api-client.ts`), which refreshes on 401 and retries once with the **same** idempotency key; no customer module calls `apiClient` directly with a bearer token (frontend-core 0.5.0).
+- [ ] Login and register follow `?redirect=` only through `safeStorefrontRedirect()`: `/login?redirect=//evil.com`, `/login?redirect=/%5Cevil.com` and `/login?redirect=/login` all land on `/dashboard`.
 
 ### 3.0a) Storefront Session Bootstrap (Critical — 2026-06-14)
 
@@ -203,6 +205,18 @@ Pair this with `docs/BACKEND_GO_LIVE_CHECKLIST.md` for final go-live sign-off. T
 - [ ] Admin order UI respects backend ship-state fields (`canShipNow`, `shipBlockReason`, `shippingMode`) before enabling ship action.
 - [ ] Admin refund UX reflects deferred state semantics: requesting `REFUNDED` can return a successful response while order status remains pre-refund until asynchronous refund worker/provider confirmation completes.
 
+### 5.1) Checkout engine checks (frontend-core 0.5.0)
+
+The shipped storefront uses the new PREPAID flow (`POST /payments/prepare-checkout` → Razorpay → `POST /payments/confirm-prepaid`). The `/orders` → `/payments/initiate` → `/payments/verify` sequence above is the legacy path for old `PAYMENT_FAILED` orders.
+
+- [ ] `PRICE_CHANGED` (409) from `POST /orders` or `prepare-checkout` shows a clear "prices changed" message and reloads cart + delivery quote so the new total is visible before payment.
+- [ ] A timed-out COD submit retried with the same form reuses the same idempotency key (one order, no "Cart is empty"); changing the payload or a new submit after a 4xx gets a new key (`resolveSubmitAttemptKeys` / `settleSubmitAttemptKeys`).
+- [ ] A failing `confirm-prepaid` after a successful Razorpay payment is retried (`confirmWithRetry`) with the same key and the order is created.
+- [ ] A `CANCELLED` order from `confirm-prepaid` lands on `/checkout/success?...&outcome=not-completed`, says payment was received and a full refund has started, and fires **no** PURCHASE event (`lib/checkout-outcome.ts`). "Order placed" is never shown for it.
+- [ ] Theme: `<OrderRefundNotice order={order} />` is mounted under the header in `app/(account)/orders/[id]/page.tsx` (optional per client, not synced by core).
+- [ ] The payment retry page (`/checkout/payment?orderId=`) opens for a signed-in customer and sends a signed-out one to login.
+- [ ] Repeated checkout attempts with the same address do not add duplicate saved addresses.
+
 ## 6) Webhook Boundary Enforcement
 
 - [ ] Browser/frontend never calls webhook endpoints:
@@ -215,6 +229,14 @@ Pair this with `docs/BACKEND_GO_LIVE_CHECKLIST.md` for final go-live sign-off. T
 - [ ] Business logic uses paise integers from backend.
 - [ ] UI formatting converts paise to currency display only.
 - [ ] No calculations are performed on already formatted display strings.
+
+### 7.1) Admin & ops console checks (frontend-core 0.5.0)
+
+- [ ] Admin date filters use local-day boundaries: an IST range `2026-11-13`–`2026-11-13` sends `from=2026-11-12T18:30:00.000Z` and `to=2026-11-13T18:29:59.999Z` (`toIsoDateRange`).
+- [ ] Orders, customers, products, categories, coupons, reviews and payments lists keep filters and `page` in the URL, go back to page 1 on a filter change, and never show an older response over a newer one (`hooks/use-admin-list.ts`).
+- [ ] Double-clicking an admin write (e.g. add customer note) sends one request (`lib/mutation-gate.ts`).
+- [ ] Review moderate/delete failures show a toast; "Retry refund" says the retry is queued.
+- [ ] Ops OTP countdown is correct on a device whose clock is a few minutes off (`lib/server-clock.ts`), and a code can still be submitted at 0 (the server decides expiry).
 
 ## 8) AI Agent Output Review (Code Review Gate)
 

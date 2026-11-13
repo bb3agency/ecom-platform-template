@@ -190,6 +190,7 @@ These keys are stored encrypted in `OpsConfigSecret` and applied to `process.env
 - `OPS_METRICS_TOKEN` — protects `/metrics` endpoint
 - `OPS_METRICS_ALLOWLIST` (recommended)
 - `TRUSTED_PROXY_ALLOWLIST_CIDR`, `REPLAY_APPROVAL_TOKEN`
+- `RAZORPAY_RECONCILE_ENABLED` (backend-core 0.5.0, Payments group) — scheduled Razorpay capture reconciliation, default `true` and only active when `PAYMENT_PROVIDER=razorpay`. Save `false` and restart to remove the schedule (see §8.3).
 
 > After saving DB-overlay keys via `POST /api/v1/ops/config/save`, restart backend and worker containers so the overlay is applied before provider/auth initialization.
 
@@ -889,6 +890,29 @@ The system supports per-template primary notification channel configuration stor
 - **Defaults:** All templates default to `EMAIL` if not configured.
 - **No fallback:** When `send-primary` job processes a notification, it uses only the configured primary channel. If that channel fails (disabled, missing credentials, provider error), the notification fails immediately — no automatic fallback to alternate channels. Failure triggers a technical failure alert.
 - **Ops visibility:** Monitor `NotificationLog` table for `status = 'FAILED'` with `channel` matching the configured primary channel. Check Resend dashboard for alert emails on notification delivery failures.
+
+### 8.3 Scheduled reliability jobs and reconciliation issues (backend-core 0.5.0)
+
+Ops does not run these jobs by hand; it needs to know they exist, what they alert on and how to switch them off. Check them in Bull Board (`/api/v1/ops/queues`) after a deploy.
+
+| Job (queue) | Every | Registered by | What it does | Control |
+|---|---|---|---|---|
+| `razorpay-capture-reconcile` (`reconciliation`, scheduler id `reconciliation:razorpay-capture-reconcile`) | 30 min | API, `bullmq.plugin.ts` | Pages Razorpay captured payments for the last 48 h (max 20 pages). Re-drives captures whose `payment.captured` webhook never arrived; queues `refunds:refund-orphan-capture` for captures with no local payment older than 45 min (only Razorpay orders our checkout created); flags duplicate captures | `RAZORPAY_RECONCILE_ENABLED` (ops overlay, restart). Only when `PAYMENT_PROVIDER=razorpay` |
+| `reclaim-stuck-webhook-inbox` (`reconciliation`, scheduler id `reconciliation:reclaim-stuck-webhook-inbox`) | 5 min | API, `bullmq.plugin.ts` | Re-drives `WebhookInboxEvent` rows stuck in `PROCESSING` from their stored `redriveSpec`; after the max attempts the row goes `FAILED` (admin inbox failures) with a `WEBHOOK_PROCESSING` alert | `WEBHOOK_INBOX_RECLAIM_AFTER_MINUTES` (default `10`), `WEBHOOK_INBOX_RECLAIM_MAX_ATTEMPTS` (default `3`) — workers `.env` only, not ops overlay |
+| `reconcile-booking-intents` (`shipping`, jobId `reconcile-booking-intents-repeatable`) | 10 min | workers, `queues/workers/index.ts` | Adopts, re-enqueues (max 3) or releases courier booking intents untouched for 15 min. Alerts `ShipmentBookingIntent` when the merchant must act | Runs when Shiprocket **or** Delhivery credentials are present. See `SHIPMENT_BOOKING_LIFECYCLE.md` |
+| `orphan-capture-check` (`order-processing`, delayed, not repeatable) | once, 45 min after a `payment.captured` with no local payment | webhook path | Refunds the capture if it is still orphaned | Same provenance check as above |
+
+New `ReconciliationIssue` types (rows keyed `aggregateRef = <pay_id>:<type>`):
+
+| Issue type | Default action | Notes |
+|---|---|---|
+| `RAZORPAY_CAPTURE_WEBHOOK_MISSING` | auto-heal (synthetic `payment.captured` → `process-order-update`) | `manual_review` when the order is no longer awaiting payment |
+| `RAZORPAY_ORPHAN_CAPTURE` | auto-refund via `refund-orphan-capture` | Alert `OrphanPaymentCapture` after refunding |
+| `RAZORPAY_DUPLICATE_CAPTURE` | none — manual review | Alert `RazorpayDuplicateCapture`; never auto-refunded |
+
+**Where they show:** `GET /api/v1/admin/analytics/reconciliation-issues` (`analytics:read`) and the technical-failure alert emails (§8.1). The template has no admin console page for reconciliation issues yet. A run that hits the 20-page bound alerts `RazorpayCaptureReconcileTruncated`. The two auto actions follow `RECONCILIATION_AUTO_HEAL_ISSUES` (both in the default set; remove them to keep detection without the action).
+
+Full detail: `REFUND_LIFECYCLE.md` §9, `SHIPMENT_BOOKING_LIFECYCLE.md`, `ENV_VS_DB_CONFIG_REFERENCE.md`.
 
 ## 9) Error and remediation patterns
 

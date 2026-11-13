@@ -355,6 +355,7 @@ interface ErrorResponse {
 | `INVALID_STATUS_TRANSITION` | 409 | Attempt to move order to invalid state |
 | `COUPON_EXPIRED` | 400 | Coupon past validity window |
 | `COUPON_USAGE_EXCEEDED` | 409 | Coupon usage limit reached |
+| `PRICE_CHANGED` | 409 | `POST /orders` (COD) or `POST /payments/prepare-checkout`: a cart line's add-time price no longer matches the live variant price. The cart is already re-priced; `error.details.items` = `[{ variantId, previousPricePaise, currentPricePaise }]`. Reload cart + delivery quote and show the new total (backend-core 0.5.0) |
 | `PINCODE_NOT_SERVICEABLE` | 422 | Delhivery cannot deliver to address |
 | `RATE_LIMIT_EXCEEDED` | 429 | Too many requests |
 | `INTERNAL_ERROR` | 500 / 502 / 503 | Unhandled server error (500), upstream/provider failures surfaced by adapters/services (502), or dependency health degradation responses (503) |
@@ -881,7 +882,7 @@ model AnalyticsEvent {
 |---|---|
 | Access token TTL | 15 minutes |
 | Refresh token TTL | 7 days |
-| Refresh token storage | bcrypt hash (cost 10) in database |
+| Refresh token storage | `sha256:<hex>` (SHA-256 of the full signed token) in database since backend-core 0.5.0; legacy bcrypt rows stay verifiable until they expire |
 | Access token storage (frontend) | Memory only — never `localStorage` |
 | Refresh token delivery | `httpOnly`, `secure`, `sameSite: strict` cookie |
 
@@ -1837,7 +1838,7 @@ This section is an evidence-oriented implementation starter, not legal certifica
 | C-09 | Modules never import each other's internal files — only public service interfaces | Architecture |
 | C-10 | `PAYMENT_PROVIDER` selects the payment adapter; shipping provider selection is credential-based (`resolveDualShippingRuntime()`) — both can coexist | Architecture |
 | C-11 | All notifications dispatched via BullMQ — never synchronous in the request cycle | Reliability |
-| C-12 | Refresh token stored as bcrypt hash in DB — never the raw token | Security |
+| C-12 | Refresh token stored as a `sha256:<hex>` hash in DB — never the raw token (bcrypt dropped in 0.5.0: it reads only 72 bytes, which every refresh JWT of one user shares) | Security |
 | C-13 | `additionalProperties: false` on all request body JSON schemas | Security |
 | C-14 | TypeScript `strict: true` — no `any` without documented justification | Code Quality |
 | C-15 | No two clients share Redis instance, database, JWT secret, or API keys | Isolation |

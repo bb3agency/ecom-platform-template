@@ -55,6 +55,8 @@ Public, no auth. Returns only customer-safe fields:
 | Device binding | Refresh tokens bound to **User-Agent + client IP** (from trusted proxy). Mismatch revokes the session family |
 | Failed refresh | Backend clears `refresh_token` cookie on `401` |
 | Client restore | `restore-auth-session.ts` dedupes refresh (React Strict Mode safe) |
+| Customer API calls | `frontend/lib/storefront-api-client.ts` (`storefrontApiClient`, frontend-core 0.5.0): on 401 runs the single-flight cookie refresh, stores the new token and retries **once with the same `idempotencyKey`**; clears the session if refresh fails. `stores/auth.ts` wires it via `registerStorefrontAuth`. Server code / guest calls fall through to plain `apiClient` |
+| Stored refresh hash | `sha256:<hex>` of the full signed token (backend-core 0.5.0); legacy bcrypt rows verify until expiry |
 | Admin OTP login | Verify-otp route forwards the same risk context as refresh (required for binding) |
 
 **Threat model notes:** Session persistence after reload is intentional when the refresh cookie is valid. Stolen-cookie abuse is mitigated by rotation, binding, and `Secure`/`httpOnly`/`SameSite` — not by disabling refresh. Configure **`TRUSTED_PROXY_ALLOWLIST_CIDR`** on the VPS so Nginx-forwarded client IPs are correct (`backend/.env` / Ops UI).
@@ -266,12 +268,13 @@ Use this matrix for both storefront and admin/ops frontend clients:
 | HTTP | `error.code` | Frontend handling |
 | --- | --- | --- |
 | 400 | `VALIDATION_ERROR` | Map `error.details.fields[]` to form inputs (`instancePath` → field key). Highlight fields (`data-admin-field`), scroll to first error, show inline + banner copy. Use shared helpers in `frontend/lib/admin-form-validation.ts` + `useAdminFormValidation()`. Do not retry automatically. |
-| 401 | `TOKEN_EXPIRED` | Run refresh-once flow (`/api/v1/auth/refresh`), retry original request once, then force login if refresh fails. |
+| 401 | `TOKEN_EXPIRED` | Run refresh-once flow (`/api/v1/auth/refresh`), retry original request once, then force login if refresh fails. Storefront: never hand-roll this — call through `storefrontApiClient` (§6.3). |
 | 401 | `UNAUTHORISED` / `INVALID_CREDENTIALS` | Show auth error; redirect/login prompt for protected pages. |
 | 403 | `FORBIDDEN` | Hide/disable unauthorized actions and show access-denied state. |
 | 404 | `NOT_FOUND` | Render not-found state/page; avoid destructive retries. |
 | 409 | `CONFLICT`, `INVALID_STATUS_TRANSITION`, `INSUFFICIENT_STOCK` | Refresh relevant state and show actionable conflict message. |
 | 409 | `CONFLICT` (identity boundary) | For admin/ops/customer signup/invite flows, show hard-stop "email already used in another account domain" guidance. |
+| 409 | `PRICE_CHANGED` | `POST /orders` / `POST /payments/prepare-checkout` only (backend-core 0.5.0). The cart is already re-priced; `error.details.items[] = { variantId, previousPricePaise, currentPricePaise }`. Reload cart + delivery quote, show a clear "prices changed" message and the new total; next submit uses a new idempotency key. Do not retry automatically (§6.3). |
 | 422 | `PINCODE_NOT_SERVICEABLE` | Block checkout continuation for that address and prompt alternate pincode/address. |
 | 429 | `RATE_LIMIT_EXCEEDED` | Show retry/backoff messaging; disable repeat actions for cooldown window. |
 | 500/502/503 | `INTERNAL_ERROR` and upstream failures | Show generic retry-safe error, record telemetry, and provide support escalation path. |
@@ -302,8 +305,8 @@ For provider-facing retry/backoff boundaries (timeouts, retry eligibility, and n
 | --- | --- | --- |
 | Register | `POST /api/v1/auth/register` | Returns `accessToken` + `user`; sets **refresh cookie** |
 | Forgot password | `POST /api/v1/auth/forgot-password` | Initiates reset flow; map errors via `error.code` |
-| OTP send | `POST /api/v1/auth/send-otp` | |
-| OTP verify | `POST /api/v1/auth/verify-otp` | Returns `accessToken` + `user`; sets **refresh cookie** |
+| OTP send | `POST /api/v1/auth/send-otp` | Customer-only for phones: an admin's phone gets the normal success response but no OTP. `429 RATE_LIMIT_EXCEEDED` while the phone is locked (below) |
+| OTP verify | `POST /api/v1/auth/verify-otp` | Returns `accessToken` + `user`; sets **refresh cookie**. 3 wrong codes on one phone in 15 min delete the live OTP and lock sends for that phone (`otp:verify-fails:<phone>`) — show "too many attempts, try again later" on `429` |
 | Email login | `POST /api/v1/auth/login` | |
 | Refresh | `POST /api/v1/auth/refresh` | Uses **cookie**, returns new access token |
 | Logout | `POST /api/v1/auth/logout` | Customer auth required |
@@ -314,6 +317,8 @@ For provider-facing retry/backoff boundaries (timeouts, retry eligibility, and n
 2. Attach **`Authorization: Bearer <accessToken>`** to customer routes.
 3. On **401** from a protected call: call **`/api/v1/auth/refresh`** once, retry once, then force login.
 4. **Guest cart** uses **`cart_session`** cookie (`TRD.md` §8.3) — never echo session token from API bodies.
+5. Steps 2–3 are implemented once in `frontend/lib/storefront-api-client.ts`; all customer API modules (`orders-api`, `cart-api`, `users-api`, `reviews-api`, `wishlist-api`) call `storefrontApiClient`. New customer API code must do the same.
+6. **Post-login redirect:** follow a `?redirect=` value only through `safeStorefrontRedirect()` (`frontend/lib/storefront-redirect.ts`). It accepts same-site paths only, rejects `//host`, backslashes, control characters/whitespace and auth pages (`/login`, `/register`, `/forgot-password`), and falls back to `/dashboard`. A plain `startsWith("/")` check is an open redirect (`/\evil.com`).
 
 ---
 
@@ -326,7 +331,7 @@ For provider-facing retry/backoff boundaries (timeouts, retry eligibility, and n
 | `GET /api/v1/ops/admin-invites` | Ops-authenticated merchant admin invite list. Requires `ops:read`. Query: `status`, `page`, `limit`. |
 | `POST /api/v1/ops/admin-invites` | Ops-authenticated merchant admin invite creation (`ops:write`). Appends `/admin/setup?token=...` to `setupBaseUrl` (origin only). Allows **deactivated** merchant admin emails; blocks active admins, customers, and ops emails. |
 | `POST /api/v1/ops/admin-invites/:inviteId/revoke` | Ops-authenticated invite revocation (`ops:write` + email OTP challenge). Sets `CANCELLED`. |
-| `POST /api/v1/admin/invites/setup/send-otp` | Public — sends setup OTP to the invite email address. Called from `/admin/setup` before consuming the invite. Body: `{ token, name, phone? }`. |
+| `POST /api/v1/admin/invites/setup/send-otp` | Public — sends setup OTP to the invite email address **only** (backend-core 0.5.0: never SMS/WhatsApp to the body `phone`, which is profile data). Called from `/admin/setup` before consuming the invite. Body: `{ token, name, phone? }`. Setup UI copy must say "code sent to your email". |
 | `POST /api/v1/admin/invites/consume` | Public but rate-limited one-time setup-token completion route for `/admin/setup`; creates `User(role=ADMIN)` and merchant `AdminPermissionGrant` rows only after valid unexpired token and OTP verification. |
 | `POST /api/v1/ops/admin-invites/cleanup-expired` | Ops-authenticated cleanup of expired unconsumed merchant admin invites (`ops:write`). |
 
@@ -548,10 +553,10 @@ When `FEATURE_REVIEWS_ENABLED=false`, `/reviews/recent` and `/reviews/product/:s
 
 ### 5.5 Orders & payments (`§7.8`)
 
-- `POST /orders` — COD only; single DB transaction; body must include `paymentMode: 'COD'`; re-validates shipping inside transaction; returns order in `CONFIRMED` state immediately
-- `POST /payments/prepare-checkout` — PREPAID only; `{ addressId?, shippingAddress?, notes? }` → creates Redis checkout session + Razorpay order; returns `{ checkoutSessionId, razorpayOrderId, amount, currency }` (**no DB order created yet**)
-- `POST /payments/confirm-prepaid` — PREPAID only; `{ checkoutSessionId, razorpayOrderId, razorpayPaymentId, razorpaySignature }` → verifies signature + creates order in `CONFIRMED` state atomically; returns order; **idempotent via payment record lookup**
-- `POST /payments/retry` — PREPAID only; retry for `PAYMENT_FAILED` orders (order must exist from old flow); returns `400 VALIDATION_ERROR` for COD orders
+- `POST /orders` — COD only; single DB transaction; body must include `paymentMode: 'COD'`; re-validates shipping inside transaction; returns order in `CONFIRMED` state immediately. Re-prices cart lines against live variant prices: stale snapshot → cart re-priced + `409 PRICE_CHANGED` (backend-core 0.5.0)
+- `POST /payments/prepare-checkout` — PREPAID only; `{ addressId?, shippingAddress?, notes? }` → creates Redis checkout session + Razorpay order; returns `{ checkoutSessionId, razorpayOrderId, amount, currency }` (**no DB order created yet**). `409 PRICE_CHANGED` like `POST /orders`
+- `POST /payments/confirm-prepaid` — PREPAID only; `{ checkoutSessionId, razorpayOrderId, razorpayPaymentId, razorpaySignature }` → verifies signature + creates the order; returns order; **idempotent**: a replay returns the order already created for that Razorpay order, whatever its status. **The order can come back `CANCELLED`** (coupon limit reached after payment → full refund queued) — see §6.3
+- `POST /payments/retry` — PREPAID only; retry for `PAYMENT_FAILED` orders (order must exist from old flow); returns `400 VALIDATION_ERROR` for COD orders. `initiate`/`retry` reuse the existing Razorpay order while the amount is unchanged (backend-core 0.5.0), so an open modal or second tab still matches
 - `GET /orders/:id` — **own orders only**; response includes `paymentMode` field; **filters out `PENDING_PAYMENT` and `PAYMENT_FAILED` orders on customer pages** (only CONFIRMED+ visible)
 - `GET /orders/:id/invoice.pdf` — authenticated customer invoice PDF download (attachment response)
 - `POST /orders/:id/cancel` — **customer:** only from `CONFIRMED` or `PROCESSING`; enforces `cancellationWindowHours` from store settings; enqueues shipment cancel when AWB exists
@@ -585,7 +590,7 @@ Invoice response contract notes:
 
 UI should treat these as authenticated customer-only resources and apply the same refresh-retry policy as other protected routes.
 
-**You cannot call webhooks from the browser** — Razorpay / shipping provider POST to the backend. Storefront `POST /payments/confirm-prepaid` is **synchronous and final** — if it returns 200, the order is created and payment is captured. **Final truth** for order state is backend DB, but UI callback + confirm response is sufficient for UX (`TRD.md` §10.3, `BRD.md` AC-04–AC-06).
+**You cannot call webhooks from the browser** — Razorpay / shipping provider POST to the backend. Storefront `POST /payments/confirm-prepaid` is **synchronous and final** — if it returns 200, the order exists and payment is captured. Since backend-core 0.5.0 that order may be `CANCELLED` (refund queued); branch on `order.status` (§6.3). **Final truth** for order state is backend DB, but UI callback + confirm response is sufficient for UX (`TRD.md` §10.3, `BRD.md` AC-04–AC-06).
 
 ---
 
@@ -611,12 +616,12 @@ Courier rate quotes and AWB bookings send the **real shipping box** dimensions, 
 1. **`POST /payments/prepare-checkout`** with `addressId` or `shippingAddress` + optional `notes` → returns `{ checkoutSessionId, razorpayOrderId, amount, currency }`. **No order created yet — only Redis checkout session + Razorpay order.**
 2. Load **`https://checkout.razorpay.com/v1/checkout.js`** from Razorpay CDN (**not** bundled npm — `TRD.md` §12.1 PCI note).
 3. Open Razorpay Checkout modal with **`key` = `NEXT_PUBLIC_RAZORPAY_KEY_ID`** and **`order_id`** from step 1.
-4. **On payment success** (Razorpay callback) → **`POST /payments/confirm-prepaid`** with `{ checkoutSessionId, razorpayOrderId, razorpayPaymentId, razorpaySignature }`.
-5. Backend verifies Razorpay signature + creates order in `CONFIRMED` state atomically (inventory deducted, payment marked `CAPTURED`, cart cleared, notifications enqueued).
-6. Redirect to **`/checkout/success?orderId={orderId}`** — order is now visible on customer's orders page.
+4. **On payment success** (Razorpay callback) → **`POST /payments/confirm-prepaid`** with `{ checkoutSessionId, razorpayOrderId, razorpayPaymentId, razorpaySignature }`. Run it through `confirmWithRetry` (`lib/checkout-submit.ts`): bounded backoff (1 s, 2.5 s) on retryable failures, **same payload + same idempotency key** on every attempt. Keep the pending confirmation when the modal closes.
+5. Backend verifies Razorpay signature + creates the order (payment marked `CAPTURED`, cart cleared, coupon finalized, `process-order-update` outbox row for inventory/notifications/invoice). Normally `CONFIRMED`; `CANCELLED` + refund queued if the coupon limit was reached after payment.
+6. Redirect with **`buildCheckoutOutcomeUrl(order)`** (`lib/checkout-outcome.ts`) → `/checkout/success?orderId={orderId}`, plus `&outcome=not-completed` when the order is `CANCELLED`/`REFUNDED`. Never hardcode the success URL.
 7. **On payment failure** (Razorpay callback or user exit) → show error; **no order in DB**. User can retry by re-entering checkout flow (step 1 again).
 
-Send **`idempotency-key`** header on step 1 and step 4 to prevent duplicate checkout sessions or payment records on network retries.
+Send **`idempotency-key`** header on step 1 and step 4 to prevent duplicate checkout sessions or payment records on network retries. Retries of the same request reuse the key; see §6.3.
 
 **Payment is final proof** — backend webhook confirms it, but UI callback + `POST /payments/confirm-prepaid` success is sufficient to show confirmation page (`BRD.md` AC-06).
 
@@ -629,14 +634,30 @@ Optional **`RISK_VELOCITY_ENABLED`** may throttle prepare per user/hour (`TRD.md
 1. Fetch **`GET /api/v1/store/config`** (or `useStoreConfig()` after layout load) — show COD only when `isCodEnabled === true`.
 2. Pass **`paymentMode: 'COD'`** to **`GET /cart/delivery-rates`** so shipping quote matches COD tariff.
 3. **`POST /orders`** with `paymentMode: 'COD'` and `addressId` or `shippingAddress` → order immediately returns in **`CONFIRMED`** status — **no payment modal needed**.
-4. Redirect to storefront **`/checkout/success?orderId={orderId}`** (confirmation page); worker runs **`process-order-update`** (inventory, coupon finalize, notifications, invoice).
+4. Redirect to storefront **`/checkout/success?orderId={orderId}`** via `buildCheckoutOutcomeUrl(order)` (confirmation page); worker runs **`process-order-update`** (inventory, coupon finalize, notifications, invoice). On `409 PRICE_CHANGED`, reload cart + quote and let the customer confirm the new total (§6.3).
 5. COD payment record semantics: backend creates COD payment as `CREATED` at order creation time; it transitions to `CAPTURED` when delivery is confirmed (via Shiprocket webhook on DELIVERED event).
 6. Shipment booking remains manual-only for COD and PREPAID: admin must trigger **`POST /api/v1/admin/orders/:id/ship`**.
 7. On error **`VALIDATION_ERROR`** with message mentioning COD disabled → hide COD option and prompt for prepaid.
 
 **Payment retry for COD:** not applicable. Do not render the retry UI affordance for orders where `paymentMode === 'COD'`.
 
-**Payment retry for PREPAID (old flow):** For orders that entered `PAYMENT_FAILED` status before the `confirm-prepaid` flow: order detail page navigates to `/checkout/payment?orderId=`; payment page calls **`POST /payments/retry`** (guards: status `PAYMENT_FAILED` only). Do not call retry from both pages. New `confirm-prepaid` flow does not create orders on payment failure, so retry is not needed.
+**Payment retry for PREPAID (old flow):** For orders that entered `PAYMENT_FAILED` status before the `confirm-prepaid` flow: order detail page navigates to `/checkout/payment?orderId=`; payment page calls **`POST /payments/retry`** (guards: status `PAYMENT_FAILED` only). Do not call retry from both pages. New `confirm-prepaid` flow does not create orders on payment failure, so retry is not needed. The payment page sends signed-out customers to login and lets signed-in customers through (`shouldRedirectPaymentToLogin` in `lib/checkout-submit.ts`; the guard was inverted before frontend-core 0.5.0).
+
+### 6.3 Checkout engine rules (frontend-core 0.5.0)
+
+These live in core files (`lib/**`, `components/checkout/**`, `app/(storefront)/checkout/**`). Themes reuse them; do not re-implement them.
+
+| Concern | Rule | Where |
+| --- | --- | --- |
+| Customer API calls | Every customer call goes through `storefrontApiClient`: 401 → single-flight refresh → one retry with the **same** idempotency key; session cleared if refresh fails | `lib/storefront-api-client.ts`, wired in `stores/auth.ts` |
+| Idempotency keys | Keys are kept per request fingerprint (`buildCheckoutFingerprint` = payment mode + payload, **not** the local cart). An identical retry after a retryable failure (timeout, network, 5xx/503, 409 "already processing") reuses the keys, so a timed-out COD order replays instead of failing with "Cart is empty". A 4xx is final; the next submit gets new keys | `resolveSubmitAttemptKeys`, `settleSubmitAttemptKeys`, `isRetryableCheckoutError` in `lib/checkout-submit.ts` |
+| confirm-prepaid retry | `confirmWithRetry` retries with backoff (1 s, 2.5 s) using the same payload + key. A captured payment whose confirm call failed is no longer dropped | `lib/checkout-submit.ts` |
+| `PRICE_CHANGED` (409) | `isPriceChangedError` / `getPriceChangedItems`; `refreshAfterPriceChange` reloads cart + delivery quote (never throws) so the new total shows before the customer pays | `lib/checkout-submit.ts`, `components/checkout/CheckoutForm.tsx` |
+| Cancelled-after-payment order | `confirm-prepaid` can return `CANCELLED`, and a `CONFIRMED` prepaid order can be cancelled shortly after if post-capture stock deduction fails. `resolveCheckoutOutcome` returns `placed` / `not-completed` / `pending`; for `not-completed` the success page says the payment was received, the order could not be completed and a full refund has started (5–7 working days, `getNotCompletedCopy`). `shouldTrackPurchase` fires PURCHASE only for `placed`. Never show "Order placed" for a `CANCELLED`/`REFUNDED` order | `lib/checkout-outcome.ts`, `app/(storefront)/checkout/success/page.tsx` |
+| Refund status on order page | `<OrderRefundNotice order={order} />` renders "Refund on its way" / "Refund complete" for cancelled or refunded prepaid orders, nothing otherwise. **Theme action per client:** mount it under the header in `app/(account)/orders/[id]/page.tsx` (theme file, not synced, so core sync will not add it) | `components/account/OrderRefundNotice.tsx`, `getOrderRefundNotice` in `lib/checkout-outcome.ts` |
+| Post-login redirect | `?redirect=` only via `safeStorefrontRedirect()` (same-site paths, not auth pages; default `/dashboard`) | `lib/storefront-redirect.ts`, `app/(auth)/login`, `app/(auth)/register` |
+| Saved address | "Save this address" reuses an identical saved address (`findMatchingSavedAddress`) instead of adding a duplicate on every attempt | `lib/checkout-submit.ts` |
+| Submit state | Submit is disabled while the delivery quote loads, and for COD with no quote; per-field errors use `aria-invalid` / `aria-describedby` with an always-mounted `role="alert"` region | `getCheckoutSubmitState` in `lib/checkout-submit.ts`, `CheckoutForm.tsx` |
 
 ---
 
@@ -651,9 +672,20 @@ Never call `.map()` / `.filter()` on a raw API response without confirming it is
 | Area | Helper / pattern | Location |
 | --- | --- | --- |
 | Admin lists | `getPaginatedItems`, `readPaginatedItems`, `coercePaginatedResponse`, `ensureArray` | `frontend/lib/admin-api.ts` |
-| Admin list hook | `useAdminList` owns URL-synced filters + page (page resets to 1 inside the filter setter), last-request-wins loading, loading/empty/error state and refetch; results normalised via `coercePaginatedResponse` | `frontend/hooks/use-admin-list.ts` (rules + tests: `frontend/lib/admin-list.ts`) |
+| Admin list hook | `useAdminList` owns URL-synced filters + page (page resets to 1 inside the filter setter), last-request-wins loading, loading/empty/error state and refetch; results normalised via `coercePaginatedResponse`. Used by orders, customers, products, categories, coupons, reviews and payments. New admin lists must use it | `frontend/hooks/use-admin-list.ts` (rules + tests: `frontend/lib/admin-list.ts`) |
 | Storefront PLP/search | `mapProductListResponse` accepts array or `{ items }` | `frontend/lib/product-adapters.ts` |
 | Account addresses/orders | `unwrapItems()` in `getMyAddresses` / `getMyOrders` | `frontend/lib/users-api.ts` |
+
+#### 7.1.1 Admin console request rules (frontend-core 0.5.0)
+
+| Concern | Rule | Where |
+| --- | --- | --- |
+| Date ranges | `toIsoDateRange(date, endOfDay)` turns a `YYYY-MM-DD` picker value into the **local** day boundary (`00:00:00.000` / `23:59:59.999` local) as ISO. Every admin from/to filter and export uses it; do not build `T00:00:00Z` strings (UTC midnight shifted IST ranges by 5.5 h) | `frontend/lib/admin-api.ts` |
+| List pages | `useAdminList({ filters, fetchPage, refreshScopes, resetKey?, pageParam? })`: URL-synced filters + `page` (`replaceState`, defaults dropped; `param: false` keeps free-text search local), page reset inside the filter setter and when `resetKey` (e.g. the page date range) changes, `status` = `loading \| error \| empty \| ready`, `reload()`, `notifyAdminDataChanged` refresh. URL params added in 0.5.0: `page`; categories/customers `status`; coupons `status`, `type`; reviews `rating`. `use-admin-list-resource.ts` was removed | `hooks/use-admin-list.ts`, `lib/admin-list.ts` |
+| Not yet on `useAdminList` | returns, shipments, inventory (plus search and coupon analytics) use `useRequestSequence` directly. Move them to `useAdminList` when next touched | `components/admin/Admin{Returns,Shipments,Inventory}List.tsx` |
+| Stale responses | Any loader outside `useAdminList` takes a ticket with `begin()` and writes state only while `isLatest(ticket)` (last request wins) | `lib/request-sequence.ts`, `hooks/use-request-sequence.ts` |
+| Double-submit | Wrap admin mutations in `createMutationGate().run(key, task)`: synchronous single-flight, a second click resolves `{ ok: false, reason: "busy" }` without calling the API. A React `busy` state alone lets two same-tick clicks through | `lib/mutation-gate.ts` (used by `AdminCustomerDetailPanel`) |
+| Ops OTP countdown | Countdowns compare server timestamps with the **server** clock: `getServerClockOffsetMs()` (offset from `GET /maintenance/status` `serverTime`, cached 10 min, 0 if unreachable) + `secondsUntilServerTime()`. The OTP dialog no longer blocks submit at 0; the server decides expiry | `lib/server-clock.ts`, `components/ops/ui/ops-ui.tsx`, `components/ops/OpsOtpDialog.tsx` |
 
 **Account routes that are paginated (not bare arrays):**
 
@@ -1325,7 +1357,7 @@ All security gates passing:
 
 **Session Management:**
 - Access tokens: 15-minute TTL, memory-only
-- Refresh tokens: 7-day TTL, httpOnly cookie, bcrypt hashed in DB
+- Refresh tokens: 7-day TTL, httpOnly cookie, `sha256:<hex>` hashed in DB (bcrypt before backend-core 0.5.0)
 - Ops sessions: 24-hour TTL, httpOnly cookie, SHA256 hashed in Redis
 - Single-use refresh token rotation
 
