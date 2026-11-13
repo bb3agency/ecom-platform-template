@@ -16,6 +16,7 @@ import { FastifyInstance } from 'fastify';
 import { generateUniqueOrderNumber } from './order-number';
 import { AppError } from '@common/errors/app-error';
 import { ERROR_CODES } from '@common/errors/error-codes';
+import { escapeCsvCell } from '@common/security/csv-cell';
 import { decryptOpsConfigValue } from '@common/security/ops-config-crypto';
 import { resolvePickupPincode } from '@common/shipping/resolve-pickup-pincode';
 import { cartonize } from '@common/shipping/cartonize';
@@ -2989,7 +2990,7 @@ export class OrdersService {
       'paymentStatus'
     ];
 
-    const escapeCsv = (value: string) => `"${value.replace(/"/g, '""')}"`;
+    const escapeCsv = escapeCsvCell;
     const rows = orders.map((order) =>
       [
         order.orderNumber,
