@@ -151,7 +151,7 @@ A captured payment can exist at Razorpay with no matching state in the store:
 
 Two paths catch these.
 
-**Webhook-driven (fast).** A `payment-webhook` job carrying `payment.captured` with no local `Payment` row → `order-processing:orphan-capture-check`, delayed 45 min (outlives the 30-min checkout session so a late `confirm-prepaid` always wins) → still orphaned → `refunds:refund-orphan-capture`. Caveat (2026-11-13): `OrdersService.processPaymentWebhook` enqueues a live `payment.captured` as the `deduct-inventory` alias, whose handler does **not** schedule this check, so today live orphans are caught by the scheduled reconciliation below; the reconciliation's own heal jobs do use `payment-webhook`.
+**Webhook-driven (fast).** A `payment.captured` webhook with no local `Payment` row (live webhooks arrive as the `deduct-inventory` alias; reconciliation heals use `payment-webhook`, and both schedule it) → `order-processing:orphan-capture-check`, delayed 45 min (outlives the 30-min checkout session so a late `confirm-prepaid` always wins) → still orphaned → `refunds:refund-orphan-capture`. The scheduled reconciliation below is the backstop for webhooks that never arrive.
 
 **Scheduled reconciliation (catches what the webhook never delivered).** `reconciliation:razorpay-capture-reconcile` runs every **30 min** (job scheduler `reconciliation:razorpay-capture-reconcile`, registered by `bullmq.plugin.ts`). It pages Razorpay `GET /v1/payments?from=&to=&count=100&skip=…` over the **last 48 h** (`to` fixed per run; consecutive windows overlap), at most **20 pages** per run, keeping only payments whose Razorpay status is still `captured`:
 

@@ -117,6 +117,29 @@ const CREDIT_NOTE_AUDIT_PREFIX = 'CREDIT_NOTE|';
  * late-but-legitimate confirm-prepaid always wins over the automatic refund.
  */
 export const ORPHAN_CAPTURE_CHECK_JOB = 'orphan-capture-check';
+
+/**
+ * Money captured but no local Payment row yet: either confirm-prepaid has not run (normal,
+ * usually lands within seconds) or it never will (tab closed, network drop, stale Razorpay
+ * order). Re-check once the checkout session can no longer be confirmed; if still orphaned,
+ * the check refunds it and alerts the merchant. Deterministic jobId → at most one per payment.
+ */
+async function scheduleOrphanCaptureCheck(
+  queue: { add: (name: string, data: unknown, opts?: { jobId?: string; delay?: number }) => Promise<unknown> },
+  data: { providerOrderId?: string | null; providerPaymentId?: string | null }
+): Promise<void> {
+  if (!data.providerOrderId || !data.providerPaymentId) {
+    return;
+  }
+  const orphanCheck: OrphanCaptureCheckJobData = {
+    providerOrderId: data.providerOrderId,
+    providerPaymentId: data.providerPaymentId
+  };
+  await queue.add(ORPHAN_CAPTURE_CHECK_JOB, orphanCheck, {
+    jobId: `orphan-capture-check-${data.providerPaymentId}`,
+    delay: ORPHAN_CAPTURE_CHECK_DELAY_MS
+  });
+}
 export const ORPHAN_CAPTURE_CHECK_DELAY_MS = 45 * 60 * 1000;
 /** Refunds-queue job that refunds a capture with no local order (see refunds.worker.ts). */
 export const REFUND_ORPHAN_CAPTURE_JOB = 'refund-orphan-capture';
@@ -361,6 +384,9 @@ export function createOrderProcessingWorker(
         const data = job.data as PaymentWebhookJobData & { orderId?: string };
         const resolvedOrderId = await resolveOrderIdFromWebhookData(prisma, data);
         if (!resolvedOrderId) {
+          // Live payment.captured webhooks arrive under this alias (see
+          // OrdersService.processPaymentWebhook), so the orphan check must run here too.
+          await scheduleOrphanCaptureCheck(orderProcessingQueue, data);
           return;
         }
         await enqueueOutboxOrQueue(
@@ -398,16 +424,7 @@ export function createOrderProcessingWorker(
           // yet (normal, it usually lands within seconds), or it never will (tab closed,
           // network drop, stale Razorpay order). Re-check once the checkout session can
           // no longer be confirmed; if still orphaned, refund it and alert the merchant.
-          if (data.providerOrderId && data.providerPaymentId) {
-            const orphanCheck: OrphanCaptureCheckJobData = {
-              providerOrderId: data.providerOrderId,
-              providerPaymentId: data.providerPaymentId
-            };
-            await orderProcessingQueue.add(ORPHAN_CAPTURE_CHECK_JOB, orphanCheck, {
-              jobId: `orphan-capture-check-${data.providerPaymentId}`,
-              delay: ORPHAN_CAPTURE_CHECK_DELAY_MS
-            });
-          }
+          await scheduleOrphanCaptureCheck(orderProcessingQueue, data);
           return;
         }
         await enqueueOutboxOrQueue(

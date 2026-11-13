@@ -1165,6 +1165,22 @@ describe('order-processing worker error and retry behavior', () => {
     );
   });
 
+  it('live payment.captured (deduct-inventory alias) with no local payment also schedules the orphan check', async () => {
+    boot();
+    state.paymentFindFirst.mockResolvedValue(null);
+
+    await state.processor?.({
+      name: 'deduct-inventory',
+      data: { providerOrderId: 'order_rzp_orphan', providerPaymentId: 'pay_orphan', event: 'payment.captured', payload: '{}' }
+    });
+
+    expect(state.notificationsAdd).toHaveBeenCalledWith(
+      'orphan-capture-check',
+      { providerOrderId: 'order_rzp_orphan', providerPaymentId: 'pay_orphan' },
+      { jobId: 'orphan-capture-check-pay_orphan', delay: 45 * 60 * 1000 }
+    );
+  });
+
   it('orphan-capture check queues the refund when still no order exists', async () => {
     boot();
     state.paymentFindFirst.mockResolvedValue(null);
