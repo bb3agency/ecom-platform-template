@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { useAdminAuth } from "@/contexts/admin-auth-context";
 
 import { useAuthenticatedApi } from "@/hooks/use-authenticated-api";
+import { useRequestSequence } from "@/hooks/use-request-sequence";
 import { useAdminDataRefreshEffect } from "@/hooks/use-admin-data-refresh-effect";
 
 import {
@@ -125,7 +126,9 @@ export function AdminCouponsList({
   const [typeFilter, setTypeFilter] = useState("");
   const [selectedIds, setSelectedIds] = useState<Record<string, boolean>>({});
 
+  const listRequests = useRequestSequence();
   const load = useCallback(async () => {
+    const ticket = listRequests.begin();
     setLoading(true);
 
     setError(null);
@@ -152,15 +155,18 @@ export function AdminCouponsList({
         })}`,
       );
 
+      if (!listRequests.isLatest(ticket)) return;
+
       setData(coercePaginatedResponse(response));
     } catch (err) {
+      if (!listRequests.isLatest(ticket)) return;
       setError(getApiErrorMessage(err));
 
       setData(null);
     } finally {
-      setLoading(false);
+      if (listRequests.isLatest(ticket)) setLoading(false);
     }
-  }, [api, page, searchInput, statusFilter, typeFilter, from, to]);
+  }, [api, listRequests, page, searchInput, statusFilter, typeFilter, from, to]);
 
   useEffect(() => {
     setPage(1);

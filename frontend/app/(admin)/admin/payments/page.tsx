@@ -14,7 +14,6 @@ import {
   buildAdminQuery,
   coercePaginatedResponse,
   fetchAllPaginatedItems,
-  toIsoDateRange,
   type PaginatedResponse,
   type AdminPaymentListItem,
 } from "@/lib/admin-api";
@@ -207,8 +206,8 @@ function AdminPaymentsKpis({ from, to, trendLabel }: AdminPaymentsKpisProps) {
           `/admin/payments${buildAdminQuery({
             page: 1,
             limit: 1,
-            from: toIsoDateRange(prev.from),
-            to: toIsoDateRange(prev.to, true),
+            from: prev.from,
+            to: prev.to,
           })}`,
         ),
         api<PaginatedResponse<AdminPaymentListItem>>(
@@ -216,8 +215,8 @@ function AdminPaymentsKpis({ from, to, trendLabel }: AdminPaymentsKpisProps) {
             page: 1,
             limit: 1,
             status: "CAPTURED",
-            from: toIsoDateRange(prev.from),
-            to: toIsoDateRange(prev.to, true),
+            from: prev.from,
+            to: prev.to,
           })}`,
         ),
         api<PaginatedResponse<AdminPaymentListItem>>(
@@ -225,12 +224,12 @@ function AdminPaymentsKpis({ from, to, trendLabel }: AdminPaymentsKpisProps) {
             page: 1,
             limit: 1,
             status: "FAILED",
-            from: toIsoDateRange(prev.from),
-            to: toIsoDateRange(prev.to, true),
+            from: prev.from,
+            to: prev.to,
           })}`,
         ),
         sumCapturedAmount(fromISO, toISO),
-        sumCapturedAmount(toIsoDateRange(prev.from), toIsoDateRange(prev.to, true)),
+        sumCapturedAmount(prev.from, prev.to),
       ]);
 
       const cur: PaymentCounts = {

@@ -5,6 +5,7 @@ import { AdminPagination } from "@/components/admin/AdminPagination";
 import { AdminTableScroll } from "@/components/admin/AdminTableScroll";
 import { useAdminAuth } from "@/contexts/admin-auth-context";
 import { useAuthenticatedApi } from "@/hooks/use-authenticated-api";
+import { useRequestSequence } from "@/hooks/use-request-sequence";
 import { useAdminDataRefreshEffect } from "@/hooks/use-admin-data-refresh-effect";
 import {
   buildAdminQuery,
@@ -47,21 +48,25 @@ export function AdminInventoryList({ onViewHistory }: AdminInventoryListProps) {
   const [threshold, setThreshold] = useState("");
   const [saving, setSaving] = useState(false);
 
+  const listRequests = useRequestSequence();
   const load = useCallback(async () => {
+    const ticket = listRequests.begin();
     setLoading(true);
     setError(null);
     try {
       const response = await api<PaginatedResponse<AdminInventoryListItem>>(
         `/admin/inventory${buildAdminQuery({ page, limit: PAGE_SIZE })}`,
       );
+      if (!listRequests.isLatest(ticket)) return;
       setData(coercePaginatedResponse(response));
     } catch (err) {
+      if (!listRequests.isLatest(ticket)) return;
       setError(getApiErrorMessage(err));
       setData(null);
     } finally {
-      setLoading(false);
+      if (listRequests.isLatest(ticket)) setLoading(false);
     }
-  }, [api, page]);
+  }, [api, listRequests, page]);
 
   useEffect(() => {
     void load();

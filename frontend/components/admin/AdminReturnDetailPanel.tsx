@@ -19,6 +19,7 @@ import {
   AlertCircle,
   RotateCcw,
   ChevronRight,
+  Check,
 } from "lucide-react";
 import { AdminLoadingBlock } from "@/components/admin/ui/admin-ui";
 import { Badge } from "@/components/ui/badge";
@@ -386,8 +387,8 @@ export function AdminReturnDetailPanel({ returnId }: AdminReturnDetailPanelProps
 
             {/* Status selector as visual pills */}
             <div className="flex flex-col gap-2">
-              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">New Status</label>
-              <div className="flex flex-wrap gap-2">
+              <span id="return-next-status-label" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">New Status</span>
+              <div role="group" aria-labelledby="return-next-status-label" className="flex flex-wrap gap-2">
                 {ALL_STATUSES.map((status) => {
                   const meta = STATUS_META[status];
                   if (!meta) return null;
@@ -403,6 +404,7 @@ export function AdminReturnDetailPanel({ returnId }: AdminReturnDetailPanelProps
                     <button
                       key={status}
                       type="button"
+                      aria-pressed={active}
                       onClick={() => setNextStatus(status)}
                       className={cn(
                         "flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-all",
@@ -411,7 +413,8 @@ export function AdminReturnDetailPanel({ returnId }: AdminReturnDetailPanelProps
                           : "border-border/50 bg-muted/20 text-muted-foreground hover:bg-muted/50",
                       )}
                     >
-                      <Icon className="h-3 w-3" />
+                      {/* Selected state is not colour-only: the check replaces the status icon. */}
+                      {active ? <Check className="h-3 w-3" aria-hidden /> : <Icon className="h-3 w-3" aria-hidden />}
                       {meta.label}
                     </button>
                   );
@@ -421,8 +424,9 @@ export function AdminReturnDetailPanel({ returnId }: AdminReturnDetailPanelProps
 
             {/* Admin note */}
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Admin Note</label>
+              <label htmlFor="return-admin-note" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Admin Note</label>
               <textarea
+                id="return-admin-note"
                 value={adminNote}
                 onChange={(e) => setAdminNote(e.target.value)}
                 placeholder="Optional internal note (e.g. reason for rejection, refund amount, etc.)"

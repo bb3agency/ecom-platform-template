@@ -15,7 +15,9 @@ import {
 import { formatAdminDate } from "@/lib/admin-format";
 import { resolveProductImageUrl } from "@/lib/media-url";
 import { getApiErrorMessage } from "@/lib/error-messages";
+import { toast } from "@/lib/toast";
 import { useAuthenticatedApi } from "@/hooks/use-authenticated-api";
+import { useRequestSequence } from "@/hooks/use-request-sequence";
 import { useAdminDataRefreshEffect } from "@/hooks/use-admin-data-refresh-effect";
 import { notifyAdminDataChanged } from "@/lib/admin-data-refresh";
 import { createIdempotencyKey } from "@/lib/idempotency";
@@ -55,7 +57,9 @@ export function AdminReviewsList({
   const [actionId, setActionId] = useState<string | null>(null);
   const { confirm, confirmDialog } = useConfirm();
 
+  const listRequests = useRequestSequence();
   const load = useCallback(async () => {
+    const ticket = listRequests.begin();
     setLoading(true);
     setError(null);
     try {
@@ -74,14 +78,16 @@ export function AdminReviewsList({
           to: to ? toIsoDateRange(to, true) : undefined,
         })}`,
       );
+      if (!listRequests.isLatest(ticket)) return;
       setData(coercePaginatedResponse(response));
     } catch (err) {
+      if (!listRequests.isLatest(ticket)) return;
       setError(getApiErrorMessage(err));
       setData(null);
     } finally {
-      setLoading(false);
+      if (listRequests.isLatest(ticket)) setLoading(false);
     }
-  }, [api, page, approvedFilter, ratingFilter, search, from, to]);
+  }, [api, listRequests, page, approvedFilter, ratingFilter, search, from, to]);
 
   useEffect(() => {
     void load();
@@ -104,7 +110,9 @@ export function AdminReviewsList({
       await load();
       notifyAdminDataChanged(["reviews", "dashboard"]);
     } catch (err) {
-      setError(getApiErrorMessage(err));
+      // Toast, not the list error state: a failed moderation (429, 409) must not
+      // replace the whole table.
+      toast.error(getApiErrorMessage(err));
     } finally {
       setActionId(null);
     }
@@ -123,7 +131,9 @@ export function AdminReviewsList({
       await load();
       notifyAdminDataChanged(["reviews", "dashboard"]);
     } catch (err) {
-      setError(getApiErrorMessage(err));
+      // Toast, not the list error state: a failed moderation (429, 409) must not
+      // replace the whole table.
+      toast.error(getApiErrorMessage(err));
     } finally {
       setActionId(null);
     }
@@ -137,8 +147,10 @@ export function AdminReviewsList({
       {confirmDialog}
       <div className="mb-4 flex flex-col gap-3 rounded-xl border border-border/40 bg-card p-4 shadow-sm sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
         <div className="relative flex-1 min-w-0 sm:max-w-sm">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" aria-hidden />
           <input
+            type="search"
+            aria-label="Search reviews"
             className="h-9 w-full rounded-md border border-input bg-background pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring/40"
             placeholder="Search reviews by product or customer…"
             value={searchInput}
@@ -154,6 +166,7 @@ export function AdminReviewsList({
 
         <select
           className="h-9 rounded-md border border-input bg-background px-3 text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-ring/40 sm:min-w-32"
+          aria-label="Filter by rating"
           value={ratingFilter}
           onChange={(e) => setRatingFilter(e.target.value)}
         >
@@ -167,6 +180,7 @@ export function AdminReviewsList({
 
         <select
           className="h-9 rounded-md border border-input bg-background px-3 text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-ring/40 sm:min-w-32"
+          aria-label="Filter by status"
           value={approvedFilter}
           onChange={(e) => setApprovedFilter(e.target.value)}
         >
@@ -201,8 +215,18 @@ export function AdminReviewsList({
           ))}
         </div>
       ) : error ? (
-        <div className="rounded-xl border border-destructive/20 bg-destructive/10 p-4 text-sm text-destructive font-medium">
-          {error}
+        <div
+          role="alert"
+          className="flex flex-col gap-3 rounded-xl border border-destructive/20 bg-destructive/10 p-4 text-sm font-medium text-destructive sm:flex-row sm:items-center sm:justify-between"
+        >
+          <span>{error}</span>
+          <button
+            type="button"
+            onClick={() => void load()}
+            className="w-fit rounded-md border border-destructive/30 bg-card px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            Try again
+          </button>
         </div>
       ) : data ? (
         <div className="rounded-xl border border-border bg-card p-5 shadow-sm min-w-0 overflow-hidden">

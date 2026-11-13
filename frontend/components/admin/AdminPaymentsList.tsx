@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   buildAdminQuery,
   PAYMENT_FILTER_STATUSES,
+  toIsoDateRange,
   coercePaginatedResponse,
   type AdminPaymentDetail,
   type AdminPaymentListItem,
@@ -24,6 +25,7 @@ import {
 } from "@/lib/admin-format";
 import { getApiErrorMessage } from "@/lib/error-messages";
 import { useAuthenticatedApi } from "@/hooks/use-authenticated-api";
+import { useRequestSequence } from "@/hooks/use-request-sequence";
 import { useAdminDataRefreshEffect } from "@/hooks/use-admin-data-refresh-effect";
 import {
   AlertCircle,
@@ -65,7 +67,9 @@ export function AdminPaymentsList({ from, to }: AdminPaymentsListProps = {}) {
     setPage(1);
   }, [from, to]);
 
+  const listRequests = useRequestSequence();
   const load = useCallback(async () => {
+    const ticket = listRequests.begin();
     setLoading(true);
     setError(null);
     try {
@@ -76,18 +80,20 @@ export function AdminPaymentsList({ from, to }: AdminPaymentsListProps = {}) {
           status: status || undefined,
           method: method.trim() || undefined,
           search: search.trim() || undefined,
-          from: fromDate ? `${fromDate}T00:00:00.000Z` : undefined,
-          to: toDate ? `${toDate}T23:59:59.999Z` : undefined,
+          from: fromDate ? toIsoDateRange(fromDate) : undefined,
+          to: toDate ? toIsoDateRange(toDate, true) : undefined,
         })}`,
       );
+      if (!listRequests.isLatest(ticket)) return;
       setData(coercePaginatedResponse(response));
     } catch (err) {
+      if (!listRequests.isLatest(ticket)) return;
       setError(getApiErrorMessage(err));
       setData(null);
     } finally {
-      setLoading(false);
+      if (listRequests.isLatest(ticket)) setLoading(false);
     }
-  }, [api, page, status, method, search, fromDate, toDate]);
+  }, [api, listRequests, page, status, method, search, fromDate, toDate]);
 
   useEffect(() => {
     void load();

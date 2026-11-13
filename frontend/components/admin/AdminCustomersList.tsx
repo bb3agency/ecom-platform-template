@@ -26,6 +26,7 @@ import {
 import { formatAdminDate, formatPaise } from "@/lib/admin-format";
 import { getApiErrorMessage } from "@/lib/error-messages";
 import { useAuthenticatedApi } from "@/hooks/use-authenticated-api";
+import { useRequestSequence } from "@/hooks/use-request-sequence";
 import { useAdminDataRefreshEffect } from "@/hooks/use-admin-data-refresh-effect";
 import {
   Users,
@@ -127,7 +128,9 @@ export function AdminCustomersList({
     ? calcTrendPct(customerKpis.total, customerKpis.totalPrev)
     : null;
 
+  const listRequests = useRequestSequence();
   const load = useCallback(async () => {
+    const ticket = listRequests.begin();
     setLoading(true);
     setError(null);
     try {
@@ -146,14 +149,16 @@ export function AdminCustomersList({
           to: toIsoDateRange(to, true),
         })}`,
       );
+      if (!listRequests.isLatest(ticket)) return;
       setData(coercePaginatedResponse(response));
     } catch (err) {
+      if (!listRequests.isLatest(ticket)) return;
       setError(getApiErrorMessage(err));
       setData(null);
     } finally {
-      setLoading(false);
+      if (listRequests.isLatest(ticket)) setLoading(false);
     }
-  }, [api, page, search, banFilter, from, to]);
+  }, [api, listRequests, page, search, banFilter, from, to]);
 
   useEffect(() => {
     setPage(1);

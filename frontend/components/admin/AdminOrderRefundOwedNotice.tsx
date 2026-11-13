@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Banknote, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { useAuthenticatedApi } from "@/hooks/use-authenticated-api";
 import type { AdminOrderDetailFull } from "@/lib/admin-api";
 import { formatAdminWhen, formatPaise } from "@/lib/admin-format";
 import { notifyAdminDataChanged } from "@/lib/admin-data-refresh";
+import { REFUND_RETRY_QUEUED_MESSAGE, scheduleRefundRetryFollowUps } from "@/lib/admin-refund-retry";
 import { getApiErrorMessage } from "@/lib/error-messages";
 import { createIdempotencyKey } from "@/lib/idempotency";
 import { ADMIN_PERMISSIONS, hasAdminPermission } from "@/lib/permissions";
@@ -32,8 +33,16 @@ export function AdminOrderRefundOwedNotice({ order, onUpdated }: AdminOrderRefun
   const { adminUser } = useAdminAuth();
   const { confirm, confirmDialog } = useConfirm();
   const [busy, setBusy] = useState(false);
+  const cancelFollowUps = useRef<(() => void) | null>(null);
 
   const owed = order.refundOwed;
+
+  // Stop the post-retry re-reads once the refund clears or the notice unmounts.
+  useEffect(() => {
+    if (!owed) cancelFollowUps.current?.();
+  }, [owed]);
+  useEffect(() => () => cancelFollowUps.current?.(), []);
+
   if (!owed) return null;
 
   const canRefund = hasAdminPermission(adminUser, ADMIN_PERMISSIONS.ordersRefund);
@@ -55,9 +64,12 @@ export function AdminOrderRefundOwedNotice({ order, onUpdated }: AdminOrderRefun
         method: "POST",
         idempotencyKey: createIdempotencyKey(),
       });
-      toast.success("Refund sent to Razorpay");
+      // The route only queues the job — Razorpay may still reject it on a low balance.
+      toast.success(REFUND_RETRY_QUEUED_MESSAGE);
       notifyAdminDataChanged(["orders", "dashboard"]);
       onUpdated();
+      cancelFollowUps.current?.();
+      cancelFollowUps.current = scheduleRefundRetryFollowUps(onUpdated);
     } catch (err) {
       toast.error(getApiErrorMessage(err));
     } finally {
