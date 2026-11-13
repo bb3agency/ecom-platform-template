@@ -26,6 +26,7 @@ import {
 } from '@common/shipping/local-delivery-split';
 import { parseBoxPresets } from '@common/shipping/select-box-preset';
 import { normalizeShippingWebhookPayload, readStrictDelhiveryOccurredAt } from '@common/shipping/normalize-shipping-webhook-payload';
+import { buildWebhookInboxRedriveSpec, type WebhookInboxRedriveSpec } from '@common/reliability/webhook-inbox-reclaim';
 import type { CheckoutRiskAssessmentPort } from '@common/interfaces/checkout-risk.interface';
 import { PaymentProviderAdapter } from '@common/interfaces/payment-provider.interface';
 import { canTransitionOrder } from '@common/orders/order-state-machine';
@@ -2204,6 +2205,33 @@ export class OrdersService {
     const idempotencyKey = this.buildScopedKey('rzp:webhook', providerPaymentId);
     const paymentJobName =
       eventName === 'payment.captured' ? 'deduct-inventory' : 'payment-webhook';
+    // The outbox message this delivery will write. It is stored on the inbox row
+    // at claim time so the stuck-PROCESSING sweep can re-drive it after a crash;
+    // the jobId is deterministic per event (same identity as the Redis marker) so
+    // a re-drive never writes a second outbox row for an event that made it.
+    const paymentOutboxJobId =
+      paymentJobName === 'deduct-inventory'
+        ? `deduct-inventory:${this.hashIdentifier(providerPaymentId)}`
+        : `payment-webhook:${this.hashIdentifier(`${markerEvent}:${providerPaymentId}`)}`;
+    const paymentRedriveSpec = buildWebhookInboxRedriveSpec(
+      'orderProcessing',
+      paymentJobName,
+      {
+        event: eventName,
+        providerOrderId,
+        providerPaymentId,
+        ...(providerRefundId ? { providerRefundId } : {}),
+        ...(refundAmountPaise !== null ? { refundAmountPaise } : {}),
+        payloadMetadata: {
+          source: 'razorpay-webhook',
+          payloadHash,
+          eventId: normalizedEventId ?? null,
+          correlationId: traceContext?.correlationId ?? null,
+          traceId: traceContext?.traceId ?? null
+        }
+      },
+      paymentOutboxJobId
+    );
     // Rollback state for the failure handler below (be-rel-05).
     let inboxClaimed = false;
     let existingMarker: string | null = null;
@@ -2216,7 +2244,8 @@ export class OrdersService {
         'razorpay',
         inboxEventKey,
         payloadHash,
-        eventName
+        eventName,
+        paymentRedriveSpec
       );
       inboxClaimed = inboxState === 'claimed';
       if (inboxState !== 'claimed') {
@@ -2323,25 +2352,10 @@ export class OrdersService {
     }
     try {
       await this.enqueueOutboxMessage(
-        'orderProcessing',
-        paymentJobName,
-        {
-          event: eventName,
-          providerOrderId,
-          providerPaymentId,
-          ...(providerRefundId ? { providerRefundId } : {}),
-          ...(refundAmountPaise !== null ? { refundAmountPaise } : {}),
-          payloadMetadata: {
-            source: 'razorpay-webhook',
-            payloadHash,
-            eventId: normalizedEventId ?? null,
-            correlationId: traceContext?.correlationId ?? null,
-            traceId: traceContext?.traceId ?? null
-          }
-        },
-        paymentJobName === 'deduct-inventory'
-          ? `deduct-inventory:${this.hashIdentifier(providerPaymentId)}`
-          : undefined
+        paymentRedriveSpec.queueName,
+        paymentRedriveSpec.jobName,
+        paymentRedriveSpec.payload,
+        paymentOutboxJobId
       );
     } catch (error) {
       if (eventIdKey) {
@@ -2686,11 +2700,32 @@ export class OrdersService {
     const inboxProviderKey: 'razorpay' | 'delhivery' | 'shiprocket' = isShiprocket
       ? 'shiprocket'
       : 'delhivery';
+    const shippingOutboxJobId = `update-shipment-status:${webhookIdentity}:${parsed.status}:${parsed.occurredAt ?? 'na'}`;
+    const shippingRedriveSpec = buildWebhookInboxRedriveSpec(
+      'shipping',
+      'update-shipment-status',
+      {
+        awb: parsed.awb,
+        status: parsed.status,
+        description: parsed.description,
+        location: parsed.location ?? null,
+        occurredAt: parsed.occurredAt ?? null,
+        ...(parsed.shiprocketShipmentId ? { shiprocketShipmentId: parsed.shiprocketShipmentId } : {}),
+        payloadMetadata: {
+          source: `${shippingProviderKey}-webhook`,
+          payloadHash,
+          correlationId: traceContext?.correlationId ?? null,
+          traceId: traceContext?.traceId ?? null
+        }
+      },
+      shippingOutboxJobId
+    );
     const inboxState = await this.claimWebhookInboxEvent(
       inboxProviderKey,
       inboxEventKey,
       payloadHash,
-      parsed.status
+      parsed.status,
+      shippingRedriveSpec
     );
     if (inboxState !== 'claimed') {
       recordWebhookEvent({
@@ -2702,26 +2737,15 @@ export class OrdersService {
       return { received: true };
     }
 
+    let shippingEnqueued = false;
     try {
       await this.enqueueOutboxMessage(
-        'shipping',
-        'update-shipment-status',
-        {
-          awb: parsed.awb,
-          status: parsed.status,
-          description: parsed.description,
-          location: parsed.location ?? null,
-          occurredAt: parsed.occurredAt ?? null,
-          ...(parsed.shiprocketShipmentId ? { shiprocketShipmentId: parsed.shiprocketShipmentId } : {}),
-          payloadMetadata: {
-            source: `${shippingProviderKey}-webhook`,
-            payloadHash,
-            correlationId: traceContext?.correlationId ?? null,
-            traceId: traceContext?.traceId ?? null
-          }
-        },
-        `update-shipment-status:${webhookIdentity}:${parsed.status}:${parsed.occurredAt ?? 'na'}`
+        shippingRedriveSpec.queueName,
+        shippingRedriveSpec.jobName,
+        shippingRedriveSpec.payload,
+        shippingOutboxJobId
       );
+      shippingEnqueued = true;
     } catch (enqueueError) {
       await this.fastify.redis.del(idempotencyKey);
       await this.markWebhookInboxEvent(
@@ -2752,6 +2776,19 @@ export class OrdersService {
         result: 'enqueue_failed',
         durationMs: Date.now() - startedAt
       });
+    }
+
+    // Same as the Razorpay path: once the outbox row is durable, move the inbox row
+    // out of PROCESSING so the stuck-inbox sweep does not treat it as a crashed claim.
+    if (shippingEnqueued) {
+      try {
+        await this.markWebhookInboxEvent(inboxProviderKey, inboxEventKey, 'ENQUEUED');
+      } catch (markError) {
+        this.fastify.log?.warn(
+          { status: parsed.status, err: markError instanceof Error ? markError.message : String(markError) },
+          'Unable to mark shipping webhook inbox event ENQUEUED'
+        );
+      }
     }
 
     recordWebhookEvent({
@@ -4583,7 +4620,8 @@ export class OrdersService {
     provider: 'razorpay' | 'delhivery' | 'shiprocket',
     eventKey: string,
     payloadHash: string,
-    eventName: string
+    eventName: string,
+    redriveSpec: WebhookInboxRedriveSpec
   ): Promise<'claimed' | 'duplicate'> {
     const inboxDelegate = (this.fastify as { prisma?: PrismaClient }).prisma?.webhookInboxEvent;
     if (!inboxDelegate) {
@@ -4598,7 +4636,9 @@ export class OrdersService {
           eventKey,
           payloadHash,
           eventName,
-          status: 'PROCESSING'
+          status: 'PROCESSING',
+          redriveSpec: redriveSpec as unknown as Prisma.InputJsonValue,
+          reclaimAttempts: 0
         }
       });
       return 'claimed';
@@ -4623,7 +4663,11 @@ export class OrdersService {
       },
       data: {
         status: 'PROCESSING',
-        lastError: null
+        lastError: null,
+        // A fresh delivery of a FAILED event: refresh what the sweep would re-drive
+        // and give it a full set of reclaim attempts.
+        redriveSpec: redriveSpec as unknown as Prisma.InputJsonValue,
+        reclaimAttempts: 0
       }
     });
 

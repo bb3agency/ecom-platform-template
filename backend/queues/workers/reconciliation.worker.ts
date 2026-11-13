@@ -4,6 +4,10 @@ import { releaseCouponUsageForOrder, clearUnfinalizedCouponLinks } from '@common
 import { releaseReservationsForOrder } from '@common/orders/release-reservations';
 import { restoreOrderInventoryOnCancel } from '@common/orders/restore-inventory-on-cancel';
 import { sendTechnicalFailureAlert } from '../../src/modules/notifications/notification-failure-alert';
+import {
+  WEBHOOK_INBOX_RECLAIM_JOB_NAME,
+  reclaimStuckWebhookInboxEvents
+} from '../../src/common/reliability/webhook-inbox-reclaim';
 import { defaultJobOptions } from '../queue-registry';
 
 const STALE_PENDING_PAYMENT_MS = 30 * 60 * 1000;
@@ -84,6 +88,10 @@ export function createReconciliationWorker(
   const worker = new WorkerCtor(
     'reconciliation',
     async (job) => {
+      if (job.name === WEBHOOK_INBOX_RECLAIM_JOB_NAME) {
+        await reclaimStuckWebhookInboxEvents({ prisma, sendTechnicalFailureAlert: alertFn });
+        return;
+      }
       if (job.name !== 'run-order-lifecycle-check') {
         return;
       }

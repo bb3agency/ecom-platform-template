@@ -12,6 +12,7 @@ import {
 import { validateBootstrapEnv } from '@config/app.config';
 import { refreshFeatureFlags, featureFlags } from '@config/feature-flags';
 import prismaClient from '../../src/database/prisma.service';
+import { warnIfDatabasePoolUnsized } from '../../src/config/database-pool';
 import { applyOpsConfigRuntimeOverlay, type OpsConfigRuntimePrismaLike } from '../../src/modules/ops/ops-config-runtime';
 import { defaultJobOptions, dlqJobOptions } from '../queue-registry';
 import { createOrderProcessingWorker } from './order-processing.worker';
@@ -202,6 +203,8 @@ async function bootstrapWorkers(): Promise<void> {
   }
 
   const logger = pino();
+  // Advisory only (production): the worker process shares one pool across all workers.
+  warnIfDatabasePoolUnsized(logger, 'workers');
   logger.info({
     appliedKeys: overlayReport.appliedKeys,
     skippedBootstrapKeys: overlayReport.skippedBootstrapKeys,

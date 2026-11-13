@@ -204,6 +204,7 @@ const knownQueueJobs = new Set([
   'payment-webhook',
   'process-order-update',
   'publish-pending',
+  'reclaim-stuck-webhook-inbox',
   'record-event',
   'replay-dead-letter',
   'send-email',

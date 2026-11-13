@@ -4,6 +4,7 @@ import type { FastifyInstance } from 'fastify';
 const state = vi.hoisted(() => ({
   upsertJobScheduler: vi.fn().mockResolvedValue(undefined),
   upsertCartCleanupScheduler: vi.fn().mockResolvedValue(undefined),
+  upsertReconciliationScheduler: vi.fn().mockResolvedValue(undefined),
   close: vi.fn().mockResolvedValue(undefined),
   quit: vi.fn().mockResolvedValue(undefined)
 }));
@@ -22,6 +23,10 @@ vi.mock('@queues/queue-registry', () => ({
     cartCleanup: {
       close: state.close,
       upsertJobScheduler: state.upsertCartCleanupScheduler
+    },
+    reconciliation: {
+      close: state.close,
+      upsertJobScheduler: state.upsertReconciliationScheduler
     }
   })
 }));
@@ -90,6 +95,13 @@ describe('registerBullmqPlugin', () => {
       { pattern: '0 3 * * *' },
       { name: 'purge-expired-refresh-tokens', data: {} }
     );
+    await vi.waitFor(() => {
+      expect(state.upsertReconciliationScheduler).toHaveBeenCalledWith(
+        'reconciliation:reclaim-stuck-webhook-inbox',
+        { every: 5 * 60 * 1000 },
+        { name: 'reclaim-stuck-webhook-inbox', data: {} }
+      );
+    });
     expect(hooks.length).toBe(1);
 
     immediateSpy.mockRestore();
