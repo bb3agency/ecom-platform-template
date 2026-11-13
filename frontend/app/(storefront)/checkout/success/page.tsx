@@ -7,7 +7,7 @@ import { CheckCircle, Package, ArrowRight, ShoppingBag } from "lucide-react";
 import { useAuthStore } from "@/stores/auth";
 import { getMyOrder, type OrderSummary } from "@/lib/orders-api";
 import { formatPrice } from "@/lib/format-price";
-import { trackEvent } from "@/lib/analytics";
+import { trackEventOnce } from "@/lib/analytics";
 import { formatPaymentModeLabel } from "@/lib/format-payment-mode";
 
 function SuccessContent() {
@@ -15,13 +15,15 @@ function SuccessContent() {
   const orderId = searchParams.get("orderId");
   const accessToken = useAuthStore((s) => s.accessToken);
   const userId = useAuthStore((s) => s.user?.id);
+  const sessionStatus = useAuthStore((s) => s.storefrontSessionStatus);
   const [order, setOrder] = useState<OrderSummary | null>(null);
 
+  // Once per order, after the session check settles (userId undefined → set
+  // on a hard load used to send PURCHASE twice).
   useEffect(() => {
-    if (orderId) {
-      trackEvent("PURCHASE", { orderId }, userId);
-    }
-  }, [orderId, userId]);
+    if (!orderId || sessionStatus === "checking") return;
+    trackEventOnce(`purchase:${orderId}`, "PURCHASE", { orderId }, userId);
+  }, [orderId, sessionStatus, userId]);
 
   useEffect(() => {
     let cancelled = false;

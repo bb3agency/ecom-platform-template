@@ -9,6 +9,7 @@ import { useAuthStore } from "@/stores/auth";
 import { fetchPublicStoreConfigClient } from "@/lib/storefront-settings";
 import { mergeGuestCartAfterAuth } from "@/lib/post-auth-cart-merge";
 import type { AuthSession } from "@/types/user";
+import { safeStorefrontRedirect } from "@/lib/storefront-redirect";
 
 type RegisterMode = "email" | "otp";
 
@@ -21,7 +22,8 @@ function RegisterPageContent() {
   const [configLoaded, setConfigLoaded] = useState(false);
 
   const rawRedirect = searchParams.get("redirect") ?? "";
-  const redirectTo = rawRedirect.startsWith("/") && !rawRedirect.startsWith("//") ? rawRedirect : "/dashboard";
+  // Same-origin paths only — rejects `/\evil.com`, `/<tab>/evil.com` (open redirect).
+  const redirectTo = safeStorefrontRedirect(rawRedirect);
 
   // Fetch mobileOtpSignupEnabled from the public store config.
   // This is a lightweight ISR-cached endpoint — no auth needed.

@@ -1,4 +1,5 @@
-import { apiClient, parseApiErrorFromResponse } from "@/lib/api";
+import { parseApiErrorFromResponse } from "@/lib/api";
+import { storefrontApiClient } from "@/lib/storefront-api-client";
 import { getBrowserApiBaseUrl } from "@/lib/api-base";
 import { resolveDownloadFilename } from "@/lib/download-filename";
 import { createIdempotencyKey } from "@/lib/idempotency";
@@ -108,7 +109,7 @@ export async function createOrder(
   accessToken: string,
   idempotencyKey = createIdempotencyKey(),
 ): Promise<OrderSummary> {
-  return apiClient<OrderSummary>("/orders", {
+  return storefrontApiClient<OrderSummary>("/orders", {
     method: "POST",
     accessToken,
     idempotencyKey,
@@ -121,7 +122,7 @@ export async function initiatePayment(
   accessToken: string,
   idempotencyKey = createIdempotencyKey(),
 ): Promise<InitiatePaymentResponse> {
-  return apiClient<InitiatePaymentResponse>("/payments/initiate", {
+  return storefrontApiClient<InitiatePaymentResponse>("/payments/initiate", {
     method: "POST",
     accessToken,
     idempotencyKey,
@@ -134,7 +135,7 @@ export async function verifyPayment(
   accessToken: string,
   idempotencyKey = createIdempotencyKey(),
 ): Promise<{ message: string }> {
-  return apiClient<{ message: string }>("/payments/verify", {
+  return storefrontApiClient<{ message: string }>("/payments/verify", {
     method: "POST",
     accessToken,
     idempotencyKey,
@@ -172,7 +173,7 @@ export async function prepareCheckout(
   accessToken: string,
   idempotencyKey = createIdempotencyKey(),
 ): Promise<PrepareCheckoutResponse> {
-  return apiClient<PrepareCheckoutResponse>("/payments/prepare-checkout", {
+  return storefrontApiClient<PrepareCheckoutResponse>("/payments/prepare-checkout", {
     method: "POST",
     accessToken,
     idempotencyKey,
@@ -185,7 +186,7 @@ export async function confirmPrepaid(
   accessToken: string,
   idempotencyKey = createIdempotencyKey(),
 ): Promise<OrderSummary> {
-  return apiClient<OrderSummary>("/payments/confirm-prepaid", {
+  return storefrontApiClient<OrderSummary>("/payments/confirm-prepaid", {
     method: "POST",
     accessToken,
     idempotencyKey,
@@ -198,7 +199,7 @@ export async function retryPayment(
   accessToken: string,
   idempotencyKey = createIdempotencyKey(),
 ): Promise<InitiatePaymentResponse> {
-  return apiClient<InitiatePaymentResponse>("/payments/retry", {
+  return storefrontApiClient<InitiatePaymentResponse>("/payments/retry", {
     method: "POST",
     accessToken,
     idempotencyKey,
@@ -207,7 +208,7 @@ export async function retryPayment(
 }
 
 export async function getMyOrder(id: string, accessToken: string): Promise<OrderSummary> {
-  return apiClient<OrderSummary>(`/orders/${id}`, {
+  return storefrontApiClient<OrderSummary>(`/orders/${id}`, {
     method: "GET",
     accessToken,
   });
@@ -218,7 +219,7 @@ export async function cancelMyOrder(
   accessToken: string,
   reason?: string,
 ): Promise<{ message: string }> {
-  return apiClient<{ message: string }>(`/orders/${id}/cancel`, {
+  return storefrontApiClient<{ message: string }>(`/orders/${id}/cancel`, {
     method: "POST",
     accessToken,
     idempotencyKey: createIdempotencyKey(),
@@ -242,7 +243,7 @@ export async function createReturnRequest(
   input: CreateReturnRequestInput,
   accessToken: string,
 ): Promise<{ id: string; status: string }> {
-  return apiClient<{ id: string; status: string }>(`/orders/${orderId}/return-requests`, {
+  return storefrontApiClient<{ id: string; status: string }>(`/orders/${orderId}/return-requests`, {
     method: "POST",
     accessToken,
     idempotencyKey: createIdempotencyKey(),
