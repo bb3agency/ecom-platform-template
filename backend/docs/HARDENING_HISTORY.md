@@ -6,6 +6,11 @@ This document preserves detailed hardening history for engineering traceability.
 
 ---
 
+**[2026-11] In-flight courier booking recovery (be-rel-02 follow-up):**
+- **A crash while the courier call was in flight could double-book.** be-rel-02 stored the AWB right after the provider call, but a crash/stall *during* the call left the courier with a shipment and us with none; the retry booked again (Shiprocket and Delhivery alike). Now the worker records a booking intent (PENDING `Shipment`, no AWB, order number as the courier client reference) before calling the courier. A retry with an intent first looks the booking up by that reference (`findShipmentByReference`) and adopts it; only a definite not-found books again, a failed lookup never books blind. A Shiprocket order created without an AWB is resumed at AWB assignment instead of being recreated. A 10-minute `reconcile-booking-intents` sweep adopts, re-enqueues (max 3) or releases intents untouched for 15 minutes. No migration. See `docs/SHIPMENT_BOOKING_LIFECYCLE.md`.
+
+---
+
 **[2026-10-21] Refund chain + order-status + console fixes (backend-core 0.3.0 → 0.4.0, frontend-core 0.3.0 → 0.4.0):**
 
 Found while redesigning the admin console and investigating a courier-cancelled order whose timeline read "Shipped" after "Cancelled":

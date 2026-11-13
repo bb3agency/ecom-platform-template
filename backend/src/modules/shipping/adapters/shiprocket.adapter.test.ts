@@ -833,4 +833,124 @@ describe('ShiprocketAdapter', () => {
       message: 'Shiprocket returned invalid JSON'
     });
   });
+
+  describe('in-flight booking recovery', () => {
+    const authResponse = {
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ token: 'sr-token-123' })
+    };
+    const jsonResponse = (body: unknown) => ({ ok: true, status: 200, text: async () => JSON.stringify(body) });
+    const bookingInput = {
+      orderNumber: 'ORD-2026-00042',
+      amountRupees: 499.5,
+      destinationPincode: '560001',
+      originPincode: '110001',
+      totalWeightGrams: 1200,
+      paymentMode: 'Prepaid' as const,
+      sellerGstTin: '29ABCDE1234F1Z5',
+      hsnCode: '1001',
+      customer: {
+        fullName: 'Test User',
+        phone: '9999999999',
+        line1: 'Street 1',
+        city: 'Bengaluru',
+        state: 'Karnataka'
+      }
+    };
+
+    it('finds a live booking by exact channel order id and returns its AWB', async () => {
+      const fetchMock = vi.fn()
+        .mockResolvedValueOnce(authResponse)
+        .mockResolvedValueOnce(jsonResponse({
+          data: [
+            // Fuzzy search hit for a different order — must be ignored.
+            { id: 1, channel_order_id: 'ORD-2026-000421', status: 'NEW', shipments: [{ id: 9, awb: 'OTHER' }] },
+            { id: 101, channel_order_id: 'ORD-2026-00042', status: 'READY TO SHIP', shipments: [{ id: 202, awb: 'AWB777', courier: 'Bluedart' }] }
+          ]
+        }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      const adapter = new ShiprocketAdapter({ email: 'test@example.com', password: 'secret' });
+      const result = await adapter.findShipmentByReference('ORD-2026-00042');
+
+      expect(result).toMatchObject({
+        state: 'found',
+        awbNumber: 'AWB777',
+        shiprocketOrderId: '101',
+        shiprocketShipmentId: '202',
+        courierName: 'Bluedart',
+        trackingUrl: 'https://shiprocket.co/tracking/AWB777'
+      });
+      const [lookupUrl] = fetchMock.mock.calls[1] as [string, RequestInit];
+      expect(lookupUrl).toContain('/orders?search=ORD-2026-00042');
+    });
+
+    it('reports a Shiprocket order without an AWB as found with no awbNumber', async () => {
+      const fetchMock = vi.fn()
+        .mockResolvedValueOnce(authResponse)
+        .mockResolvedValueOnce(jsonResponse({
+          data: [{ id: 101, channel_order_id: 'ORD-2026-00042', status: 'NEW', shipments: [{ id: 202, awb: '' }] }]
+        }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      const adapter = new ShiprocketAdapter({ email: 'test@example.com', password: 'secret' });
+      const result = await adapter.findShipmentByReference('ORD-2026-00042');
+
+      expect(result.state).toBe('found');
+      expect(result).toMatchObject({ shiprocketOrderId: '101', shiprocketShipmentId: '202' });
+      expect('awbNumber' in result).toBe(false);
+    });
+
+    it('returns not_found when no exact match exists and cancelled when only cancelled matches exist', async () => {
+      const fetchMock = vi.fn()
+        .mockResolvedValueOnce(authResponse)
+        .mockResolvedValueOnce(jsonResponse({ data: [] }))
+        .mockResolvedValueOnce(jsonResponse({
+          data: [{ id: 55, channel_order_id: 'ORD-2026-00042', status: 'CANCELED', shipments: [] }]
+        }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      const adapter = new ShiprocketAdapter({ email: 'test@example.com', password: 'secret' });
+      await expect(adapter.findShipmentByReference('ORD-2026-00042')).resolves.toMatchObject({ state: 'not_found' });
+      await expect(adapter.findShipmentByReference('ORD-2026-00042')).resolves.toMatchObject({
+        state: 'cancelled',
+        shiprocketOrderId: '55'
+      });
+    });
+
+    it('throws on an unexpected lookup response instead of reporting not_found', async () => {
+      const fetchMock = vi.fn()
+        .mockResolvedValueOnce(authResponse)
+        .mockResolvedValueOnce(jsonResponse({ message: 'Something odd' }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      const adapter = new ShiprocketAdapter({ email: 'test@example.com', password: 'secret' });
+      await expect(adapter.findShipmentByReference('ORD-2026-00042')).rejects.toMatchObject({ statusCode: 422 });
+    });
+
+    it('resumes at AWB assignment for an existing Shiprocket order instead of creating a second one', async () => {
+      const fetchMock = vi.fn()
+        .mockResolvedValueOnce(authResponse)
+        .mockResolvedValueOnce(jsonResponse({
+          awb_assign_status: 1,
+          response: { data: { awb_code: 'AWB-RESUMED', courier_name: 'Delhivery Surface' } }
+        }))
+        // serviceability lookup for estimated days (non-critical)
+        .mockResolvedValueOnce(jsonResponse({ data: { available_courier_companies: [] } }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      const adapter = new ShiprocketAdapter({ email: 'test@example.com', password: 'secret' });
+      const result = await adapter.createShipment({
+        ...bookingInput,
+        existingProviderOrder: { shiprocketOrderId: '101', shiprocketShipmentId: '202' }
+      });
+
+      expect(result).toMatchObject({ awbNumber: 'AWB-RESUMED', shiprocketOrderId: '101', shiprocketShipmentId: '202' });
+      const urls = fetchMock.mock.calls.map((call) => String(call[0]));
+      expect(urls.some((url) => url.includes('/orders/create/adhoc'))).toBe(false);
+      const assignCall = fetchMock.mock.calls.find((call) => String(call[0]).includes('/courier/assign/awb'));
+      expect(JSON.parse((assignCall?.[1] as RequestInit).body as string)).toMatchObject({ shipment_id: [202] });
+    });
+  });
 });

@@ -20,6 +20,15 @@ import {
 } from '@common/shipping/shiprocket-payload';
 import { parseBoxPresets } from '@common/shipping/select-box-preset';
 import { cartonize } from '@common/shipping/cartonize';
+import {
+  BOOKING_INTENT_MAX_SWEEP_REQUEUES,
+  BOOKING_INTENT_STALE_MS,
+  BOOKING_INTENT_SWEEP_BATCH,
+  buildBookingIntentPayload,
+  isBookingIntent,
+  readBookingIntentMeta
+} from '@common/shipping/booking-intent';
+import type { CreateShipmentInput, ShipmentLookupResult } from '@common/interfaces/shipping-provider.interface';
 import { sendTechnicalFailureAlert } from '../../src/modules/notifications/notification-failure-alert';
 
 type NotificationsQueue = Pick<Queue, 'add'>;
@@ -145,7 +154,7 @@ async function enqueueNotificationOutboxOrQueue(
  */
 async function enqueueOutboxJob(
   tx: Prisma.TransactionClient,
-  queueName: 'refunds' | 'notifications',
+  queueName: 'refunds' | 'notifications' | 'shipping',
   jobName: string,
   payload: Record<string, unknown>,
   jobId?: string
@@ -556,6 +565,294 @@ export function createShippingWorker(
     }
   };
 
+  /** The adapter for the provider recorded on a Shipment row (same precedence as resume/cancel). */
+  const adapterForProvider = (provider: ShippingProvider): typeof shippingProvider => {
+    const keyed =
+      provider === ShippingProvider.SHIPROCKET
+        ? shippingAdapterFactory('shiprocket')
+        : provider === ShippingProvider.DELHIVERY
+          ? shippingAdapterFactory('delhivery')
+          : null;
+    return keyed ?? shippingProvider;
+  };
+
+  type CourierBooking = BookedShipment & {
+    providerPayload: Record<string, unknown>;
+    labelUrl?: string | null | undefined;
+  };
+
+  /**
+   * Phase 2b of create-shipment (be-rel-02): persist the courier booking in its own
+   * short write BEFORE any status/notification work, so a Phase 3 failure leaves the
+   * AWB recorded and the retry resumes Phase 3 instead of booking again. Also used
+   * to ADOPT a booking found at the courier for an in-flight intent.
+   */
+  const persistCourierBooking = async (input: {
+    orderId: string;
+    existingShipmentId?: string | undefined;
+    provider: ShippingProvider;
+    booking: CourierBooking;
+  }): Promise<void> => {
+    const { orderId, existingShipmentId, provider, booking } = input;
+    const estimatedDelivery =
+      booking.estimatedDays != null
+        ? new Date(Date.now() + booking.estimatedDays * 24 * 60 * 60 * 1000)
+        : null;
+    await prisma.$transaction(async (tx) => {
+      await upsertShipmentCompat(tx, {
+        orderId,
+        existingShipmentId,
+        data: {
+          provider,
+          status: ShipmentStatus.BOOKED,
+          awbNumber: booking.awbNumber,
+          ...(booking.trackingUrl ? { trackingUrl: booking.trackingUrl } : {}),
+          ...(estimatedDelivery ? { estimatedDelivery } : {}),
+          webhookPayload: sanitizeProviderPayload(booking.providerPayload),
+          ...(booking.shiprocketShipmentId != null
+            ? { shiprocketShipmentId: booking.shiprocketShipmentId }
+            : {}),
+          ...(booking.labelUrl != null ? { labelUrl: booking.labelUrl } : {})
+        }
+      });
+      if (booking.shiprocketOrderId != null) {
+        // Needed by any later cancel (Shiprocket cancels by ORDER id).
+        await tx.order.update({
+          where: { id: orderId },
+          data: { shiprocketOrderId: booking.shiprocketOrderId }
+        });
+      }
+    });
+  };
+
+  type LookupWithAwb = Extract<ShipmentLookupResult, { state: 'found' }> & { awbNumber: string };
+
+  const hasAwb = (lookup: ShipmentLookupResult): lookup is LookupWithAwb =>
+    lookup.state === 'found' && typeof lookup.awbNumber === 'string' && lookup.awbNumber.length > 0;
+
+  /** Maps a lookup hit with an AWB to the booking shape persisted on the Shipment. */
+  const bookingFromLookup = (lookup: LookupWithAwb): CourierBooking => ({
+    awbNumber: lookup.awbNumber,
+    trackingUrl: lookup.trackingUrl,
+    shiprocketOrderId: lookup.shiprocketOrderId,
+    shiprocketShipmentId: lookup.shiprocketShipmentId,
+    labelUrl: lookup.labelUrl,
+    providerPayload: { ...lookup.providerPayload, status: 'adopted-from-lookup' }
+  });
+
+  /**
+   * Looks an in-flight booking up at the courier by our client reference. Throws
+   * when the adapter cannot answer — an intent is never resolved by booking blind.
+   */
+  const lookUpInFlightBooking = async (
+    adapter: typeof shippingProvider,
+    provider: ShippingProvider,
+    clientReference: string
+  ): Promise<ShipmentLookupResult> => {
+    if (!adapter?.findShipmentByReference) {
+      throw new Error(
+        `Cannot verify in-flight ${provider} booking for ${clientReference}: no adapter with booking lookup is configured. ` +
+          'Refusing to book again blind.'
+      );
+    }
+    return adapter.findShipmentByReference(clientReference);
+  };
+
+  /**
+   * Records the booking intent before the courier is called: a PENDING Shipment
+   * with no AWB, keyed by our client reference (the order number). Compare-and-set
+   * on `awbNumber: null` so a concurrently stored booking is never demoted.
+   * Returns the intent's Shipment id when known.
+   */
+  const writeBookingIntent = async (input: {
+    orderId: string;
+    clientReference: string;
+    provider: ShippingProvider;
+    existing: { id: string; webhookPayload?: unknown } | null | undefined;
+  }): Promise<string | undefined> => {
+    const { orderId, clientReference, provider, existing } = input;
+    const webhookPayload = buildBookingIntentPayload(
+      clientReference,
+      readBookingIntentMeta(existing?.webhookPayload)
+    ) as unknown as Prisma.InputJsonValue;
+    if (existing) {
+      const updated = await prisma.shipment.updateMany({
+        where: { id: existing.id, awbNumber: null },
+        data: { provider, status: ShipmentStatus.PENDING, webhookPayload }
+      });
+      if (updated.count === 0) {
+        throw new Error(`Shipment for order ${orderId} changed while recording the booking intent — retrying`);
+      }
+      return existing.id;
+    }
+    const created = (await prisma.shipment.create({
+      data: { orderId, provider, status: ShipmentStatus.PENDING, webhookPayload }
+    })) as { id?: string } | null | undefined;
+    return created?.id;
+  };
+
+  /** Drops an intent that provably has no live booking behind it (CAS on PENDING + no AWB). */
+  const releaseBookingIntent = async (shipmentId: string): Promise<void> => {
+    await prisma.shipment.deleteMany({
+      where: { id: shipmentId, status: ShipmentStatus.PENDING, awbNumber: null }
+    });
+  };
+
+  const alertBookingIntent = async (orderId: string, errorMessage: string): Promise<void> => {
+    await alertFn({
+      prisma,
+      template: 'ShipmentBookingIntent',
+      channel: 'UNKNOWN',
+      recipient: orderId,
+      errorMessage,
+      failureStage: 'CORE_LOGIC',
+      domain: 'shipping',
+      component: 'booking-intent-sweep',
+      queueName: 'shipping',
+      jobName: 'reconcile-booking-intents'
+    });
+  };
+
+  type StaleBookingIntent = {
+    id: string;
+    provider: ShippingProvider;
+    webhookPayload: unknown;
+    order: {
+      id: string;
+      orderNumber: string;
+      status: OrderStatus;
+      user: { email: string | null; phone: string | null } | null;
+    };
+  };
+
+  /**
+   * Sweep step for ONE stale intent (no job attempt touched it for
+   * BOOKING_INTENT_STALE_MS). Looks the booking up at the courier first:
+   *  - live booking with AWB → adopt it, then finalize (ships, or compensating-
+   *    cancels when the order was cancelled meanwhile);
+   *  - cancelled at the courier → release the intent;
+   *  - nothing (or a Shiprocket order without AWB) on a still-shippable order →
+   *    re-enqueue create-shipment (which looks up again, then books / resumes),
+   *    at most BOOKING_INTENT_MAX_SWEEP_REQUEUES times;
+   *  - nothing on an order that is no longer shippable → release the intent.
+   * A lookup failure throws: nothing is booked or released.
+   */
+  const reconcileBookingIntent = async (intent: StaleBookingIntent): Promise<void> => {
+    const { order, provider } = intent;
+    const adapter = adapterForProvider(provider);
+    const lookup = await lookUpInFlightBooking(adapter, provider, order.orderNumber);
+
+    if (hasAwb(lookup)) {
+      const booking = bookingFromLookup(lookup);
+      await persistCourierBooking({ orderId: order.id, existingShipmentId: intent.id, provider, booking });
+      await finalizeBookedShipment({ order, provider, adapter, booking });
+      return;
+    }
+
+    if (lookup.state === 'cancelled') {
+      await releaseBookingIntent(intent.id);
+      await alertBookingIntent(
+        order.id,
+        `Booking intent for order ${order.orderNumber} released: ${provider} reports the reference as cancelled. Re-ship from admin if still required.`
+      );
+      return;
+    }
+
+    const partial = lookup.state === 'found';
+    const shippable = order.status === OrderStatus.CONFIRMED || order.status === OrderStatus.PROCESSING;
+
+    if (!shippable) {
+      if (partial) {
+        if (!lookup.shiprocketOrderId || !adapter) {
+          throw new Error(
+            `Order ${order.orderNumber} is ${order.status} but ${provider} holds an order for it without an AWB — cancel it at the courier manually.`
+          );
+        }
+        await adapter.cancelShipment(lookup.shiprocketOrderId);
+      }
+      await releaseBookingIntent(intent.id);
+      return;
+    }
+
+    const meta =
+      readBookingIntentMeta(intent.webhookPayload) ?? buildBookingIntentPayload(order.orderNumber, null).bookingIntent;
+    if (meta.sweepRequeues >= BOOKING_INTENT_MAX_SWEEP_REQUEUES) {
+      if (partial) {
+        throw new Error(
+          `Booking for order ${order.orderNumber} still has no AWB after ${meta.sweepRequeues} sweep retries; ` +
+            `${provider} holds the order — assign the AWB at the courier or cancel it there.`
+        );
+      }
+      await releaseBookingIntent(intent.id);
+      await alertBookingIntent(
+        order.id,
+        `Booking intent for order ${order.orderNumber} released after ${meta.sweepRequeues} sweep retries: ` +
+          `${provider} has no booking for it. Re-ship from admin.`
+      );
+      return;
+    }
+
+    const nextRequeue = meta.sweepRequeues + 1;
+    await prisma.$transaction(async (tx) => {
+      const bumped = await tx.shipment.updateMany({
+        where: { id: intent.id, status: ShipmentStatus.PENDING, awbNumber: null },
+        data: {
+          webhookPayload: { bookingIntent: { ...meta, sweepRequeues: nextRequeue } } as unknown as Prisma.InputJsonValue
+        }
+      });
+      if (bumped.count === 0) {
+        return;
+      }
+      await enqueueOutboxJob(
+        tx,
+        'shipping',
+        'create-shipment',
+        { orderId: order.id },
+        `create-shipment:${order.id}:intent-sweep-${nextRequeue}`
+      );
+    });
+  };
+
+  const reconcileStaleBookingIntents = async (): Promise<void> => {
+    const staleBefore = new Date(Date.now() - BOOKING_INTENT_STALE_MS);
+    const intents = (await prisma.shipment.findMany({
+      where: {
+        status: ShipmentStatus.PENDING,
+        awbNumber: null,
+        updatedAt: { lt: staleBefore },
+        provider: { in: [ShippingProvider.DELHIVERY, ShippingProvider.SHIPROCKET] }
+      },
+      select: {
+        id: true,
+        provider: true,
+        webhookPayload: true,
+        order: {
+          select: {
+            id: true,
+            orderNumber: true,
+            status: true,
+            user: { select: { email: true, phone: true } }
+          }
+        }
+      },
+      orderBy: { updatedAt: 'asc' },
+      take: BOOKING_INTENT_SWEEP_BATCH
+    })) as StaleBookingIntent[];
+
+    for (const intent of intents) {
+      try {
+        await reconcileBookingIntent(intent);
+      } catch (error) {
+        // One intent failing (courier lookup down, manual action needed) must not
+        // block the rest; it is retried on the next sweep and nothing was booked.
+        await alertBookingIntent(
+          intent.order.id,
+          error instanceof Error ? error.message : 'Unknown booking-intent reconciliation error'
+        );
+      }
+    }
+  };
+
   const worker = new WorkerCtor(
     'shipping',
     async (job) => {
@@ -630,6 +927,46 @@ export function createShippingWorker(
             }
           });
           return;
+        }
+
+        // In-flight recovery: a booking intent (PENDING shipment, no AWB) means an
+        // earlier attempt may have reached the courier before crashing/stalling.
+        // Look the booking up by our client reference FIRST and adopt it; only a
+        // definite "not found" may book again. A failed lookup throws (BullMQ
+        // retries) — never book blind.
+        let resumeProviderOrder: CreateShipmentInput['existingProviderOrder'];
+        if (order.shipment && isBookingIntent(order.shipment)) {
+          const intentProvider = order.shipment.provider;
+          const lookupAdapter = adapterForProvider(intentProvider);
+          const lookup = await lookUpInFlightBooking(lookupAdapter, intentProvider, order.orderNumber);
+          if (hasAwb(lookup)) {
+            const booking = bookingFromLookup(lookup);
+            await persistCourierBooking({
+              orderId: order.id,
+              existingShipmentId: order.shipment.id,
+              provider: intentProvider,
+              booking
+            });
+            await finalizeBookedShipment({ order, provider: intentProvider, adapter: lookupAdapter, booking });
+            return;
+          }
+          if (lookup.state === 'cancelled') {
+            throw new Error(
+              `In-flight booking for order ${order.orderNumber} is cancelled at ${intentProvider}; ` +
+                'the booking-intent sweep releases it — re-ship from admin afterwards.'
+            );
+          }
+          if (lookup.state === 'found') {
+            if (!lookup.shiprocketShipmentId) {
+              throw new Error(
+                `${intentProvider} holds an order for ${order.orderNumber} without an AWB or shipment id — manual action required.`
+              );
+            }
+            resumeProviderOrder = {
+              shiprocketShipmentId: lookup.shiprocketShipmentId,
+              ...(lookup.shiprocketOrderId ? { shiprocketOrderId: lookup.shiprocketOrderId } : {})
+            };
+          }
         }
 
         const pickupPincode = await resolvePickupPincode(prisma);
@@ -831,8 +1168,33 @@ export function createShippingWorker(
           }
         };
 
+        // --- Phase 2a: record the booking intent BEFORE calling the courier ---
+        // The order number is the stable client reference the courier stores
+        // (Shiprocket order_id / Delhivery order), so a crash while the call below
+        // is in flight is recovered by lookup instead of a blind second booking.
+        // Legacy orders with no locked provider record the env-default provider.
+        const envProviderKey = process.env.SHIPPING_PROVIDER?.trim().toLowerCase();
+        const intentProvider =
+          resolvedProviderForOrder ??
+          (envProviderKey === 'shiprocket'
+            ? ShippingProvider.SHIPROCKET
+            : envProviderKey === 'delhivery'
+              ? ShippingProvider.DELHIVERY
+              : null);
+        const intentShipmentId = intentProvider
+          ? await writeBookingIntent({
+              orderId: order.id,
+              clientReference: order.orderNumber,
+              provider: intentProvider,
+              existing: order.shipment
+            })
+          : undefined;
+
         // --- Phase 2: external provider call (no DB connection held) ---
-        const shipment = await effectiveShippingProvider.createShipment(shipmentInput);
+        const shipment = await effectiveShippingProvider.createShipment({
+          ...shipmentInput,
+          ...(resumeProviderOrder ? { existingProviderOrder: resumeProviderOrder } : {})
+        });
 
         // Determine which provider handled this shipment.
         // Prefer the order-level selection; fall back to shipment response signature
@@ -844,40 +1206,17 @@ export function createShippingWorker(
             ? ShippingProvider.SHIPROCKET
             : ShippingProvider.DELHIVERY);
 
-        const estimatedDelivery =
-          shipment.estimatedDays != null
-            ? new Date(Date.now() + shipment.estimatedDays * 24 * 60 * 60 * 1000)
-            : null;
-
         // --- Phase 2b: persist the courier booking immediately (be-rel-02) ---
         // The AWB now exists at the courier. Record it in its own short write BEFORE
         // any status/notification work so that if Phase 3 fails (DB blip, deadlock,
         // crash) the BullMQ retry sees the stored AWB and resumes Phase 3 instead of
-        // booking the courier a second time.
-        await prisma.$transaction(async (tx) => {
-          await upsertShipmentCompat(tx, {
-            orderId: order.id,
-            existingShipmentId: order.shipment?.id,
-            data: {
-              provider: resolvedProvider,
-              status: ShipmentStatus.BOOKED,
-              awbNumber: shipment.awbNumber,
-              ...(shipment.trackingUrl ? { trackingUrl: shipment.trackingUrl } : {}),
-              ...(estimatedDelivery ? { estimatedDelivery } : {}),
-              webhookPayload: sanitizeProviderPayload(shipment.providerPayload),
-              ...(shipment.shiprocketShipmentId != null
-                ? { shiprocketShipmentId: shipment.shiprocketShipmentId }
-                : {}),
-              ...(shipment.labelUrl != null ? { labelUrl: shipment.labelUrl } : {})
-            }
-          });
-          if (shipment.shiprocketOrderId != null) {
-            // Needed by any later cancel (Shiprocket cancels by ORDER id).
-            await tx.order.update({
-              where: { id: order.id },
-              data: { shiprocketOrderId: shipment.shiprocketOrderId }
-            });
-          }
+        // booking the courier a second time. This write also turns the intent row
+        // (PENDING) into the BOOKED shipment.
+        await persistCourierBooking({
+          orderId: order.id,
+          existingShipmentId: intentShipmentId ?? order.shipment?.id,
+          provider: resolvedProvider,
+          booking: shipment
         });
 
         await finalizeBookedShipment({
@@ -972,6 +1311,13 @@ export function createShippingWorker(
             status: ShipmentStatus.CANCELLED
           }
         });
+        return;
+      }
+
+      // Periodic recovery of courier bookings left in flight by a crashed/stalled
+      // create-shipment attempt (see common/shipping/booking-intent.ts).
+      if (job.name === 'reconcile-booking-intents') {
+        await reconcileStaleBookingIntents();
         return;
       }
 
