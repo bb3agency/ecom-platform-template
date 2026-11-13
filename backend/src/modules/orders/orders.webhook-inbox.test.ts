@@ -162,3 +162,97 @@ describe('OrdersService Razorpay webhook inbox reliability (be-rel-05)', () => {
     expect(outboxCreate).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('OrdersService webhook inbox redrive spec (stuck-PROCESSING reclaim)', () => {
+  beforeEach(() => {
+    process.env.RAZORPAY_WEBHOOK_SECRET = 'rzp-secret';
+    process.env.DELHIVERY_API_KEY = 'delhivery-token';
+  });
+
+  type StoredRow = InboxRow & { redriveSpec?: Record<string, unknown>; reclaimAttempts?: number };
+
+  it('stores exactly the outbox message it writes on the inbox row, so a re-drive is identical', async () => {
+    const { service, inbox, outboxCreate } = createService();
+
+    await service.processPaymentWebhook(signature, payload, 'evt_spec_1');
+
+    const row = [...inbox.rows.values()][0] as StoredRow | undefined;
+    const outboxArgs = (outboxCreate.mock.calls as unknown as Array<[{ data: Record<string, unknown> }]>)[0]?.[0];
+    if (!outboxArgs) throw new Error('expected an outbox write');
+    expect(row?.reclaimAttempts).toBe(0);
+    expect(row?.redriveSpec).toEqual({
+      queueName: outboxArgs.data.queueName,
+      jobName: outboxArgs.data.jobName,
+      payload: outboxArgs.data.payload,
+      jobId: outboxArgs.data.jobId
+    });
+    expect(outboxArgs.data.jobName).toBe('deduct-inventory');
+  });
+
+  it('gives payment-webhook outbox rows a deterministic per-event jobId', async () => {
+    const failedPayload = Buffer.from(
+      JSON.stringify({
+        event: 'payment.failed',
+        payload: { payment: { entity: { id: 'pay_failed_1', order_id: 'order_failed_1' } } }
+      })
+    );
+    const failedSignature = createHmac('sha256', 'rzp-secret').update(failedPayload).digest('hex');
+    const first = createService();
+    const second = createService();
+
+    await first.service.processPaymentWebhook(failedSignature, failedPayload, 'evt_failed_a');
+    await second.service.processPaymentWebhook(failedSignature, failedPayload, 'evt_failed_b');
+
+    const jobIdOf = (mock: typeof first.outboxCreate) =>
+      (mock.mock.calls as unknown as Array<[{ data: { jobId?: string; jobName: string } }]>)[0]?.[0].data;
+    const a = jobIdOf(first.outboxCreate);
+    const b = jobIdOf(second.outboxCreate);
+    expect(a?.jobName).toBe('payment-webhook');
+    expect(a?.jobId).toMatch(/^payment-webhook-[0-9a-f]{24}$/);
+    // Same event identity (event + payment) => same jobId, whatever the delivery id.
+    expect(b?.jobId).toBe(a?.jobId);
+  });
+
+  it('leaves a re-drivable PROCESSING row behind when the process dies before the outbox write', async () => {
+    const { service, redis, inbox, outboxCreate } = createService();
+    // Simulate a crash right after the inbox claim: the delivery never progresses.
+    vi.spyOn(redis, 'get').mockImplementation(() => new Promise<string | null>(() => undefined));
+
+    void service.processPaymentWebhook(signature, payload, 'evt_crash_1');
+    await vi.waitFor(() => expect(inbox.rows.size).toBe(1));
+
+    const row = [...inbox.rows.values()][0] as StoredRow | undefined;
+    expect(row?.status).toBe('PROCESSING');
+    expect(outboxCreate).not.toHaveBeenCalled();
+    expect(row?.redriveSpec).toMatchObject({
+      queueName: 'orderProcessing',
+      jobName: 'deduct-inventory',
+      payload: { event: 'payment.captured', providerOrderId: 'order_inbox_1', providerPaymentId: 'pay_inbox_1' }
+    });
+  });
+
+  it('moves a shipping inbox row to ENQUEUED (with its redrive spec) after the outbox write', async () => {
+    const { service, inbox, outboxCreate } = createService();
+    const shippingPayload = Buffer.from(
+      JSON.stringify({
+        awb: 'awb_inbox_1',
+        status: 'IN_TRANSIT',
+        description: 'Shipment is moving',
+        location: 'Hub A',
+        occurredAt: new Date().toISOString()
+      })
+    );
+
+    await service.processShippingWebhook('Token delhivery-token', shippingPayload);
+
+    const row = [...inbox.rows.values()][0] as StoredRow | undefined;
+    expect(outboxCreate).toHaveBeenCalledTimes(1);
+    expect(row?.status).toBe('ENQUEUED');
+    expect(row?.redriveSpec).toMatchObject({
+      queueName: 'shipping',
+      jobName: 'update-shipment-status',
+      payload: { awb: 'awb_inbox_1', status: 'IN_TRANSIT' }
+    });
+    expect(String(row?.redriveSpec?.jobId)).not.toContain(':');
+  });
+});

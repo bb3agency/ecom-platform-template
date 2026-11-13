@@ -106,6 +106,13 @@ export async function registerBullmqPlugin(fastify: FastifyInstance): Promise<vo
           } else {
             await queues.reconciliation.removeJobScheduler(RAZORPAY_CAPTURE_RECONCILE_SCHEDULER_ID);
           }
+          // be-rel-05 follow-up: re-drive webhook inbox rows stuck in PROCESSING
+          // (crash between the inbox claim and the outbox write).
+          await queues.reconciliation.upsertJobScheduler(
+            'reconciliation:reclaim-stuck-webhook-inbox',
+            { every: 5 * 60 * 1000 },
+            { name: 'reclaim-stuck-webhook-inbox', data: {} }
+          );
         }
 
         fastify.log.info('BullMQ job schedulers registered');

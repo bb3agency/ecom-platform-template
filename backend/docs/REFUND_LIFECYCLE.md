@@ -130,6 +130,7 @@ Required: `payment.captured`, `payment.failed`, `refund.processed`, **`refund.fa
 
 - `refund.*` payloads carry `payload.refund.entity`; its `id` and `amount` are forwarded to the worker.
 - Redis/inbox dedupe for `refund.*` is keyed by **event + refund id**, so a failed refund followed by a retried one on the same payment are both processed.
+- If the API dies between claiming the inbox row and writing the outbox row, the row stays `PROCESSING` and the provider's retry is acked as a duplicate. The `reclaim-stuck-webhook-inbox` sweep (reconciliation queue, every 5 min) re-drives rows stuck longer than `WEBHOOK_INBOX_RECLAIM_AFTER_MINUTES` (default 10) from the `redriveSpec` stored at claim time. The outbox `jobId` is per event (`payment-webhook-<hash(event#refundId:paymentId)>`), so a re-drive never double-enqueues. After `WEBHOOK_INBOX_RECLAIM_MAX_ATTEMPTS` (default 3) the row goes `FAILED` with an alert.
 
 ## 8. Operating it
 

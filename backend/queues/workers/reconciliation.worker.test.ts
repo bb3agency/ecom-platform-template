@@ -17,6 +17,7 @@ describe('reconciliation worker', () => {
   const issueUpdateMany = vi.fn(async () => ({ count: 0 }));
   const issueFindMany = vi.fn(async (): Promise<Array<{ id: string; aggregateRef: string }>> => []);
   const orderFindMany = vi.fn(async (): Promise<Array<Record<string, unknown>>> => orders);
+  const inboxFindMany = vi.fn(async (): Promise<Array<Record<string, unknown>>> => []);
   let queueCtorArgs: Array<[string, Record<string, unknown>]> = [];
   const orderUpdate = vi.fn(async () => undefined);
   const orderUpdateMany = vi.fn(async () => ({ count: 1 }));
@@ -70,6 +71,10 @@ describe('reconciliation worker', () => {
         findMany: issueFindMany,
         create: issueCreate,
         updateMany: issueUpdateMany
+      },
+      webhookInboxEvent: {
+        findMany: inboxFindMany,
+        updateMany: vi.fn(async () => ({ count: 0 }))
       }
     };
   }
@@ -120,6 +125,21 @@ describe('reconciliation worker', () => {
       return;
     }
     process.env.RECONCILIATION_AUTO_HEAL_ISSUES = originalAutoHealEnv;
+  });
+
+  it('runs the stuck webhook inbox sweep (only) for reclaim-stuck-webhook-inbox jobs', async () => {
+    createReconciliationWorker({} as never, workerDeps);
+    inboxFindMany.mockClear();
+
+    await processor?.({ name: 'reclaim-stuck-webhook-inbox' });
+
+    expect(inboxFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ status: 'PROCESSING', updatedAt: { lt: expect.any(Date) } })
+      })
+    );
+    // The order lifecycle scan does not run for the sweep job.
+    expect(orderFindMany).not.toHaveBeenCalled();
   });
 
   it('creates classification-enriched issues for mismatches', async () => {
