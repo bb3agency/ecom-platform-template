@@ -33,6 +33,7 @@ import {
   settleSubmitAttemptKeys,
   type SubmitAttemptKeys,
 } from "@/lib/checkout-submit";
+import { buildCheckoutOutcomeUrl } from "@/lib/checkout-outcome";
 import { createIdempotencyKey } from "@/lib/idempotency";
 import { useAuthStore } from "@/stores/auth";
 import { useCartStore } from "@/stores/cart";
@@ -472,12 +473,18 @@ export function CheckoutForm() {
   });
   const submitDisabled = submitState.disabled || checkoutBlocked;
 
-  const finishPrepaidOrder = (orderId: string) => {
+  /**
+   * The payment is settled either way: the backend has emptied the cart, so the
+   * local cart is cleared too. A CANCELLED order (coupon or stock ran out after
+   * payment; full refund queued) goes to the "not completed" outcome instead of
+   * "Order placed", and is never tracked as a purchase.
+   */
+  const finishPrepaidOrder = (order: { id: string; status?: string | null }) => {
     submitKeysRef.current = null;
     setPendingConfirmation(null);
     clearPendingMerge();
     clearCart();
-    router.push(`/checkout/success?orderId=${orderId}`);
+    router.push(buildCheckoutOutcomeUrl(order));
   };
 
   /**
@@ -496,7 +503,7 @@ export function CheckoutForm() {
         }
         return confirmPrepaid(pending.input, token, pending.confirmKey);
       });
-      finishPrepaidOrder(confirmedOrder.id);
+      finishPrepaidOrder(confirmedOrder);
     } catch (confirmError) {
       // Keep the captured payment pending: the customer retries confirmation,
       // never a new checkout (that would charge them twice).
@@ -642,7 +649,7 @@ export function CheckoutForm() {
         submitKeysRef.current = null;
         clearPendingMerge();
         clearCart();
-        router.push(`/checkout/success?orderId=${order.id}`);
+        router.push(buildCheckoutOutcomeUrl(order));
         return;
       }
 
