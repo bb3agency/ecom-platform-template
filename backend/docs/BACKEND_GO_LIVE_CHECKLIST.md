@@ -40,6 +40,8 @@ This checklist validates both:
 - [ ] Redis readiness timeout (20s) is operational — startup fails fast with clear error if Redis is unavailable.
 - [ ] Redis persistence settings are verified (AOF enabled, volume mounted).
 - [ ] Prisma global client cache is scoped to development-like runtime only (`development`/`test`) — no global caching in production-like profiles.
+- [ ] `DATABASE_URL` in the VPS backend `.env` ends with `?connection_limit=10&pool_timeout=20` (or a sized value), and `(API + worker processes) * connection_limit` across every client on the host stays under Postgres `max_connections`. Neither the API nor workers startup log shows the "no connection_limit" warning (backend-core 0.5.0; `src/config/database-pool.ts`).
+- [ ] Migration `20260820000000_webhook_inbox_reclaim` is applied (`WebhookInboxEvent.redriveSpec`, `reclaimAttempts`; `OutboxMessage(jobId)` index).
 
 ### 2.3 Auth and session security
 - [ ] `JWT_SECRET` and `JWT_REFRESH_SECRET` are unique, non-placeholder, and rotated per policy.
@@ -48,6 +50,11 @@ This checklist validates both:
 - [ ] Auth flows behave correctly in target env (OTP/login/refresh/logout).
 - [ ] Phone OTP signup route `POST /api/v1/auth/signup-phone` is validated end-to-end (phone + otp required; optional `firstName`, `lastName`, `email`; issues auth tokens and sets refresh cookie).
 - [ ] Refresh/session behavior aligns with secure cookie expectations and no regression in 401 refresh flow.
+- [ ] New `RefreshToken.tokenHash` rows start with `sha256:` (backend-core 0.5.0); older bcrypt rows still refresh until they expire. Logout revokes the session named by the cookie's `sid`, not an older one.
+- [ ] Phone OTP is customer-only: `POST /auth/send-otp` with an admin's phone returns the normal success message and enqueues no OTP; `verify-otp` for that phone never issues tokens.
+- [ ] OTP verify-fail lockout works: 3 wrong codes on one phone within 15 minutes delete the live OTP and make `send-otp` return `429` for that phone (Redis key `otp:verify-fails:<phone>`), also from a different IP.
+- [ ] `/admin/setup` OTP arrives by email only, even with `OTP_WHATSAPP_ENABLED=true` and a phone in the form.
+- [ ] `DELETE /api/v1/admin/users/:id/ban` on an ADMIN user returns `403`.
 - [ ] Admin permission snapshot behavior is acknowledged in runbook and operator SOP: admin access tokens embed permissions at issuance and mid-window grant/revoke changes require token revocation/logout to take immediate effect.
 
 ### 2.4 Payment and shipping providers
@@ -186,6 +193,7 @@ This checklist validates both:
 - [ ] `confirm-order` and `deduct-inventory` jobs in `order-processing.worker.ts` are thin delegation stubs — they resolve the `orderId` from webhook data and immediately enqueue `process-order-update`. No order/payment status mutations occur in those handlers directly. `process-order-update` is the single authoritative entry point for order status transitions to `CONFIRMED`.
 - [ ] `process-order-update` is present in the `knownQueueJobs` set in `src/common/observability/metrics.ts` so queue metrics (retries, failures, backlog) are correctly tracked for this job.
 - [ ] `RECONCILIATION_AUTO_HEAL_ISSUES` env var is set intentionally: comma-separated list enables only named heal types; empty string disables all auto-heals for incident triage. **Default (unset):** `PAYMENT_CAPTURED_ORDER_NOT_CONFIRMED`, `REFUNDED_STATUS_MISMATCH`, `STALE_PENDING_PAYMENT` (includes stale `PAYMENT_FAILED` abandon cleanup). plus `RAZORPAY_CAPTURE_WEBHOOK_MISSING` and `RAZORPAY_ORPHAN_CAPTURE` (Razorpay capture reconciliation actions). **`ORDER_SHIPPED_WITHOUT_SHIPMENT` is not auto-healed by default** — manual review.
+- [ ] 0.5.0 repeatable jobs are registered and completing (Bull Board `/api/v1/ops/queues`): `reconciliation:razorpay-capture-reconcile` (30 min, Razorpay only, `RAZORPAY_RECONCILE_ENABLED` defaults to `true` — confirm the intended value in Ops → Config), `reconciliation:reclaim-stuck-webhook-inbox` (5 min) and, when Shiprocket or Delhivery credentials exist, `reconcile-booking-intents` on the `shipping` queue (10 min). `WEBHOOK_INBOX_RECLAIM_AFTER_MINUTES` / `WEBHOOK_INBOX_RECLAIM_MAX_ATTEMPTS` are left at defaults (`10` / `3`) unless there is a reason. No `WebhookInboxEvent` rows sit in `PROCESSING` for more than a few minutes. See `OPS_CONTROL_PLANE_GUIDE.md` §8.3.
 - [ ] Razorpay capture reconciliation is scheduled (`reconciliation:razorpay-capture-reconcile`, every 30 min) when `PAYMENT_PROVIDER=razorpay` and `RAZORPAY_RECONCILE_ENABLED` is not `false`. Open `RAZORPAY_*` issues in `GET /api/v1/admin/analytics/reconciliation-issues` are reviewed; `RAZORPAY_DUPLICATE_CAPTURE` is always manual. See `REFUND_LIFECYCLE.md` §9.
 - [ ] Coupon checkout reservation includes `PAYMENT_FAILED` in usage-limit counts (`COUPON_RESERVED_ORDER_STATUSES`); stale cancel and reconciliation paths call `clearUnfinalizedCouponLinks` / `releaseCouponUsageForOrder` as documented in `coupon-usage.ts`.
 - [ ] COD cancel inventory restore is gated on `COD_ORDER_CREATED` status history before incrementing stock (`restore-inventory-on-cancel.ts`).
@@ -235,6 +243,9 @@ Pass criteria:
 - [ ] Guest cart merge on login works without data loss.
 - [ ] PREPAID order path works end-to-end with webhook confirmation.
 - [ ] COD order path works end-to-end without Razorpay initiate/verify.
+- [ ] Stale cart price: change a variant price after it is in a cart; `POST /orders` and `POST /payments/prepare-checkout` return `409 PRICE_CHANGED` with `details.items[{ variantId, previousPricePaise, currentPricePaise }]`, and the cart now holds the new price.
+- [ ] Prepaid confirm when the coupon's last use was taken after prepare-checkout: `confirm-prepaid` returns the order as `CANCELLED`, a full refund is queued (`auto-refund-coupon-limit-<orderId>`) and the customer gets the cancellation notification. Replaying the same confirm returns the same order.
+- [ ] Payment retry on an old-flow order reuses the existing Razorpay order id while the amount is unchanged.
 - [ ] Cancel/refund flow works with correct status transitions.
 - [ ] Manual-only shipping policy is enforced: payment confirmation does not auto-create shipments.
 - [ ] Admin ship action (`POST /api/v1/admin/orders/:id/ship`) enforces ship eligibility (`canShipNow`) and returns meaningful `shipBlockReason` when blocked.

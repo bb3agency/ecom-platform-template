@@ -607,7 +607,7 @@ These rules are **non-negotiable** across all client deployments:
 | **Atomic orders** | `prisma.$transaction()` — all or nothing |
 | **Webhooks** | HMAC verification → Redis idempotency → BullMQ enqueue → `200 OK` |
 | **Notifications** | BullMQ only — never synchronous in request cycle |
-| **Refresh tokens** | bcrypt hash in DB — never raw token storage |
+| **Refresh tokens** | `sha256:<hex>` hash of the full token in DB (backend-core 0.5.0; legacy bcrypt rows verify until expiry) — never raw token storage |
 | **Request schemas** | `additionalProperties: false`, `maxLength` on all strings |
 | **TypeScript** | `strict: true`, no `any` without inline justification |
 | **Product deletes** | Soft delete only (`isActive = false`) — hard deletes corrupt order history |

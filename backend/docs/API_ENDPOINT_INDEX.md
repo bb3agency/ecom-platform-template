@@ -41,12 +41,12 @@ Canonical low-noise index of backend HTTP endpoints. Route files and schemas rem
 | Method | Endpoint | Purpose | Notes |
 |---|---|---|---|
 | POST | `/api/v1/auth/register` | Customer registration | Sets refresh cookie. Idempotency guarded |
-| POST | `/api/v1/auth/send-otp` | Send OTP | Auth-sensitive rate limit |
-| POST | `/api/v1/auth/verify-otp` | Verify OTP and issue auth | Sets refresh cookie |
+| POST | `/api/v1/auth/send-otp` | Send OTP | Auth-sensitive rate limit. Phone OTP is customer-only: an admin's phone gets no OTP but the same success response. `429` while `otp:verify-fails:<phone>` is at 3 (15-min window) |
+| POST | `/api/v1/auth/verify-otp` | Verify OTP and issue auth | Sets refresh cookie. Wrong code adds a strike to `otp:verify-fails:<phone>`; the 3rd strike in 15 min deletes the live OTP. Non-customer users get `401` |
 | POST | `/api/v1/auth/signup-phone` | Phone signup flow | Idempotency guarded |
 | POST | `/api/v1/auth/forgot-password` | Forgot password flow | Idempotency guarded |
 | POST | `/api/v1/auth/login` | Customer login | Sets refresh cookie |
-| POST | `/api/v1/auth/refresh` | Refresh access token | Uses HTTP-only refresh cookie |
+| POST | `/api/v1/auth/refresh` | Refresh access token | Uses HTTP-only refresh cookie. Token stored as `sha256:<hex>` (legacy bcrypt rows verify until expiry) |
 | POST | `/api/v1/auth/logout` | Logout | Clears refresh cookie |
 | GET | `/api/v1/auth/otp-channel` | Customer OTP channel config — `{ channel, availableChannels[] }` | Public, pre-auth |
 | GET | `/api/v1/auth/admin/otp-channel` | Admin OTP channel config — `{ channel, availableChannels[] }` | Public, pre-auth |
@@ -76,13 +76,14 @@ Identity boundary contract (critical):
 | DELETE | `/api/v1/cart/coupon` | Remove coupon | Cart mutation |
 | POST | `/api/v1/cart/check-pincode` | Check delivery serviceability | Shipping estimate flow |
 | GET | `/api/v1/cart/delivery-rates` | Estimate delivery rates | Query: `pincode`, optional `paymentMode=PREPAID\|COD` (default PREPAID) |
-| POST | `/api/v1/orders` | Create COD order only | Customer auth + idempotency |
-| POST | `/api/v1/payments/prepare-checkout` | Prepare PREPAID checkout (new flow) | Customer auth + idempotency; returns `{ checkoutSessionId, razorpayOrderId, amount, currency }` |
-| POST | `/api/v1/payments/confirm-prepaid` | Confirm PREPAID payment (new flow) | Customer auth + idempotency; creates order in CONFIRMED state |
+| POST | `/api/v1/orders` | Create COD order only | Customer auth + idempotency; `409 PRICE_CHANGED` (`details.items[{ variantId, previousPricePaise, currentPricePaise }]`) when a cart price is stale — cart already re-priced |
+| POST | `/api/v1/payments/prepare-checkout` | Prepare PREPAID checkout (new flow) | Customer auth + idempotency; returns `{ checkoutSessionId, razorpayOrderId, amount, currency }`; `409 PRICE_CHANGED` as for `/orders` |
+| POST | `/api/v1/payments/confirm-prepaid` | Confirm PREPAID payment (new flow) | Customer auth + idempotency; creates order in CONFIRMED state, or **CANCELLED with a full refund queued** when the coupon limit was reached after payment. Replays return the existing order whatever its status |
+| POST | `/api/v1/payments/initiate` | Razorpay params for an existing PENDING_PAYMENT order (old flow) | Customer auth + idempotency; reuses the existing Razorpay order while the payment is CREATED/FAILED and the amount is unchanged |
 | GET | `/api/v1/orders/:id` | Customer order detail | Owner-only; filters out PENDING_PAYMENT/PAYMENT_FAILED on customer pages |
 | GET | `/api/v1/orders/:id/invoice.pdf` | Customer invoice PDF | Owner-only PDF; generates on demand for invoice-eligible orders |
 | POST | `/api/v1/orders/:id/cancel` | Customer order cancel | Idempotency guarded; CONFIRMED+ only |
-| POST | `/api/v1/payments/retry` | Retry failed payment (old flow) | Customer flow; for PAYMENT_FAILED orders only |
+| POST | `/api/v1/payments/retry` | Retry failed payment (old flow) | Customer flow; for PAYMENT_FAILED orders only; reuses the Razorpay order (via `initiate`) while the amount is unchanged |
 | GET | `/api/v1/shipping/track/:awb` | Track shipment | Customer auth |
 | POST | `/api/v1/orders/:id/return-requests` | Create return request (400 when merchant returns toggle is off; 409 while one is open) | Customer flow |
 | GET | `/api/v1/users/me` | Current customer profile | Customer auth |
@@ -212,7 +213,7 @@ Admin UI should be served under `/admin/*` in the frontend and call `/api/v1/adm
 | GET | `/api/v1/admin/users/:id` | Customer detail |
 | GET | `/api/v1/admin/users/:id/orders` | Customer order history (paginated) |
 | PATCH | `/api/v1/admin/users/:id/ban` | Ban customer account (`users:write`) |
-| DELETE | `/api/v1/admin/users/:id/ban` | Remove ban from customer (`users:write`) |
+| DELETE | `/api/v1/admin/users/:id/ban` | Remove ban from customer (`users:write`). `403` for an ADMIN target (ops deactivation is reversed only by an ops invite); `409` if not banned |
 | GET | `/api/v1/admin/users/:id/notes` | List admin notes for customer |
 | POST | `/api/v1/admin/users/:id/notes` | Create admin note (`users:write`) |
 | DELETE | `/api/v1/admin/users/:id/notes/:noteId` | Delete admin note (`users:write`) |
@@ -265,7 +266,7 @@ Admin UI should be served under `/admin/*` in the frontend and call `/api/v1/adm
 | POST | `/api/v1/ops/admin-invites` | Create invite (ops:write). Allows deactivated merchant admin email; reactivates same `userId` on consume |
 | POST | `/api/v1/ops/admin-invites/:inviteId/revoke` | Revoke active invite (ops:write, OTP-gated) |
 | POST | `/api/v1/ops/admin-invites/cleanup-expired` | Cleanup expired invites (ops:write) |
-| POST | `/api/v1/admin/invites/setup/send-otp` | Public — send setup OTP from `/admin/setup` |
+| POST | `/api/v1/admin/invites/setup/send-otp` | Public — send setup OTP from `/admin/setup`. OTP goes to the invited email only (never the body `phone`) |
 | POST | `/api/v1/admin/invites/consume` | Public — complete setup; creates new admin or reactivates deactivated admin |
 
 Setup URL contract:

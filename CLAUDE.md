@@ -45,6 +45,7 @@ Rules maintenance: change rules **only** in this file. A new client repo inherit
 
 6. **Admin console patterns (2026-06-03):** Date filters are **per-page** via `AdminDateRangePicker` (not shell-global). Product editor maps Status → `isActive`, short description → `metaDescription`, Featured → `isFeatured`. Do not reintroduce mock customer/product labels in admin tables — use API fields (`customerName`, `productName`, etc.). See `docs/FRONTEND_DEV_LOG.md`.
 7. **Console + refunds (2026-10-21, core 0.3.0–0.4.0):** Admin/ops UI is built only from the core console design system (`frontend/components/ui/console-theme.css` + `console.tsx`, spec `frontend/docs/CONSOLE_DESIGN_SYSTEM.md`). Do not restyle consoles in client `globals.css`. Refunds follow `backend/docs/REFUND_LIFECYCLE.md`: a failed refund is retried for ~3 days and surfaces as *refund still owed*, the Razorpay webhook must include `refund.failed`, and refund history rows are events, not status changes.
+8. **Engine hardening (2026-11-13, core 0.5.0):** checkout and admin request rules are in `backend/docs/NEXTJS_FRONTEND_INTEGRATION_GUIDE.md` §6.3 (storefront API client, idempotency-key reuse, `PRICE_CHANGED`, cancelled-after-payment outcome, safe redirect) and §7.1.1 (`useAdminList`, local-day date ranges, request sequence, mutation gate, server clock). Backend scheduled jobs and reconciliation issues: `backend/docs/OPS_CONTROL_PLANE_GUIDE.md` §8.3.
 
 > This protocol is non-negotiable.
 
@@ -111,14 +112,16 @@ Canonical contract detail lives in:
 Mandatory minimum rules:
 1. Use only canonical env names and include `/api/v1` in `NEXT_PUBLIC_API_BASE_URL`.
 2. Support both success shapes (enveloped/raw) and branch errors by `error.code`.
-3. Implement refresh-on-401 with access token in memory and refresh token in HTTP-only cookie flow.
-4. Send `idempotency-key` for critical mutations and handle `409` race/conflict responses safely.
+3. Implement refresh-on-401 with access token in memory and refresh token in HTTP-only cookie flow. Customer (storefront) API calls go through `storefrontApiClient` (`frontend/lib/storefront-api-client.ts`), which already does refresh + one retry; do not hand-roll it per module.
+4. Send `idempotency-key` for critical mutations and handle `409` race/conflict responses safely. Reuse the **same** key when retrying the same request (timeout, network error, 5xx, 401 refresh); generate a new key only for a new user action or a changed payload (`frontend/lib/checkout-submit.ts`).
 5. Implement exact PREPAID/COD split; shipping remains manual-only admin action.
 6. Browser never calls webhook routes.
 7. Respect deferred refund lifecycle and admin permission token-snapshot behavior.
 8. Keep ops config/admin invite UI boundaries aligned with backend contracts.
 9. Follow vertical-slice delivery (contract -> client -> UI states -> integration -> tests).
 10. Complete paired frontend/backend go-live checklists before release.
+11. Handle `409 PRICE_CHANGED` from `POST /orders` and `POST /payments/prepare-checkout`: reload cart + delivery quote and show the new total before the customer pays (`isPriceChangedError` / `refreshAfterPriceChange`).
+12. `POST /payments/confirm-prepaid` can return a `CANCELLED` order (payment captured, full refund queued). Never show "Order placed" or fire a purchase event for a `CANCELLED`/`REFUNDED` order — route through `buildCheckoutOutcomeUrl` / `resolveCheckoutOutcome` (`frontend/lib/checkout-outcome.ts`).
 
 ---
 
@@ -495,13 +498,14 @@ export class ApiError extends Error {
 - Access tokens: Store in **Zustand state** (memory only), never localStorage
 - Refresh tokens: Backend handles via HTTP-only cookie (automatic)
 - Cart session: Backend manages `cart_session` cookie — frontend just passes it via `credentials: 'include'`
+- Post-login `?redirect=`: follow it only through `safeStorefrontRedirect()` (`frontend/lib/storefront-redirect.ts`). A `startsWith("/")` check is an open redirect.
 
 ### Checkout Security (CRITICAL)
 **Never trust frontend-calculated totals. Always:**
 1. Send cart items to backend
 2. Backend calculates: subtotal + tax + shipping - discount
 3. Display backend-returned totals ONLY
-4. Razorpay amount MUST come from backend `/payments/initiate` response
+4. Razorpay amount MUST come from the backend `/payments/prepare-checkout` response (or `/payments/initiate` / `/payments/retry` for legacy `PAYMENT_FAILED` orders)
 
 **Forbidden patterns:**
 ```typescript
@@ -525,6 +529,7 @@ Admin routes MUST implement:
 2. **Permission guard** — Check specific permission for action (backend validates, but show/hide UI based on `user.permissions`)
 3. **Session timeout warning** — Alert user before token expiry, auto-redirect on 401
 4. **Idempotency keys** — REQUIRED for all admin mutations (create product, update inventory, refund order)
+5. **List pages** — new admin lists use `useAdminList` (`frontend/hooks/use-admin-list.ts`); date filters go through `toIsoDateRange` (local day, never UTC midnight); one-shot writes go through `createMutationGate` so a double-click sends one request
 
 Admin-only features to hide from storefront:
 - Inventory management
@@ -590,6 +595,8 @@ api.interceptors.response.use(
   }
 );
 ```
+
+In this codebase steps 3–4 are `storefrontApiClient` (`frontend/lib/storefront-api-client.ts`); the snippet above only illustrates the flow. Phone OTP is customer-only (an admin's phone gets no code), and 3 wrong codes per phone in 15 minutes lock that phone — show the `429` as "too many attempts".
 
 **Pattern: Admin Auth (2-step OTP → JWT)**
 ```typescript
@@ -1088,10 +1095,11 @@ Before shipping any auth/ops/admin feature:
 - [ ] Trust badges near payment section
 - [ ] Persistent order summary (sticky on desktop)
 - [ ] Payment method selector: show "Pay Online" (Razorpay) and "Cash on Delivery" options; hide COD if `isCodEnabled` is `false` (check `GET /api/v1/admin/settings/cod` via a public store-info endpoint or feature flag)
-- [ ] **Send `idempotency-key` header** on `POST /api/v1/orders`, `POST /api/v1/payments/initiate`, and `POST /api/v1/payments/verify` (see Backend Contract §4)
+- [ ] **Send `idempotency-key` header** on `POST /api/v1/orders`, `POST /api/v1/payments/prepare-checkout`, `POST /api/v1/payments/confirm-prepaid` (and the legacy `initiate` / `verify` / `retry`) — same key on retry of the same request (see Backend Contract §4)
 - [ ] For COD orders: call `POST /api/v1/orders` with `{ paymentMode: 'COD' }` — skip Razorpay modal entirely; order confirmation screen is shown immediately
-- [ ] For PREPAID orders: complete full flow — `/orders` → `/payments/initiate` → Razorpay modal → `/payments/verify` (see Backend Contract §5)
-- [ ] For prepaid retry: `POST /api/v1/payments/retry` to get a new `razorpay_order_id`, then reopen Razorpay modal
+- [ ] For PREPAID orders: complete full flow — `/payments/prepare-checkout` → Razorpay modal → `/payments/confirm-prepaid` (retried with the same key on failure); the legacy `/orders` → `/payments/initiate` → `/payments/verify` path serves only old `PAYMENT_FAILED` orders (see Backend Contract §5)
+- [ ] For prepaid retry of a legacy `PAYMENT_FAILED` order: `POST /api/v1/payments/retry` returns Razorpay params — the **existing** `razorpay_order_id` while the amount is unchanged (since 0.5.0) — then reopen the Razorpay modal
+- [ ] On `409 PRICE_CHANGED`: reload cart + quote, show the new total; on a `CANCELLED` confirm result: show the refund message, not "Order placed"
 - [ ] Never call `/payments/webhook` from browser (server-only endpoint per Backend Contract §6)
 
 ### Urgency & Social Proof
@@ -1526,6 +1534,8 @@ The backend runs `npm run ci:reliability-gates` in CI. The `contract:admin` gate
 - ❌ **NEVER skip OTP challenge flow for critical ops operations** — 5 endpoints require it
 - ❌ **NEVER show plaintext secret values in admin UI** — mask all secrets
 - ❌ **NEVER use `x-ops-key-id` or `x-ops-api-key` headers** — browser-session-only for ops
+- ❌ **NEVER navigate to a `?redirect=` value without `safeStorefrontRedirect()`** — open redirect
+- ❌ **NEVER mint a new idempotency key for a retry of the same request** — that is how duplicate orders happen
 
 ---
 
@@ -1790,6 +1800,9 @@ This is a **production-grade, multi-tenant e-commerce backend template** built f
 - All webhook endpoints MUST verify signatures (HMAC) before processing.
 - Rate limiting is mandatory on all public endpoints.
 - Admin routes MUST check both JWT validity AND admin role.
+- Phone OTP sign-in is customer-only: never send or accept a phone OTP that would mint tokens for a non-`CUSTOMER` user. Admin setup OTP goes to the invited email only.
+- Refresh tokens are stored as `sha256:<hex>` of the full token. Do not reintroduce bcrypt for them (bcrypt reads 72 bytes, which every refresh JWT of one user shares).
+- Once money is captured (`confirm-prepaid`, capture webhooks), business failures must not throw and roll back: cancel the order and queue a full refund instead.
 
 ---
 
