@@ -27,6 +27,7 @@ import {
 } from "@/hooks/use-auth-turnstile";
 import type { AuthSession } from "@/types/user";
 import { otpSchema, passwordSchema } from "@/lib/validators";
+import { safeStorefrontRedirect } from "@/lib/storefront-redirect";
 
 const OTP_RESEND_COOLDOWN = 60;
 
@@ -59,7 +60,8 @@ function LoginPageContent() {
   const setSession = useAuthStore((s) => s.setSession);
   const justReset = searchParams.get("reset") === "success";
   const rawRedirect = searchParams.get("redirect") ?? "";
-  const redirectTo = rawRedirect.startsWith("/") && !rawRedirect.startsWith("//") ? rawRedirect : "/dashboard";
+  // Same-origin paths only — rejects `/\evil.com`, `/<tab>/evil.com` (open redirect).
+  const redirectTo = safeStorefrontRedirect(rawRedirect);
 
   const [step, setStep] = useState<Step>({ kind: "identifier" });
   const [error, setError] = useState<string | null>(null);

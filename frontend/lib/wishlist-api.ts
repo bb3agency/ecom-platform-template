@@ -1,5 +1,5 @@
-import { apiClient } from "@/lib/api";
 import type { Product } from "@/types/product";
+import { storefrontApiClient } from "@/lib/storefront-api-client";
 
 export interface WishlistItem {
   id: string;
@@ -34,7 +34,7 @@ export async function getWishlist(
   if (query?.page) params.set("page", String(query.page));
   if (query?.limit) params.set("limit", String(query.limit));
   const qs = params.toString();
-  return apiClient<WishlistListResponse>(`/wishlist${qs ? `?${qs}` : ""}`, {
+  return storefrontApiClient<WishlistListResponse>(`/wishlist${qs ? `?${qs}` : ""}`, {
     method: "GET",
     accessToken,
   });
@@ -44,7 +44,7 @@ export async function addToWishlist(
   productId: string,
   accessToken: string,
 ): Promise<WishlistItemSummary> {
-  return apiClient<WishlistItemSummary>("/wishlist/items", {
+  return storefrontApiClient<WishlistItemSummary>("/wishlist/items", {
     method: "POST",
     accessToken,
     body: JSON.stringify({ productId }),
@@ -55,7 +55,7 @@ export async function removeFromWishlist(
   productId: string,
   accessToken: string,
 ): Promise<{ message: string }> {
-  return apiClient<{ message: string }>(`/wishlist/items/${productId}`, {
+  return storefrontApiClient<{ message: string }>(`/wishlist/items/${productId}`, {
     method: "DELETE",
     accessToken,
   });

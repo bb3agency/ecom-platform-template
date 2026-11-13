@@ -1,4 +1,4 @@
-import { apiClient } from "@/lib/api";
+import { storefrontApiClient } from "@/lib/storefront-api-client";
 
 export interface ReviewAuthor {
   firstName: string;
@@ -99,7 +99,7 @@ export async function getRecentApprovedReviews(
   limit = 3,
 ): Promise<ReviewListResponse> {
   const safeLimit = Math.min(10, Math.max(1, limit));
-  const payload = await apiClient<unknown>(
+  const payload = await storefrontApiClient<unknown>(
     `/reviews/recent?limit=${safeLimit}`,
   );
   return normalizeReviewListResponse(payload);
@@ -113,7 +113,7 @@ export async function getProductReviews(
   if (query?.page) params.set("page", String(query.page));
   if (query?.limit) params.set("limit", String(query.limit));
   const qs = params.toString();
-  const payload = await apiClient<unknown>(
+  const payload = await storefrontApiClient<unknown>(
     `/reviews/product/${productSlug}${qs ? `?${qs}` : ""}`,
   );
   return normalizeReviewListResponse(payload);
@@ -131,7 +131,7 @@ export async function createReview(
   input: CreateReviewInput,
   accessToken: string,
 ): Promise<Review> {
-  const payload = await apiClient<unknown>("/reviews", {
+  const payload = await storefrontApiClient<unknown>("/reviews", {
     method: "POST",
     accessToken,
     body: JSON.stringify(input),
@@ -151,7 +151,7 @@ export async function getMyReviews(
   if (query?.page) params.set("page", String(query.page));
   if (query?.limit) params.set("limit", String(query.limit));
   const qs = params.toString();
-  const payload = await apiClient<unknown>(`/reviews/me${qs ? `?${qs}` : ""}`, {
+  const payload = await storefrontApiClient<unknown>(`/reviews/me${qs ? `?${qs}` : ""}`, {
     method: "GET",
     accessToken,
   });
@@ -182,7 +182,7 @@ export async function getReviewableProducts(
   orderId: string,
   accessToken: string,
 ): Promise<ReviewableProduct[]> {
-  const payload = await apiClient<unknown>(
+  const payload = await storefrontApiClient<unknown>(
     `/reviews/eligible?orderId=${encodeURIComponent(orderId)}`,
     { method: "GET", accessToken },
   );
