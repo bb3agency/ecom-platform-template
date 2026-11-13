@@ -1461,3 +1461,11 @@ In a new tab, Zustand starts empty (`accessToken = null`). `useSessionBootstrap`
 - **Contract:** `refundOwed` on the admin order detail, `refundsOwed` on the action queue, `POST /admin/orders/:id/refund/retry`.
 - **Ops action:** the Razorpay webhook must include `refund.failed`. The owner subscribed it on 2026-10-21.
 - **Canonical doc:** `backend/docs/REFUND_LIFECYCLE.md`.
+
+## 2026-11-13 — Shared admin list hook (`useAdminList`)
+
+- **Problem:** every admin list hand-rolled page/filter/loading/error state. Pages were reset by a `useEffect` after a filter change, so each change fired a fetch for "new filter, old page" before the page-1 fetch. Products and categories (on `useAdminListResource`) had no request sequencing, and categories/coupons/customers filters were not in the URL.
+- **Hook:** `hooks/use-admin-list.ts` owns URL-synced filters + page (`replaceState`, defaults dropped, `param: false` keeps free-text search local), resets to page 1 inside the filter setter (and during render when `resetKey`, e.g. the page date range, changes), last-request-wins loading via `lib/request-sequence.ts`, `loading`/`error`/`status` (`loading | error | empty | ready`), `reload()`, and `notifyAdminDataChanged` refresh scopes. The rules live React-free in `lib/admin-list.ts` and are tested in `lib/admin-list.test.ts`.
+- **Migrated:** orders, customers, products, categories, coupons, reviews, payments. `useAdminListResource` was removed (no callers left).
+- **Not migrated yet:** returns (silent-refresh spinner), shipments, inventory. Move them over when they are next touched.
+- **Small behaviour fixes:** categories' "All" option is now `?status=all`, so it survives in the URL next to the `active` default. Coupon row-action errors no longer share state with list-load errors.

@@ -1,24 +1,21 @@
 "use client";
 
-import { useUrlFilterState } from "@/hooks/use-url-filter-state";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { AdminPagination } from "@/components/admin/AdminPagination";
 import { AdminTableScroll } from "@/components/admin/AdminTableScroll";
 import {
   buildAdminQuery,
-  coercePaginatedResponse,
   toIsoDateRange,
   type AdminReviewListItem,
-  readPaginatedItems,
   type PaginatedResponse,
 } from "@/lib/admin-api";
+import type { AdminListFilterSpecs, AdminListQuery } from "@/lib/admin-list";
 import { formatAdminDate } from "@/lib/admin-format";
 import { resolveProductImageUrl } from "@/lib/media-url";
 import { getApiErrorMessage } from "@/lib/error-messages";
 import { toast } from "@/lib/toast";
 import { useAuthenticatedApi } from "@/hooks/use-authenticated-api";
-import { useRequestSequence } from "@/hooks/use-request-sequence";
-import { useAdminDataRefreshEffect } from "@/hooks/use-admin-data-refresh-effect";
+import { useAdminList } from "@/hooks/use-admin-list";
 import { notifyAdminDataChanged } from "@/lib/admin-data-refresh";
 import { createIdempotencyKey } from "@/lib/idempotency";
 import { useAdminAuth } from "@/contexts/admin-auth-context";
@@ -33,6 +30,15 @@ import { useConfirm } from "@/components/ui/confirm-dialog";
 
 const PAGE_SIZE = 20;
 
+type ReviewListFilters = { approved: string; rating: string; search: string };
+
+const REVIEW_LIST_FILTERS: AdminListFilterSpecs<ReviewListFilters> = {
+  // URL-backed so the dashboard's "reviews to moderate" link opens pre-filtered.
+  approved: { defaultValue: "", allowed: ["true", "false"] },
+  rating: { defaultValue: "", allowed: ["1", "2", "3", "4", "5"] },
+  search: { defaultValue: "", param: false },
+};
+
 export function AdminReviewsList({
   from,
   to,
@@ -43,61 +49,46 @@ export function AdminReviewsList({
   const api = useAuthenticatedApi();
   const { adminUser } = useAdminAuth();
   const canModerate = hasAdminPermission(adminUser, ADMIN_PERMISSIONS.reviewsModerate);
-  const [page, setPage] = useState(1);
-  // URL-backed so the dashboard's "reviews to moderate" link opens pre-filtered.
-  const [approvedFilter, setApprovedFilter] = useUrlFilterState("approved", "", ["true", "false"]);
-  const [ratingFilter, setRatingFilter] = useState("");
   const [searchInput, setSearchInput] = useState("");
-  const [search, setSearch] = useState("");
   const [selectedIds, setSelectedIds] = useState<Record<string, boolean>>({});
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [data, setData] =
-    useState<PaginatedResponse<AdminReviewListItem> | null>(null);
   const [actionId, setActionId] = useState<string | null>(null);
   const { confirm, confirmDialog } = useConfirm();
 
-  const listRequests = useRequestSequence();
-  const load = useCallback(async () => {
-    const ticket = listRequests.begin();
-    setLoading(true);
-    setError(null);
-    try {
-      const rating =
-        ratingFilter !== "" ? Number(ratingFilter) : undefined;
-      const response = await api<PaginatedResponse<AdminReviewListItem>>(
+  const fetchPage = useCallback(
+    ({ page, filters }: AdminListQuery<ReviewListFilters>) => {
+      const rating = filters.rating !== "" ? Number(filters.rating) : undefined;
+      return api<PaginatedResponse<AdminReviewListItem>>(
         `/admin/reviews${buildAdminQuery({
           page,
           limit: PAGE_SIZE,
           approved:
-            approvedFilter === "" ? undefined : approvedFilter === "true",
+            filters.approved === "" ? undefined : filters.approved === "true",
           ratingGte: rating,
           ratingLte: rating,
-          search: search.trim() || undefined,
+          search: filters.search || undefined,
           from: from ? toIsoDateRange(from) : undefined,
           to: to ? toIsoDateRange(to, true) : undefined,
         })}`,
       );
-      if (!listRequests.isLatest(ticket)) return;
-      setData(coercePaginatedResponse(response));
-    } catch (err) {
-      if (!listRequests.isLatest(ticket)) return;
-      setError(getApiErrorMessage(err));
-      setData(null);
-    } finally {
-      if (listRequests.isLatest(ticket)) setLoading(false);
-    }
-  }, [api, listRequests, page, approvedFilter, ratingFilter, search, from, to]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  useAdminDataRefreshEffect(load, ["reviews"]);
-
-  useEffect(() => {
-    setPage(1);
-  }, [approvedFilter, ratingFilter, search, from, to]);
+    },
+    [api, from, to],
+  );
+  const {
+    filters,
+    setFilter,
+    data,
+    items,
+    loading,
+    error,
+    setPage,
+    reload: load,
+  } = useAdminList<AdminReviewListItem, ReviewListFilters>({
+    filters: REVIEW_LIST_FILTERS,
+    fetchPage,
+    refreshScopes: ["reviews"],
+    resetKey: `${from ?? ""}|${to ?? ""}`,
+  });
+  const { approved: approvedFilter, rating: ratingFilter } = filters;
 
   async function moderate(reviewId: string, approved: boolean) {
     setActionId(reviewId);
@@ -139,9 +130,6 @@ export function AdminReviewsList({
     }
   }
 
-  const rawItems = readPaginatedItems(data);
-  const items = rawItems;
-
   return (
     <>
       {confirmDialog}
@@ -156,10 +144,7 @@ export function AdminReviewsList({
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                setSearch(searchInput.trim());
-                setPage(1);
-              }
+              if (e.key === "Enter") setFilter("search", searchInput.trim());
             }}
           />
         </div>
@@ -168,7 +153,7 @@ export function AdminReviewsList({
           className="h-9 rounded-md border border-input bg-background px-3 text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-ring/40 sm:min-w-32"
           aria-label="Filter by rating"
           value={ratingFilter}
-          onChange={(e) => setRatingFilter(e.target.value)}
+          onChange={(e) => setFilter("rating", e.target.value)}
         >
           <option value="">All Ratings</option>
           <option value="5">5 Stars</option>
@@ -182,7 +167,7 @@ export function AdminReviewsList({
           className="h-9 rounded-md border border-input bg-background px-3 text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-ring/40 sm:min-w-32"
           aria-label="Filter by status"
           value={approvedFilter}
-          onChange={(e) => setApprovedFilter(e.target.value)}
+          onChange={(e) => setFilter("approved", e.target.value)}
         >
           <option value="">All Status</option>
           <option value="true">Published</option>
@@ -192,10 +177,7 @@ export function AdminReviewsList({
         <button
           type="button"
           className="flex h-9 items-center gap-1.5 rounded-md border border-border/50 bg-card px-3 text-sm font-medium text-foreground hover:bg-muted transition-colors"
-          onClick={() => {
-            setSearch(searchInput.trim());
-            setPage(1);
-          }}
+          onClick={() => setFilter("search", searchInput.trim())}
         >
           Search
         </button>
