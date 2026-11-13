@@ -29,12 +29,44 @@ export type ReadinessCheckResult = {
   runtimeConfigMissingKeys: string[];
 };
 
+/** Upper bound for each dependency probe so /health and /health/ready always answer (be-rel-07). */
+export const HEALTH_PROBE_TIMEOUT_MS = 2_000;
+
+const UNKNOWN_QUEUE_SUMMARY = {
+  waiting: 0,
+  active: 0,
+  oldestWaitingAgeSeconds: 0,
+  workerFreshness: 'unknown' as WorkerFreshness
+};
+
+class ProbeTimeoutError extends Error {
+  constructor(probe: string, timeoutMs: number) {
+    super(`${probe} probe timed out after ${timeoutMs}ms`);
+    this.name = 'ProbeTimeoutError';
+  }
+}
+
+async function withProbeTimeout<T>(probe: string, task: () => Promise<T>, timeoutMs: number): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new ProbeTimeoutError(probe, timeoutMs)), timeoutMs);
+    timer.unref?.();
+  });
+  try {
+    return await Promise.race([task(), timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export class HealthService {
-  constructor(private readonly fastify: FastifyInstance) {}
+  constructor(
+    private readonly fastify: FastifyInstance,
+    private readonly probeTimeoutMs: number = HEALTH_PROBE_TIMEOUT_MS
+  ) {}
 
   async check(): Promise<HealthCheckResult> {
-    const database = await this.pingDatabase();
-    const redis = await this.pingRedis();
+    const [database, redis] = await Promise.all([this.pingDatabase(), this.pingRedis()]);
     const isHealthy = database === 'connected' && redis === 'connected';
 
     return {
@@ -47,9 +79,15 @@ export class HealthService {
   }
 
   async checkReadiness(): Promise<ReadinessCheckResult> {
-    const database = await this.pingDatabase();
-    const redis = await this.pingRedis();
-    const queueSummary = await this.queueSummary();
+    const [database, redis] = await Promise.all([this.pingDatabase(), this.pingRedis()]);
+    // Queue counts need Redis; when it is down (or slow) report freshness as
+    // 'unknown' instead of throwing or hanging the readiness probe.
+    const queueSummary =
+      redis === 'connected'
+        ? await withProbeTimeout('queues', () => this.queueSummary(), this.probeTimeoutMs).catch(
+            () => UNKNOWN_QUEUE_SUMMARY
+          )
+        : UNKNOWN_QUEUE_SUMMARY;
     const strictProfile = this.isProductionLikeProfile();
     const runtimeConfigMissingKeys = strictProfile ? findMissingStrictOpsConfigKeys(process.env) : [];
     const isReady =
@@ -90,7 +128,7 @@ export class HealthService {
 
   private async pingDatabase(): Promise<DependencyStatus> {
     try {
-      await this.fastify.prisma.$queryRaw`SELECT 1`;
+      await withProbeTimeout('database', () => this.fastify.prisma.$queryRaw`SELECT 1`, this.probeTimeoutMs);
       return 'connected';
     } catch {
       return 'disconnected';
@@ -99,7 +137,7 @@ export class HealthService {
 
   private async pingRedis(): Promise<DependencyStatus> {
     try {
-      const redisPing = await this.fastify.redis.ping();
+      const redisPing = await withProbeTimeout('redis', () => this.fastify.redis.ping(), this.probeTimeoutMs);
       return redisPing === 'PONG' ? 'connected' : 'disconnected';
     } catch {
       return 'disconnected';

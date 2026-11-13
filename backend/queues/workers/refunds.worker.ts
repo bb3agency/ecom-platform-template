@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { DelayedError, Worker, type ConnectionOptions, type Job } from 'bullmq';
 import { PaymentStatus, PrismaClient as RealPrismaClient } from '@prisma/client';
 import { createPaymentProvider } from '@modules/payments/payment-provider';
@@ -25,6 +26,8 @@ type InitiateRazorpayRefundJobData = {
 
 type RefundsWorkerDeps = {
   PrismaClient?: typeof RealPrismaClient;
+  /** Shared process-wide client (workers/index.ts) — avoids one connection pool per worker. */
+  prisma?: RealPrismaClient;
   Worker?: typeof Worker;
   createPaymentProvider?: typeof createPaymentProvider;
   sendTechnicalFailureAlert?: typeof sendTechnicalFailureAlert;
@@ -32,6 +35,17 @@ type RefundsWorkerDeps = {
 };
 
 const DEFAULT_FAST_ATTEMPTS = 3;
+
+/**
+ * Stable identifier for ONE refund job, shared by every retry (fast and slow) of
+ * that job. Sent to Razorpay as the refund `receipt` (max 40 chars) so an attempt
+ * whose outcome is unknown can be found again instead of being paid out twice.
+ * A new admin "Retry refund" is a new job and therefore a new receipt.
+ */
+export function buildRefundReceipt(job: Pick<Job, 'id'>, data: Pick<InitiateRazorpayRefundJobData, 'orderId'>): string {
+  const identity = job.id ?? `order:${data.orderId}`;
+  return `rf_${createHash('sha256').update(identity).digest('hex').slice(0, 32)}`;
+}
 
 export function createRefundsWorker(
   connection: ConnectionOptions,
@@ -42,7 +56,7 @@ export function createRefundsWorker(
   const resolvePaymentProvider = deps?.createPaymentProvider ?? createPaymentProvider;
   const alertFn = deps?.sendTechnicalFailureAlert ?? sendTechnicalFailureAlert;
   const now = deps?.now ?? Date.now;
-  const prisma = new PrismaClientCtor();
+  const prisma = deps?.prisma ?? new PrismaClientCtor();
   const paymentProvider = resolvePaymentProvider();
 
   async function writeRefundNote(orderId: string, actor: string, note: string): Promise<void> {
@@ -148,15 +162,30 @@ export function createRefundsWorker(
       }
 
       // --- Phase 2: external provider call (after the reservation is committed) ---
+      const receipt = buildRefundReceipt(job, data);
+      const lookupRefund = paymentProvider.findRefundByReceipt?.bind(paymentProvider);
+      const findExisting = lookupRefund
+        ? () => lookupRefund({ providerPaymentId: gate.providerPaymentId, receipt })
+        : null;
+      const isRetry = (job.attemptsMade ?? 0) > 0 || round > 0;
       try {
-        const result = await paymentProvider.initiateRefund({
-          providerPaymentId: gate.providerPaymentId,
-          amount: gate.refundAmountPaise,
-          notes: {
-            orderId: gate.orderId,
-            reason: data.reason
-          }
-        });
+        // be-rel-03: on a retry a previous attempt may have been accepted by the
+        // provider even though we never saw the answer (timeout / dropped
+        // connection). Ask first; only send a new refund when there is none. A
+        // failed lookup throws into the transient-error path below — we never
+        // send blind on a retry.
+        const existing = isRetry && findExisting ? await findExisting() : null;
+        const result =
+          existing ??
+          (await paymentProvider.initiateRefund({
+            providerPaymentId: gate.providerPaymentId,
+            amount: gate.refundAmountPaise,
+            receipt,
+            notes: {
+              orderId: gate.orderId,
+              reason: data.reason
+            }
+          }));
         // History is written only once the provider has accepted the refund —
         // never per attempt. The refund.processed webhook later finalises it.
         await writeRefundNote(
@@ -166,8 +195,24 @@ export function createRefundsWorker(
         );
         return;
       } catch (err) {
+        // be-rel-03: a timeout / network error / 5xx is an UNKNOWN outcome — the
+        // provider may have accepted the refund. Reconcile before releasing the
+        // reservation; if the refund exists, this attempt actually succeeded.
+        if (!isPaymentProviderRejection(err) && findExisting) {
+          const reconciled = await findExisting().catch(() => null);
+          if (reconciled) {
+            await writeRefundNote(
+              gate.orderId,
+              actor,
+              `${REFUND_NOTE.sent} (${gate.refundAmountPaise} paise) — ref ${reconciled.providerRefundId}`
+            );
+            return;
+          }
+        }
+
         // Release the reservation: the money is still owed, so the balance must
-        // be refundable again for the next (automatic or admin) attempt.
+        // be refundable again for the next (automatic or admin) attempt. A retry
+        // of this job re-checks the provider by receipt before sending again.
         await prisma.payment.updateMany({
           where: { id: gate.paymentId, status: { in: [PaymentStatus.CAPTURED, PaymentStatus.PARTIALLY_REFUNDED] } },
           data: { refundPendingAmountPaise: { decrement: gate.refundAmountPaise } }

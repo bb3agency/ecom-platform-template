@@ -13,7 +13,7 @@ import { validateBootstrapEnv } from '@config/app.config';
 import { refreshFeatureFlags, featureFlags } from '@config/feature-flags';
 import prismaClient from '../../src/database/prisma.service';
 import { applyOpsConfigRuntimeOverlay, type OpsConfigRuntimePrismaLike } from '../../src/modules/ops/ops-config-runtime';
-import { dlqJobOptions } from '../queue-registry';
+import { defaultJobOptions, dlqJobOptions } from '../queue-registry';
 import { createOrderProcessingWorker } from './order-processing.worker';
 import { createShippingWorker } from './shipping.worker';
 import { createNotificationsWorker } from './notifications.worker';
@@ -348,16 +348,28 @@ async function bootstrapWorkers(): Promise<void> {
     });
   }
 
-  const orderProcessingWorker = createOrderProcessingWorker(workerRedis);
-  const shippingWorker = createShippingWorker(workerRedis);
-  const notificationsWorker = createNotificationsWorker(workerRedis);
-  const inventoryAlertsWorker = createInventoryAlertsWorker(workerRedis);
-  const refundsWorker = createRefundsWorker(workerRedis);
-  const cartCleanupWorker = createCartCleanupWorker(workerRedis);
-  const analyticsWorker = createAnalyticsWorker(workerRedis);
-  const outboxDispatchWorker = createOutboxDispatchWorker(workerRedis);
-  const reconciliationWorker = createReconciliationWorker(workerRedis);
-  const deadLetterWorker = createDeadLetterWorker(workerRedis);
+  // be-rel-08: every worker shares the single process-wide PrismaClient so the
+  // worker process holds one connection pool (closed by shutdown()) instead of
+  // eleven. Size it with `connection_limit` in DATABASE_URL.
+  const sharedWorkerDeps = { prisma: prismaClient };
+  const orderProcessingWorker = createOrderProcessingWorker(
+    workerRedis,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    sharedWorkerDeps
+  );
+  const shippingWorker = createShippingWorker(workerRedis, undefined, sharedWorkerDeps);
+  const notificationsWorker = createNotificationsWorker(workerRedis, sharedWorkerDeps);
+  const inventoryAlertsWorker = createInventoryAlertsWorker(workerRedis, sharedWorkerDeps);
+  const refundsWorker = createRefundsWorker(workerRedis, sharedWorkerDeps);
+  const cartCleanupWorker = createCartCleanupWorker(workerRedis, sharedWorkerDeps);
+  const analyticsWorker = createAnalyticsWorker(workerRedis, sharedWorkerDeps);
+  const outboxDispatchWorker = createOutboxDispatchWorker(workerRedis, sharedWorkerDeps);
+  const reconciliationWorker = createReconciliationWorker(workerRedis, sharedWorkerDeps);
+  const deadLetterWorker = createDeadLetterWorker(workerRedis, sharedWorkerDeps);
 
   // --- DLQ connection fix (R3) ---
   // Use workerRedis.duplicate() to preserve password, TLS, and db config from the
@@ -475,7 +487,13 @@ async function bootstrapWorkers(): Promise<void> {
         )
       }
     );
-    shiprocketRefreshQueue = new Queue('shipping', { connection: shiprocketRefreshConnection });
+    // be-rel-12: registry defaults (attempts/backoff + removeOnComplete/removeOnFail
+    // age caps) so each repeatable run is retried on a transient error and does not
+    // accumulate in Redis forever.
+    shiprocketRefreshQueue = new Queue('shipping', {
+      connection: shiprocketRefreshConnection,
+      defaultJobOptions
+    });
     shiprocketRefreshQueue
       .add(
         'shiprocket-token-refresh',

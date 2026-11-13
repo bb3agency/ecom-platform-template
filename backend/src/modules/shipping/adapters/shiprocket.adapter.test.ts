@@ -462,6 +462,33 @@ describe('ShiprocketAdapter', () => {
     expect(result.providerPayload).toMatchObject({ alreadyCancelled: true });
   });
 
+  it.each(['Order is already canceled', 'This order has already been cancelled'])(
+    'treats "%s" as an idempotent cancel success',
+    async (message) => {
+      const fetchMock = vi.fn()
+        .mockResolvedValueOnce({ ok: true, status: 200, text: async () => JSON.stringify({ token: 'sr-token-123' }) })
+        .mockResolvedValueOnce({ ok: false, status: 400, text: async () => JSON.stringify({ message }) });
+      vi.stubGlobal('fetch', fetchMock);
+
+      const adapter = new ShiprocketAdapter({ email: 'test@example.com', password: 'secret' });
+      await expect(adapter.cancelShipment('123456')).resolves.toMatchObject({ cancelled: true });
+    }
+  );
+
+  it('does NOT treat a cancel rejection that merely mentions "cancel" as success (be-rel-06)', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, status: 200, text: async () => JSON.stringify({ token: 'sr-token-123' }) })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        text: async () => JSON.stringify({ message: 'Invalid order id to cancel' })
+      });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const adapter = new ShiprocketAdapter({ email: 'test@example.com', password: 'secret' });
+    await expect(adapter.cancelShipment('AWB123')).rejects.toThrow();
+  });
+
   it('checks serviceability and returns true when couriers exist', async () => {
     vi.stubEnv('SHIPROCKET_PICKUP_PINCODE', '110001');
     const fetchMock = vi.fn()

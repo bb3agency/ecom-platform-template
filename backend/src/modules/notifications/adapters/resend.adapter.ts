@@ -27,7 +27,9 @@ export class ResendAdapter implements EmailProviderAdapter {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${this.apiKey}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        // Resend dedupes on this header for 24h (max 256 chars).
+        ...(input.idempotencyKey ? { 'Idempotency-Key': input.idempotencyKey.slice(0, 256) } : {})
       },
       body: JSON.stringify({
         from: this.fromEmail,

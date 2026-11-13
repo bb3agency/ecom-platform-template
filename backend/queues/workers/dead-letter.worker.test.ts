@@ -70,4 +70,52 @@ describe('dead-letter worker', () => {
       })
     );
   });
+
+  it('dedups notification-delivery failures using the original job name from the DLQ payload (be-rel-11)', async () => {
+    createDeadLetterWorker({} as never, workerDeps);
+
+    await processor?.({
+      name: 'dead-letter-entry',
+      id: 'dlq_job_3',
+      data: { sourceQueue: 'notifications', jobName: 'send-sms', jobId: 'n1' }
+    });
+
+    expect(sendTechnicalFailureAlert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        jobName: 'send-sms',
+        component: 'dead-letter-send-sms',
+        terminalFailure: false,
+        errorMessage: expect.stringContaining('from queue "notifications"')
+      })
+    );
+  });
+
+  it('reports the original job name for non-notification DLQ entries', async () => {
+    createDeadLetterWorker({} as never, workerDeps);
+
+    await processor?.({
+      name: 'dead-letter-entry',
+      id: 'dlq_job_4',
+      data: { sourceQueue: 'refunds', jobName: 'initiate-razorpay-refund' }
+    });
+
+    expect(sendTechnicalFailureAlert).toHaveBeenCalledWith(
+      expect.objectContaining({ jobName: 'initiate-razorpay-refund', terminalFailure: true })
+    );
+  });
+
+  it('uses an injected shared prisma client instead of constructing its own pool (be-rel-08)', async () => {
+    const PrismaCtor = vi.fn();
+    const shared = { shared: true };
+    createDeadLetterWorker({} as never, {
+      ...workerDeps,
+      PrismaClient: PrismaCtor as unknown as DeadLetterPrismaType,
+      prisma: shared as never
+    });
+
+    await processor?.({ name: 'some-job', id: 'x', data: {} });
+
+    expect(PrismaCtor).not.toHaveBeenCalled();
+    expect(sendTechnicalFailureAlert).toHaveBeenCalledWith(expect.objectContaining({ prisma: shared }));
+  });
 });

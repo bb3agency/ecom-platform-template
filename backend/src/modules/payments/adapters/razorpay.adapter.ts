@@ -19,6 +19,12 @@ type RazorpayRefundResponse = {
   id: string;
   amount: number;
   status: string;
+  receipt?: string | null;
+  notes?: Record<string, unknown> | unknown[] | null;
+};
+
+type RazorpayRefundListResponse = {
+  items?: RazorpayRefundResponse[];
 };
 
 export class RazorpayAdapter implements PaymentProviderAdapter {
@@ -88,7 +94,11 @@ export class RazorpayAdapter implements PaymentProviderAdapter {
       method: 'POST',
       body: JSON.stringify({
         ...(input.amount !== undefined ? { amount: input.amount } : {}),
-        notes: input.notes ?? {}
+        ...(input.receipt ? { receipt: input.receipt } : {}),
+        notes: {
+          ...(input.notes ?? {}),
+          ...(input.receipt ? { refundAttemptId: input.receipt } : {})
+        }
       })
     });
 
@@ -97,6 +107,21 @@ export class RazorpayAdapter implements PaymentProviderAdapter {
       status: response.status,
       amount: response.amount
     };
+  }
+
+  async findRefundByReceipt(input: { providerPaymentId: string; receipt: string }): Promise<InitiateRefundResult | null> {
+    const response = await this.request<RazorpayRefundListResponse>(
+      `/payments/${input.providerPaymentId}/refunds?count=100`,
+      { method: 'GET' }
+    );
+    const match = (response.items ?? []).find((refund) => {
+      if (refund.status === 'failed') {
+        return false;
+      }
+      const notes = refund.notes && !Array.isArray(refund.notes) ? refund.notes : {};
+      return refund.receipt === input.receipt || notes['refundAttemptId'] === input.receipt;
+    });
+    return match ? { providerRefundId: match.id, status: match.status, amount: match.amount } : null;
   }
 
   private async request<T>(path: string, init: RequestInit): Promise<T> {

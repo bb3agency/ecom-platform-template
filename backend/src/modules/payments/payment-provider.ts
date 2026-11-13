@@ -62,11 +62,23 @@ class CircuitBreakerPaymentAdapter implements PaymentProviderAdapter {
   private failures = 0;
   private openUntil = 0;
 
+  readonly findRefundByReceipt?: PaymentProviderAdapter['findRefundByReceipt'];
+
   constructor(
     private readonly delegate: PaymentProviderAdapter,
     private readonly failureThreshold = 5,
     private readonly cooldownMs = 30_000
-  ) {}
+  ) {
+    // Only expose the lookup when the wrapped adapter supports it — a missing
+    // capability must not masquerade as a definite "no such refund".
+    const lookup = delegate.findRefundByReceipt?.bind(delegate);
+    if (lookup) {
+      this.findRefundByReceipt = async (input) => {
+        this.assertClosed();
+        return lookup(input);
+      };
+    }
+  }
 
   private assertClosed(): void {
     if (Date.now() < this.openUntil) {

@@ -111,6 +111,8 @@ function isQueuePauseAndDrainEnabled(): boolean {
 
 export type CartCleanupWorkerDeps = {
   PrismaClient?: typeof RealPrismaClient;
+  /** Shared process-wide client (workers/index.ts) — avoids one connection pool per worker. */
+  prisma?: RealPrismaClient;
   Worker?: typeof Worker;
   /**
    * Injectable Redis publisher for tests — avoids real IORedis connection.
@@ -154,7 +156,7 @@ export function createCartCleanupWorker(
 ): Worker {
   const PrismaClientCtor = deps?.PrismaClient ?? RealPrismaClient;
   const WorkerCtor = deps?.Worker ?? Worker;
-  const prisma = new PrismaClientCtor();
+  const prisma = deps?.prisma ?? new PrismaClientCtor();
   const sleepFn = deps?.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const paymentDrainTimeoutMs =
     deps?.paymentDrainTimeoutMs ??
