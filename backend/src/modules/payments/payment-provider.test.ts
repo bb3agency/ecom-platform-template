@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { resolvePaymentProviderRuntime } from './payment-provider';
+import { createPaymentProvider, resolvePaymentProviderRuntime } from './payment-provider';
 
 describe('payment provider runtime', () => {
   afterEach(() => {
@@ -93,5 +93,52 @@ describe('payment provider runtime', () => {
     });
     expect(result.status).toBe('cod_pending');
     expect(result.providerOrderId).toBe('COD-ORD-2026-00099');
+  });
+});
+
+describe('circuit breaker capture listing pass-through', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  it('exposes listCapturedPayments for Razorpay and forwards to the adapter', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ items: [] }) });
+    vi.stubGlobal('fetch', fetchMock);
+    const provider = createPaymentProvider({
+      PAYMENT_PROVIDER: 'razorpay',
+      RAZORPAY_KEY_ID: 'rzp_key',
+      RAZORPAY_KEY_SECRET: 'rzp_secret',
+      RAZORPAY_WEBHOOK_SECRET: 'rzp_webhook'
+    } as NodeJS.ProcessEnv);
+
+    expect(provider.listCapturedPayments).toBeTypeOf('function');
+    await expect(
+      provider.listCapturedPayments?.({ from: new Date(0), to: new Date(1000), count: 100, skip: 0 })
+    ).resolves.toEqual({ items: [], hasMore: false });
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain('/payments?');
+  });
+
+  it('refuses to list while the breaker is open', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network down')));
+    const provider = createPaymentProvider({
+      PAYMENT_PROVIDER: 'razorpay',
+      RAZORPAY_KEY_ID: 'rzp_key',
+      RAZORPAY_KEY_SECRET: 'rzp_secret',
+      RAZORPAY_WEBHOOK_SECRET: 'rzp_webhook',
+      PAYMENT_CB_FAILURE_THRESHOLD: '1',
+      PAYMENT_CB_COOLDOWN_MS: '60000'
+    } as NodeJS.ProcessEnv);
+    // One failed createOrder opens the breaker (threshold 1).
+    await expect(provider.createOrder({ amount: 100, currency: 'INR', receipt: 'r' })).rejects.toThrow();
+
+    await expect(
+      provider.listCapturedPayments?.({ from: new Date(0), to: new Date(1000), count: 100, skip: 0 })
+    ).rejects.toThrow('Payment provider temporarily unavailable');
+  });
+
+  it('does not expose listCapturedPayments for providers without a ledger', () => {
+    const provider = createPaymentProvider({ PAYMENT_PROVIDER: 'cod' } as NodeJS.ProcessEnv);
+    expect(provider.listCapturedPayments).toBeUndefined();
   });
 });

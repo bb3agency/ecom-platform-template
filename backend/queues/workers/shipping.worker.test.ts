@@ -10,16 +10,24 @@ const state = {
   cancelShipmentShiprocket: vi.fn(),
   trackShipmentDelhivery: vi.fn(),
   trackShipmentShiprocket: vi.fn(),
+  findShipmentByReference: vi.fn(),
+  /** When false the per-provider adapter mocks omit findShipmentByReference. */
+  lookupSupported: true,
+  outboxCreate: vi.fn(),
+  outboxEnabled: false,
   // Top-level prisma shipment (used outside $transaction, e.g. cancel-shipment job)
   shipment: {
     findFirst: vi.fn(),
     findMany: vi.fn(),
-    updateMany: vi.fn()
+    updateMany: vi.fn(),
+    create: vi.fn(),
+    deleteMany: vi.fn()
   },
   tx: {
     shipment: {
       findFirst: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
       create: vi.fn()
     },
     shipmentEvent: {
@@ -74,10 +82,14 @@ function MockPrismaClient() {
     shipment: {
       findFirst: state.shipment.findFirst,
       findMany: state.shipment.findMany,
-      updateMany: state.shipment.updateMany
+      updateMany: state.shipment.updateMany,
+      create: state.shipment.create,
+      deleteMany: state.shipment.deleteMany
     },
-    $transaction<T>(fn: (tx: typeof state.tx) => Promise<T>) {
-      return fn(state.tx);
+    $transaction<T>(fn: (tx: typeof state.tx & { outboxMessage?: { create: typeof state.outboxCreate } }) => Promise<T>) {
+      // The transactional outbox is only exposed when a test opts in; without it the
+      // worker falls back to the direct notifications-queue add the older tests assert.
+      return fn(state.outboxEnabled ? { ...state.tx, outboxMessage: { create: state.outboxCreate } } : state.tx);
     }
   };
 }
@@ -95,13 +107,15 @@ function mockCreateShippingProvider() {
 // Per-provider adapter factory — returns distinct mocks keyed by provider name so
 // tests can assert that the correct provider's methods were called.
 function mockCreateShippingAdapterForProvider(providerKey: 'delhivery' | 'shiprocket') {
+  const lookup = state.lookupSupported ? { findShipmentByReference: state.findShipmentByReference } : {};
   if (providerKey === 'delhivery') {
     return {
       createShipment: state.createShipment,
       trackShipment: state.trackShipmentDelhivery,
       cancelShipment: state.cancelShipmentDelhivery,
       checkServiceability: vi.fn(),
-      calculateDeliveryRate: vi.fn()
+      calculateDeliveryRate: vi.fn(),
+      ...lookup
     };
   }
   return {
@@ -109,7 +123,8 @@ function mockCreateShippingAdapterForProvider(providerKey: 'delhivery' | 'shipro
     trackShipment: state.trackShipmentShiprocket,
     cancelShipment: state.cancelShipmentShiprocket,
     checkServiceability: vi.fn(),
-    calculateDeliveryRate: vi.fn()
+    calculateDeliveryRate: vi.fn(),
+    ...lookup
   };
 }
 
@@ -152,6 +167,13 @@ describe('shipping worker error and retry behavior', () => {
     state.shipment.findFirst.mockReset();
     state.shipment.findMany.mockReset();
     state.shipment.updateMany.mockReset();
+    state.shipment.create.mockReset();
+    state.shipment.deleteMany.mockReset();
+    state.tx.shipment.updateMany.mockReset();
+    state.findShipmentByReference.mockReset();
+    state.lookupSupported = true;
+    state.outboxCreate.mockReset();
+    state.outboxEnabled = false;
     state.tx.shipment.findFirst.mockReset();
     state.tx.shipment.update.mockReset();
     state.tx.shipment.create.mockReset();
@@ -1402,5 +1424,506 @@ describe('shipping worker error and retry behavior', () => {
     // Global provider's createShipment was called (backward compat path)
     expect(state.createShipment).toHaveBeenCalledTimes(1);
   });
-});
+  describe('be-rel-02: create-shipment idempotency across retries', () => {
+    const baseOrder = {
+      id: 'order_idem',
+      orderNumber: 'ORD-IDEM-001',
+      total: 1000,
+      status: 'PROCESSING',
+      selectedShippingProvider: 'DELHIVERY',
+      shippingAddress: {
+        fullName: 'Test Customer',
+        phone: '9999999999',
+        line1: 'Street 1',
+        city: 'Hyderabad',
+        state: 'Telangana',
+        pincode: '500001'
+      },
+      payment: { status: 'CAPTURED' },
+      user: { email: 'c@example.com', phone: null },
+      items: [{ variantId: 'v1', quantity: 1, productName: 'Spice', sku: 'S1', unitPrice: 1000 }]
+    };
 
+    it('persists the AWB before Phase 3, so a Phase 3 failure leaves the booking recorded', async () => {
+      boot();
+      state.tx.order.findUnique
+        .mockResolvedValueOnce({ ...baseOrder, shipment: null })
+        .mockResolvedValueOnce({ id: 'order_idem', status: 'PROCESSING', shipment: null });
+      state.tx.productVariant.findMany.mockResolvedValue([
+        { id: 'v1', weight: 300, hsnCode: '1001', product: { attributes: {} } }
+      ]);
+      state.createShipment.mockResolvedValue({ awbNumber: 'AWB-IDEM', trackingUrl: 'https://t/AWB-IDEM', providerPayload: {} });
+      state.tx.order.update.mockResolvedValue(undefined);
+      state.tx.orderStatusHistory.create.mockRejectedValue(new Error('deadlock detected'));
+
+      await expect(
+        state.processor?.({ name: 'create-shipment', data: { orderId: 'order_idem' } })
+      ).rejects.toThrow('deadlock detected');
+
+      expect(state.createShipment).toHaveBeenCalledTimes(1);
+      expect(state.tx.shipment.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ orderId: 'order_idem', status: 'BOOKED', awbNumber: 'AWB-IDEM', provider: 'DELHIVERY' })
+      });
+    });
+
+    it('on retry with a BOOKED shipment, resumes Phase 3 without booking the courier again', async () => {
+      boot();
+      state.tx.order.findUnique
+        .mockResolvedValueOnce({
+          ...baseOrder,
+          shipment: {
+            id: 'ship_idem',
+            provider: 'DELHIVERY',
+            status: 'BOOKED',
+            awbNumber: 'AWB-IDEM',
+            trackingUrl: 'https://t/AWB-IDEM',
+            estimatedDelivery: null,
+            shiprocketShipmentId: null
+          }
+        })
+        .mockResolvedValueOnce({ id: 'order_idem', status: 'PROCESSING', shipment: { id: 'ship_idem', awbNumber: 'AWB-IDEM' } });
+      state.tx.order.update.mockResolvedValue(undefined);
+      state.tx.orderStatusHistory.create.mockResolvedValue(undefined);
+
+      await state.processor?.({ name: 'create-shipment', data: { orderId: 'order_idem' } });
+
+      expect(state.createShipment).not.toHaveBeenCalled();
+      expect(state.tx.shipment.create).not.toHaveBeenCalled();
+      expect(state.tx.order.update).toHaveBeenCalledWith({ where: { id: 'order_idem' }, data: { status: 'SHIPPED' } });
+      expect(state.tx.orderStatusHistory.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ toStatus: 'SHIPPED' }) })
+      );
+    });
+
+    it('still skips when the existing shipment is not BOOKED (e.g. CANCELLED)', async () => {
+      boot();
+      state.tx.order.findUnique.mockResolvedValueOnce({
+        ...baseOrder,
+        shipment: { id: 'ship_idem', provider: 'DELHIVERY', status: 'CANCELLED', awbNumber: 'AWB-OLD' }
+      });
+
+      await state.processor?.({ name: 'create-shipment', data: { orderId: 'order_idem' } });
+
+      expect(state.createShipment).not.toHaveBeenCalled();
+      expect(state.tx.order.update).not.toHaveBeenCalled();
+    });
+  });
+
+  it('be-rel-06: Shiprocket compensating cancel uses the Shiprocket ORDER id, not the AWB, and marks the shipment CANCELLED', async () => {
+    boot();
+    const order = {
+      id: 'order_sr_comp',
+      orderNumber: 'ORD-SR-COMP',
+      total: 1000,
+      status: 'PROCESSING',
+      selectedShippingProvider: 'SHIPROCKET',
+      shippingAddress: {
+        fullName: 'Test Customer',
+        phone: '9999999999',
+        line1: 'Street 1',
+        city: 'Hyderabad',
+        state: 'Telangana',
+        pincode: '500001'
+      },
+      payment: { status: 'CAPTURED' },
+      shipment: null,
+      items: [{ variantId: 'v1', quantity: 1, productName: 'Spice', sku: 'S1', unitPrice: 1000 }]
+    };
+    state.tx.order.findUnique
+      .mockResolvedValueOnce(order)
+      .mockResolvedValueOnce({ id: 'order_sr_comp', status: 'CANCELLED', shipment: null });
+    state.tx.productVariant.findMany.mockResolvedValue([
+      { id: 'v1', weight: 300, hsnCode: '1001', product: { attributes: {} } }
+    ]);
+    state.createShipment.mockResolvedValue({
+      awbNumber: 'SR-AWB-1',
+      shiprocketOrderId: '998877',
+      shiprocketShipmentId: '554433',
+      providerPayload: {}
+    });
+    state.tx.order.update.mockResolvedValue(undefined);
+    state.cancelShipmentShiprocket.mockResolvedValue({ cancelled: true, providerPayload: {} });
+    state.shipment.updateMany.mockResolvedValue({ count: 1 });
+
+    await state.processor?.({ name: 'create-shipment', data: { orderId: 'order_sr_comp' } });
+
+    expect(state.cancelShipmentShiprocket).toHaveBeenCalledWith('998877');
+    expect(state.cancelShipmentShiprocket).not.toHaveBeenCalledWith('SR-AWB-1');
+    expect(state.shipment.updateMany).toHaveBeenCalledWith({
+      where: { orderId: 'order_sr_comp', awbNumber: 'SR-AWB-1' },
+      data: { status: 'CANCELLED' }
+    });
+    // Booking was persisted with the Shiprocket order id for later cancels.
+    expect(state.tx.order.update).toHaveBeenCalledWith({
+      where: { id: 'order_sr_comp' },
+      data: { shiprocketOrderId: '998877' }
+    });
+    expect(state.tx.order.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'SHIPPED' }) })
+    );
+  });
+
+  describe('in-flight courier booking recovery (booking intent)', () => {
+    const shippableOrder = {
+      id: 'order_flight',
+      orderNumber: 'ORD-FLIGHT-001',
+      total: 1000,
+      status: 'PROCESSING',
+      selectedShippingProvider: 'DELHIVERY',
+      shippingAddress: {
+        fullName: 'Test Customer',
+        phone: '9999999999',
+        line1: 'Street 1',
+        city: 'Hyderabad',
+        state: 'Telangana',
+        pincode: '500001'
+      },
+      payment: { status: 'CAPTURED' },
+      user: { email: 'c@example.com', phone: null },
+      items: [{ variantId: 'v1', quantity: 1, productName: 'Spice', sku: 'S1', unitPrice: 1000 }]
+    };
+    const intentShipment = (overrides: Record<string, unknown> = {}) => ({
+      id: 'ship_intent',
+      provider: 'DELHIVERY',
+      status: 'PENDING',
+      awbNumber: null,
+      trackingUrl: null,
+      estimatedDelivery: null,
+      shiprocketShipmentId: null,
+      webhookPayload: {
+        bookingIntent: { clientReference: 'ORD-FLIGHT-001', startedAt: '2026-11-01T00:00:00.000Z', sweepRequeues: 0 }
+      },
+      ...overrides
+    });
+    const primeVariants = () =>
+      state.tx.productVariant.findMany.mockResolvedValue([
+        { id: 'v1', weight: 300, hsnCode: '1001', product: { attributes: {} } }
+      ]);
+
+    it('records the booking intent (order number as client reference) BEFORE calling the courier', async () => {
+      boot();
+      const callOrder: string[] = [];
+      state.shipment.create.mockImplementation(async () => {
+        callOrder.push('intent');
+        return { id: 'ship_new_intent' };
+      });
+      state.createShipment.mockImplementation(async () => {
+        callOrder.push('courier');
+        return { awbNumber: 'AWB-FRESH', trackingUrl: 'https://t/AWB-FRESH', providerPayload: {} };
+      });
+      state.tx.order.findUnique
+        .mockResolvedValueOnce({ ...shippableOrder, shipment: null })
+        .mockResolvedValueOnce({ id: 'order_flight', status: 'PROCESSING', shipment: null });
+      primeVariants();
+      state.tx.order.update.mockResolvedValue(undefined);
+      state.tx.orderStatusHistory.create.mockResolvedValue(undefined);
+
+      await state.processor?.({ name: 'create-shipment', data: { orderId: 'order_flight' } });
+
+      expect(callOrder).toEqual(['intent', 'courier']);
+      expect(state.shipment.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          orderId: 'order_flight',
+          provider: 'DELHIVERY',
+          status: 'PENDING',
+          webhookPayload: { bookingIntent: expect.objectContaining({ clientReference: 'ORD-FLIGHT-001', sweepRequeues: 0 }) }
+        })
+      });
+      // A fresh booking needs no lookup.
+      expect(state.findShipmentByReference).not.toHaveBeenCalled();
+      // The booking write turns the intent row into the BOOKED shipment.
+      expect(state.tx.shipment.update).toHaveBeenCalledWith({
+        where: { id: 'ship_new_intent' },
+        data: expect.objectContaining({ status: 'BOOKED', awbNumber: 'AWB-FRESH' })
+      });
+    });
+
+    it('crash after courier success: the retry adopts the booking found by reference and never re-books', async () => {
+      boot();
+      state.tx.order.findUnique
+        .mockResolvedValueOnce({ ...shippableOrder, shipment: intentShipment() })
+        .mockResolvedValueOnce({ id: 'order_flight', status: 'PROCESSING', shipment: { id: 'ship_intent', awbNumber: 'AWB-ADOPT' } });
+      state.findShipmentByReference.mockResolvedValue({
+        state: 'found',
+        awbNumber: 'AWB-ADOPT',
+        trackingUrl: 'https://www.delhivery.com/track/package/AWB-ADOPT',
+        providerPayload: { matchCount: 1 }
+      });
+      state.tx.order.update.mockResolvedValue(undefined);
+      state.tx.orderStatusHistory.create.mockResolvedValue(undefined);
+
+      await state.processor?.({ name: 'create-shipment', data: { orderId: 'order_flight' } });
+
+      expect(state.findShipmentByReference).toHaveBeenCalledWith('ORD-FLIGHT-001');
+      expect(state.createShipment).not.toHaveBeenCalled();
+      expect(state.tx.shipment.update).toHaveBeenCalledWith({
+        where: { id: 'ship_intent' },
+        data: expect.objectContaining({ provider: 'DELHIVERY', status: 'BOOKED', awbNumber: 'AWB-ADOPT' })
+      });
+      expect(state.tx.order.update).toHaveBeenCalledWith({ where: { id: 'order_flight' }, data: { status: 'SHIPPED' } });
+    });
+
+    it('no booking at the courier: the retry re-books once, re-arming the intent first', async () => {
+      boot();
+      state.tx.order.findUnique
+        .mockResolvedValueOnce({ ...shippableOrder, shipment: intentShipment() })
+        .mockResolvedValueOnce({ id: 'order_flight', status: 'PROCESSING', shipment: null });
+      primeVariants();
+      state.findShipmentByReference.mockResolvedValue({ state: 'not_found', providerPayload: {} });
+      state.shipment.updateMany.mockResolvedValue({ count: 1 });
+      state.createShipment.mockResolvedValue({ awbNumber: 'AWB-REBOOK', providerPayload: {} });
+      state.tx.order.update.mockResolvedValue(undefined);
+      state.tx.orderStatusHistory.create.mockResolvedValue(undefined);
+
+      await state.processor?.({ name: 'create-shipment', data: { orderId: 'order_flight' } });
+
+      expect(state.findShipmentByReference).toHaveBeenCalledTimes(1);
+      expect(state.createShipment).toHaveBeenCalledTimes(1);
+      expect(state.createShipment.mock.calls[0]?.[0]).not.toHaveProperty('existingProviderOrder');
+      // Intent re-armed with CAS on "no AWB yet", keeping the original startedAt.
+      expect(state.shipment.updateMany).toHaveBeenCalledWith({
+        where: { id: 'ship_intent', awbNumber: null },
+        data: expect.objectContaining({
+          status: 'PENDING',
+          webhookPayload: { bookingIntent: expect.objectContaining({ startedAt: '2026-11-01T00:00:00.000Z' }) }
+        })
+      });
+      expect(state.tx.shipment.update).toHaveBeenCalledWith({
+        where: { id: 'ship_intent' },
+        data: expect.objectContaining({ status: 'BOOKED', awbNumber: 'AWB-REBOOK' })
+      });
+    });
+
+    it('lookup failure: throws for a BullMQ retry and does NOT book blind', async () => {
+      boot();
+      state.tx.order.findUnique.mockResolvedValueOnce({ ...shippableOrder, shipment: intentShipment() });
+      state.findShipmentByReference.mockRejectedValue(new Error('Delhivery did not respond within 12s'));
+
+      await expect(
+        state.processor?.({ name: 'create-shipment', data: { orderId: 'order_flight' } })
+      ).rejects.toThrow('Delhivery did not respond');
+
+      expect(state.createShipment).not.toHaveBeenCalled();
+      expect(state.tx.shipment.update).not.toHaveBeenCalled();
+      expect(state.tx.shipment.create).not.toHaveBeenCalled();
+    });
+
+    it('refuses to book when the adapter cannot look bookings up', async () => {
+      boot();
+      state.lookupSupported = false;
+      state.tx.order.findUnique.mockResolvedValueOnce({ ...shippableOrder, shipment: intentShipment() });
+
+      await expect(
+        state.processor?.({ name: 'create-shipment', data: { orderId: 'order_flight' } })
+      ).rejects.toThrow('Refusing to book again blind');
+      expect(state.createShipment).not.toHaveBeenCalled();
+    });
+
+    it('a booking cancelled at the courier is not re-booked by the retry', async () => {
+      boot();
+      state.tx.order.findUnique.mockResolvedValueOnce({ ...shippableOrder, shipment: intentShipment() });
+      state.findShipmentByReference.mockResolvedValue({ state: 'cancelled', providerPayload: {} });
+
+      await expect(
+        state.processor?.({ name: 'create-shipment', data: { orderId: 'order_flight' } })
+      ).rejects.toThrow('cancelled at DELHIVERY');
+      expect(state.createShipment).not.toHaveBeenCalled();
+    });
+
+    it('Shiprocket order created but AWB never assigned: resumes AWB assignment on the existing order', async () => {
+      boot();
+      state.tx.order.findUnique
+        .mockResolvedValueOnce({
+          ...shippableOrder,
+          selectedShippingProvider: 'SHIPROCKET',
+          shipment: intentShipment({ provider: 'SHIPROCKET' })
+        })
+        .mockResolvedValueOnce({ id: 'order_flight', status: 'PROCESSING', shipment: null });
+      primeVariants();
+      state.findShipmentByReference.mockResolvedValue({
+        state: 'found',
+        shiprocketOrderId: '9001',
+        shiprocketShipmentId: '9002',
+        providerPayload: {}
+      });
+      state.shipment.updateMany.mockResolvedValue({ count: 1 });
+      state.createShipment.mockResolvedValue({
+        awbNumber: 'SR-RESUMED',
+        shiprocketOrderId: '9001',
+        shiprocketShipmentId: '9002',
+        providerPayload: {}
+      });
+      state.tx.order.update.mockResolvedValue(undefined);
+      state.tx.orderStatusHistory.create.mockResolvedValue(undefined);
+
+      await state.processor?.({ name: 'create-shipment', data: { orderId: 'order_flight' } });
+
+      expect(state.createShipment).toHaveBeenCalledWith(
+        expect.objectContaining({
+          orderNumber: 'ORD-FLIGHT-001',
+          existingProviderOrder: { shiprocketOrderId: '9001', shiprocketShipmentId: '9002' }
+        })
+      );
+    });
+
+    describe('reconcile-booking-intents sweep', () => {
+      const staleIntent = (overrides: Record<string, unknown> = {}, orderOverrides: Record<string, unknown> = {}) => ({
+        id: 'ship_intent',
+        provider: 'DELHIVERY',
+        webhookPayload: {
+          bookingIntent: { clientReference: 'ORD-FLIGHT-001', startedAt: '2026-11-01T00:00:00.000Z', sweepRequeues: 0 }
+        },
+        order: {
+          id: 'order_flight',
+          orderNumber: 'ORD-FLIGHT-001',
+          status: 'PROCESSING',
+          user: { email: 'c@example.com', phone: null },
+          ...orderOverrides
+        },
+        ...overrides
+      });
+
+      it('only examines stale PENDING intents without an AWB', async () => {
+        boot();
+        state.shipment.findMany.mockResolvedValue([]);
+
+        await state.processor?.({ name: 'reconcile-booking-intents', data: {} });
+
+        const query = state.shipment.findMany.mock.calls[0]?.[0] as {
+          where: { status: string; awbNumber: null; updatedAt: { lt: Date } };
+        };
+        expect(query.where).toMatchObject({ status: 'PENDING', awbNumber: null });
+        expect(Date.now() - query.where.updatedAt.lt.getTime()).toBeGreaterThanOrEqual(15 * 60 * 1000 - 1000);
+      });
+
+      it('adopts a booking that exists at the courier and ships the order', async () => {
+        boot();
+        state.shipment.findMany.mockResolvedValue([staleIntent()]);
+        state.findShipmentByReference.mockResolvedValue({ state: 'found', awbNumber: 'AWB-SWEPT', providerPayload: {} });
+        state.tx.order.findUnique.mockResolvedValueOnce({ id: 'order_flight', status: 'PROCESSING', shipment: null });
+        state.tx.order.update.mockResolvedValue(undefined);
+        state.tx.orderStatusHistory.create.mockResolvedValue(undefined);
+
+        await state.processor?.({ name: 'reconcile-booking-intents', data: {} });
+
+        expect(state.createShipment).not.toHaveBeenCalled();
+        expect(state.tx.shipment.update).toHaveBeenCalledWith({
+          where: { id: 'ship_intent' },
+          data: expect.objectContaining({ status: 'BOOKED', awbNumber: 'AWB-SWEPT' })
+        });
+        expect(state.tx.order.update).toHaveBeenCalledWith({ where: { id: 'order_flight' }, data: { status: 'SHIPPED' } });
+      });
+
+      it('adopted booking for an order cancelled meanwhile is cancelled at the courier', async () => {
+        boot();
+        state.shipment.findMany.mockResolvedValue([staleIntent({}, { status: 'CANCELLED' })]);
+        state.findShipmentByReference.mockResolvedValue({ state: 'found', awbNumber: 'AWB-ORPHAN', providerPayload: {} });
+        state.tx.order.findUnique.mockResolvedValueOnce({ id: 'order_flight', status: 'CANCELLED', shipment: null });
+        state.cancelShipmentDelhivery.mockResolvedValue({ cancelled: true, providerPayload: {} });
+        state.shipment.updateMany.mockResolvedValue({ count: 1 });
+
+        await state.processor?.({ name: 'reconcile-booking-intents', data: {} });
+
+        expect(state.cancelShipmentDelhivery).toHaveBeenCalledWith('AWB-ORPHAN');
+        expect(state.tx.order.update).not.toHaveBeenCalled();
+      });
+
+      it('no booking on a shippable order: re-enqueues create-shipment via the outbox and counts the requeue', async () => {
+        boot();
+        state.outboxEnabled = true;
+        state.shipment.findMany.mockResolvedValue([staleIntent()]);
+        state.findShipmentByReference.mockResolvedValue({ state: 'not_found', providerPayload: {} });
+        state.tx.shipment.updateMany.mockResolvedValue({ count: 1 });
+
+        await state.processor?.({ name: 'reconcile-booking-intents', data: {} });
+
+        expect(state.createShipment).not.toHaveBeenCalled();
+        expect(state.tx.shipment.updateMany).toHaveBeenCalledWith({
+          where: { id: 'ship_intent', status: 'PENDING', awbNumber: null },
+          data: { webhookPayload: { bookingIntent: expect.objectContaining({ sweepRequeues: 1 }) } }
+        });
+        expect(state.outboxCreate).toHaveBeenCalledWith({
+          data: expect.objectContaining({
+            queueName: 'shipping',
+            jobName: 'create-shipment',
+            payload: { orderId: 'order_flight' },
+            jobId: 'create-shipment-order_flight-intent-sweep-1'
+          })
+        });
+      });
+
+      it('releases the intent and alerts once the requeue budget is spent with nothing at the courier', async () => {
+        boot();
+        state.shipment.findMany.mockResolvedValue([
+          staleIntent({
+            webhookPayload: {
+              bookingIntent: { clientReference: 'ORD-FLIGHT-001', startedAt: '2026-11-01T00:00:00.000Z', sweepRequeues: 3 }
+            }
+          })
+        ]);
+        state.findShipmentByReference.mockResolvedValue({ state: 'not_found', providerPayload: {} });
+        state.shipment.deleteMany.mockResolvedValue({ count: 1 });
+
+        await state.processor?.({ name: 'reconcile-booking-intents', data: {} });
+
+        expect(state.shipment.deleteMany).toHaveBeenCalledWith({
+          where: { id: 'ship_intent', status: 'PENDING', awbNumber: null }
+        });
+        expect(state.outboxCreate).not.toHaveBeenCalled();
+        expect(sendTechnicalFailureAlert).toHaveBeenCalledWith(
+          expect.objectContaining({ template: 'ShipmentBookingIntent', recipient: 'order_flight' })
+        );
+      });
+
+      it('releases the intent without re-booking when the order is no longer shippable', async () => {
+        boot();
+        state.shipment.findMany.mockResolvedValue([staleIntent({}, { status: 'CANCELLED' })]);
+        state.findShipmentByReference.mockResolvedValue({ state: 'not_found', providerPayload: {} });
+        state.shipment.deleteMany.mockResolvedValue({ count: 1 });
+
+        await state.processor?.({ name: 'reconcile-booking-intents', data: {} });
+
+        expect(state.shipment.deleteMany).toHaveBeenCalledTimes(1);
+        expect(state.outboxCreate).not.toHaveBeenCalled();
+        expect(state.createShipment).not.toHaveBeenCalled();
+      });
+
+      it('lookup failure: books nothing, releases nothing, alerts, and continues with the next intent', async () => {
+        boot();
+        state.outboxEnabled = true;
+        state.shipment.findMany.mockResolvedValue([
+          staleIntent(),
+          staleIntent({ id: 'ship_intent_2' }, { id: 'order_two', orderNumber: 'ORD-TWO' })
+        ]);
+        state.findShipmentByReference
+          .mockRejectedValueOnce(new Error('Delhivery API error 503'))
+          .mockResolvedValueOnce({ state: 'not_found', providerPayload: {} });
+        state.tx.shipment.updateMany.mockResolvedValue({ count: 1 });
+
+        await state.processor?.({ name: 'reconcile-booking-intents', data: {} });
+
+        expect(state.createShipment).not.toHaveBeenCalled();
+        expect(state.shipment.deleteMany).not.toHaveBeenCalled();
+        expect(sendTechnicalFailureAlert).toHaveBeenCalledWith(
+          expect.objectContaining({ recipient: 'order_flight', errorMessage: 'Delhivery API error 503' })
+        );
+        // The second intent is still processed.
+        expect(state.outboxCreate).toHaveBeenCalledWith({
+          data: expect.objectContaining({ payload: { orderId: 'order_two' } })
+        });
+      });
+
+      it('releases an intent whose reference is cancelled at the courier', async () => {
+        boot();
+        state.shipment.findMany.mockResolvedValue([staleIntent()]);
+        state.findShipmentByReference.mockResolvedValue({ state: 'cancelled', providerPayload: {} });
+        state.shipment.deleteMany.mockResolvedValue({ count: 1 });
+
+        await state.processor?.({ name: 'reconcile-booking-intents', data: {} });
+
+        expect(state.shipment.deleteMany).toHaveBeenCalledTimes(1);
+        expect(state.createShipment).not.toHaveBeenCalled();
+      });
+    });
+  });
+});

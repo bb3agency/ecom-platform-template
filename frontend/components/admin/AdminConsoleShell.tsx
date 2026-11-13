@@ -89,6 +89,7 @@ function AdminConsoleFrame({ children }: { children: ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
 
   const bellRef = useRef<HTMLDivElement>(null);
+  const bellButtonRef = useRef<HTMLButtonElement>(null);
 
   const { accessToken, adminUser } = useAdminAuth();
   const api = useAuthenticatedApi();
@@ -168,6 +169,18 @@ function AdminConsoleFrame({ children }: { children: ReactNode }) {
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
+
+  // Close bell on Escape and hand focus back to the bell button (keyboard users).
+  useEffect(() => {
+    if (!bellOpen) return;
+    function handleKey(e: KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      setBellOpen(false);
+      bellButtonRef.current?.focus();
+    }
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [bellOpen]);
 
   // Hydrate admin profile name/email when session was restored without profile data
   useEffect(() => {
@@ -393,6 +406,7 @@ function AdminConsoleFrame({ children }: { children: ReactNode }) {
 
               <div ref={bellRef} className="relative">
                 <button
+                  ref={bellButtonRef}
                   type="button"
                   onClick={() => setBellOpen((v) => !v)}
                   className="relative flex size-10 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"

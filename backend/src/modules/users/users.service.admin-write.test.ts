@@ -92,6 +92,26 @@ describe('UsersService adminUnbanUser', () => {
     });
   });
 
+  it('throws 403 and leaves the row untouched when the target is an ops-deactivated ADMIN', async () => {
+    const updateFn = vi.fn().mockResolvedValue({});
+    const fastify = makeUserFastify({
+      findUnique: vi.fn().mockResolvedValue({
+        id: 'admin_2',
+        isBanned: true,
+        role: 'ADMIN',
+        bannedReason: '[ops:deactivate] rogue admin'
+      }),
+      update: updateFn
+    });
+    const service = new UsersService(fastify);
+
+    await expect(service.adminUnbanUser('admin_2', 'admin_1')).rejects.toMatchObject({
+      statusCode: 403,
+      code: 'FORBIDDEN'
+    });
+    expect(updateFn).not.toHaveBeenCalled();
+  });
+
   it('throws 409 when user is not banned', async () => {
     const fastify = makeUserFastify({
       findUnique: vi.fn().mockResolvedValue({ id: 'uid_1', isBanned: false })

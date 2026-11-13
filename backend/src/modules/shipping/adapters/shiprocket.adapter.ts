@@ -6,6 +6,7 @@ import {
   type GenerateLabelResult,
   type SchedulePickupResult,
   type ServiceabilityResult,
+  type ShipmentLookupResult,
   type ShippingProviderAdapter,
   type TrackShipmentResult
 } from '@common/interfaces/shipping-provider.interface';
@@ -117,6 +118,30 @@ type ShiprocketLabelResponse = {
   label_url?: string;
   status?: number;
 };
+
+// GET /orders?search=… (orders list). Only the fields the in-flight booking
+// lookup needs; `shipments` is an array in current responses but has been seen
+// as a single object on older accounts.
+type ShiprocketListedShipment = {
+  id?: number | string;
+  awb?: string | null;
+  awb_code?: string | null;
+  courier?: string | null;
+};
+
+type ShiprocketListedOrder = {
+  id?: number | string;
+  channel_order_id?: string | number;
+  status?: string;
+  shipments?: ShiprocketListedShipment[] | ShiprocketListedShipment | null;
+};
+
+type ShiprocketOrdersListResponse = {
+  data?: unknown;
+};
+
+// "Ohh! This AWB has been cancelled." / "Order is already canceled" / "has already been cancelled".
+const SHIPROCKET_ALREADY_CANCELLED_PATTERN = /\b(?:already\s+(?:been\s+)?cancel+ed|has\s+been\s+cancel+ed)\b/i;
 
 export default class ShiprocketAdapter implements ShippingProviderAdapter {
   private readonly email: string;
@@ -416,13 +441,25 @@ export default class ShiprocketAdapter implements ShippingProviderAdapter {
       createPayload.cod_amount = input.amountRupees.toFixed(2);
     }
 
-    const createData = await this.request<ShiprocketCreateOrderResponse>(
-      '/orders/create/adhoc',
-      {
-        method: 'POST',
-        body: JSON.stringify(createPayload)
-      }
-    );
+    // In-flight recovery: the Shiprocket order for this reference already exists
+    // (found by findShipmentByReference) but its AWB was never assigned. Re-running
+    // /orders/create/adhoc would create a second Shiprocket order — resume at the
+    // AWB-assignment step against the existing shipment instead.
+    const createData: ShiprocketCreateOrderResponse = input.existingProviderOrder
+      ? {
+          ...(input.existingProviderOrder.shiprocketOrderId != null
+            ? { order_id: input.existingProviderOrder.shiprocketOrderId }
+            : {}),
+          shipment_id: input.existingProviderOrder.shiprocketShipmentId,
+          status: 'RESUMED'
+        }
+      : await this.request<ShiprocketCreateOrderResponse>(
+          '/orders/create/adhoc',
+          {
+            method: 'POST',
+            body: JSON.stringify(createPayload)
+          }
+        );
 
     const shiprocketOrderId = createData.order_id != null ? String(createData.order_id) : null;
     const shiprocketShipmentId = createData.shipment_id != null ? String(createData.shipment_id) : null;
@@ -509,6 +546,68 @@ export default class ShiprocketAdapter implements ShippingProviderAdapter {
     };
   }
 
+  /**
+   * Looks a booking up by OUR client reference — the order number we send as the
+   * Shiprocket channel `order_id`. Shiprocket's search is fuzzy, so only exact
+   * `channel_order_id` matches count. A live match wins over cancelled ones.
+   * Any unexpected response shape throws: the caller must never book blind.
+   */
+  async findShipmentByReference(clientReference: string): Promise<ShipmentLookupResult> {
+    const payload = await this.request<ShiprocketOrdersListResponse>(
+      `/orders?search=${encodeURIComponent(clientReference)}&per_page=50`
+    );
+    if (!Array.isArray(payload.data)) {
+      throw new AppError(
+        ERROR_CODES.INTERNAL_ERROR,
+        'Shiprocket order lookup returned an unexpected response shape',
+        422
+      );
+    }
+    const entries: unknown[] = payload.data;
+    const matches = entries.filter(
+      (entry): entry is ShiprocketListedOrder =>
+        Boolean(entry) &&
+        typeof entry === 'object' &&
+        String((entry as ShiprocketListedOrder).channel_order_id ?? '').trim() === clientReference
+    );
+    const providerPayload = { matchCount: matches.length };
+    if (matches.length === 0) {
+      return { state: 'not_found', providerPayload };
+    }
+    const isCancelled = (entry: ShiprocketListedOrder) =>
+      /cancel/i.test(String(entry.status ?? ''));
+    const live = matches.find((entry) => !isCancelled(entry));
+    if (!live) {
+      const [cancelled] = matches;
+      return {
+        state: 'cancelled',
+        ...(cancelled?.id != null ? { shiprocketOrderId: String(cancelled.id) } : {}),
+        providerPayload
+      };
+    }
+    const shipments = Array.isArray(live.shipments)
+      ? live.shipments
+      : live.shipments
+        ? [live.shipments]
+        : [];
+    const [firstShipment] = shipments;
+    const shipmentId = firstShipment?.id != null ? String(firstShipment.id) : undefined;
+    const awbRaw = firstShipment?.awb ?? firstShipment?.awb_code;
+    const awbNumber = typeof awbRaw === 'string' && awbRaw.trim().length > 0 ? awbRaw.trim() : undefined;
+    return {
+      state: 'found',
+      ...(live.id != null ? { shiprocketOrderId: String(live.id) } : {}),
+      ...(shipmentId ? { shiprocketShipmentId: shipmentId } : {}),
+      ...(awbNumber
+        ? { awbNumber, trackingUrl: `https://shiprocket.co/tracking/${awbNumber}` }
+        : {}),
+      ...(typeof firstShipment?.courier === 'string' && firstShipment.courier
+        ? { courierName: firstShipment.courier }
+        : {}),
+      providerPayload: { ...providerPayload, status: String(live.status ?? '') }
+    };
+  }
+
   async trackShipment(awbNumber: string): Promise<TrackShipmentResult> {
     let payload: ShiprocketTrackResponse;
     try {
@@ -522,8 +621,11 @@ export default class ShiprocketAdapter implements ShippingProviderAdapter {
       // the poll/sync/webhook pipeline propagates the cancellation (order flip,
       // customer notification, refund) instead of swallowing it as a provider
       // outage forever. Matches "cancel"/"canceled"/"cancelled" case-insensitively.
+      // Match ONLY explicit "already cancelled" phrasings — a bare /cancel/ would
+      // also swallow rejections such as "Invalid order id to cancel" and report a
+      // live booking as cancelled.
       const message = error instanceof Error ? error.message : '';
-      if (/cancel/i.test(message)) {
+      if (SHIPROCKET_ALREADY_CANCELLED_PATTERN.test(message)) {
         return {
           status: 'CANCELLED',
           events: [
@@ -588,8 +690,11 @@ export default class ShiprocketAdapter implements ShippingProviderAdapter {
       // order/AWB with an HTTP error ("Ohh! This AWB has been cancelled." /
       // "Order is already canceled"). The desired end-state is already true —
       // treat it as success so compensating cancels and retries don't dead-letter.
+      // Match ONLY explicit "already cancelled" phrasings — a bare /cancel/ would
+      // also swallow rejections such as "Invalid order id to cancel" and report a
+      // live booking as cancelled.
       const message = error instanceof Error ? error.message : '';
-      if (/cancel/i.test(message)) {
+      if (SHIPROCKET_ALREADY_CANCELLED_PATTERN.test(message)) {
         return { cancelled: true, providerPayload: { alreadyCancelled: true, message: message.slice(0, 200) } };
       }
       throw error;

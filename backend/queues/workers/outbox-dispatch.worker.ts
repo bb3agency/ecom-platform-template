@@ -49,6 +49,8 @@ function resolveTemplate(payload: unknown): string {
 
 type OutboxDispatchWorkerDeps = {
   PrismaClient?: typeof RealPrismaClient;
+  /** Shared process-wide client (workers/index.ts) — avoids one connection pool per worker. */
+  prisma?: RealPrismaClient;
   Worker?: typeof Worker;
   createQueueRegistry?: typeof createQueueRegistry;
 };
@@ -60,7 +62,7 @@ export function createOutboxDispatchWorker(
   const PrismaClientCtor = deps?.PrismaClient ?? RealPrismaClient;
   const WorkerCtor = deps?.Worker ?? Worker;
   const createRegistry = deps?.createQueueRegistry ?? createQueueRegistry;
-  const prisma = new PrismaClientCtor();
+  const prisma = deps?.prisma ?? new PrismaClientCtor();
 
   return new WorkerCtor(
     'outbox-dispatch',

@@ -173,6 +173,31 @@ function stableHash(value: string): string {
   return crypto.createHash('sha256').update(value).digest('hex');
 }
 
+/**
+ * Refresh-token storage hash. bcrypt reads only the first 72 bytes of its input, and the
+ * first 72 bytes of every HS256 refresh JWT issued to one user are identical (fixed header
+ * plus the start of the payload, which is the user id), so bcrypt over the raw JWT never
+ * covered the token. A SHA-256 digest covers the whole high-entropy signed token; a bcrypt
+ * work factor adds nothing for a 256-bit secret. The prefix keeps legacy bcrypt rows
+ * verifiable until they expire (7d).
+ */
+const REFRESH_HASH_PREFIX = 'sha256:';
+
+function hashRefreshToken(refreshToken: string): string {
+  return `${REFRESH_HASH_PREFIX}${stableHash(refreshToken)}`;
+}
+
+async function refreshTokenMatchesHash(refreshToken: string, storedHash: string): Promise<boolean> {
+  if (storedHash.startsWith(REFRESH_HASH_PREFIX)) {
+    const expected = Buffer.from(storedHash.slice(REFRESH_HASH_PREFIX.length), 'hex');
+    const actual = Buffer.from(stableHash(refreshToken), 'hex');
+    return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
+  }
+  // Legacy bcrypt row (issued before the SHA-256 switch). Only meaningful together with
+  // the JWT signature + jti lookup the caller has already performed.
+  return bcrypt.compare(refreshToken, storedHash);
+}
+
 export class AuthService {
   constructor(private readonly fastify: FastifyInstance) {}
 
@@ -250,7 +275,7 @@ export class AuthService {
    * works on desktop, drops on mobile" session-persistence failure. IP is still
    * captured as a soft abuse/risk signal elsewhere; it is just not a hard trust anchor
    * for session continuity. Client-supplied fingerprint headers remain ignored for
-   * binding (spoofable), so the bcrypt token hash stays the primary stolen-cookie defense.
+   * binding (spoofable), so the signed JWT + jti lookup and the full-token SHA-256 hash stay the stolen-cookie defense.
    */
   private deriveDeviceKeyHash(context?: LoginContext): string {
     const userAgent = context?.risk?.userAgent?.trim() || 'unknown-agent';
@@ -540,6 +565,32 @@ export class AuthService {
     return lockSeconds;
   }
 
+  /** Phone-only failure counter: never keyed by client-controlled headers or IP. */
+  private getOtpVerifyFailKey(phone: string): string {
+    return `otp:verify-fails:${phone}`;
+  }
+
+  /**
+   * Records a wrong customer OTP guess. Once OTP_MAX_ATTEMPTS wrong guesses land on one
+   * phone inside the window, the live OTP is burned and send-otp is refused for that phone
+   * until the window expires, so rotating IPs or device/session headers cannot buy more
+   * guesses. (The scoped counter is kept for the existing per-scope send-otp limit.)
+   */
+  private async registerOtpVerifyFailure(phone: string, otpKey: string, scopedAttemptsKey: string): Promise<void> {
+    const scopedCount = await this.fastify.redis.incr(scopedAttemptsKey);
+    if (scopedCount === 1) {
+      await this.fastify.redis.expire(scopedAttemptsKey, OTP_ATTEMPT_WINDOW_SECONDS);
+    }
+    const failKey = this.getOtpVerifyFailKey(phone);
+    const failures = await this.fastify.redis.incr(failKey);
+    if (failures === 1) {
+      await this.fastify.redis.expire(failKey, OTP_ATTEMPT_WINDOW_SECONDS);
+    }
+    if (failures >= OTP_MAX_ATTEMPTS) {
+      await this.fastify.redis.del(otpKey);
+    }
+  }
+
   private getOtpScope(input: { phone: string }, context?: LoginContext): string {
     const clientIp = context?.clientIp?.trim() || 'unknown-ip';
     const device = context?.risk?.deviceFingerprint?.trim() || 'unknown-device';
@@ -622,10 +673,24 @@ export class AuthService {
       throw new AppError(ERROR_CODES.RATE_LIMIT_EXCEEDED, 'OTP attempt limit exceeded', 429);
     }
 
+    const phoneFailures = Number((await this.fastify.redis.get(this.getOtpVerifyFailKey(input.phone))) ?? '0');
+    if (phoneFailures >= OTP_MAX_ATTEMPTS) {
+      throw new AppError(ERROR_CODES.RATE_LIMIT_EXCEEDED, 'OTP attempt limit exceeded', 429);
+    }
+
     const existingUser = await this.fastify.prisma.user.findFirst({
       where: { phone: input.phone },
-      select: { id: true }
+      select: { id: true, role: true }
     });
+    if (existingUser && existingUser.role !== Role.CUSTOMER) {
+      // Phone OTP is a customer-only sign-in. Admins use password + email OTP
+      // (verifyAdminLoginOtp); never deliver a code that could mint admin tokens.
+      // Respond like a successful send (cooldown included) so the endpoint does not
+      // reveal which phone numbers belong to staff accounts.
+      await this.fastify.redis.set(cooldownKey, '1', 'EX', OTP_RESEND_SECONDS);
+      await this.fastify.redis.set(globalCooldownKey, '1', 'EX', OTP_RESEND_SECONDS);
+      return { message: 'OTP sent successfully' };
+    }
     if (!existingUser) {
       const signupSettings = await this.fastify.prisma.storeSettings.findUnique({
         where: { singletonKey: 'default' },
@@ -773,23 +838,35 @@ export class AuthService {
 
     const incomingHash = hashOtp(resolveOtpForHash(input.otp));
     if (incomingHash !== storedHash) {
-      const attemptCount = await this.fastify.redis.incr(attemptsKey);
-      if (attemptCount === 1) {
-        await this.fastify.redis.expire(attemptsKey, OTP_ATTEMPT_WINDOW_SECONDS);
-      }
+      await this.registerOtpVerifyFailure(input.phone, otpKey, attemptsKey);
       throw new AppError(ERROR_CODES.INVALID_CREDENTIALS, 'Invalid or expired OTP', 401, {
         kind: 'auth',
         hintKey: 'otp_invalid'
       });
     }
 
-    await this.fastify.redis.del(otpKey, attemptsKey);
+    await this.fastify.redis.del(otpKey, attemptsKey, this.getOtpVerifyFailKey(input.phone));
 
     const user = await this.fastify.prisma.user.findFirst({
       where: { phone: input.phone }
     });
     if (!user) {
       throw new AppError(ERROR_CODES.NOT_FOUND, 'No user found for the phone number', 404);
+    }
+    if (user.role !== Role.CUSTOMER) {
+      // Same guard as password login on the customer audience: phone OTP must never mint
+      // ADMIN tokens (that would skip the admin password + email OTP steps).
+      const retryAfterSeconds = await this.registerFailedAuthAttempt(
+        input.phone,
+        context?.clientIp?.trim() || 'unknown-ip',
+        'customer'
+      );
+      if (retryAfterSeconds !== null) {
+        throw new AppError(ERROR_CODES.RATE_LIMIT_EXCEEDED, 'Too many attempts. Try again later.', 429, {
+          retryAfterSeconds
+        });
+      }
+      throw new AppError(ERROR_CODES.INVALID_CREDENTIALS, 'Invalid or expired OTP', 401);
     }
 
     return this.issueTokensForUser(user, this.deriveTokenIssueContext(context));
@@ -807,10 +884,7 @@ export class AuthService {
 
     const incomingHash = hashOtp(resolveOtpForHash(input.otp));
     if (incomingHash !== storedHash) {
-      const attemptCount = await this.fastify.redis.incr(attemptsKey);
-      if (attemptCount === 1) {
-        await this.fastify.redis.expire(attemptsKey, OTP_ATTEMPT_WINDOW_SECONDS);
-      }
+      await this.registerOtpVerifyFailure(input.phone, otpKey, attemptsKey);
       throw new AppError(ERROR_CODES.INVALID_CREDENTIALS, 'Invalid or expired OTP', 401, {
         kind: 'auth',
         hintKey: 'otp_invalid'
@@ -858,7 +932,7 @@ export class AuthService {
       }
     });
 
-    await this.fastify.redis.del(otpKey, attemptsKey);
+    await this.fastify.redis.del(otpKey, attemptsKey, this.getOtpVerifyFailKey(input.phone));
     return this.issueTokensForUser(user, this.deriveTokenIssueContext(context));
   }
 
@@ -1467,7 +1541,7 @@ export class AuthService {
       throw new AppError(ERROR_CODES.UNAUTHORISED, 'Invalid refresh token', 401);
     }
     const deviceContext = this.deriveTokenIssueContext(context);
-    const isMatch = await bcrypt.compare(refreshToken, tokenRecord.tokenHash);
+    const isMatch = await refreshTokenMatchesHash(refreshToken, tokenRecord.tokenHash);
     if (!isMatch || tokenRecord.deviceKeyHash !== deviceContext.deviceKeyHash) {
       await this.fastify.prisma.refreshToken.updateMany({
         where: {
@@ -1524,19 +1598,26 @@ export class AuthService {
 
   async logout(userId: string, refreshToken?: string, sessionId?: string): Promise<{ message: string }> {
     if (refreshToken) {
-      const tokenRecords = await this.fastify.prisma.refreshToken.findMany({
-        where: { userId }
-      });
-
-      for (const record of tokenRecords) {
-        const matches = await bcrypt.compare(refreshToken, record.tokenHash);
-        if (matches) {
-          await this.fastify.prisma.refreshToken.updateMany({
-            where: { userId, sessionId: record.sessionId, revokedAt: null },
-            data: { revokedAt: new Date() }
-          });
-          return { message: 'Logged out successfully' };
-        }
+      // Identify the session from the signed cookie JWT itself. The previous bcrypt scan
+      // matched EVERY row for the user (bcrypt truncates at 72 bytes) and so often revoked
+      // an old, already-dead session while the live token stayed valid. An expired but
+      // genuinely signed token is still accepted so its session family can be closed.
+      let payload: { sub?: unknown; sid?: unknown } | null = null;
+      try {
+        const decoded = jwt.verify(refreshToken, this.resolveRefreshSecret(), {
+          algorithms: ['HS256'],
+          ignoreExpiration: true
+        });
+        payload = typeof decoded === 'object' && decoded !== null ? decoded : null;
+      } catch {
+        payload = null;
+      }
+      if (payload && payload.sub === userId && typeof payload.sid === 'string' && payload.sid) {
+        await this.fastify.prisma.refreshToken.updateMany({
+          where: { userId, sessionId: payload.sid, revokedAt: null },
+          data: { revokedAt: new Date() }
+        });
+        return { message: 'Logged out successfully' };
       }
     }
 
@@ -1600,7 +1681,7 @@ export class AuthService {
       algorithm: 'HS256'
     });
 
-    const refreshTokenHash = await bcrypt.hash(refreshToken, 10);
+    const refreshTokenHash = hashRefreshToken(refreshToken);
 
     await this.fastify.prisma.refreshToken.create({
       data: {

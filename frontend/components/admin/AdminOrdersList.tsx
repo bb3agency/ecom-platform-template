@@ -18,13 +18,11 @@ import {
 } from "@/components/ui/console";
 import { useAuthenticatedApi } from "@/hooks/use-authenticated-api";
 import { useAdminDataRefreshEffect } from "@/hooks/use-admin-data-refresh-effect";
-import { useUrlFilterState } from "@/hooks/use-url-filter-state";
+import { useAdminList } from "@/hooks/use-admin-list";
 import {
   buildAdminQuery,
   buildOrdersExportQuery,
-  coercePaginatedResponse,
   ORDER_FILTER_STATUSES,
-  readPaginatedItems,
   type AdminOrderListItem,
   type AdminOrderStatusCounts,
   type AdminOrderStatusKey,
@@ -37,6 +35,7 @@ import {
   sentenceCaseEnum,
   type AdminDotTone,
 } from "@/lib/admin-format";
+import type { AdminListFilterSpecs, AdminListQuery } from "@/lib/admin-list";
 import { getBrowserApiBaseUrl, resolveApiBaseUrl } from "@/lib/api-base";
 import { resolveDownloadFilename } from "@/lib/download-filename";
 import { parseApiErrorFromResponse } from "@/lib/api";
@@ -69,6 +68,16 @@ const PAYMENT_FILTERS = ["", "PREPAID", "COD"] as const;
 /** "owed" = cancelled orders whose refund never went through (dashboard "Refunds to retry"). */
 const REFUND_FILTERS = ["", "owed"] as const;
 const SORTS = ["newest", "oldest"] as const;
+
+type OrderListFilters = { status: string; payment: string; refund: string; sort: string; search: string };
+
+const ORDER_LIST_FILTERS: AdminListFilterSpecs<OrderListFilters> = {
+  status: { defaultValue: "", allowed: ORDER_FILTER_STATUSES },
+  payment: { defaultValue: "", allowed: PAYMENT_FILTERS },
+  refund: { defaultValue: "", allowed: REFUND_FILTERS },
+  sort: { defaultValue: "newest", allowed: SORTS },
+  search: { defaultValue: "", param: false },
+};
 
 function defaultExportDates() {
   const to = new Date();
@@ -128,29 +137,6 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
   const canExport = hasAdminPermission(adminUser, ADMIN_PERMISSIONS.ordersExport);
   const accessToken = useAuthStore((s) => s.accessToken);
 
-  const [status, setStatus] = useUrlFilterState("status", "", ORDER_FILTER_STATUSES);
-  const [paymentFilter, setPaymentFilter] = useUrlFilterState("payment", "", PAYMENT_FILTERS);
-  const [sortOrder, setSortOrder] = useUrlFilterState("sort", "newest", SORTS);
-  const [refundFilter, setRefundFilter] = useUrlFilterState("refund", "", REFUND_FILTERS);
-  const [page, setPage] = useState(1);
-
-  // `searchInput` is the live field; `search` is what the fetch uses. It is committed
-  // after a 400ms pause so typing doesn't refetch (and dim the table) on every keystroke.
-  const [search, setSearch] = useState("");
-  const [searchInput, setSearchInput] = useState("");
-  useEffect(() => {
-    const next = searchInput.trim();
-    if (next === search) return;
-    const id = window.setTimeout(() => setSearch(next), 400);
-    return () => window.clearTimeout(id);
-  }, [searchInput, search]);
-
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [data, setData] = useState<PaginatedResponse<AdminOrderListItem> | null>(null);
-  const [counts, setCounts] = useState<AdminOrderStatusCounts | null>(null);
-  const [invoiceBusyId, setInvoiceBusyId] = useState<string | null>(null);
-
   const fromDate = from ?? "";
   const toDate = to ?? "";
   const exportFrom = fromDate || defaultExportDates().from;
@@ -161,35 +147,43 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
   const fromISO = isoRange?.fromISO;
   const toISO = isoRange?.toISO;
 
-  // Any filter change returns to the first page.
-  useEffect(() => {
-    setPage(1);
-  }, [status, paymentFilter, refundFilter, sortOrder, search, fromDate, toDate]);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await api<PaginatedResponse<AdminOrderListItem>>(
+  const fetchPage = useCallback(
+    ({ page, filters }: AdminListQuery<OrderListFilters>) =>
+      api<PaginatedResponse<AdminOrderListItem>>(
         `/admin/orders${buildAdminQuery({
           page,
           limit: PAGE_SIZE,
-          status: status || undefined,
-          search: search.trim() || undefined,
-          paymentMode: paymentFilter || undefined,
-          refund: refundFilter || undefined,
-          sort: sortOrder,
+          status: filters.status || undefined,
+          search: filters.search || undefined,
+          paymentMode: filters.payment || undefined,
+          refund: filters.refund || undefined,
+          sort: filters.sort,
           from: fromISO,
           to: toISO,
         })}`,
-      );
-      setData(coercePaginatedResponse(response));
-    } catch (err) {
-      setError(getApiErrorMessage(err));
-    } finally {
-      setLoading(false);
-    }
-  }, [api, page, status, search, paymentFilter, refundFilter, sortOrder, fromISO, toISO]);
+      ),
+    [api, fromISO, toISO],
+  );
+  const { filters, setFilter, setFilters, data, items, loading, error, setPage, reload } = useAdminList<AdminOrderListItem, OrderListFilters>({
+    filters: ORDER_LIST_FILTERS,
+    fetchPage,
+    refreshScopes: ["orders", "dashboard"],
+    resetKey: `${fromDate}|${toDate}`,
+  });
+  const { status, search, payment: paymentFilter, refund: refundFilter } = filters;
+
+  // `searchInput` is the live field; `search` is what the fetch uses. It is committed
+  // after a 400ms pause so typing doesn't refetch (and dim the table) on every keystroke.
+  const [searchInput, setSearchInput] = useState("");
+  useEffect(() => {
+    const next = searchInput.trim();
+    if (next === search) return;
+    const id = window.setTimeout(() => setFilter("search", next), 400);
+    return () => window.clearTimeout(id);
+  }, [searchInput, search, setFilter]);
+
+  const [counts, setCounts] = useState<AdminOrderStatusCounts | null>(null);
+  const [invoiceBusyId, setInvoiceBusyId] = useState<string | null>(null);
 
   // Tab counts: one call for every status in the same window as the list.
   const loadCounts = useCallback(async () => {
@@ -209,12 +203,8 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
   }, [api, fromISO, toISO]);
 
   useEffect(() => {
-    void load();
-  }, [load]);
-  useEffect(() => {
     void loadCounts();
   }, [loadCounts]);
-  useAdminDataRefreshEffect(load, ["orders", "dashboard"]);
   useAdminDataRefreshEffect(loadCounts, ["orders", "dashboard"]);
 
   async function downloadRowInvoice(order: AdminOrderListItem) {
@@ -280,8 +270,7 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [registerExportHandler, exportFrom, exportTo, status, search, paymentFilter, accessToken, canExport]);
 
-  const items = readPaginatedItems(data);
-  const filtersActive = Boolean(search || paymentFilter || refundFilter || sortOrder !== "newest");
+  const filtersActive = Boolean(search || paymentFilter || refundFilter || filters.sort !== "newest");
 
   const columns: DataColumn<AdminOrderListItem>[] = [
     {
@@ -381,7 +370,7 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
               type="button"
               role="tab"
               aria-selected={active}
-              onClick={() => setStatus(tab.value)}
+              onClick={() => setFilter("status", tab.value)}
               className={cn(
                 "relative flex h-11 shrink-0 items-center gap-1.5 whitespace-nowrap px-2.5 text-sm transition-colors",
                 active ? "font-medium text-foreground" : "text-muted-foreground hover:text-foreground",
@@ -411,7 +400,7 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
             value: searchInput,
             onChange: (v) => {
               setSearchInput(v);
-              if (v === "") setSearch("");
+              if (v === "") setFilter("search", "");
             },
             placeholder: "Search orders",
             label: "Search orders by number, customer, phone or AWB",
@@ -423,11 +412,8 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
                 variant="ghost"
                 size="lg"
                 onClick={() => {
-                  setSearch("");
                   setSearchInput("");
-                  setPaymentFilter("");
-                  setRefundFilter("");
-                  setSortOrder("newest");
+                  setFilters({ search: "", payment: "", refund: "", sort: "newest" });
                 }}
               >
                 Clear
@@ -438,7 +424,7 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
           <FilterSelect
             label="Payment"
             value={paymentFilter}
-            onChange={setPaymentFilter}
+            onChange={(v) => setFilter("payment", v)}
             options={[
               { value: "", label: "Any payment" },
               { value: "PREPAID", label: "Prepaid" },
@@ -448,7 +434,7 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
           <FilterSelect
             label="Refund"
             value={refundFilter}
-            onChange={setRefundFilter}
+            onChange={(v) => setFilter("refund", v)}
             options={[
               { value: "", label: "Any refund state" },
               { value: "owed", label: "Refund still owed" },
@@ -456,8 +442,8 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
           />
           <FilterSelect
             label="Sort"
-            value={sortOrder}
-            onChange={setSortOrder}
+            value={filters.sort}
+            onChange={(v) => setFilter("sort", v)}
             options={[
               { value: "newest", label: "Newest first" },
               { value: "oldest", label: "Oldest first" },
@@ -480,7 +466,7 @@ export function AdminOrdersList({ from, to }: AdminOrdersListProps = {}) {
             tone="danger"
             title="Couldn't load orders"
             action={
-              <Button type="button" variant="outline" size="lg" onClick={() => void load()}>
+              <Button type="button" variant="outline" size="lg" onClick={() => void reload()}>
                 Try again
               </Button>
             }

@@ -15,6 +15,7 @@ import {
   AnalyticsShippingProviderQuery
 } from './analytics.types';
 import { OrdersService } from '@modules/orders/orders.service';
+import { escapeCsvCell } from '@common/security/csv-cell';
 type PrismaClientExt = FastifyInstance['prisma'] & {
   adminAuditLog: {
     create: (args: { data: unknown }) => Promise<unknown>;
@@ -219,7 +220,7 @@ export class AnalyticsService {
     const data = await this.getRevenue(query);
     const header = ['bucket', 'ordersCount', 'revenuePaise'];
     const rows = data.points.map((point) => [point.bucket, String(point.ordersCount), String(point.revenuePaise)]);
-    const escapeCsv = (value: string) => `"${value.replace(/"/g, '""')}"`;
+    const escapeCsv = escapeCsvCell;
     return [header.map(escapeCsv).join(','), ...rows.map((row) => row.map((value) => escapeCsv(value)).join(','))].join('\n');
   }
 

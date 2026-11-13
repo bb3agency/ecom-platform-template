@@ -334,7 +334,7 @@ describe('AdminInvitesService', () => {
     ).rejects.toThrow('User already exists for invite phone number');
   });
 
-  it('sendSetupOtp sends SMS when admin OTP channel resolves to sms', async () => {
+  it('sendSetupOtp never sends the setup OTP to the body-supplied phone, even when SMS is the primary channel', async () => {
     const { service, mocks } = createHarness();
     mocks.storeSettingsFindUnique.mockResolvedValue({
       notifyEmailEnabled: true,
@@ -360,11 +360,13 @@ describe('AdminInvitesService', () => {
       phone: '+911234567890'
     });
 
+    expect(mocks.notificationsAdd).toHaveBeenCalledTimes(1);
     expect(mocks.notificationsAdd).toHaveBeenCalledWith(
-      'send-sms',
-      expect.objectContaining({ phone: '+911234567890', template: 'OtpVerification' }),
+      'send-email',
+      expect.objectContaining({ to: 'merchant@example.com', template: 'OtpVerification' }),
       expect.any(Object)
     );
+    expect(mocks.notificationsAdd).not.toHaveBeenCalledWith('send-sms', expect.anything(), expect.anything());
     vi.unstubAllEnvs();
   });
 
@@ -641,7 +643,7 @@ describe('AdminInvitesService', () => {
     expect(mocks.redisSet).toHaveBeenCalled();
   });
 
-  it('sendSetupOtp fans the setup OTP to BOTH email and WhatsApp when OTP_WHATSAPP_ENABLED and invitee has a phone', async () => {
+  it('sendSetupOtp sends the setup OTP to the invited email only, even when WhatsApp is enabled and a phone is supplied', async () => {
     const { service, mocks } = createHarness();
     vi.stubEnv('NODE_ENV', 'production');
     vi.stubEnv('OTP_WHATSAPP_ENABLED', 'true');
@@ -681,11 +683,8 @@ describe('AdminInvitesService', () => {
       expect.objectContaining({ to: 'merchant@example.com', template: 'OtpVerification' }),
       expect.anything()
     );
-    expect(mocks.notificationsAdd).toHaveBeenCalledWith(
-      'send-whatsapp',
-      expect.objectContaining({ phone: '+911234567890', template: 'OtpVerification' }),
-      expect.anything()
-    );
+    expect(mocks.notificationsAdd).toHaveBeenCalledTimes(1);
+    expect(mocks.notificationsAdd).not.toHaveBeenCalledWith('send-whatsapp', expect.anything(), expect.anything());
 
     vi.unstubAllEnvs();
   });

@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useState } from "react";
 
 import { AdminCouponAnalyticsPanel } from "@/components/admin/AdminCouponAnalyticsPanel";
 import { AdminCouponsStorefrontBanner } from "@/components/admin/AdminCouponsStorefrontBanner";
@@ -17,16 +17,14 @@ import { Button } from "@/components/ui/button";
 import { useAdminAuth } from "@/contexts/admin-auth-context";
 
 import { useAuthenticatedApi } from "@/hooks/use-authenticated-api";
-import { useAdminDataRefreshEffect } from "@/hooks/use-admin-data-refresh-effect";
+import { useAdminList } from "@/hooks/use-admin-list";
 
 import {
   buildAdminQuery,
-  coercePaginatedResponse,
   toIsoDateRange,
   type AdminCouponAuditEntry,
   type AdminCouponListItem,
   getPaginatedItems,
-  readPaginatedItems,
   type PaginatedResponse,
 } from "@/lib/admin-api";
 
@@ -36,6 +34,7 @@ import { getApiErrorMessage } from "@/lib/error-messages";
 
 import { createIdempotencyKey } from "@/lib/idempotency";
 import { notifyAdminDataChanged } from "@/lib/admin-data-refresh";
+import type { AdminListFilterSpecs, AdminListQuery } from "@/lib/admin-list";
 
 import { ADMIN_PERMISSIONS, hasAdminPermission } from "@/lib/permissions";
 import { useConfirm } from "@/components/ui/confirm-dialog";
@@ -56,6 +55,14 @@ import {
 } from "lucide-react";
 
 const PAGE_SIZE = 50;
+
+type CouponListFilters = { code: string; status: string; type: string };
+
+const COUPON_LIST_FILTERS: AdminListFilterSpecs<CouponListFilters> = {
+  code: { defaultValue: "", param: false },
+  status: { defaultValue: "", allowed: ["active", "expired", "paused", "deleted"] },
+  type: { defaultValue: "", allowed: ["percentage", "fixed", "free_shipping"] },
+};
 
 export function AdminCouponsPageContent({
   from,
@@ -94,15 +101,6 @@ export function AdminCouponsList({
     ADMIN_PERMISSIONS.couponsWrite,
   );
 
-  const [page, setPage] = useState(1);
-
-  const [loading, setLoading] = useState(true);
-
-  const [error, setError] = useState<string | null>(null);
-
-  const [data, setData] =
-    useState<PaginatedResponse<AdminCouponListItem> | null>(null);
-
   const [actionId, setActionId] = useState<string | null>(null);
   const { confirm, confirmDialog } = useConfirm();
 
@@ -120,59 +118,55 @@ export function AdminCouponsList({
   const [auditLoading, setAuditLoading] = useState(false);
   const [cloneCode, setCloneCode] = useState("");
   const [cloneTargetId, setCloneTargetId] = useState<string | null>(null);
-  const [searchInput, setSearchInput] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
-  const [typeFilter, setTypeFilter] = useState("");
   const [selectedIds, setSelectedIds] = useState<Record<string, boolean>>({});
 
-  const load = useCallback(async () => {
-    setLoading(true);
-
-    setError(null);
-
-    try {
+  const fetchPage = useCallback(
+    ({ page, filters }: AdminListQuery<CouponListFilters>) => {
       const backendType =
-        typeFilter === "percentage"
+        filters.type === "percentage"
           ? "PERCENTAGE_OFF"
-          : typeFilter === "fixed"
+          : filters.type === "fixed"
             ? "FLAT_AMOUNT_OFF"
-            : typeFilter === "free_shipping"
+            : filters.type === "free_shipping"
               ? "FREE_SHIPPING"
               : undefined;
 
-      const response = await api<PaginatedResponse<AdminCouponListItem>>(
+      return api<PaginatedResponse<AdminCouponListItem>>(
         `/admin/coupons${buildAdminQuery({
           page,
           limit: PAGE_SIZE,
-          code: searchInput.trim().toUpperCase() || undefined,
-          status: statusFilter || undefined,
+          code: filters.code.trim().toUpperCase() || undefined,
+          status: filters.status || undefined,
           type: backendType,
           from: from ? toIsoDateRange(from) : undefined,
           to: to ? toIsoDateRange(to, true) : undefined,
         })}`,
       );
-
-      setData(coercePaginatedResponse(response));
-    } catch (err) {
-      setError(getApiErrorMessage(err));
-
-      setData(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [api, page, searchInput, statusFilter, typeFilter, from, to]);
-
-  useEffect(() => {
-    setPage(1);
-  }, [from, to]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  useAdminDataRefreshEffect(load, ["coupons"]);
+    },
+    [api, from, to],
+  );
+  const {
+    filters,
+    setFilter,
+    data,
+    items,
+    loading,
+    error,
+    setPage,
+    reload: load,
+  } = useAdminList<AdminCouponListItem, CouponListFilters>({
+    filters: COUPON_LIST_FILTERS,
+    fetchPage,
+    refreshScopes: ["coupons"],
+    resetKey: `${from ?? ""}|${to ?? ""}`,
+  });
+  const { code: searchInput, status: statusFilter, type: typeFilter } = filters;
+  // Row-action failures (toggle, delete, clone…) share the list's error banner but
+  // must not wipe the table, so they live apart from the hook's load error.
+  const [actionError, setActionError] = useState<string | null>(null);
 
   async function toggleActive(coupon: AdminCouponListItem) {
+    setActionError(null);
     setActionId(coupon.id);
 
     try {
@@ -187,7 +181,7 @@ export function AdminCouponsList({
       await load();
       notifyAdminDataChanged(["coupons", "dashboard"]);
     } catch (err) {
-      setError(getApiErrorMessage(err));
+      setActionError(getApiErrorMessage(err));
     } finally {
       setActionId(null);
     }
@@ -206,6 +200,7 @@ export function AdminCouponsList({
     });
     if (!ok) return;
 
+    setActionError(null);
     setActionId(coupon.id);
 
     try {
@@ -218,13 +213,14 @@ export function AdminCouponsList({
       await load();
       notifyAdminDataChanged(["coupons", "dashboard"]);
     } catch (err) {
-      setError(getApiErrorMessage(err));
+      setActionError(getApiErrorMessage(err));
     } finally {
       setActionId(null);
     }
   }
 
   async function restoreCoupon(coupon: AdminCouponListItem) {
+    setActionError(null);
     setActionId(coupon.id);
 
     try {
@@ -239,7 +235,7 @@ export function AdminCouponsList({
       await load();
       notifyAdminDataChanged(["coupons", "dashboard"]);
     } catch (err) {
-      setError(getApiErrorMessage(err));
+      setActionError(getApiErrorMessage(err));
     } finally {
       setActionId(null);
     }
@@ -247,8 +243,9 @@ export function AdminCouponsList({
 
   async function cloneCoupon(coupon: AdminCouponListItem, newCode: string) {
     const code = newCode.trim().toUpperCase();
+    setActionError(null);
     if (!code) {
-      setError("Enter a code for the cloned coupon.");
+      setActionError("Enter a code for the cloned coupon.");
       return;
     }
     setActionId(coupon.id);
@@ -263,7 +260,7 @@ export function AdminCouponsList({
       await load();
       notifyAdminDataChanged(["coupons", "dashboard"]);
     } catch (err) {
-      setError(getApiErrorMessage(err));
+      setActionError(getApiErrorMessage(err));
     } finally {
       setActionId(null);
     }
@@ -281,16 +278,13 @@ export function AdminCouponsList({
 
       setAuditItems(getPaginatedItems(response));
     } catch (err) {
-      setError(getApiErrorMessage(err));
+      setActionError(getApiErrorMessage(err));
 
       setAuditItems([]);
     } finally {
       setAuditLoading(false);
     }
   }
-
-  const rawItems = readPaginatedItems(data);
-  const items = rawItems;
 
   // Modal form: open for create OR edit
   const formOpen = showCreate || Boolean(editingCoupon);
@@ -315,9 +309,9 @@ export function AdminCouponsList({
         }}
       />
 
-      {error ? (
+      {error || actionError ? (
         <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {error}
+          {error ?? actionError}
         </p>
       ) : null}
 
@@ -329,20 +323,14 @@ export function AdminCouponsList({
               className="h-9 w-full rounded-md border border-input bg-background pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring/40"
               placeholder="Search coupons by code..."
               value={searchInput}
-              onChange={(e) => {
-                setSearchInput(e.target.value);
-                setPage(1);
-              }}
+              onChange={(e) => setFilter("code", e.target.value)}
             />
           </div>
 
           <select
             className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-ring/40 sm:w-auto sm:min-w-32"
             value={statusFilter}
-            onChange={(e) => {
-              setStatusFilter(e.target.value);
-              setPage(1);
-            }}
+            onChange={(e) => setFilter("status", e.target.value)}
           >
             <option value="">All Status</option>
             <option value="active">Active</option>
@@ -354,7 +342,7 @@ export function AdminCouponsList({
           <select
             className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-ring/40 sm:w-auto sm:min-w-32"
             value={typeFilter}
-            onChange={(e) => { setTypeFilter(e.target.value); setPage(1); }}
+            onChange={(e) => setFilter("type", e.target.value)}
           >
             <option value="">All Types</option>
             <option value="percentage">Percentage</option>

@@ -21,6 +21,10 @@ export type CouponLimitClient = {
 
 export type CouponUsageFinalizeClient = {
   coupon: {
+    findUnique?: (args: {
+      where: { id: string };
+      select: { usesCount: true; maxUsesTotal: true; maxUsesPerUser: true };
+    }) => Promise<{ usesCount: number; maxUsesTotal: number | null; maxUsesPerUser: number | null } | null>;
     updateMany?: (args: {
       where: Record<string, unknown>;
       data: Record<string, unknown>;
@@ -41,8 +45,79 @@ export type CouponUsageFinalizeClient = {
     }) => Promise<unknown>;
     findMany?: (args: Prisma.CouponUsageFindManyArgs) => Promise<Array<{ id: string; couponId: string }>>;
     delete?: (args: Prisma.CouponUsageDeleteArgs) => Promise<unknown>;
+    count?: (args: Prisma.CouponUsageCountArgs) => Promise<number>;
   };
 };
+
+/** Bounded optimistic-CAS retries on the coupon row before giving up as a conflict. */
+const COUPON_FINALIZE_CAS_ATTEMPTS = 10;
+
+export type FinalizeCouponUsageOptions = {
+  /**
+   * 'throw' (default): a reached limit throws COUPON_USAGE_EXCEEDED.
+   * 'report': nothing throws for a reached limit; the result says so instead. Used after a
+   * payment is already captured, where an exception would roll back the order and strand
+   * the customer's money — the caller cancels and refunds instead.
+   */
+  onLimitExceeded?: 'throw' | 'report';
+};
+
+export type FinalizeCouponUsageResult = { limitExceeded: boolean };
+
+function couponLimitReached(couponId: string, scope: 'total' | 'user'): AppError {
+  return new AppError(
+    ERROR_CODES.COUPON_USAGE_EXCEEDED,
+    scope === 'user'
+      ? `Coupon per-user usage limit reached while confirming order for coupon ${couponId}`
+      : `Coupon usage limit reached while confirming order for coupon ${couponId}`,
+    409
+  );
+}
+
+/**
+ * Atomically claim one coupon use: re-read the CURRENT row, check the total and per-user
+ * caps against it, then increment with a compare-and-set on `usesCount`. Two concurrent
+ * finalizations serialise on the row lock; the loser's CAS misses, it re-reads, and its
+ * re-check sees the winner's use (so `maxUsesTotal`/`maxUsesPerUser` can never be passed).
+ */
+async function claimCouponUseWithCas(
+  tx: CouponUsageFinalizeClient,
+  input: { couponId: string; orderId: string; userId: string }
+): Promise<'claimed' | 'total' | 'user'> {
+  const couponDelegate = tx.coupon as Required<Pick<CouponUsageFinalizeClient['coupon'], 'findUnique' | 'updateMany'>>;
+  for (let attempt = 0; attempt < COUPON_FINALIZE_CAS_ATTEMPTS; attempt += 1) {
+    const current = await couponDelegate.findUnique({
+      where: { id: input.couponId },
+      select: { usesCount: true, maxUsesTotal: true, maxUsesPerUser: true }
+    });
+    if (!current) {
+      return 'total';
+    }
+    if (current.maxUsesPerUser !== null && tx.couponUsage.count) {
+      const usedByUser = await tx.couponUsage.count({
+        where: { couponId: input.couponId, userId: input.userId, orderId: { not: input.orderId } }
+      });
+      if (usedByUser >= current.maxUsesPerUser) {
+        return 'user';
+      }
+    }
+    if (current.maxUsesTotal !== null && current.usesCount >= current.maxUsesTotal) {
+      return 'total';
+    }
+    const claimed = await couponDelegate.updateMany({
+      where: { id: input.couponId, usesCount: current.usesCount },
+      data: { usesCount: { increment: 1 } }
+    });
+    if (claimed.count === 1) {
+      return 'claimed';
+    }
+  }
+  throw new AppError(
+    ERROR_CODES.CONFLICT,
+    `Coupon ${input.couponId} is being redeemed concurrently; please retry`,
+    409
+  );
+}
 
 export async function countCouponReservedOrders(
   client: CouponLimitClient,
@@ -98,8 +173,10 @@ export async function finalizeCouponUsageForOrder(
     userId: string;
     discountAmount: number;
     coupons: Array<{ id: string; usesCount: number }>;
-  }
-): Promise<void> {
+  },
+  options: FinalizeCouponUsageOptions = {}
+): Promise<FinalizeCouponUsageResult> {
+  const reportOnly = options.onLimitExceeded === 'report';
   for (const coupon of input.coupons) {
     const existingUsage = await tx.couponUsage.findUnique({
       where: {
@@ -121,7 +198,19 @@ export async function finalizeCouponUsageForOrder(
       typeof couponDelegate.update === 'function' &&
       'mock' in (couponDelegate.update as unknown as Record<string, unknown>);
 
-    if (couponDelegate.updateMany && !preferUpdateForMock) {
+    if (couponDelegate.updateMany && tx.coupon.findUnique && !preferUpdateForMock) {
+      const outcome = await claimCouponUseWithCas(tx, {
+        couponId: coupon.id,
+        orderId: input.orderId,
+        userId: input.userId
+      });
+      if (outcome !== 'claimed') {
+        if (reportOnly) {
+          return { limitExceeded: true };
+        }
+        throw couponLimitReached(coupon.id, outcome);
+      }
+    } else if (couponDelegate.updateMany && !preferUpdateForMock) {
       const incrementResult = await couponDelegate.updateMany({
         where: {
           id: coupon.id,
@@ -135,11 +224,10 @@ export async function finalizeCouponUsageForOrder(
       });
 
       if (incrementResult.count === 0) {
-        throw new AppError(
-          ERROR_CODES.COUPON_USAGE_EXCEEDED,
-          `Coupon usage limit reached while confirming order for coupon ${coupon.id}`,
-          409
-        );
+        if (reportOnly) {
+          return { limitExceeded: true };
+        }
+        throw couponLimitReached(coupon.id, 'total');
       }
     } else {
       await couponDelegate.update({
@@ -161,6 +249,7 @@ export async function finalizeCouponUsageForOrder(
       }
     });
   }
+  return { limitExceeded: false };
 }
 
 /** Reverse finalized coupon usage when an order is cancelled or fully refunded. */

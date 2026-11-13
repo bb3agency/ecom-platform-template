@@ -958,6 +958,8 @@ model OutboxMessage {
   updatedAt   DateTime     @updatedAt
 
   @@index([status, createdAt])
+  // Webhook inbox reclaim looks up the deterministic outbox jobId before re-driving.
+  @@index([jobId])
 }
 
 model WebhookInboxEvent {
@@ -970,6 +972,10 @@ model WebhookInboxEvent {
   enqueuedAt   DateTime?
   processedAt  DateTime?
   lastError    String?
+  /// Outbox message (queueName, jobName, payload, jobId) the webhook writes for this
+  /// event, so the stuck-PROCESSING sweep can re-drive it after a crash.
+  redriveSpec     Json?
+  reclaimAttempts Int               @default(0)
   createdAt    DateTime          @default(now())
   updatedAt    DateTime          @updatedAt
 

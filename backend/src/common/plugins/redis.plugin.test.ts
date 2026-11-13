@@ -49,6 +49,10 @@ describe('registerRedisPlugin', () => {
     });
 
     expect(redisCtor).toHaveBeenCalledTimes(1);
+    // be-rel-07: the request-path client must fail fast during a Redis outage,
+    // not queue commands forever (maxRetriesPerRequest: null is for workers only).
+    const options = redisCtor.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(options.maxRetriesPerRequest).toBe(2);
     expect(state.on).toHaveBeenCalledWith('error', expect.any(Function));
     expect(decorate).toHaveBeenCalledWith('redis', expect.objectContaining({ quit: expect.any(Function) }));
     expect(hooks.length).toBe(1);

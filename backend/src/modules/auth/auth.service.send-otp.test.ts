@@ -112,7 +112,7 @@ describe('AuthService sendOtp', () => {
       prisma: {
         opsConfigSecret: { findMany: vi.fn().mockResolvedValue([]) },
         user: {
-          findFirst: vi.fn().mockResolvedValue({ email: 'customer@example.com' })
+          findFirst: vi.fn().mockResolvedValue({ id: 'customer-1', role: 'CUSTOMER', email: 'customer@example.com' })
         },
         storeSettings: {
           findUnique: vi.fn().mockResolvedValue({ storeName: 'Acme Shop' })

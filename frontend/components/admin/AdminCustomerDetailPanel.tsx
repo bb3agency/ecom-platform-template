@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useAuthenticatedApi } from "@/hooks/use-authenticated-api";
 import { createIdempotencyKey } from "@/lib/idempotency";
+import { createMutationGate } from "@/lib/mutation-gate";
 import { notifyAdminDataChanged } from "@/lib/admin-data-refresh";
 import {
   ensureArray,
@@ -42,11 +43,15 @@ export function AdminCustomerDetailPanel({ customerId }: AdminCustomerDetailPane
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  // Which mutation is in flight ("note" | "ban" | "unban" | "note:<id>"), for button states.
+  const [busy, setBusy] = useState<string | null>(null);
+  const [gate] = useState(() => createMutationGate(setBusy));
 
   const canWrite = hasAdminPermission(user, ADMIN_PERMISSIONS.usersWrite);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  /** `silent` refreshes in place (after a mutation) without swapping the panel for a skeleton. */
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     setError(null);
     try {
       const [nextProfile, nextOrders, nextNotes] = await Promise.all([
@@ -73,6 +78,21 @@ export function AdminCustomerDetailPanel({ customerId }: AdminCustomerDetailPane
     void load();
   }, [load]);
 
+  /** One mutation at a time; clears stale feedback first, refreshes in place on success. */
+  async function mutate(key: string, request: () => Promise<unknown>, successMessage: string) {
+    setError(null);
+    setMessage(null);
+    const result = await gate.run(key, request);
+    if (result.ok) {
+      setMessage(successMessage);
+      notifyAdminDataChanged(["customers", "dashboard"]);
+      await load(true);
+    } else if (result.reason === "error") {
+      setError(getApiErrorMessageWithHint(result.error));
+    }
+    return result.ok;
+  }
+
   if (loading) {
     return <AdminLoadingBlock label="Loading customer…" />;
   }
@@ -88,8 +108,16 @@ export function AdminCustomerDetailPanel({ customerId }: AdminCustomerDetailPane
   return (
     <div className="grid min-w-0 grid-cols-1 gap-6">
       {confirmDialog}
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
-      {message ? <p className="text-sm text-muted-foreground">{message}</p> : null}
+      {error ? (
+        <p className="text-sm text-destructive" role="alert">
+          {error}
+        </p>
+      ) : null}
+      {message ? (
+        <p className="text-sm text-muted-foreground" role="status">
+          {message}
+        </p>
+      ) : null}
 
       {/* Customer header */}
       <div className="flex min-w-0 flex-wrap items-center gap-4 rounded-2xl border border-border bg-card p-5">
@@ -249,7 +277,9 @@ export function AdminCustomerDetailPanel({ customerId }: AdminCustomerDetailPane
                 {canWrite ? (
                   <button
                     type="button"
-                    className="shrink-0 text-xs font-medium text-destructive hover:underline"
+                    disabled={busy !== null}
+                    aria-busy={busy === `note:${note.id}`}
+                    className="shrink-0 text-xs font-medium text-destructive hover:underline disabled:cursor-not-allowed disabled:opacity-50"
                     onClick={() => {
                       void confirm({
                         title: "Delete Note?",
@@ -257,16 +287,15 @@ export function AdminCustomerDetailPanel({ customerId }: AdminCustomerDetailPane
                         confirmLabel: "Delete Note",
                       }).then((ok) => {
                         if (!ok) return;
-                        void api(`/admin/users/${customerId}/notes/${note.id}`, {
-                          method: "DELETE",
-                          idempotencyKey: createIdempotencyKey(),
-                        })
-                          .then(() => {
-                            setMessage("Note deleted.");
-                            notifyAdminDataChanged(["customers", "dashboard"]);
-                            return load();
-                          })
-                          .catch((err) => setError(getApiErrorMessageWithHint(err)));
+                        void mutate(
+                          `note:${note.id}`,
+                          () =>
+                            api(`/admin/users/${customerId}/notes/${note.id}`, {
+                              method: "DELETE",
+                              idempotencyKey: createIdempotencyKey(),
+                            }),
+                          "Note deleted.",
+                        );
                       });
                     }}
                   >
@@ -282,18 +311,21 @@ export function AdminCustomerDetailPanel({ customerId }: AdminCustomerDetailPane
             className="grid min-w-0 grid-cols-1 gap-2"
             onSubmit={(event) => {
               event.preventDefault();
-              void api(`/admin/users/${customerId}/notes`, {
-                method: "POST",
-                idempotencyKey: createIdempotencyKey(),
-                body: JSON.stringify({ content: noteText }),
-              })
-                .then(() => {
-                  setMessage("Note added.");
-                  setNoteText("");
-                  notifyAdminDataChanged(["customers", "dashboard"]);
-                  return load();
-                })
-                .catch((err) => setError(getApiErrorMessageWithHint(err)));
+              const content = noteText.trim();
+              if (!content) return;
+              void mutate(
+                "note",
+                () =>
+                  api(`/admin/users/${customerId}/notes`, {
+                    method: "POST",
+                    idempotencyKey: createIdempotencyKey(),
+                    body: JSON.stringify({ content }),
+                  }),
+                "Note added.",
+              ).then((ok) => {
+                // Keep the typed note on failure so it can be retried.
+                if (ok) setNoteText("");
+              });
             }}
           >
             <textarea
@@ -301,10 +333,17 @@ export function AdminCustomerDetailPanel({ customerId }: AdminCustomerDetailPane
               onChange={(event) => setNoteText(event.target.value)}
               placeholder="Add an internal note about this customer…"
               aria-label="New admin note"
+              disabled={busy === "note"}
               className="min-h-20 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
               required
             />
-            <Button type="submit" size="sm" className="w-fit">
+            <Button
+              type="submit"
+              size="sm"
+              className="w-fit"
+              loading={busy === "note"}
+              disabled={busy !== null && busy !== "note"}
+            >
               Add note
             </Button>
           </form>
@@ -317,56 +356,70 @@ export function AdminCustomerDetailPanel({ customerId }: AdminCustomerDetailPane
           description="Banned customers can't sign in or place orders. Unbanning restores access immediately."
         >
           <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="destructive"
-              size="sm"
-              onClick={() => {
-                void confirm({
-                  title: "Ban Customer?",
-                  description:
-                    "The customer will no longer be able to sign in or place orders. You can unban them later.",
-                  confirmLabel: "Ban Customer",
-                  icon: UserXIcon,
-                  reasonLabel: "Reason (required)",
-                  reasonPlaceholder: "e.g. repeated COD refusals, abusive behaviour…",
-                }).then((ok) => {
-                  if (!ok) return;
-                  void api(`/admin/users/${customerId}/ban`, {
-                    method: "PATCH",
-                    idempotencyKey: createIdempotencyKey(),
-                    body: JSON.stringify({ reason: ok.reason }),
-                  })
-                    .then(() => {
-                      setMessage("Customer banned.");
-                      notifyAdminDataChanged(["customers", "dashboard"]);
-                      return load();
-                    })
-                    .catch((err) => setError(getApiErrorMessageWithHint(err)));
-                });
-              }}
-            >
-              Ban customer
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                void api(`/admin/users/${customerId}/ban`, {
-                  method: "DELETE",
-                  idempotencyKey: createIdempotencyKey(),
-                })
-                  .then(() => {
-                    setMessage("Customer unbanned.");
-                    notifyAdminDataChanged(["customers", "dashboard"]);
-                    return load();
-                  })
-                  .catch((err) => setError(getApiErrorMessageWithHint(err)));
-              }}
-            >
-              Unban
-            </Button>
+            {profile.isBanned ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                loading={busy === "unban"}
+                disabled={busy !== null && busy !== "unban"}
+                onClick={() => {
+                  void confirm({
+                    title: "Unban Customer?",
+                    description:
+                      "The customer will be able to sign in and place orders again straight away.",
+                    confirmLabel: "Unban Customer",
+                    tone: "primary",
+                  }).then((ok) => {
+                    if (!ok) return;
+                    void mutate(
+                      "unban",
+                      () =>
+                        api(`/admin/users/${customerId}/ban`, {
+                          method: "DELETE",
+                          idempotencyKey: createIdempotencyKey(),
+                        }),
+                      "Customer unbanned.",
+                    );
+                  });
+                }}
+              >
+                Unban customer
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                loading={busy === "ban"}
+                disabled={busy !== null && busy !== "ban"}
+                onClick={() => {
+                  void confirm({
+                    title: "Ban Customer?",
+                    description:
+                      "The customer will no longer be able to sign in or place orders. You can unban them later.",
+                    confirmLabel: "Ban Customer",
+                    icon: UserXIcon,
+                    reasonLabel: "Reason (required)",
+                    reasonPlaceholder: "e.g. repeated COD refusals, abusive behaviour…",
+                  }).then((ok) => {
+                    if (!ok) return;
+                    void mutate(
+                      "ban",
+                      () =>
+                        api(`/admin/users/${customerId}/ban`, {
+                          method: "PATCH",
+                          idempotencyKey: createIdempotencyKey(),
+                          body: JSON.stringify({ reason: ok.reason }),
+                        }),
+                      "Customer banned.",
+                    );
+                  });
+                }}
+              >
+                Ban customer
+              </Button>
+            )}
           </div>
         </AdminSection>
       ) : null}

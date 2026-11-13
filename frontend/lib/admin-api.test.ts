@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildAdminQuery,
+  buildOrdersExportQuery,
   fetchAllPaginatedItems,
   normalizePagination,
   toIsoDateRange,
@@ -26,9 +27,31 @@ describe("buildAdminQuery", () => {
 });
 
 describe("toIsoDateRange", () => {
-  it("formats start and end of day in UTC Z suffix", () => {
-    expect(toIsoDateRange("2026-06-01")).toBe("2026-06-01T00:00:00.000Z");
-    expect(toIsoDateRange("2026-06-01", true)).toBe("2026-06-01T23:59:59.999Z");
+  // Local-day boundaries: the admin's own midnight, not UTC midnight (which
+  // splits an IST day at 05:30).
+  it("returns the start of the local day", () => {
+    expect(toIsoDateRange("2026-06-01")).toBe(new Date(2026, 5, 1, 0, 0, 0, 0).toISOString());
+  });
+
+  it("returns the last millisecond of the local day", () => {
+    expect(toIsoDateRange("2026-06-01", true)).toBe(
+      new Date(2026, 5, 1, 23, 59, 59, 999).toISOString(),
+    );
+  });
+
+  it("returns empty for blank or invalid input", () => {
+    expect(toIsoDateRange("")).toBe("");
+    expect(toIsoDateRange("not-a-date")).toBe("");
+  });
+});
+
+describe("buildOrdersExportQuery", () => {
+  it("uses the same local-day window as the on-screen orders list", () => {
+    const query = new URLSearchParams(
+      buildOrdersExportQuery({ from: "2026-11-01", to: "2026-11-07" }).slice(1),
+    );
+    expect(query.get("from")).toBe(new Date(2026, 10, 1, 0, 0, 0, 0).toISOString());
+    expect(query.get("to")).toBe(new Date(2026, 10, 7, 23, 59, 59, 999).toISOString());
   });
 });
 

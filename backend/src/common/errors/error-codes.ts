@@ -11,6 +11,10 @@ export const ERROR_CODES = {
   INVALID_STATUS_TRANSITION: 'INVALID_STATUS_TRANSITION',
   COUPON_EXPIRED: 'COUPON_EXPIRED',
   COUPON_USAGE_EXCEEDED: 'COUPON_USAGE_EXCEEDED',
+  // A cart line's add-time price no longer matches the live variant price. The cart has been
+  // re-priced; error.details.items lists { variantId, previousPricePaise, currentPricePaise }.
+  // The storefront should reload the cart and show the new total before the customer pays.
+  PRICE_CHANGED: 'PRICE_CHANGED',
   PINCODE_NOT_SERVICEABLE: 'PINCODE_NOT_SERVICEABLE',
   // Cart holds local-delivery-only products that cannot reach the destination pincode.
   // error.details.products lists exactly what the customer has to remove to proceed.

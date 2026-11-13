@@ -1,5 +1,5 @@
 import { Worker, UnrecoverableError, type ConnectionOptions } from 'bullmq';
-import { NotificationChannel, NotificationStatus, PrismaClient as RealPrismaClient } from '@prisma/client';
+import { NotificationChannel, NotificationStatus, type Prisma, PrismaClient as RealPrismaClient } from '@prisma/client';
 import { type SmsProviderAdapter } from '@common/interfaces/notification-provider.interface';
 import { decryptOpsConfigValue } from '@common/security/ops-config-crypto';
 import { resolveNotifyFlags } from '@config/feature-flags';
@@ -152,6 +152,8 @@ function onProviderFailure(
 
 type NotificationsWorkerDeps = {
   PrismaClient?: typeof RealPrismaClient;
+  /** Shared process-wide client (workers/index.ts) — avoids one connection pool per worker. */
+  prisma?: RealPrismaClient;
   Worker?: typeof Worker;
   // Backward-compatible test seam. Kept to avoid breaking existing worker tests.
   createNotificationProviders?: typeof createNotificationProviders;
@@ -163,7 +165,30 @@ export function createNotificationsWorker(
 ): Worker {
   const PrismaClientCtor = deps?.PrismaClient ?? RealPrismaClient;
   const WorkerCtor = deps?.Worker ?? Worker;
-  const prisma = new PrismaClientCtor();
+  const prisma = deps?.prisma ?? new PrismaClientCtor();
+
+  /**
+   * be-rel-09: the provider has ALREADY accepted the message when this runs. A
+   * failure to write the SENT row (DB blip, pool exhaustion) must not fall into
+   * the delivery catch — that would log a bogus provider failure, alert, and let
+   * BullMQ retry, re-sending the customer's email/SMS/WhatsApp. Log and move on.
+   */
+  async function recordSentLog(data: Prisma.NotificationLogUncheckedCreateInput): Promise<void> {
+    try {
+      await prisma.notificationLog.create({ data });
+    } catch (logError) {
+      process.stderr.write(
+        `${JSON.stringify({
+          level: 'error',
+          msg: 'Notification delivered but SENT log write failed',
+          channel: data.channel,
+          template: data.template,
+          err: logError instanceof Error ? logError.message : String(logError)
+        })}\n`
+      );
+    }
+  }
+
   const OPS_RUNTIME_NOTIFICATION_KEYS = [
     'NOTIFY_EMAIL_ENABLED',
     'NOTIFY_SMS_ENABLED',
@@ -291,17 +316,18 @@ export function createNotificationsWorker(
             apiKey: runtimeConfig.RESEND_API_KEY ?? '',
             fromEmail: runtimeConfig.RESEND_FROM ?? ''
           });
-          const sent = await emailAdapter.sendEmail(data);
+          const sent = await emailAdapter.sendEmail({
+            ...data,
+            ...(job.id ? { idempotencyKey: `notifications:${job.id}:email` } : {})
+          });
           onProviderSuccess('EMAIL', 'resend');
-          await prisma.notificationLog.create({
-            data: {
-              channel: NotificationChannel.EMAIL,
-              recipient: data.to,
-              template: data.template,
-              status: NotificationStatus.SENT,
-              provider: 'resend',
-              ...(sent.messageId ? { providerMessageId: sent.messageId } : {})
-            }
+          await recordSentLog({
+            channel: NotificationChannel.EMAIL,
+            recipient: data.to,
+            template: data.template,
+            status: NotificationStatus.SENT,
+            provider: 'resend',
+            ...(sent.messageId ? { providerMessageId: sent.messageId } : {})
           });
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Unknown email provider error';
@@ -371,15 +397,13 @@ export function createNotificationsWorker(
           };
           const sent = await smsAdapter.sendSms(smsData);
           onProviderSuccess('SMS', smsProvider);
-          await prisma.notificationLog.create({
-            data: {
-              channel: NotificationChannel.SMS,
-              recipient: data.phone,
-              template: data.template,
-              status: NotificationStatus.SENT,
-              provider: smsProvider,
-              ...(sent.messageId ? { providerMessageId: sent.messageId } : {})
-            }
+          await recordSentLog({
+            channel: NotificationChannel.SMS,
+            recipient: data.phone,
+            template: data.template,
+            status: NotificationStatus.SENT,
+            provider: smsProvider,
+            ...(sent.messageId ? { providerMessageId: sent.messageId } : {})
           });
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Unknown SMS provider error';
@@ -451,15 +475,13 @@ export function createNotificationsWorker(
             data: WhatsappTemplateRegistry.composeTemplateData(data.data, flags.storeName)
           });
           onProviderSuccess('WHATSAPP', 'meta-whatsapp');
-          await prisma.notificationLog.create({
-            data: {
-              channel: NotificationChannel.WHATSAPP,
-              recipient: data.phone,
-              template: data.template,
-              status: NotificationStatus.SENT,
-              provider: 'meta-whatsapp',
-              ...(sent.messageId ? { providerMessageId: sent.messageId } : {})
-            }
+          await recordSentLog({
+            channel: NotificationChannel.WHATSAPP,
+            recipient: data.phone,
+            template: data.template,
+            status: NotificationStatus.SENT,
+            provider: 'meta-whatsapp',
+            ...(sent.messageId ? { providerMessageId: sent.messageId } : {})
           });
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Unknown WhatsApp provider error';
@@ -583,18 +605,17 @@ export function createNotificationsWorker(
             const sent = await emailAdapter.sendEmail({
               to: recipient,
               template: data.template,
-              data: data.data
+              data: data.data,
+              ...(job.id ? { idempotencyKey: `notifications:${job.id}:primary-email` } : {})
             });
             onProviderSuccess('EMAIL', 'resend');
-            await prisma.notificationLog.create({
-              data: {
-                channel: NotificationChannel.EMAIL,
-                recipient,
-                template: data.template,
-                status: NotificationStatus.SENT,
-                provider: 'resend',
-                ...(sent.messageId ? { providerMessageId: sent.messageId } : {})
-              }
+            await recordSentLog({
+              channel: NotificationChannel.EMAIL,
+              recipient,
+              template: data.template,
+              status: NotificationStatus.SENT,
+              provider: 'resend',
+              ...(sent.messageId ? { providerMessageId: sent.messageId } : {})
             });
           } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown email provider error';
@@ -681,15 +702,13 @@ export function createNotificationsWorker(
               data: SmsTemplateRegistry.composeTemplateData(data.data, flags.storeName)
             });
             onProviderSuccess('SMS', smsProvider);
-            await prisma.notificationLog.create({
-              data: {
-                channel: NotificationChannel.SMS,
-                recipient,
-                template: data.template,
-                status: NotificationStatus.SENT,
-                provider: smsProvider,
-                ...(sent.messageId ? { providerMessageId: sent.messageId } : {})
-              }
+            await recordSentLog({
+              channel: NotificationChannel.SMS,
+              recipient,
+              template: data.template,
+              status: NotificationStatus.SENT,
+              provider: smsProvider,
+              ...(sent.messageId ? { providerMessageId: sent.messageId } : {})
             });
           } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown SMS provider error';
@@ -778,15 +797,13 @@ export function createNotificationsWorker(
             data: WhatsappTemplateRegistry.composeTemplateData(data.data, flags.storeName)
           });
           onProviderSuccess('WHATSAPP', 'meta-whatsapp');
-          await prisma.notificationLog.create({
-            data: {
-              channel: NotificationChannel.WHATSAPP,
-              recipient,
-              template: data.template,
-              status: NotificationStatus.SENT,
-              provider: 'meta-whatsapp',
-              ...(sent.messageId ? { providerMessageId: sent.messageId } : {})
-            }
+          await recordSentLog({
+            channel: NotificationChannel.WHATSAPP,
+            recipient,
+            template: data.template,
+            status: NotificationStatus.SENT,
+            provider: 'meta-whatsapp',
+            ...(sent.messageId ? { providerMessageId: sent.messageId } : {})
           });
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Unknown WhatsApp provider error';

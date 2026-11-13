@@ -12,6 +12,8 @@ export interface ApiErrorBody {
       rule?: string;
       message?: string;
     }>;
+    /** PRICE_CHANGED (409): `[{ variantId, previousPricePaise, currentPricePaise }]`. */
+    items?: unknown[];
   };
 }
 

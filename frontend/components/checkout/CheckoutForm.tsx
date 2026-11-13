@@ -8,18 +8,44 @@ import { z } from "zod";
 import Link from "next/link";
 import { useSafeRouter } from "@/lib/use-safe-router";
 import { MapPin, AlertTriangle, ShoppingBag, Truck, Tag } from "lucide-react";
-import { checkPincodeServiceability, getDeliveryRates, applyCartCoupon, removeCartCoupon } from "@/lib/cart-api";
+import {
+  checkPincodeServiceability,
+  getCart,
+  getDeliveryRates,
+  applyCartCoupon,
+  removeCartCoupon,
+} from "@/lib/cart-api";
 import { getApiErrorMessage, getApiErrorMessageWithHint } from "@/lib/error-messages";
 import { ApiError } from "@/lib/api";
 import {
   LocalDeliveryBlockedNotice,
   type BlockedLocalDeliveryProduct,
 } from "./LocalDeliveryNotices";
+import {
+  buildCheckoutFingerprint,
+  confirmWithRetry,
+  findMatchingSavedAddress,
+  getCheckoutSubmitState,
+  isOutcomeUnknownError,
+  isPriceChangedError,
+  refreshAfterPriceChange,
+  resolveSubmitAttemptKeys,
+  settleSubmitAttemptKeys,
+  type SubmitAttemptKeys,
+} from "@/lib/checkout-submit";
+import { buildCheckoutOutcomeUrl } from "@/lib/checkout-outcome";
 import { createIdempotencyKey } from "@/lib/idempotency";
 import { useAuthStore } from "@/stores/auth";
 import { useCartStore } from "@/stores/cart";
 import { createMyAddress, getMyAddresses, type UserAddress } from "@/lib/users-api";
-import { createOrder, prepareCheckout, confirmPrepaid } from "@/lib/orders-api";
+import {
+  createOrder,
+  prepareCheckout,
+  confirmPrepaid,
+  type ConfirmPrepaidInput,
+  type CreateOrderInput,
+  type PrepareCheckoutInput,
+} from "@/lib/orders-api";
 import { formatPrice } from "@/lib/format-price";
 import { CartLineProductDetails } from "@/components/cart/CartLineProductDetails";
 import { useCartSync } from "@/hooks/use-cart-sync";
@@ -38,13 +64,25 @@ declare global {
 }
 
 const schema = z.object({
-  fullName: z.string().min(2).max(100),
-  phone: z.string().min(10).max(15),
-  line1: z.string().min(5).max(200),
-  line2: z.string().max(200).optional(),
-  city: z.string().min(2),
-  state: z.string().min(2),
-  pincode: z.string().length(6),
+  fullName: z
+    .string()
+    .trim()
+    .min(2, "Enter the recipient's full name.")
+    .max(100, "Name must be 100 characters or fewer."),
+  phone: z
+    .string()
+    .trim()
+    .min(10, "Enter a phone number with at least 10 digits.")
+    .max(15, "Phone number must be 15 digits or fewer."),
+  line1: z
+    .string()
+    .trim()
+    .min(5, "Enter your house/flat number and street.")
+    .max(200, "Address line 1 must be 200 characters or fewer."),
+  line2: z.string().max(200, "Address line 2 must be 200 characters or fewer.").optional(),
+  city: z.string().trim().min(2, "Enter your city."),
+  state: z.string().trim().min(2, "Enter your state."),
+  pincode: z.string().trim().regex(/^\d{6}$/, "Enter a 6-digit pincode."),
   paymentMode: z.enum(["PREPAID", "COD"]),
   notes: z.string().max(2000).optional(),
   saveAddress: z.boolean().optional(),
@@ -56,6 +94,29 @@ type AddressFieldName = Extract<
   keyof CheckoutValues,
   "fullName" | "phone" | "line1" | "line2" | "city" | "state" | "pincode"
 >;
+
+interface ShippingQuote {
+  shippingCharge: number;
+  estimatedDays: number;
+  selectedShippingProvider?: "DELHIVERY" | "SHIPROCKET" | "LOCAL";
+  courierCompanyId?: number;
+  taxBreakup?: DeliveryTaxBreakup;
+  /** The pincode + payment mode this quote was computed for. */
+  pincode: string;
+  paymentMode: CheckoutValues["paymentMode"];
+}
+
+/** A Razorpay payment that was captured but whose order is not confirmed yet. */
+interface PendingPrepaidConfirmation {
+  input: ConfirmPrepaidInput;
+  confirmKey: string;
+}
+
+/** Error copy plus whether to offer the orders page (outcome may be unknown). */
+interface CheckoutError {
+  message: string;
+  showOrdersLink: boolean;
+}
 
 
 function addressToFormValues(addr: UserAddress): Partial<CheckoutValues> {
@@ -72,11 +133,20 @@ function addressToFormValues(addr: UserAddress): Partial<CheckoutValues> {
 
 export function CheckoutForm() {
   const router = useSafeRouter();
-  const [error, setError] = useState<string | null>(null);
+  const [checkoutError, setCheckoutError] = useState<CheckoutError | null>(null);
+  const setError = (message: string | null, showOrdersLink = false) =>
+    setCheckoutError(message ? { message, showOrdersLink } : null);
+  // Captured-but-unconfirmed payment: while set, no new order can be started
+  // (a fresh prepare-checkout would charge the customer a second time).
+  const [pendingConfirmation, setPendingConfirmation] = useState<PendingPrepaidConfirmation | null>(null);
+  const [confirmingPayment, setConfirmingPayment] = useState(false);
+  // Idempotency keys survive an identical retry after a timeout/5xx (see resolveSubmitAttemptKeys).
+  const submitKeysRef = useRef<SubmitAttemptKeys | null>(null);
+  const [quoteRetryNonce, setQuoteRetryNonce] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [savedAddresses, setSavedAddresses] = useState<UserAddress[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
-  const [shippingQuote, setShippingQuote] = useState<{ shippingCharge: number; estimatedDays: number; selectedShippingProvider?: "DELHIVERY" | "SHIPROCKET" | "LOCAL"; courierCompanyId?: number; taxBreakup?: DeliveryTaxBreakup } | null>(null);
+  const [shippingQuote, setShippingQuote] = useState<ShippingQuote | null>(null);
   const [shippingQuoteLoading, setShippingQuoteLoading] = useState(false);
   const [shippingQuoteError, setShippingQuoteError] = useState<string | null>(null);
   // Local-delivery-only items that cannot reach the entered pincode. Set when the backend
@@ -135,6 +205,8 @@ export function CheckoutForm() {
 
   const form = useForm<CheckoutValues>({
     resolver: zodResolver(schema),
+    // Validate when a field is left, then live while correcting it.
+    mode: "onTouched",
     defaultValues: {
       paymentMode: "PREPAID",
       fullName: user?.firstName ? `${user.firstName} ${user.lastName ?? ""}`.trim() : "",
@@ -217,6 +289,8 @@ export function CheckoutForm() {
             selectedShippingProvider: rates.selectedShippingProvider,
             courierCompanyId: rates.courierCompanyId,
             taxBreakup: rates.taxBreakup,
+            pincode,
+            paymentMode,
           });
           setShippingQuoteError(null);
           setBlockedLocalDelivery(null);
@@ -250,7 +324,7 @@ export function CheckoutForm() {
             (err.code === "CONFIG_NOT_READY" || err.code === "INTERNAL_ERROR");
           setShippingQuoteError(
             isProviderError
-              ? "Delivery estimate is temporarily unavailable. COD is still available, or contact us for assistance."
+              ? "Delivery estimate is temporarily unavailable. Try again, or choose Pay Online — you'll see the final amount before paying."
               : getApiErrorMessageWithHint(err),
           );
         }
@@ -263,7 +337,7 @@ export function CheckoutForm() {
     return () => {
       cancelled = true;
     };
-  }, [accessToken, pincode, paymentMode, cart?.coupon?.id]);
+  }, [accessToken, pincode, paymentMode, cart?.coupon?.id, quoteRetryNonce]);
 
   const clearSavedAddressOnManualEdit = () => {
     if (selectedAddressId) setSelectedAddressId(null);
@@ -329,7 +403,9 @@ export function CheckoutForm() {
     );
   }
 
-  if (!accessToken) {
+  // A captured-but-unconfirmed payment keeps the form (and its retry action)
+  // on screen even if the session drops meanwhile.
+  if (!accessToken && !pendingConfirmation) {
     return (
       <div className="rounded-[20px] bg-card p-8 shadow-sm text-center">
         <div className="mb-4 flex justify-center">
@@ -370,16 +446,135 @@ export function CheckoutForm() {
   // Local-delivery-only items that cannot reach the entered pincode hard-block checkout: the
   // customer has to remove them (the backend refuses the order either way).
   const checkoutBlocked = !configAvailable || belowMinOrder || blockedLocalDelivery !== null;
-  const shippingCharge = shippingQuote?.shippingCharge ?? 0;
-  const hasShippingQuote = shippingQuote !== null && !shippingQuoteError;
-  const taxBreakup = shippingQuote?.taxBreakup ?? null;
-  const estimatedPayableTotal = hasShippingQuote
+  const pincodeComplete = pincode?.length === 6;
+  // A quote only counts for the pincode + payment mode it was computed for —
+  // otherwise a tap right after switching to COD would use the prepaid quote.
+  const hasShippingQuote =
+    shippingQuote !== null &&
+    !shippingQuoteError &&
+    shippingQuote.pincode === pincode &&
+    shippingQuote.paymentMode === paymentMode;
+  const activeQuote = hasShippingQuote ? shippingQuote : null;
+  const shippingCharge = activeQuote?.shippingCharge ?? 0;
+  const taxBreakup = activeQuote?.taxBreakup ?? null;
+  const estimatedPayableTotal = activeQuote
     ? Math.max(cartPayableTotal + shippingCharge, 0)
     : cartPayableTotal;
+  const submitState = getCheckoutSubmitState({
+    submitting,
+    configAvailable,
+    belowMinOrder,
+    blockedLocalDelivery: blockedLocalDelivery !== null,
+    pendingConfirmation: pendingConfirmation !== null,
+    pincodeComplete,
+    shippingQuoteLoading,
+    hasShippingQuote,
+    paymentMode,
+  });
+  const submitDisabled = submitState.disabled || checkoutBlocked;
+
+  /**
+   * The payment is settled either way: the backend has emptied the cart, so the
+   * local cart is cleared too. A CANCELLED order (coupon or stock ran out after
+   * payment; full refund queued) goes to the "not completed" outcome instead of
+   * "Order placed", and is never tracked as a purchase.
+   */
+  const finishPrepaidOrder = (order: { id: string; status?: string | null }) => {
+    submitKeysRef.current = null;
+    setPendingConfirmation(null);
+    clearPendingMerge();
+    clearCart();
+    router.push(buildCheckoutOutcomeUrl(order));
+  };
+
+  /**
+   * Confirm a captured payment. Always the same payload + idempotency key, read
+   * with the CURRENT token (the one captured at submit may have expired while
+   * the customer was in the Razorpay modal; 401 refresh happens in the client).
+   */
+  const runPrepaidConfirmation = async (pending: PendingPrepaidConfirmation) => {
+    setConfirmingPayment(true);
+    setError(null);
+    try {
+      const confirmedOrder = await confirmWithRetry(() => {
+        const token = useAuthStore.getState().accessToken ?? accessToken;
+        if (!token) {
+          throw new ApiError("UNAUTHORISED", "Session expired", 401);
+        }
+        return confirmPrepaid(pending.input, token, pending.confirmKey);
+      });
+      finishPrepaidOrder(confirmedOrder);
+    } catch (confirmError) {
+      // Keep the captured payment pending: the customer retries confirmation,
+      // never a new checkout (that would charge them twice).
+      setPendingConfirmation(pending);
+      setError(
+        `Your payment went through, but we couldn't confirm your order yet (${getApiErrorMessage(confirmError)}). Please retry confirmation and don't pay again.`,
+        true,
+      );
+    } finally {
+      setConfirmingPayment(false);
+      setSubmitting(false);
+    }
+  };
+
+  const reportSubmitError = (err: unknown) => {
+    if (isPriceChangedError(err)) {
+      // The backend already re-priced the cart: reload it and the delivery quote so
+      // the new total shows, and keep the message up until the customer resubmits.
+      setError(getApiErrorMessage(err));
+      void refreshAfterPriceChange({
+        loadCart: () => getCart(useAuthStore.getState().accessToken ?? accessToken),
+        setCart,
+        requote: () => setQuoteRetryNonce((n) => n + 1),
+      });
+    } else if (err instanceof ApiError && err.code === "LOCAL_DELIVERY_ONLY_UNAVAILABLE") {
+      // The pincode changed (or the whitelist did) between quoting and submitting. Re-raise
+      // the blocking notice so the customer sees exactly what to remove.
+      const details = err.details as
+        | { pincode?: string; products?: BlockedLocalDeliveryProduct[] }
+        | undefined;
+      setBlockedLocalDelivery({
+        pincode: details?.pincode ?? form.getValues("pincode"),
+        products: details?.products ?? [],
+      });
+      setBlockedNoticeOpen(true);
+      setError("Some items in your cart can't be delivered to this pincode.");
+    } else if (isOutcomeUnknownError(err)) {
+      // The backend may have committed the order even though we got no answer.
+      // Retrying the identical submit replays the same idempotency key (safe).
+      setError(
+        "We couldn't confirm whether your order went through. Check your orders before trying again. Retrying here will not place a duplicate.",
+        true,
+      );
+    } else if (err instanceof ApiError && err.code === "VALIDATION_ERROR") {
+      setError(getApiErrorMessageWithHint(err));
+    } else if (
+      err instanceof ApiError &&
+      (err.code === "CONFIG_NOT_READY" || err.code === "INTERNAL_ERROR")
+    ) {
+      setError(
+        "Our payment or delivery service is temporarily unavailable. Please try COD, or contact us to complete your order.",
+      );
+    } else {
+      setError(getApiErrorMessage(err));
+    }
+  };
 
   const submit = form.handleSubmit(async (values) => {
+    if (pendingConfirmation) {
+      // A captured payment is awaiting confirmation — never start a second checkout.
+      void runPrepaidConfirmation(pendingConfirmation);
+      return;
+    }
+    const token = useAuthStore.getState().accessToken ?? accessToken;
+    if (!token) {
+      setError("Your session has ended. Please sign in again to place your order.");
+      return;
+    }
     setError(null);
     setSubmitting(true);
+    let attemptKeys: SubmitAttemptKeys | null = null;
     try {
       if (!isCodEnabled && values.paymentMode === "COD") {
         setError("COD is currently unavailable. Please choose prepaid.");
@@ -393,6 +588,12 @@ export function CheckoutForm() {
         setSubmitting(false);
         return;
       }
+      if (values.paymentMode === "COD" && !activeQuote) {
+        // COD commits to a total immediately — never before the delivery charge is shown.
+        setError("We need to show your delivery charge before placing a COD order. Please wait or retry the estimate.");
+        setSubmitting(false);
+        return;
+      }
       const pincodeResult = await checkPincodeServiceability(values.pincode);
       if (!pincodeResult.serviceable) {
         setError("Delivery is not available at this pincode.");
@@ -400,58 +601,55 @@ export function CheckoutForm() {
         return;
       }
 
+      const enteredAddress = {
+        fullName: values.fullName,
+        phone: values.phone,
+        line1: values.line1,
+        ...(values.line2?.trim() ? { line2: values.line2.trim() } : {}),
+        city: values.city,
+        state: values.state,
+        pincode: values.pincode,
+      };
+
       let addressId = selectedAddressId;
 
       if (!addressId && values.saveAddress) {
-        const created = await createMyAddress(accessToken, {
-          fullName: values.fullName,
-          phone: values.phone,
-          line1: values.line1,
-          ...(values.line2?.trim() ? { line2: values.line2.trim() } : {}),
-          city: values.city,
-          state: values.state,
-          pincode: values.pincode,
-          isDefault: savedAddresses.length === 0,
-        });
-        addressId = created.id;
-        setSavedAddresses((prev) => [...prev, created]);
+        // Reuse an identical saved entry (e.g. saved by an earlier attempt that was
+        // dismissed or failed) instead of adding a duplicate on every retry.
+        const existing = findMatchingSavedAddress(savedAddresses, enteredAddress);
+        const saved =
+          existing ??
+          (await createMyAddress(token, {
+            ...enteredAddress,
+            isDefault: savedAddresses.length === 0,
+          }));
+        addressId = saved.id;
+        if (!existing) setSavedAddresses((prev) => [...prev, saved]);
+        setSelectedAddressId(saved.id);
+        form.setValue("saveAddress", false);
       }
+
+      const quoteFields = {
+        notes: values.notes,
+        selectedShippingProvider: activeQuote?.selectedShippingProvider,
+        shippingChargePaise: activeQuote?.shippingCharge,
+        courierCompanyId: activeQuote?.courierCompanyId,
+      };
+      const destination = addressId ? { addressId } : { shippingAddress: enteredAddress };
 
       // COD: create order directly (order confirmed immediately)
       if (values.paymentMode === "COD") {
-        const orderIdempotencyKey = createIdempotencyKey();
-        const order = await createOrder(
-          addressId
-            ? {
-                addressId,
-                paymentMode: "COD",
-                notes: values.notes,
-                selectedShippingProvider: shippingQuote?.selectedShippingProvider,
-                shippingChargePaise: shippingQuote?.shippingCharge,
-                courierCompanyId: shippingQuote?.courierCompanyId,
-              }
-            : {
-                paymentMode: "COD",
-                shippingAddress: {
-                  fullName: values.fullName,
-                  phone: values.phone,
-                  line1: values.line1,
-                  ...(values.line2?.trim() ? { line2: values.line2.trim() } : {}),
-                  city: values.city,
-                  state: values.state,
-                  pincode: values.pincode,
-                },
-                notes: values.notes,
-                selectedShippingProvider: shippingQuote?.selectedShippingProvider,
-                shippingChargePaise: shippingQuote?.shippingCharge,
-                courierCompanyId: shippingQuote?.courierCompanyId,
-              },
-          accessToken,
-          orderIdempotencyKey,
+        const orderInput: CreateOrderInput = { ...destination, paymentMode: "COD", ...quoteFields };
+        attemptKeys = resolveSubmitAttemptKeys(
+          submitKeysRef.current,
+          buildCheckoutFingerprint({ paymentMode: "COD", payload: orderInput }),
         );
+        submitKeysRef.current = attemptKeys;
+        const order = await createOrder(orderInput, token, attemptKeys.orderKey);
+        submitKeysRef.current = null;
         clearPendingMerge();
         clearCart();
-        router.push(`/checkout/success?orderId=${order.id}`);
+        router.push(buildCheckoutOutcomeUrl(order));
         return;
       }
 
@@ -468,34 +666,16 @@ export function CheckoutForm() {
         return;
       }
 
-      const prepareKey = createIdempotencyKey();
-      const checkout = await prepareCheckout(
-        addressId
-          ? {
-              addressId,
-              notes: values.notes,
-              selectedShippingProvider: shippingQuote?.selectedShippingProvider,
-              shippingChargePaise: shippingQuote?.shippingCharge,
-              courierCompanyId: shippingQuote?.courierCompanyId,
-            }
-          : {
-              shippingAddress: {
-                fullName: values.fullName,
-                phone: values.phone,
-                line1: values.line1,
-                ...(values.line2?.trim() ? { line2: values.line2.trim() } : {}),
-                city: values.city,
-                state: values.state,
-                pincode: values.pincode,
-              },
-              notes: values.notes,
-              selectedShippingProvider: shippingQuote?.selectedShippingProvider,
-              shippingChargePaise: shippingQuote?.shippingCharge,
-              courierCompanyId: shippingQuote?.courierCompanyId,
-            },
-        accessToken,
-        prepareKey,
+      const prepareInput: PrepareCheckoutInput = { ...destination, ...quoteFields };
+      attemptKeys = resolveSubmitAttemptKeys(
+        submitKeysRef.current,
+        buildCheckoutFingerprint({ paymentMode: "PREPAID", payload: prepareInput }),
       );
+      submitKeysRef.current = attemptKeys;
+      const checkout = await prepareCheckout(prepareInput, token, attemptKeys.prepareKey);
+      // Prepared: a new attempt (after a dismissed modal) gets fresh keys.
+      submitKeysRef.current = null;
+      attemptKeys = null;
 
       const confirmKey = createIdempotencyKey();
       const razorpay = new window.Razorpay({
@@ -515,24 +695,19 @@ export function CheckoutForm() {
           razorpay_order_id: string;
           razorpay_signature: string;
         }) => {
-          try {
-            const confirmedOrder = await confirmPrepaid(
-              {
-                checkoutSessionId: checkout.checkoutSessionId,
-                razorpayOrderId: response.razorpay_order_id,
-                razorpayPaymentId: response.razorpay_payment_id,
-                razorpaySignature: response.razorpay_signature,
-              },
-              accessToken,
-              confirmKey,
-            );
-            clearPendingMerge();
-            clearCart();
-            router.push(`/checkout/success?orderId=${confirmedOrder.id}`);
-          } catch (confirmError) {
-            setError(getApiErrorMessage(confirmError));
-            setSubmitting(false);
-          }
+          // Money is captured from here on: hold the confirmation payload so it can
+          // be retried with the same key and never trigger a fresh checkout.
+          const pending: PendingPrepaidConfirmation = {
+            input: {
+              checkoutSessionId: checkout.checkoutSessionId,
+              razorpayOrderId: response.razorpay_order_id,
+              razorpayPaymentId: response.razorpay_payment_id,
+              razorpaySignature: response.razorpay_signature,
+            },
+            confirmKey,
+          };
+          setPendingConfirmation(pending);
+          await runPrepaidConfirmation(pending);
         },
         modal: {
           ondismiss: () => {
@@ -556,30 +731,11 @@ export function CheckoutForm() {
 
       razorpay.open();
     } catch (err) {
-      if (err instanceof ApiError && err.code === "LOCAL_DELIVERY_ONLY_UNAVAILABLE") {
-        // The pincode changed (or the whitelist did) between quoting and submitting. Re-raise
-        // the blocking notice so the customer sees exactly what to remove.
-        const details = err.details as
-          | { pincode?: string; products?: BlockedLocalDeliveryProduct[] }
-          | undefined;
-        setBlockedLocalDelivery({
-          pincode: details?.pincode ?? form.getValues("pincode"),
-          products: details?.products ?? [],
-        });
-        setBlockedNoticeOpen(true);
-        setError("Some items in your cart can't be delivered to this pincode.");
-      } else if (err instanceof ApiError && err.code === "VALIDATION_ERROR") {
-        setError(getApiErrorMessageWithHint(err));
-      } else if (
-        err instanceof ApiError &&
-        (err.code === "CONFIG_NOT_READY" || err.code === "INTERNAL_ERROR")
-      ) {
-        setError(
-          "Our payment or delivery service is temporarily unavailable. Please try COD, or contact us to complete your order.",
-        );
-      } else {
-        setError(getApiErrorMessage(err));
+      if (attemptKeys) {
+        // Identical retry after a timeout/5xx/network error replays the same keys.
+        submitKeysRef.current = settleSubmitAttemptKeys(attemptKeys, err);
       }
+      reportSubmitError(err);
       setSubmitting(false);
     }
   });
@@ -588,6 +744,19 @@ export function CheckoutForm() {
   const inputCls = "h-12 w-full rounded-lg border border-input bg-card px-3.5 text-base text-foreground placeholder:text-muted-foreground transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 sm:h-11 sm:text-sm";
   const labelCls = "block text-sm font-medium text-foreground";
   const fieldCls = "grid gap-1.5";
+  const errorTextCls = "text-xs text-destructive";
+  const { errors } = form.formState;
+  /** aria wiring: invalid state + description pointing at the field's error text. */
+  const fieldA11y = (name: AddressFieldName) =>
+    errors[name]
+      ? { "aria-invalid": true as const, "aria-describedby": `${name}-error` }
+      : { "aria-invalid": false as const };
+  const fieldError = (name: AddressFieldName) =>
+    errors[name]?.message ? (
+      <p id={`${name}-error`} className={errorTextCls}>
+        {errors[name]?.message}
+      </p>
+    ) : null;
 
   return (
     <form
@@ -658,47 +827,96 @@ export function CheckoutForm() {
             <div className="grid gap-4 sm:grid-cols-2">
               <div className={fieldCls}>
                 <label className={labelCls} htmlFor="fullName">Full Name</label>
-                <input id="fullName" className={inputCls} placeholder="John Doe" {...registerAddressField("fullName")} />
-                {form.formState.errors.fullName && (
-                  <p className="text-xs text-destructive">{form.formState.errors.fullName.message}</p>
-                )}
+                <input
+                  id="fullName"
+                  className={inputCls}
+                  placeholder="John Doe"
+                  autoComplete="shipping name"
+                  {...fieldA11y("fullName")}
+                  {...registerAddressField("fullName")}
+                />
+                {fieldError("fullName")}
               </div>
               <div className={fieldCls}>
                 <label className={labelCls} htmlFor="phone">Phone</label>
-                <input id="phone" className={inputCls} placeholder="9876543210" {...registerAddressField("phone")} />
-                {form.formState.errors.phone && (
-                  <p className="text-xs text-destructive">{form.formState.errors.phone.message}</p>
-                )}
+                <input
+                  id="phone"
+                  type="tel"
+                  inputMode="tel"
+                  className={inputCls}
+                  placeholder="9876543210"
+                  autoComplete="shipping tel"
+                  {...fieldA11y("phone")}
+                  {...registerAddressField("phone")}
+                />
+                {fieldError("phone")}
               </div>
             </div>
 
             <div className={fieldCls}>
               <label className={labelCls} htmlFor="line1">Address line 1</label>
-              <input id="line1" className={inputCls} placeholder="House/Flat No., Street, Locality" {...registerAddressField("line1")} />
-              {form.formState.errors.line1 && (
-                <p className="text-xs text-destructive">{form.formState.errors.line1.message}</p>
-              )}
+              <input
+                id="line1"
+                className={inputCls}
+                placeholder="House/Flat No., Street, Locality"
+                autoComplete="shipping address-line1"
+                {...fieldA11y("line1")}
+                {...registerAddressField("line1")}
+              />
+              {fieldError("line1")}
             </div>
 
             <div className={fieldCls}>
               <label className={labelCls} htmlFor="line2">
                 Address line 2 <span className="font-normal normal-case text-muted-foreground">(optional)</span>
               </label>
-              <input id="line2" className={inputCls} placeholder="Landmark, apartment, etc." {...registerAddressField("line2")} />
+              <input
+                id="line2"
+                className={inputCls}
+                placeholder="Landmark, apartment, etc."
+                autoComplete="shipping address-line2"
+                {...fieldA11y("line2")}
+                {...registerAddressField("line2")}
+              />
+              {fieldError("line2")}
             </div>
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
               <div className={fieldCls}>
                 <label className={labelCls} htmlFor="city">City</label>
-                <input id="city" className={inputCls} {...registerAddressField("city")} />
+                <input
+                  id="city"
+                  className={inputCls}
+                  autoComplete="shipping address-level2"
+                  {...fieldA11y("city")}
+                  {...registerAddressField("city")}
+                />
+                {fieldError("city")}
               </div>
               <div className={fieldCls}>
                 <label className={labelCls} htmlFor="state">State</label>
-                <input id="state" className={inputCls} {...registerAddressField("state")} />
+                <input
+                  id="state"
+                  className={inputCls}
+                  autoComplete="shipping address-level1"
+                  {...fieldA11y("state")}
+                  {...registerAddressField("state")}
+                />
+                {fieldError("state")}
               </div>
               <div className={fieldCls}>
                 <label className={labelCls} htmlFor="pincode">Pincode</label>
-                <input id="pincode" className={inputCls} maxLength={6} {...registerAddressField("pincode")} />
+                <input
+                  id="pincode"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={6}
+                  className={inputCls}
+                  autoComplete="shipping postal-code"
+                  {...fieldA11y("pincode")}
+                  {...registerAddressField("pincode")}
+                />
+                {fieldError("pincode")}
               </div>
             </div>
 
@@ -907,9 +1125,20 @@ export function CheckoutForm() {
               </span>
             </div>
             {shippingQuoteError && (
-              <p className="rounded-xl bg-warning-soft px-3 py-2 text-xs font-medium text-warning">{shippingQuoteError}</p>
+              <div className="rounded-xl bg-warning-soft px-3 py-2 text-xs font-medium text-warning" role="status">
+                <p>{shippingQuoteError}</p>
+                {!blockedLocalDelivery && (
+                  <button
+                    type="button"
+                    onClick={() => setQuoteRetryNonce((n) => n + 1)}
+                    className="mt-1 font-bold underline underline-offset-2 hover:no-underline"
+                  >
+                    Retry delivery estimate
+                  </button>
+                )}
+              </div>
             )}
-            {shippingQuote?.selectedShippingProvider === "LOCAL" && (
+            {activeQuote?.selectedShippingProvider === "LOCAL" && (
               <p className="rounded-xl bg-success/10 px-3 py-2 text-xs font-medium text-success">
                 Local delivery — this order is delivered directly by the store.
               </p>
@@ -929,9 +1158,9 @@ export function CheckoutForm() {
                 </button>
               </div>
             )}
-            {shippingQuote && shippingQuote.estimatedDays > 0 && (
+            {activeQuote && activeQuote.estimatedDays > 0 && (
               <p className="text-xs text-muted-foreground">
-                Estimated delivery: {shippingQuote.estimatedDays} day{shippingQuote.estimatedDays !== 1 ? "s" : ""}
+                Estimated delivery: {activeQuote.estimatedDays} day{activeQuote.estimatedDays !== 1 ? "s" : ""}
               </p>
             )}
             {/* Included-GST breakup — shown only when the merchant has GST billing on.
@@ -982,19 +1211,10 @@ export function CheckoutForm() {
         <button
           type="submit"
           className="hidden h-12 w-full rounded-xl bg-primary text-base font-bold text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60 lg:block"
-          disabled={submitting || checkoutBlocked}
+          disabled={submitDisabled}
+          aria-busy={submitting || undefined}
         >
-          {submitting
-            ? "Processing…"
-            : !configAvailable
-              ? "Store settings unavailable"
-              : belowMinOrder
-                ? "Minimum order not met"
-                : blockedLocalDelivery
-                  ? "Remove undeliverable items to continue"
-                  : paymentMode === "COD"
-                    ? "Place Order — Cash on Delivery"
-                    : "Place Order — Pay Online"}
+          {submitState.label}
         </button>
 
         {blockedLocalDelivery && (
@@ -1008,34 +1228,78 @@ export function CheckoutForm() {
           />
         )}
 
-        {error ? (
-          <div className="flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive">
-            <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
-            <span>
-              {error}
-              {error.includes("order history") && (
-                <Link href="/orders" className="ml-2 font-bold underline">Go to orders</Link>
-              )}
-            </span>
+        {pendingConfirmation ? (
+          <div className="grid gap-3 rounded-xl border border-warning-soft bg-warning-soft px-4 py-3 text-sm text-warning">
+            <p className="font-bold">Payment received, order not confirmed yet</p>
+            <p className="text-xs">
+              Payment reference{" "}
+              <span className="font-mono font-bold">{pendingConfirmation.input.razorpayPaymentId}</span>.
+              Keep this page open and retry. If it keeps failing, contact us with this reference.
+            </p>
+            <button
+              type="button"
+              onClick={() => void runPrepaidConfirmation(pendingConfirmation)}
+              disabled={confirmingPayment}
+              aria-busy={confirmingPayment || undefined}
+              className="h-11 w-full rounded-xl bg-primary text-sm font-bold text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {confirmingPayment ? "Confirming…" : "Retry confirmation"}
+            </button>
           </div>
         ) : null}
+
+        {/* Always-mounted live region so failures are announced, not just painted. */}
+        <div role="alert" aria-live="assertive" aria-atomic="true">
+          {checkoutError ? (
+            <div className="flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive">
+              <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
+              <span>
+                {checkoutError.message}
+                {checkoutError.showOrdersLink && (
+                  <Link href="/orders" className="ml-2 font-bold underline">Go to orders</Link>
+                )}
+              </span>
+            </div>
+          ) : null}
+        </div>
       </aside>
 
       {/* Phones: total + place order always within thumb reach. */}
       <div className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-card px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-lg lg:hidden">
+        {/* The full message lives in the summary (announced there); this line keeps
+            the failure visible above the thumb-zone button on phones. */}
+        {checkoutError ? (
+          <p aria-hidden className="mx-auto mb-2 line-clamp-2 max-w-lg text-xs font-medium text-destructive">
+            {checkoutError.message}
+            {checkoutError.showOrdersLink ? " See your orders." : ""}
+          </p>
+        ) : null}
         <div className="mx-auto flex max-w-lg items-center gap-3">
           <div className="min-w-0 flex-1">
             <p className="text-xs text-muted-foreground">{hasShippingQuote ? "Total" : "Total before delivery"}</p>
             <p className="font-heading text-lg font-bold text-foreground tabular">{formatPrice(estimatedPayableTotal)}</p>
           </div>
-          <button
-            type="submit"
-            form="checkout-form"
-            className="h-12 shrink-0 rounded-xl bg-primary px-6 text-sm font-bold text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
-            disabled={submitting || checkoutBlocked}
-          >
-            {submitting ? "Processing…" : "Place order"}
-          </button>
+          {pendingConfirmation ? (
+            <button
+              type="button"
+              onClick={() => void runPrepaidConfirmation(pendingConfirmation)}
+              disabled={confirmingPayment}
+              aria-busy={confirmingPayment || undefined}
+              className="h-12 shrink-0 rounded-xl bg-primary px-6 text-sm font-bold text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {confirmingPayment ? "Confirming…" : "Retry confirmation"}
+            </button>
+          ) : (
+            <button
+              type="submit"
+              form="checkout-form"
+              className="h-12 shrink-0 rounded-xl bg-primary px-6 text-sm font-bold text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={submitDisabled}
+              aria-busy={submitting || undefined}
+            >
+              {submitState.shortLabel}
+            </button>
+          )}
         </div>
       </div>
     </form>

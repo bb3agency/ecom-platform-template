@@ -36,6 +36,17 @@ export type CreateShipmentInput = {
     breadthCm: number;
     heightCm: number;
   };
+  /**
+   * In-flight booking recovery: the courier already holds an order for this
+   * client reference (found via `findShipmentByReference`) but no AWB was
+   * assigned yet. Adapters that book in two steps (Shiprocket: create order →
+   * assign AWB) skip the create step and only assign the AWB, so a retry never
+   * creates a second courier order. Ignored by single-step adapters.
+   */
+  existingProviderOrder?: {
+    shiprocketOrderId?: string;
+    shiprocketShipmentId: string;
+  };
 };
 
 export type CreateShipmentResult = {
@@ -114,6 +125,36 @@ export type GenerateLabelResult = {
   providerPayload: Record<string, unknown>;
 };
 
+/**
+ * Result of looking a booking up at the courier by OUR client reference (the
+ * order number sent as Shiprocket `order_id` / Delhivery `order`). Used to recover
+ * bookings that were in flight when a worker crashed or stalled. A lookup that
+ * cannot reach a definite answer MUST throw — callers never book blind.
+ */
+export type ShipmentLookupResult =
+  | {
+      state: 'not_found';
+      providerPayload: Record<string, unknown>;
+    }
+  | {
+      /** The courier holds this reference only as a cancelled booking. */
+      state: 'cancelled';
+      awbNumber?: string;
+      shiprocketOrderId?: string;
+      providerPayload: Record<string, unknown>;
+    }
+  | {
+      /** A live booking exists. `awbNumber` is absent when the AWB was never assigned. */
+      state: 'found';
+      awbNumber?: string;
+      trackingUrl?: string;
+      labelUrl?: string;
+      courierName?: string;
+      shiprocketOrderId?: string;
+      shiprocketShipmentId?: string;
+      providerPayload: Record<string, unknown>;
+    };
+
 export interface ShippingProviderAdapter {
   createShipment(input: CreateShipmentInput): Promise<CreateShipmentResult>;
   trackShipment(awbNumber: string): Promise<TrackShipmentResult>;
@@ -122,4 +163,6 @@ export interface ShippingProviderAdapter {
   calculateDeliveryRate(input: DeliveryRateInput): Promise<DeliveryRateResult>;
   schedulePickup?(shiprocketShipmentId: string): Promise<SchedulePickupResult>;
   generateLabel?(shiprocketShipmentId: string): Promise<GenerateLabelResult>;
+  /** Look a booking up by our client reference (order number). Throws when the answer is not definite. */
+  findShipmentByReference?(clientReference: string): Promise<ShipmentLookupResult>;
 }

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createReconciliationWorker } from './reconciliation.worker';
+import { buildHealJobId, createReconciliationWorker } from './reconciliation.worker';
 
 type ReconciliationDeps = NonNullable<Parameters<typeof createReconciliationWorker>[1]>;
 type ReconciliationWorkerType = NonNullable<ReconciliationDeps['Worker']>;
@@ -15,6 +15,10 @@ describe('reconciliation worker', () => {
   const issueCreate = vi.fn();
   const issueFindFirst = vi.fn();
   const issueUpdateMany = vi.fn(async () => ({ count: 0 }));
+  const issueFindMany = vi.fn(async (): Promise<Array<{ id: string; aggregateRef: string }>> => []);
+  const orderFindMany = vi.fn(async (): Promise<Array<Record<string, unknown>>> => orders);
+  const inboxFindMany = vi.fn(async (): Promise<Array<Record<string, unknown>>> => []);
+  let queueCtorArgs: Array<[string, Record<string, unknown>]> = [];
   const orderUpdate = vi.fn(async () => undefined);
   const orderUpdateMany = vi.fn(async () => ({ count: 1 }));
   const orderStatusHistoryCreate = vi.fn(async () => undefined);
@@ -36,7 +40,7 @@ describe('reconciliation worker', () => {
       inventory: {
         updateMany: inventoryUpdateMany
       },
-      orderStatusHistory: { create: orderStatusHistoryCreate },
+      orderStatusHistory: { create: orderStatusHistoryCreate, findFirst: vi.fn(async () => null) },
       cart: { findFirst: vi.fn(async () => ({ id: 'cart_1' })) },
       cartReservation: { deleteMany: vi.fn(async () => ({ count: 0 })) },
       couponUsage: {
@@ -58,19 +62,25 @@ describe('reconciliation worker', () => {
     return {
       $transaction: transactionFn,
       order: {
-        findMany: vi.fn(async () => orders),
+        findMany: orderFindMany,
         update: orderUpdate,
         updateMany: orderUpdateMany
       },
       reconciliationIssue: {
         findFirst: issueFindFirst,
+        findMany: issueFindMany,
         create: issueCreate,
         updateMany: issueUpdateMany
+      },
+      webhookInboxEvent: {
+        findMany: inboxFindMany,
+        updateMany: vi.fn(async () => ({ count: 0 }))
       }
     };
   }
 
-  function MockQueue(_name: string) {
+  function MockQueue(name: string, opts: Record<string, unknown>) {
+    queueCtorArgs.push([name, opts]);
     return { add: queueAdd, close: queueClose };
   }
 
@@ -102,6 +112,11 @@ describe('reconciliation worker', () => {
     queueClose.mockReset();
     issueFindFirst.mockResolvedValue(null);
     issueUpdateMany.mockResolvedValue({ count: 0 });
+    issueFindMany.mockReset();
+    issueFindMany.mockResolvedValue([]);
+    orderFindMany.mockReset();
+    orderFindMany.mockImplementation(async () => orders);
+    queueCtorArgs = [];
   });
 
   afterEach(() => {
@@ -110,6 +125,21 @@ describe('reconciliation worker', () => {
       return;
     }
     process.env.RECONCILIATION_AUTO_HEAL_ISSUES = originalAutoHealEnv;
+  });
+
+  it('runs the stuck webhook inbox sweep (only) for reclaim-stuck-webhook-inbox jobs', async () => {
+    createReconciliationWorker({} as never, workerDeps);
+    inboxFindMany.mockClear();
+
+    await processor?.({ name: 'reclaim-stuck-webhook-inbox' });
+
+    expect(inboxFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ status: 'PROCESSING', updatedAt: { lt: expect.any(Date) } })
+      })
+    );
+    // The order lifecycle scan does not run for the sweep job.
+    expect(orderFindMany).not.toHaveBeenCalled();
   });
 
   it('creates classification-enriched issues for mismatches', async () => {
@@ -158,7 +188,7 @@ describe('reconciliation worker', () => {
         triggeredBy: 'RECONCILIATION'
       }),
       expect.objectContaining({
-        jobId: 'reconcile-process-order-update-order_auto'
+        jobId: expect.stringMatching(/^reconcile-process-order-update-order_auto-\d+$/)
       })
     );
     expect(orderUpdate).not.toHaveBeenCalledWith(
@@ -188,7 +218,7 @@ describe('reconciliation worker', () => {
         triggeredBy: 'RECONCILIATION'
       }),
       expect.objectContaining({
-        jobId: 'reconcile-process-order-update-order_failed_captured'
+        jobId: expect.stringMatching(/^reconcile-process-order-update-order_failed_captured-\d+$/)
       })
     );
   });
@@ -312,6 +342,249 @@ describe('reconciliation worker', () => {
         where: expect.objectContaining({ id: 'order_refund' }),
         data: { status: 'REFUNDED' }
       })
+    );
+  });
+
+  describe('be-rel-04: captured-payment auto-heal', () => {
+    it('uses the registry defaultJobOptions and an hour-bucketed jobId, and does NOT resolve the issue at enqueue time', async () => {
+      createReconciliationWorker({} as never, workerDeps);
+      orders = [
+        { id: 'order_auto', status: 'PENDING_PAYMENT', createdAt: new Date(), payment: { status: 'CAPTURED' }, shipment: null }
+      ];
+      // The heal has not landed yet: the order is still PENDING_PAYMENT when the
+      // resolution pass checks the open issue.
+      issueFindMany.mockImplementation(async (args?: unknown) => {
+        const where = (args as { where: { issueType: string } }).where;
+        return where.issueType === 'PAYMENT_CAPTURED_ORDER_NOT_CONFIRMED'
+          ? [{ id: 'iss_1', aggregateRef: 'order_auto:PAYMENT_CAPTURED_ORDER_NOT_CONFIRMED' }]
+          : [];
+      });
+
+      await processor?.({ name: 'run-order-lifecycle-check' });
+
+      expect(queueCtorArgs).toHaveLength(1);
+      expect(queueCtorArgs[0]?.[1]).toEqual(
+        expect.objectContaining({
+          defaultJobOptions: expect.objectContaining({ attempts: 3, removeOnFail: expect.anything() })
+        })
+      );
+      expect(queueClose).toHaveBeenCalledTimes(1);
+      expect(issueUpdateMany).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ issueType: 'PAYMENT_CAPTURED_ORDER_NOT_CONFIRMED' })
+        })
+      );
+    });
+
+    it('resolves the issue on a later run once the order is CONFIRMED', async () => {
+      createReconciliationWorker({} as never, workerDeps);
+      orders = [];
+      issueFindMany.mockImplementation(async (args?: unknown) => {
+        const where = (args as { where: { issueType: string } }).where;
+        return where.issueType === 'PAYMENT_CAPTURED_ORDER_NOT_CONFIRMED'
+          ? [{ id: 'iss_1', aggregateRef: 'order_healed:PAYMENT_CAPTURED_ORDER_NOT_CONFIRMED' }]
+          : [];
+      });
+      orderFindMany.mockImplementation(async (args?: unknown) => {
+        const where = (args as { where: { id?: { in: string[] } } }).where;
+        return where.id ? [{ id: 'order_healed', status: 'CONFIRMED', payment: { status: 'CAPTURED' }, shipment: null }] : [];
+      });
+
+      await processor?.({ name: 'run-order-lifecycle-check' });
+
+      expect(issueUpdateMany).toHaveBeenCalledWith({
+        where: {
+          issueType: 'PAYMENT_CAPTURED_ORDER_NOT_CONFIRMED',
+          isResolved: false,
+          aggregateRef: { in: ['order_healed:PAYMENT_CAPTURED_ORDER_NOT_CONFIRMED'] }
+        },
+        data: { isResolved: true, resolvedAt: expect.any(Date) }
+      });
+    });
+
+    it('builds a different jobId in the next hour so a retained failed heal job cannot block re-enqueue', () => {
+      const hour = 60 * 60 * 1000;
+      expect(buildHealJobId('o1', 10 * hour)).not.toBe(buildHealJobId('o1', 11 * hour));
+      expect(buildHealJobId('o1', 10 * hour)).toBe(buildHealJobId('o1', 10 * hour + 59 * 60 * 1000));
+      expect(buildHealJobId('o1', 10 * hour)).not.toContain(':');
+    });
+  });
+
+  describe('be-rel-10: ORDER_SHIPPED_WITHOUT_SHIPMENT resolution', () => {
+    it('only looks up orders referenced by open issues, never every shipped order', async () => {
+      createReconciliationWorker({} as never, workerDeps);
+      orders = [];
+      issueFindMany.mockImplementation(async (args?: unknown) => {
+        const where = (args as { where: { issueType: string } }).where;
+        return where.issueType === 'ORDER_SHIPPED_WITHOUT_SHIPMENT'
+          ? [
+              { id: 'iss_a', aggregateRef: 'order_a:ORDER_SHIPPED_WITHOUT_SHIPMENT' },
+              { id: 'iss_b', aggregateRef: 'order_b:ORDER_SHIPPED_WITHOUT_SHIPMENT' }
+            ]
+          : [];
+      });
+      orderFindMany.mockImplementation(async (args?: unknown) => {
+        const where = (args as { where: { id?: { in: string[] } } }).where;
+        if (!where.id) return [];
+        return [
+          { id: 'order_a', status: 'SHIPPED', payment: null, shipment: { id: 'shp_a' } },
+          { id: 'order_b', status: 'SHIPPED', payment: null, shipment: null }
+        ];
+      });
+
+      await processor?.({ name: 'run-order-lifecycle-check' });
+
+      expect(orderFindMany).not.toHaveBeenCalledWith(
+        expect.objectContaining({ where: { shipment: { isNot: null } } })
+      );
+      expect(orderFindMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: { in: ['order_a', 'order_b'] } } })
+      );
+      expect(issueUpdateMany).toHaveBeenCalledWith({
+        where: {
+          issueType: 'ORDER_SHIPPED_WITHOUT_SHIPMENT',
+          isResolved: false,
+          aggregateRef: { in: ['order_a:ORDER_SHIPPED_WITHOUT_SHIPMENT'] }
+        },
+        data: { isResolved: true, resolvedAt: expect.any(Date) }
+      });
+    });
+  });
+});
+
+describe('reconciliation worker — razorpay-capture-reconcile job', () => {
+  type CaptureDeps = NonNullable<Parameters<typeof createReconciliationWorker>[1]>;
+
+  function build() {
+    let captured: ((job: { name: string }) => Promise<void>) | undefined;
+    const queueAdd = vi.fn(async () => undefined);
+    const queueClose = vi.fn(async () => undefined);
+    const queueNames: string[] = [];
+    const listCapturedPayments = vi.fn(async () => ({
+      items: [
+        {
+          providerPaymentId: 'pay_orphan',
+          providerOrderId: 'order_o',
+          amount: 5000,
+          currency: 'INR',
+          createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000)
+        }
+      ],
+      hasMore: false
+    }));
+    const createPaymentProvider = vi.fn(() => ({ listCapturedPayments }));
+    const prisma = {
+      payment: { findMany: vi.fn(async () => []) },
+      reconciliationIssue: {
+        findFirst: vi.fn(async () => null),
+        create: vi.fn(async () => undefined),
+        findMany: vi.fn(async () => []),
+        updateMany: vi.fn(async () => ({ count: 0 }))
+      }
+    };
+    function MockWorker(_name: string, proc: (job: { name: string }) => Promise<void>) {
+      captured = proc;
+      return { on: vi.fn() };
+    }
+    function MockQueue(name: string) {
+      queueNames.push(name);
+      return { add: queueAdd, close: queueClose };
+    }
+    createReconciliationWorker({} as never, {
+      Worker: MockWorker as unknown as NonNullable<CaptureDeps['Worker']>,
+      Queue: MockQueue as unknown as NonNullable<CaptureDeps['Queue']>,
+      prisma: prisma as unknown as NonNullable<CaptureDeps['prisma']>,
+      sendTechnicalFailureAlert: vi.fn().mockResolvedValue(undefined),
+      createPaymentProvider: createPaymentProvider as unknown as NonNullable<CaptureDeps['createPaymentProvider']>
+    });
+    return {
+      run: async () => captured?.({ name: 'razorpay-capture-reconcile' }),
+      queueAdd,
+      queueClose,
+      queueNames,
+      listCapturedPayments,
+      createPaymentProvider,
+      prisma
+    };
+  }
+
+  const savedAutoHeal = process.env.RECONCILIATION_AUTO_HEAL_ISSUES;
+
+  beforeEach(() => {
+    // Exercise the DEFAULT auto-heal set unless a test stubs it.
+    delete process.env.RECONCILIATION_AUTO_HEAL_ISSUES;
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    if (savedAutoHeal === undefined) {
+      delete process.env.RECONCILIATION_AUTO_HEAL_ISSUES;
+    } else {
+      process.env.RECONCILIATION_AUTO_HEAL_ISSUES = savedAutoHeal;
+    }
+  });
+
+  it('runs the capture reconciliation when Razorpay is the provider and the flag is on by default', async () => {
+    vi.stubEnv('PAYMENT_PROVIDER', 'razorpay');
+    vi.stubEnv('RAZORPAY_RECONCILE_ENABLED', '');
+    const harness = build();
+
+    await harness.run();
+
+    expect(harness.listCapturedPayments).toHaveBeenCalledTimes(1);
+    expect(harness.queueAdd).toHaveBeenCalledWith(
+      'refund-orphan-capture',
+      expect.objectContaining({ providerPaymentId: 'pay_orphan' }),
+      { jobId: 'refund-orphan-capture-pay_orphan' }
+    );
+    expect(harness.queueNames.sort()).toEqual(['order-processing', 'refunds']);
+    expect(harness.queueClose).toHaveBeenCalledTimes(2);
+    // The lifecycle scan is a different job — it must not run here.
+    expect(harness.prisma.reconciliationIssue.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('builds the payment provider once across runs', async () => {
+    vi.stubEnv('PAYMENT_PROVIDER', 'razorpay');
+    const harness = build();
+
+    await harness.run();
+    await harness.run();
+
+    expect(harness.createPaymentProvider).toHaveBeenCalledTimes(1);
+    expect(harness.listCapturedPayments).toHaveBeenCalledTimes(2);
+  });
+
+  it('does nothing when RAZORPAY_RECONCILE_ENABLED=false', async () => {
+    vi.stubEnv('PAYMENT_PROVIDER', 'razorpay');
+    vi.stubEnv('RAZORPAY_RECONCILE_ENABLED', 'false');
+    const harness = build();
+
+    await harness.run();
+
+    expect(harness.createPaymentProvider).not.toHaveBeenCalled();
+    expect(harness.queueNames).toEqual([]);
+  });
+
+  it('does nothing when the provider is not Razorpay', async () => {
+    vi.stubEnv('PAYMENT_PROVIDER', 'cod');
+    vi.stubEnv('RAZORPAY_RECONCILE_ENABLED', 'true');
+    const harness = build();
+
+    await harness.run();
+
+    expect(harness.createPaymentProvider).not.toHaveBeenCalled();
+  });
+
+  it('respects RECONCILIATION_AUTO_HEAL_ISSUES: detection only when the orphan refund is not enabled', async () => {
+    vi.stubEnv('PAYMENT_PROVIDER', 'razorpay');
+    vi.stubEnv('RECONCILIATION_AUTO_HEAL_ISSUES', 'PAYMENT_CAPTURED_ORDER_NOT_CONFIRMED');
+    const harness = build();
+
+    await harness.run();
+
+    expect(harness.queueAdd).not.toHaveBeenCalled();
+    expect(harness.prisma.reconciliationIssue.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ issueType: 'RAZORPAY_ORPHAN_CAPTURE' }) })
     );
   });
 });

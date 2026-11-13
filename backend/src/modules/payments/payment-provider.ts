@@ -62,11 +62,33 @@ class CircuitBreakerPaymentAdapter implements PaymentProviderAdapter {
   private failures = 0;
   private openUntil = 0;
 
+  readonly findRefundByReceipt?: PaymentProviderAdapter['findRefundByReceipt'];
+
+  readonly listCapturedPayments?: PaymentProviderAdapter['listCapturedPayments'];
+
   constructor(
     private readonly delegate: PaymentProviderAdapter,
     private readonly failureThreshold = 5,
     private readonly cooldownMs = 30_000
-  ) {}
+  ) {
+    // Only expose the lookup when the wrapped adapter supports it — a missing
+    // capability must not masquerade as a definite "no such refund".
+    const lookup = delegate.findRefundByReceipt?.bind(delegate);
+    if (lookup) {
+      this.findRefundByReceipt = async (input) => {
+        this.assertClosed();
+        return lookup(input);
+      };
+    }
+    // Same rule for the capture listing: absent on adapters without a provider ledger.
+    const listCaptured = delegate.listCapturedPayments?.bind(delegate);
+    if (listCaptured) {
+      this.listCapturedPayments = async (input) => {
+        this.assertClosed();
+        return listCaptured(input);
+      };
+    }
+  }
 
   private assertClosed(): void {
     if (Date.now() < this.openUntil) {
@@ -105,6 +127,10 @@ class CircuitBreakerPaymentAdapter implements PaymentProviderAdapter {
 
   verifyWebhookSignature(input: Parameters<PaymentProviderAdapter['verifyWebhookSignature']>[0]): boolean {
     return this.delegate.verifyWebhookSignature(input);
+  }
+
+  async fetchOrderNotes(providerOrderId: string) {
+    return this.delegate.fetchOrderNotes ? this.delegate.fetchOrderNotes(providerOrderId) : null;
   }
 
   async initiateRefund(input: Parameters<PaymentProviderAdapter['initiateRefund']>[0]) {

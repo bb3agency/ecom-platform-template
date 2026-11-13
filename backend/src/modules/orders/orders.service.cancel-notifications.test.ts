@@ -53,7 +53,8 @@ describe('OrdersService cancellation notification enqueue', () => {
         findUniqueOrThrow: vi.fn().mockResolvedValue(buildSerializedOrderSource())
       },
       orderStatusHistory: {
-        create: vi.fn().mockResolvedValue(undefined)
+        create: vi.fn().mockResolvedValue(undefined),
+        findFirst: vi.fn().mockResolvedValue(null)
       },
       inventory: {
         updateMany: vi.fn().mockResolvedValue({ count: 1 })
@@ -195,7 +196,8 @@ describe('OrdersService cancellation notification enqueue', () => {
         update: vi.fn().mockResolvedValue(undefined)
       },
       orderStatusHistory: {
-        create: vi.fn().mockResolvedValue(undefined)
+        create: vi.fn().mockResolvedValue(undefined),
+        findFirst: vi.fn().mockResolvedValue(null)
       },
       inventory: {
         updateMany: vi.fn().mockResolvedValue({ count: 1 })

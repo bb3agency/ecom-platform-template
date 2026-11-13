@@ -90,7 +90,11 @@ describe('AuthService verifyOtpAndSignup', () => {
       })
     );
     expect(refreshTokenCreate).toHaveBeenCalledTimes(1);
-    expect(redisDel).toHaveBeenCalledWith('otp:9999999999', expect.stringContaining('otp:attempts:9999999999:'));
+    expect(redisDel).toHaveBeenCalledWith(
+      'otp:9999999999',
+      expect.stringContaining('otp:attempts:9999999999:'),
+      'otp:verify-fails:9999999999'
+    );
     expect(result.accessToken).toBe('access-token');
     expect(result.user.phone).toBe('9999999999');
   });

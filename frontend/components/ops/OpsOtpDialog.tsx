@@ -144,10 +144,8 @@ function OtpDialogBody({
 
   async function confirm(): Promise<void> {
     if (!challenge) return;
-    if (expired) {
-      setError("This code has expired. Send a new one.");
-      return;
-    }
+    // No client-side expiry block: the server is the authority on expiry (an
+    // expired code comes back as an error below). The countdown is guidance only.
     if (!isCompleteOtpCode(code)) {
       setError("Enter the 6-digit code from the email.");
       return;
@@ -221,7 +219,7 @@ function OtpDialogBody({
               htmlFor="ops-otp-code"
               hint={
                 expired ? (
-                  <span className="text-destructive">Code expired — send a new one.</span>
+                  <span className="text-destructive">This code has probably expired — send a new one if it&apos;s rejected.</span>
                 ) : (
                   <span aria-live="off">
                     Expires in <span className="tabular font-medium text-foreground">{formatClock(secondsLeft ?? 0)}</span>
@@ -270,7 +268,7 @@ function OtpDialogBody({
             type="submit"
             variant={tone === "danger" ? "destructive" : "default"}
             loading={confirming}
-            disabled={expired || !isCompleteOtpCode(code)}
+            disabled={!isCompleteOtpCode(code)}
           >
             {confirmLabel}
           </Button>

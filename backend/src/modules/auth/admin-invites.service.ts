@@ -8,9 +8,6 @@ import { ERROR_CODES } from '@common/errors/error-codes';
 import { AdminPermission, MERCHANT_DEFAULT_PERMISSIONS } from '@common/auth/admin-permissions';
 import { validateSetupBaseUrl } from '@common/security/setup-base-url';
 import { sendNotificationFailureAlert } from '@modules/notifications/notification-failure-alert';
-import { resolveNotificationRuntimeConfig } from '@common/notifications/notification-runtime-config';
-import { assertOtpChannelDeliverable, resolveOtpDeliveryChannels } from '@common/notifications/otp-deliverability';
-import type { OtpChannel } from './otp-channel';
 
 const ADMIN_INVITE_TTL_MS = 10 * 60 * 1000;
 const ADMIN_SETUP_OTP_TTL_SECONDS = 5 * 60;
@@ -503,84 +500,30 @@ export class AdminInvitesService {
     await this.fastify.redis.set(otpKey, otpHash, 'EX', Math.min(ADMIN_SETUP_OTP_TTL_SECONDS, ttlSeconds));
     await this.fastify.redis.del(attemptKey);
 
-    const storeSettings = await this.fastify.prisma.storeSettings.findUnique({
-      where: { singletonKey: 'default' },
-      select: {
-        notifyEmailEnabled: true,
-        notifySmsEnabled: true,
-        notifyWhatsappEnabled: true,
-        primaryNotificationChannels: true
-      }
-    });
-    const runtime = await resolveNotificationRuntimeConfig(this.fastify.prisma);
-    const setupStoreFlags = storeSettings
-      ? {
-          emailEnabled: storeSettings.notifyEmailEnabled,
-          smsEnabled: storeSettings.notifySmsEnabled,
-          whatsappEnabled: storeSettings.notifyWhatsappEnabled
-        }
-      : undefined;
-    // Admin setup (signup) OTP mirrors admin login: it prefers email and, when OTP_WHATSAPP_ENABLED
-    // is on AND the invitee supplied a phone, ALSO fans the same OTP out to WhatsApp/SMS. Same OTP,
-    // one hash, verified identically. Email is always kept as a floor so a misconfigured routing can
-    // never lock an admin out of finishing setup.
-    const { channels, primaryChannel, toggles } = resolveOtpDeliveryChannels({
-      templateKey: 'OtpVerification',
-      ...(setupStoreFlags ? { storeFlags: setupStoreFlags } : {}),
-      primaryChannels: storeSettings?.primaryNotificationChannels,
-      runtime,
-      preferEmail: true
-    });
-    assertOtpChannelDeliverable(primaryChannel, toggles, runtime);
-
-    // SMS/WhatsApp need the invitee's phone. Hard error only if the PRIMARY channel needs a phone the
-    // invitee didn't supply; a phone-less invitee just doesn't get the extra WhatsApp/SMS copy.
-    if (primaryChannel !== 'email' && !setupPhone) {
-      throw new AppError(
-        ERROR_CODES.VALIDATION_ERROR,
-        `Phone number is required for ${primaryChannel.toUpperCase()} OTP setup`,
-        400
-      );
-    }
-    const deliveryChannels = channels.filter((ch) => ch === 'email' || Boolean(setupPhone));
-
-    let currentChannel: OtpChannel = primaryChannel;
-    const otpJobIdBase = `admin-setup-otp-${invite.id}-${Date.now()}`;
+    // The setup OTP is the second factor that binds invite consumption to control of the
+    // INVITED MAILBOX. It therefore goes to invite.inviteEmail only — never to the
+    // body-supplied phone, which the holder of a leaked/forwarded invite link controls
+    // (sending it there would let them consume the invite without the inbox). Mirrors the
+    // ops invite setup flow (ops.service.ts sendInviteSetupOtp). The phone is stored as
+    // profile data only; it is not proof of identity.
+    const otpJobId = `admin-setup-otp-${invite.id}-${Date.now()}-email`;
     try {
-      for (const ch of deliveryChannels) {
-        currentChannel = ch;
-        const jobId = `${otpJobIdBase}-${ch}`;
-        if (ch === 'email') {
-          await this.fastify.queues.notifications.add(
-            'send-email',
-            { to: invite.inviteEmail, template: 'OtpVerification', data: { otp } },
-            { jobId }
-          );
-        } else if (ch === 'sms') {
-          await this.fastify.queues.notifications.add(
-            'send-sms',
-            { phone: setupPhone!, template: 'OtpVerification', data: { otp } },
-            { jobId }
-          );
-        } else {
-          await this.fastify.queues.notifications.add(
-            'send-whatsapp',
-            { phone: setupPhone!, template: 'OtpVerification', data: { otp } },
-            { jobId }
-          );
-        }
-      }
+      await this.fastify.queues.notifications.add(
+        'send-email',
+        { to: invite.inviteEmail, template: 'OtpVerification', data: { otp } },
+        { jobId: otpJobId }
+      );
     } catch (error) {
       await sendNotificationFailureAlert({
         prisma: this.fastify.prisma,
         template: 'OtpVerification',
-        channel: currentChannel.toUpperCase() as 'SMS' | 'WHATSAPP' | 'EMAIL',
-        recipient: currentChannel === 'email' ? invite.inviteEmail : (setupPhone ?? invite.inviteEmail),
+        channel: 'EMAIL',
+        recipient: invite.inviteEmail,
         errorMessage: error instanceof Error ? error.message : 'Unable to enqueue admin setup OTP',
         failureStage: 'QUEUE_ENQUEUE',
         queueName: 'notifications',
-        jobName: currentChannel === 'email' ? 'send-email' : currentChannel === 'sms' ? 'send-sms' : 'send-whatsapp',
-        jobId: `${otpJobIdBase}-${currentChannel}`
+        jobName: 'send-email',
+        jobId: otpJobId
       });
       throw error;
     }

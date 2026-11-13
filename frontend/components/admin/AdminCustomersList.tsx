@@ -15,17 +15,17 @@ import {
   coercePaginatedResponse,
   toIsoDateRange,
   type AdminUserListItem,
-  readPaginatedItems,
   type PaginatedResponse,
 } from "@/lib/admin-api";
+import type { AdminListFilterSpecs, AdminListQuery } from "@/lib/admin-list";
 import {
   prevRange,
   rangeToISO,
   trendPeriodLabel,
 } from "@/components/admin/AdminDateRangePicker";
 import { formatAdminDate, formatPaise } from "@/lib/admin-format";
-import { getApiErrorMessage } from "@/lib/error-messages";
 import { useAuthenticatedApi } from "@/hooks/use-authenticated-api";
+import { useAdminList } from "@/hooks/use-admin-list";
 import { useAdminDataRefreshEffect } from "@/hooks/use-admin-data-refresh-effect";
 import {
   Users,
@@ -46,6 +46,13 @@ function calcTrendPct(cur: number, prev: number): number | null {
   return ((cur - prev) / prev) * 100;
 }
 
+type CustomerListFilters = { status: string; search: string };
+
+const CUSTOMER_LIST_FILTERS: AdminListFilterSpecs<CustomerListFilters> = {
+  status: { defaultValue: "", allowed: ["active", "banned"] },
+  search: { defaultValue: "", param: false },
+};
+
 interface CustomerKpis {
   total: number;
   totalPrev: number;
@@ -62,17 +69,8 @@ export function AdminCustomersList({
 }) {
   const api = useAuthenticatedApi();
   const trendLabel = trendPeriodLabel(from, to);
-  const [page, setPage] = useState(1);
-  const [search, setSearch] = useState("");
   const [searchInput, setSearchInput] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [data, setData] = useState<PaginatedResponse<AdminUserListItem> | null>(
-    null,
-  );
-
   const [selectedIds, setSelectedIds] = useState<Record<string, boolean>>({});
-  const [banFilter, setBanFilter] = useState("");
 
   // ── KPI state ────────────────────────────────────────────────────────────
   const [customerKpis, setCustomerKpis] = useState<CustomerKpis | null>(null);
@@ -127,47 +125,36 @@ export function AdminCustomersList({
     ? calcTrendPct(customerKpis.total, customerKpis.totalPrev)
     : null;
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await api<PaginatedResponse<AdminUserListItem>>(
+  const fetchPage = useCallback(
+    ({ page, filters }: AdminListQuery<CustomerListFilters>) =>
+      api<PaginatedResponse<AdminUserListItem>>(
         `/admin/users${buildAdminQuery({
           page,
           limit: PAGE_SIZE,
-          search: search || undefined,
+          search: filters.search || undefined,
           banned:
-            banFilter === "banned"
+            filters.status === "banned"
               ? true
-              : banFilter === "active"
+              : filters.status === "active"
                 ? false
                 : undefined,
           from: toIsoDateRange(from),
           to: toIsoDateRange(to, true),
         })}`,
-      );
-      setData(coercePaginatedResponse(response));
-    } catch (err) {
-      setError(getApiErrorMessage(err));
-      setData(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [api, page, search, banFilter, from, to]);
+      ),
+    [api, from, to],
+  );
+  const { filters, setFilter, data, items, loading, error, setPage } = useAdminList<
+    AdminUserListItem,
+    CustomerListFilters
+  >({
+    filters: CUSTOMER_LIST_FILTERS,
+    fetchPage,
+    refreshScopes: ["customers"],
+    resetKey: `${from}|${to}`,
+  });
+  const { search, status: banFilter } = filters;
 
-  useEffect(() => {
-    setPage(1);
-  }, [from, to]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  useEffect(() => {
-    setPage(1);
-  }, [search, banFilter]);
-
-  const items = readPaginatedItems(data);
 
   return (
     <div className="flex min-w-0 flex-col gap-6">
@@ -211,7 +198,7 @@ export function AdminCustomersList({
             className="relative col-span-2 w-full min-w-0 flex-1 sm:max-w-sm"
             onSubmit={(event) => {
               event.preventDefault();
-              setSearch(searchInput.trim());
+              setFilter("search", searchInput.trim());
             }}
           >
             <Search className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" />
@@ -230,10 +217,7 @@ export function AdminCustomersList({
               className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 sm:w-auto"
               value={banFilter}
               aria-label="Filter by status"
-              onChange={(e) => {
-                setBanFilter(e.target.value);
-                setPage(1);
-              }}
+              onChange={(e) => setFilter("status", e.target.value)}
             >
               <option value="">All Status</option>
               <option value="active">Active</option>

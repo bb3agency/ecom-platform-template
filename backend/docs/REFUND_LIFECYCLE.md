@@ -46,6 +46,7 @@ cancel (admin / customer / courier webhook / manual courier sync)
 | Circuit breaker (refusals do **not** trip it) | `backend/src/modules/payments/payment-provider.ts` |
 | Webhook intake (refund entity id/amount, per-refund dedupe) | `OrdersService.processPaymentWebhook` in `backend/src/modules/orders/orders.service.ts` |
 | `refund.processed` / `refund.failed` handling | `backend/queues/workers/order-processing.worker.ts` (`payment-webhook` job) |
+| Orphan / missed-webhook captures (see §9) | `backend/queues/workers/razorpay-capture-reconcile.ts`, `refunds.worker.ts` (`refund-orphan-capture`) |
 | "Refund still owed" rule (detail + Prisma where) | `backend/src/modules/orders/refund-owed.ts` |
 | Admin retry action | `OrdersService.adminRetryRefund`, route `POST /api/v1/admin/orders/:id/refund/retry` |
 | Admin UI | `frontend/components/admin/AdminOrderRefundOwedNotice.tsx`, `AdminOrderTimelinePanel.tsx`, `AdminOrdersList.tsx` (Refund filter), `AdminDashboardPanels.tsx` (Needs attention) |
@@ -129,6 +130,7 @@ Required: `payment.captured`, `payment.failed`, `refund.processed`, **`refund.fa
 
 - `refund.*` payloads carry `payload.refund.entity`; its `id` and `amount` are forwarded to the worker.
 - Redis/inbox dedupe for `refund.*` is keyed by **event + refund id**, so a failed refund followed by a retried one on the same payment are both processed.
+- If the API dies between claiming the inbox row and writing the outbox row, the row stays `PROCESSING` and the provider's retry is acked as a duplicate. The `reclaim-stuck-webhook-inbox` sweep (reconciliation queue, every 5 min) re-drives rows stuck longer than `WEBHOOK_INBOX_RECLAIM_AFTER_MINUTES` (default 10) from the `redriveSpec` stored at claim time. The outbox `jobId` is per event (`payment-webhook-<hash(event#refundId:paymentId)>`), so a re-drive never double-enqueues. After `WEBHOOK_INBOX_RECLAIM_MAX_ATTEMPTS` (default 3) the row goes `FAILED` with an alert.
 
 ## 8. Operating it
 
@@ -140,6 +142,38 @@ Required: `payment.captured`, `payment.failed`, `refund.processed`, **`refund.fa
 - **Alert email "still owed after 3 days":** a person must act, as above.
 - **To prove a refund went through:** the Razorpay Dashboard → Refunds, or the order turning **Refunded** (from `refund.processed`).
 - **Local/dev:** `PAYMENT_PROVIDER=noop` refuses every refund with a 503. That exercises the failure path end to end: 3 fast attempts, then the slow schedule.
+
+## 9. Captures the platform never recorded (orphans and missed webhooks)
+
+A captured payment can exist at Razorpay with no matching state in the store:
+- **Orphan capture:** the customer paid, but checkout never created a local `Payment` row (tab closed, network drop, stale Razorpay order).
+- **Missed `payment.captured`:** a local `Payment` row exists but is still `CREATED`/`FAILED`, because the webhook that would have confirmed it never arrived.
+
+Two paths catch these.
+
+**Webhook-driven (fast).** A `payment.captured` webhook with no local `Payment` row (live webhooks arrive as the `deduct-inventory` alias; reconciliation heals use `payment-webhook`, and both schedule it) → `order-processing:orphan-capture-check`, delayed 45 min (outlives the 30-min checkout session so a late `confirm-prepaid` always wins) → still orphaned → `refunds:refund-orphan-capture`. The scheduled reconciliation below is the backstop for webhooks that never arrive.
+
+**Scheduled reconciliation (catches what the webhook never delivered).** `reconciliation:razorpay-capture-reconcile` runs every **30 min** (job scheduler `reconciliation:razorpay-capture-reconcile`, registered by `bullmq.plugin.ts`). It pages Razorpay `GET /v1/payments?from=&to=&count=100&skip=…` over the **last 48 h** (`to` fixed per run; consecutive windows overlap), at most **20 pages** per run, keeping only payments whose Razorpay status is still `captured`:
+
+| Local state | Action | Issue type (`ReconciliationIssue`, `aggregateRef = <pay_id>:<type>`) |
+|---|---|---|
+| `Payment` (by payment id, else by Razorpay order id) is `CAPTURED` / `PARTIALLY_REFUNDED` / `REFUNDED` | skip | none |
+| …same, but matched by order id and recorded against a **different** payment id | skip, alert `RazorpayDuplicateCapture` once | `RAZORPAY_DUPLICATE_CAPTURE` (manual review, never auto-refunded) |
+| `Payment` is `CREATED` / `FAILED` | enqueue `order-processing:payment-webhook` with a synthetic `payment.captured` (jobId `rzp-reconcile-captured-<pay_id>-<hour>`); `process-order-update`'s CAS gate makes duplicates no-ops | `RAZORPAY_CAPTURE_WEBHOOK_MISSING` (`manual_review` when the order is no longer awaiting payment, e.g. already cancelled) |
+| no `Payment`, has a Razorpay order, older than 45 min | enqueue `refunds:refund-orphan-capture` (jobId `refund-orphan-capture-<pay_id>`, the same id the webhook path uses) | `RAZORPAY_ORPHAN_CAPTURE` |
+| no `Payment`, younger than 45 min, or no Razorpay order | skip (picked up by a later run / cannot be ours) | none |
+
+`refund-orphan-capture` always re-checks for a local `Payment` and refunds **only** Razorpay orders whose notes prove this platform created them (`notes.userId` / `notes.orderId`); payment-link / POS captures are left alone. It alerts `OrphanPaymentCapture` after refunding.
+
+Issue resolution: `RAZORPAY_CAPTURE_WEBHOOK_MISSING` resolves only when the local `Payment` now carries that capture (leaving the window is not a fix). Orphan and duplicate issues resolve when a **complete** (non-truncated) scan no longer sees them (refunded, recorded after all, or older than the window).
+
+Controls:
+- `RAZORPAY_RECONCILE_ENABLED` (Ops UI → Config, restart to apply). Default `true`, and only ever active when `PAYMENT_PROVIDER=razorpay`. `false` removes the schedule; the worker also re-checks at run time.
+- `RECONCILIATION_AUTO_HEAL_ISSUES` keys `RAZORPAY_CAPTURE_WEBHOOK_MISSING` (heal) and `RAZORPAY_ORPHAN_CAPTURE` (refund) are in the default set. Remove them to keep detection + issue rows but stop the automatic action.
+- A run that hits the 20-page bound alerts `RazorpayCaptureReconcileTruncated` (older captures in the window were not checked that run).
+- A Razorpay error or open circuit breaker fails the job; BullMQ retries it, and the next scheduled run covers the same window.
+
+Files: `backend/queues/workers/razorpay-capture-reconcile.ts` (logic), `backend/queues/workers/reconciliation.worker.ts` (job routing), `backend/src/common/payments/razorpay-capture-reconcile-config.ts` (flag + schedule), `RazorpayAdapter.listCapturedPayments` (circuit-breaker pass-through in `payment-provider.ts`).
 
 ## History (why this exists)
 

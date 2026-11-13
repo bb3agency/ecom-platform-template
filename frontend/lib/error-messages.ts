@@ -20,6 +20,7 @@ const ERROR_MESSAGES: Record<string, string> = {
     "Ops audit system is busy. Wait 1–2 seconds and retry this action.",
   INVALID_STATUS_TRANSITION: "This status change is not allowed right now.",
   INSUFFICIENT_STOCK: "Not enough stock is available for this quantity.",
+  PRICE_CHANGED: "Some prices in your cart changed. Please review the updated total.",
   COUPON_EXPIRED: "This coupon has expired.",
   COUPON_USAGE_EXCEEDED: "This coupon has reached its usage limit.",
   PINCODE_NOT_SERVICEABLE: "Delivery is not available for this pincode. Try another address.",

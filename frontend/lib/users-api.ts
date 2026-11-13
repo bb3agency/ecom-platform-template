@@ -1,4 +1,5 @@
 import { apiClient } from "@/lib/api";
+import { storefrontApiClient } from "@/lib/storefront-api-client";
 import type { User } from "@/types/user";
 
 /** Safe unwrap for `{ items, meta }` or bare-array API responses. */
@@ -30,6 +31,8 @@ export interface UserAddress {
 }
 
 export async function getCurrentUser(accessToken: string): Promise<User> {
+  // Raw client on purpose: called from inside the cookie-refresh flow
+  // (restoreAuthSessionFromCookie), so it must never trigger another refresh.
   return apiClient<User>("/users/me", {
     method: "GET",
     accessToken,
@@ -37,7 +40,7 @@ export async function getCurrentUser(accessToken: string): Promise<User> {
 }
 
 export async function getMyAddresses(accessToken: string): Promise<UserAddress[]> {
-  const response = await apiClient<unknown>("/users/me/addresses", {
+  const response = await storefrontApiClient<unknown>("/users/me/addresses", {
     method: "GET",
     accessToken,
   });
@@ -55,7 +58,7 @@ export interface UserOrder {
 }
 
 export async function getMyOrders(accessToken: string): Promise<UserOrder[]> {
-  const response = await apiClient<unknown>("/users/me/orders", {
+  const response = await storefrontApiClient<unknown>("/users/me/orders", {
     method: "GET",
     accessToken,
   });
@@ -77,7 +80,7 @@ export async function createMyAddress(
   accessToken: string,
   input: CreateUserAddressInput,
 ): Promise<UserAddress> {
-  return apiClient<UserAddress>("/users/me/addresses", {
+  return storefrontApiClient<UserAddress>("/users/me/addresses", {
     method: "POST",
     accessToken,
     body: JSON.stringify(input),
@@ -89,7 +92,7 @@ export async function updateMyAddress(
   id: string,
   input: Partial<Omit<UserAddress, "id" | "createdAt" | "updatedAt">>,
 ): Promise<UserAddress> {
-  return apiClient<UserAddress>(`/users/me/addresses/${id}`, {
+  return storefrontApiClient<UserAddress>(`/users/me/addresses/${id}`, {
     method: "PATCH",
     accessToken,
     body: JSON.stringify(input),
@@ -100,7 +103,7 @@ export async function deleteMyAddress(
   accessToken: string,
   id: string,
 ): Promise<void> {
-  return apiClient<void>(`/users/me/addresses/${id}`, {
+  return storefrontApiClient<void>(`/users/me/addresses/${id}`, {
     method: "DELETE",
     accessToken,
   });
@@ -116,7 +119,7 @@ export async function updateMyProfile(
   accessToken: string,
   input: { firstName?: string; lastName?: string },
 ): Promise<User> {
-  return apiClient<User>("/users/me", {
+  return storefrontApiClient<User>("/users/me", {
     method: "PATCH",
     accessToken,
     body: JSON.stringify(input),
@@ -144,7 +147,7 @@ export async function requestIdentifierChange(
   accessToken: string,
   input: { type: IdentifierType; newValue: string | null },
 ): Promise<IdentifierChangeRequestResult> {
-  return apiClient<IdentifierChangeRequestResult>("/users/me/identifier/change/request", {
+  return storefrontApiClient<IdentifierChangeRequestResult>("/users/me/identifier/change/request", {
     method: "POST",
     accessToken,
     body: JSON.stringify(input),
@@ -159,7 +162,7 @@ export async function verifyIdentifierChange(
   accessToken: string,
   input: { type: IdentifierType; currentOtp: string; newOtp?: string },
 ): Promise<User> {
-  return apiClient<User>("/users/me/identifier/change/verify", {
+  return storefrontApiClient<User>("/users/me/identifier/change/verify", {
     method: "POST",
     accessToken,
     body: JSON.stringify(input),

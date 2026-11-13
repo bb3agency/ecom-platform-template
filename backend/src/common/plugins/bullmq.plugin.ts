@@ -3,6 +3,12 @@ import { recordQueueHealthSnapshot } from '@common/observability/metrics';
 import { guardRedisDuplicate } from '@common/redis/redis-connection';
 import { createQueueRegistry } from '@queues/queue-registry';
 import { sendTechnicalFailureAlert } from '@modules/notifications/notification-failure-alert';
+import {
+  RAZORPAY_CAPTURE_RECONCILE_INTERVAL_MS,
+  RAZORPAY_CAPTURE_RECONCILE_JOB,
+  RAZORPAY_CAPTURE_RECONCILE_SCHEDULER_ID,
+  isRazorpayCaptureReconcileEnabled
+} from '@common/payments/razorpay-capture-reconcile-config';
 
 export async function registerBullmqPlugin(fastify: FastifyInstance): Promise<void> {
   const connection = guardRedisDuplicate(fastify.redis, fastify.log, 'bullmq-queues', {
@@ -87,6 +93,25 @@ export async function registerBullmqPlugin(fastify: FastifyInstance): Promise<vo
             'reconciliation:run-order-lifecycle-check',
             { every: 60 * 60 * 1000 },
             { name: 'run-order-lifecycle-check', data: {} }
+          );
+
+          // Catches captures whose payment.captured webhook never arrived. Removed (not
+          // just skipped) when disabled so switching the flag off stops the schedule.
+          if (isRazorpayCaptureReconcileEnabled()) {
+            await queues.reconciliation.upsertJobScheduler(
+              RAZORPAY_CAPTURE_RECONCILE_SCHEDULER_ID,
+              { every: RAZORPAY_CAPTURE_RECONCILE_INTERVAL_MS },
+              { name: RAZORPAY_CAPTURE_RECONCILE_JOB, data: {} }
+            );
+          } else {
+            await queues.reconciliation.removeJobScheduler(RAZORPAY_CAPTURE_RECONCILE_SCHEDULER_ID);
+          }
+          // be-rel-05 follow-up: re-drive webhook inbox rows stuck in PROCESSING
+          // (crash between the inbox claim and the outbox write).
+          await queues.reconciliation.upsertJobScheduler(
+            'reconciliation:reclaim-stuck-webhook-inbox',
+            { every: 5 * 60 * 1000 },
+            { name: 'reclaim-stuck-webhook-inbox', data: {} }
           );
         }
 

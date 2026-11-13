@@ -12,6 +12,35 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-13
+
+### Fixed — checkout & auth (engine)
+- **The payment retry page sent logged-in customers to login** (inverted guard).
+- **A successful Razorpay payment whose confirm call failed was never retried:** confirm-prepaid now retries with bounded backoff and the same idempotency key, and the pending confirmation survives the modal closing.
+- **Customer API calls did not refresh an expired access token:** `lib/storefront-api-client.ts` refreshes on 401 and retries once with the same idempotency key; it clears the session if the refresh fails.
+- **Open redirect on login/register** (`?redirect=`): `safeStorefrontRedirect()` only allows same-site paths.
+- **Checkout saved a duplicate address on every order;** it now reuses an identical saved address.
+- **Retried COD / prepare calls created new idempotency keys:** keys are kept per request fingerprint and reused on retry.
+- **`PRICE_CHANGED` (409):** a clear message, and the cart and delivery quote reload so the new total shows.
+- **A paid order that came back CANCELLED showed "Order placed!" and fired a PURCHASE event.** It now says the payment was received, the order could not be completed and a full refund has started (5–7 working days), and tracks no purchase (`lib/checkout-outcome.ts`). New `components/account/OrderRefundNotice.tsx` shows refund status for cancelled prepaid orders.
+- Checkout form: per-field errors with `aria-invalid`/`aria-describedby`, an always-mounted `role=alert` region, submit disabled while the delivery quote loads; `localStorage` access guarded.
+
+### Fixed — admin & ops consoles
+- **Date filters used UTC midnight instead of the local day** (`toIsoDateRange`): every admin from/to range now uses local-day boundaries.
+- **Stale responses overwrote newer ones** in lists and search (`lib/request-sequence.ts`); double-clicks could fire a mutation twice (`lib/mutation-gate.ts`).
+- Review moderate/delete failures now show a toast instead of being swallowed; "Retry refund" says it is queued.
+- The ops OTP countdown follows the server clock (`lib/server-clock.ts`).
+- Status pills are an `aria-pressed` group; filters are labelled; the search overlay traps focus and restores it.
+- **Shared admin list hook** `hooks/use-admin-list.ts` (URL-synced filters + page, page reset on filter change, stale-response guard, loading/empty/error) for orders, customers, products, categories, coupons, reviews and payments. New URL params: `page`; categories/customers `status`; coupons `status`, `type`; reviews `rating`. `use-admin-list-resource.ts` removed (no callers).
+
+**Propagation:**
+- Severity: **HIGH** (checkout money/UX, auth) - Layers: frontend `lib/**`, `hooks/**`, `stores/**`, `types/**`, `components/{checkout,admin,ops,account}/**`, `app/(storefront)/checkout/**`, `app/(auth)/**`, admin/ops pages
+- Migration: NO - Flag: none - Design impact: none (token classes only) - Breaking: NO
+- Requires backend-core **0.5.0** (`PRICE_CHANGED`, cancelled confirm-prepaid).
+- **Theme action per client (optional):** to show refund status on the customer order page, mount `<OrderRefundNotice order={order} />` under the header in `app/(account)/orders/[id]/page.tsx` (theme file, not synced).
+- Rollback: revert the release.
+
+
 ## [0.4.1] - 2026-10-21
 
 ### Changed

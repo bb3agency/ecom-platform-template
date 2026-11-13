@@ -10,6 +10,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { AlertTriangle, Lock, RefreshCw } from "lucide-react";
 import { Notice } from "@/components/ui/console";
+import { getServerClockOffsetMs, secondsUntilServerTime } from "@/lib/server-clock";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -141,18 +142,28 @@ export function OpsCodeBlock({ children, className }: { children: string; classN
 
 // ─── Time ────────────────────────────────────────────────────────────────────
 
-/** Whole seconds until `iso`, ticking once a second. 0 once it has passed; null without a target. */
+/**
+ * Whole seconds until the server timestamp `iso`, ticking once a second. 0 once it
+ * has passed; null without a target. Measured against the server clock (see
+ * lib/server-clock.ts) so a skewed device clock doesn't expire a fresh OTP.
+ */
 export function useSecondsUntil(iso: string | null | undefined): number | null {
   const [now, setNow] = useState(() => Date.now());
+  const [offsetMs, setOffsetMs] = useState(0);
   useEffect(() => {
     if (!iso) return;
+    let active = true;
+    void getServerClockOffsetMs().then((offset) => {
+      if (active) setOffsetMs(offset);
+    });
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(timer);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
   }, [iso]);
   if (!iso) return null;
-  const target = new Date(iso).getTime();
-  if (!Number.isFinite(target)) return null;
-  return Math.max(0, Math.ceil((target - now) / 1000));
+  return secondsUntilServerTime(iso, now, offsetMs);
 }
 
 /** 75 → "1:15". */

@@ -12,6 +12,50 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-13
+
+Platform hardening sweep: five parallel audits (money paths, security, reliability, admin/ops consoles, checkout engine), every finding re-verified in code before it was fixed, each fix with a regression test. Backend unit tests 1567 → 1750.
+
+### Fixed — money paths
+- **Paid order, then stock ran out:** a post-capture stock failure on a confirmed prepaid order now cancels it (CAS), releases reservations and coupon usage, notifies the customer and queues the full refund. `prepareCheckout` subtracts other carts' live reservations, like `createOrder`.
+- **Inventory restored for stock that was never deducted:** new-flow PREPAID orders cancelled before `PREPAID_CONFIRMED` no longer add stock back (`restore-inventory-on-cancel.ts`).
+- **Orphan captures** (money captured, no local order — tab closed, network drop, stale Razorpay order): the `payment.captured` webhook schedules `orphan-capture-check` (45 min, after the checkout session TTL); if still orphaned, `refunds:refund-orphan-capture` refunds it in full — **only** when the Razorpay order's notes prove our checkout created it (payment links / POS are never touched) — and alerts the merchant. Live webhooks arrive as the `deduct-inventory` alias; both paths schedule the check.
+- **Coupon cap reached after payment:** the order is created as CANCELLED with a full refund instead of throwing after the money was taken. Coupon finalize is a true CAS on `usesCount`, re-checking `maxUsesTotal` and `maxUsesPerUser`. A replayed confirmation returns the existing order whatever its status.
+- **A late `payment.failed` could overwrite a captured payment** (and send a "payment failed" message). Non-refund payment events now stop once the payment is CAPTURED / PARTIALLY_REFUNDED / REFUNDED.
+- **Payment retry reuses the Razorpay order** while the amount is unchanged, instead of creating a new one each time.
+- **A second credit note overwrote the first:** credit notes are keyed by `providerRefundId`; later notes get `CN-<year>-<seq>-N`.
+- **The outbox row for confirmed prepaid orders** is written inside the order transaction (was after commit).
+- **Refund double-send after an ambiguous timeout:** every refund job sends a stable receipt (`rf_` + sha256(job id)); retries and unknown outcomes look the refund up at Razorpay (`GET /payments/:id/refunds`, failed refunds ignored) and adopt it instead of re-sending. Lookup failures never send blind.
+- **Checkout charged the cart's stale price snapshot:** checkout re-prices against live variant prices and fails with **`PRICE_CHANGED` (409)** listing the changed lines; the cart is already re-priced.
+
+### Fixed — security
+- Phone-OTP login is customer-only (admin phones get no OTP; the response is unchanged to avoid enumeration).
+- 3 wrong OTP guesses on a phone within 15 minutes invalidate the live OTP and block new sends for the window (`otp:verify-fails:<phone>`).
+- Refresh tokens are stored as `sha256:<hex>` (bcrypt matched other JWTs of the same user); existing bcrypt rows keep working until they expire.
+- `DELETE /admin/users/:id/ban` refuses ADMIN targets (403), like ban.
+- The admin invite setup OTP goes only to the invited email address.
+- CSV exports neutralise formula cells (`common/security/csv-cell.ts`).
+
+### Fixed — reliability
+- Jobs were treated as terminal one attempt early (BullMQ increments `attemptsMade` before `failed`), so DLQ entries and alerts fired while a retry was still pending.
+- The courier booking is saved in its own short transaction right after the provider call; compensating cancels use the right Shiprocket/Delhivery reference.
+- Razorpay webhook processing after the event-id lock is wrapped so a failure releases the reservation for redelivery; inbox rows end in ENQUEUED.
+- One shared Prisma client per worker process; API Redis `maxRetriesPerRequest=2`; "sent" notification log writes can never throw; the DLQ keeps the original job name/queue; repeatable queues have age caps; reconciliation pages through issues instead of an unbounded IN list.
+
+### Added
+- **Scheduled Razorpay capture reconciliation** (`reconciliation:razorpay-capture-reconcile`, every 30 min, last 48 h, at most 20 pages): heals captures whose webhook never arrived, queues orphan refunds (same provenance check), flags duplicate captures for manual review. Flag `RAZORPAY_RECONCILE_ENABLED` (ops DB overlay, default on when `PAYMENT_PROVIDER=razorpay`). Issue types `RAZORPAY_CAPTURE_WEBHOOK_MISSING`, `RAZORPAY_ORPHAN_CAPTURE` (auto-heal by default), `RAZORPAY_DUPLICATE_CAPTURE` (manual).
+- **Courier bookings in flight during a crash are recovered:** a booking intent is recorded before the courier call; retries and the `reconcile-booking-intents` sweep (every 10 min) look the booking up at Shiprocket/Delhivery by order number and adopt it instead of double-booking. See `docs/SHIPMENT_BOOKING_LIFECYCLE.md`.
+- **Stuck webhook inbox rows are re-driven:** inbox rows store the exact outbox message (`redriveSpec`); `reclaim-stuck-webhook-inbox` (every 5 min) re-drives rows stuck in PROCESSING for longer than `WEBHOOK_INBOX_RECLAIM_AFTER_MINUTES` (10), then FAILED + alert after `WEBHOOK_INBOX_RECLAIM_MAX_ATTEMPTS` (3). Rows without a spec go to FAILED for operator replay.
+- A startup warning in production when `DATABASE_URL` has no `connection_limit`.
+
+**Propagation:**
+- Severity: **HIGH** (money loss / double refund / double booking paths) - Layers: backend `src/modules/{orders,payments,auth,users,admin,shipping,coupons}`, `src/common/**`, `queues/**`, prisma — pairs with frontend-core 0.5.0
+- Migration: **YES, additive** — `20260820000000_webhook_inbox_reclaim` (`WebhookInboxEvent.redriveSpec` JSONB, `reclaimAttempts` INT default 0, `OutboxMessage(jobId)` index). Applied by the normal deploy (`prisma migrate deploy`).
+- Flag: `RAZORPAY_RECONCILE_ENABLED` (default on for Razorpay) - Design impact: none - Breaking: behaviour only — new `PRICE_CHANGED` 409 (handled by frontend-core 0.5.0); `confirm-prepaid` may return a CANCELLED order; admin phones get no OTP
+- **Ops action per client:** append `?connection_limit=10&pool_timeout=20` to `DATABASE_URL` in the VPS backend `.env` (a warning is logged until it is set).
+- Rollback: revert the release; the migration is additive and can stay.
+
+
 ## [0.4.0] - 2026-10-21
 
 ### Fixed

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { AdminPagination } from "@/components/admin/AdminPagination";
 import { AdminSection } from "@/components/admin/AdminSection";
 import { useAuthenticatedApi } from "@/hooks/use-authenticated-api";
+import { useRequestSequence } from "@/hooks/use-request-sequence";
 import { useAdminDataRefreshEffect } from "@/hooks/use-admin-data-refresh-effect";
 import {
   buildAdminQuery,
@@ -29,7 +30,9 @@ export function AdminCouponAnalyticsPanel({
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<PaginatedResponse<AdminCouponAnalyticsItem> | null>(null);
 
+  const listRequests = useRequestSequence();
   const load = useCallback(async () => {
+    const ticket = listRequests.begin();
     setLoading(true);
     setError(null);
     try {
@@ -41,14 +44,16 @@ export function AdminCouponAnalyticsPanel({
           to: to ? toIsoDateRange(to, true) : undefined,
         })}`,
       );
+      if (!listRequests.isLatest(ticket)) return;
       setData(coercePaginatedResponse(response));
     } catch (err) {
+      if (!listRequests.isLatest(ticket)) return;
       setError(getApiErrorMessage(err));
       setData(null);
     } finally {
-      setLoading(false);
+      if (listRequests.isLatest(ticket)) setLoading(false);
     }
-  }, [api, page, from, to]);
+  }, [api, listRequests, page, from, to]);
 
   useEffect(() => {
     setPage(1);

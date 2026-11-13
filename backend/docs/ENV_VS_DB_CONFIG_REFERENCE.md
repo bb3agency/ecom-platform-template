@@ -27,6 +27,11 @@ These must be set in `.env` (or VPS secrets manager) before the process starts. 
 - **Format:** `postgresql://user:password@host:5432/dbname`
 - **Generation:** Provided by your PostgreSQL host (Supabase, self-hosted, etc.)
 - **Rotation:** Requires process restart. Update in `.env` and restart. No other key is affected.
+- **Prisma connection pool sizing (production):** append `?connection_limit=10&pool_timeout=20`, e.g. `postgresql://user:password@host:5432/dbname?connection_limit=10&pool_timeout=20`.
+  - Without `connection_limit`, Prisma sizes each process's pool as `num_cpus * 2 + 1`. The API process and the workers process each hold **one** shared pool (be-rel-08), so the total is roughly `(API replicas + worker replicas) * connection_limit`. Keep that well under Postgres `max_connections` — remember every client on a shared VPS Postgres counts against the same limit.
+  - `pool_timeout` (seconds, Prisma default 10) is how long a query waits for a free connection before failing with `P2024`. `20` absorbs short bursts (webhook spikes, outbox sweeps) without hanging requests indefinitely.
+  - Start with `10`; raise it only if logs show `P2024` pool timeouts while Postgres still has headroom.
+  - **Startup check:** with `NODE_ENV=production`, the API (`registerPrismaPlugin`) and workers (`bootstrapWorkers`) log a **warning** — never a failure — when `DATABASE_URL` has no `connection_limit`. The warning never includes the URL itself.
 
 **`REDIS_URL`**
 - **What:** Full Redis connection URL used by both the API and worker processes for cache, sessions, BullMQ queues.
@@ -214,7 +219,9 @@ These are runtime tuning values — safe to adjust without security concern.
 | `HOT_SKU_COOLDOWN_SECONDS` | Cooldown after hot SKU purchase | `30` |
 | `HOT_SKU_SHARD_COUNT` | Redis shard count for hot SKU counters | `8` |
 | `CART_RESERVATION_TTL_MINUTES` | How long a cart reservation holds stock | `15` |
-| `RECONCILIATION_AUTO_HEAL_ISSUES` | Issue types the reconciliation worker auto-resolves (comma-separated). Unset = default safe set: `PAYMENT_CAPTURED_ORDER_NOT_CONFIRMED`, `REFUNDED_STATUS_MISMATCH`, `STALE_PENDING_PAYMENT` (also heals stale `PAYMENT_FAILED` abandon). Empty string = disable all auto-heals. `ORDER_SHIPPED_WITHOUT_SHIPMENT` is **not** in the default set (manual review). | *(default safe set when unset)* |
+| `RECONCILIATION_AUTO_HEAL_ISSUES` | Issue types the reconciliation worker auto-resolves (comma-separated). Unset = default safe set: `PAYMENT_CAPTURED_ORDER_NOT_CONFIRMED`, `REFUNDED_STATUS_MISMATCH`, `STALE_PENDING_PAYMENT` (also heals stale `PAYMENT_FAILED` abandon), plus the Razorpay capture reconciliation actions `RAZORPAY_CAPTURE_WEBHOOK_MISSING` (re-drive `payment.captured`) and `RAZORPAY_ORPHAN_CAPTURE` (queue `refund-orphan-capture`) — see `REFUND_LIFECYCLE.md` §9. Empty string = disable all auto-heals. `ORDER_SHIPPED_WITHOUT_SHIPMENT` is **not** in the default set (manual review). | *(default safe set when unset)* |
+| `WEBHOOK_INBOX_RECLAIM_AFTER_MINUTES` | How long a `WebhookInboxEvent` row may sit in `PROCESSING` before the `reclaim-stuck-webhook-inbox` sweep (reconciliation queue, every 5 min) re-drives it through the outbox using the `redriveSpec` stored at claim time. Covers a crash between the inbox claim and the outbox write. Re-drive is idempotent: the outbox `jobId` is deterministic per event, so an event whose outbox row already exists is only moved to `ENQUEUED`. **Workers process only**. | `10` |
+| `WEBHOOK_INBOX_RECLAIM_MAX_ATTEMPTS` | Failed re-drive attempts (`reclaimAttempts`) before the sweep moves the row to `FAILED` (Admin → Analytics → inbox failures) and sends a terminal `WEBHOOK_PROCESSING` alert. Rows with no stored `redriveSpec` (written before this release) go straight to `FAILED` for operator canonical replay. **Workers process only**. | `3` |
 | `RESTART_PAYMENT_DRAIN_TIMEOUT_MS` | Max time (ms) the `scheduled-process-restart` BullMQ job waits for all `PENDING_PAYMENT` orders to reach a terminal state before proceeding with the restart. If the timeout elapses, a `ProcessRestartPaymentDrainTimeout` alert is sent and the restart proceeds anyway. **Workers process only** — not consumed by the API process. Set lower (e.g. `10000`) in staging/test environments. | `300000` (5 min) |
 | `RESTART_QUEUE_DRAIN_TIMEOUT_MS` | Max time (ms) the `scheduled-process-restart` BullMQ job waits for **all BullMQ queues** to reach `getActiveCount() === 0` after pausing `outboxDispatch` first, then all other producer queues. Timeout → `ProcessRestartQueueDrainTimeout` alert sent (with per-queue active counts); restart proceeds anyway because in-flight jobs that exceed the budget will retry from BullMQ's durable `attempts` state when containers come back. **Workers process only**. Lower this in staging (e.g. `5000`) for fast iteration. | `60000` (60 s) |
 | `RESTART_QUEUE_PAUSE_GRACE_MS` | Settle delay (ms) between pausing `outboxDispatch` and pausing all other producer queues. Gives the in-flight outbox publish loop time to commit rows it has already claimed before downstream queues are frozen. Async `sleep()` — workers stay responsive. **Workers process only**. | `1500` |
@@ -289,6 +296,10 @@ These are stored AES-256-GCM encrypted in the `OpsConfigSecret` table and applie
 **`RAZORPAY_WEBHOOK_MAX_SKEW_SECONDS`**
 - **What:** Maximum age of a webhook event's timestamp before it is rejected. Prevents replay attacks of captured webhook payloads.
 - **Default:** `300` (5 minutes).
+
+**`RAZORPAY_RECONCILE_ENABLED`**
+- **What:** Scheduled Razorpay capture reconciliation (`reconciliation:razorpay-capture-reconcile`, every 30 min). Pages Razorpay's captured payments for the last 48 h and heals captures whose `payment.captured` webhook never arrived (or refunds orphan captures our checkout created). See `REFUND_LIFECYCLE.md` §9.
+- **Default:** `true` — but only ever active when `PAYMENT_PROVIDER=razorpay`. `false`/`0` removes the job schedule on the next API restart (the worker also re-checks per run). DB overlay, restart to apply.
 
 **`PAYMENT_PROVIDER_FAILOVER_ENABLED`**, **`PAYMENT_CB_FAILURE_THRESHOLD`**, **`PAYMENT_CB_COOLDOWN_MS`**
 - **What:** Circuit-breaker controls for the payment provider. If the provider fails `THRESHOLD` times, it trips open and returns errors immediately for `COOLDOWN_MS` milliseconds before retrying.
@@ -603,6 +614,9 @@ All Redis keys and pub/sub channels follow the project-wide convention: `<module
 |---|---|---|
 | `ops-restart:<uuid>` | `cartCleanup` | `scheduled-process-restart` |
 | `reconcile-process-order-update:<orderId>` | `order-processing` | `process-order-update` |
+| `deduct-inventory-<hash(paymentId)>` | `order-processing` | `deduct-inventory` (Razorpay `payment.captured` webhook) |
+| `payment-webhook-<hash(event#refundId:paymentId)>` | `order-processing` | `payment-webhook` (other Razorpay webhook events) |
+| `update-shipment-status-<awb>-<status>-<occurredAt>` | `shipping` | `update-shipment-status` (shipping webhooks) |
 
 ### Pub/Sub Channels
 

@@ -385,4 +385,56 @@ describe('notifications worker', () => {
       })
     });
   });
+  describe('be-rel-09: no duplicate sends after the provider accepted', () => {
+    function boot() {
+      createNotificationsWorker({}, {
+        Worker: MockWorker as unknown as NotificationsWorkerType,
+        PrismaClient: MockPrismaClient as unknown as NotificationsPrismaType
+      });
+    }
+
+    it('does not fail (and so does not retry/re-send) when only the SENT log write fails', async () => {
+      boot();
+      (sendEmailSpy as import('vitest').Mock).mockResolvedValue({ messageId: 'em_1', providerPayload: {} });
+      createLog.mockRejectedValueOnce(new Error('too many clients already'));
+      const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+      await expect(
+        processor?.({ name: 'send-email', data: { to: 'c@example.com', template: 'OrderConfirmed', data: {} } })
+      ).resolves.toBeUndefined();
+
+      expect(sendEmailSpy).toHaveBeenCalledTimes(1);
+      // No bogus FAILED row for a message the provider accepted.
+      expect(createLog).toHaveBeenCalledTimes(1);
+      expect(createLog).not.toHaveBeenCalledWith({ data: expect.objectContaining({ status: 'FAILED' }) });
+      expect(stderr).toHaveBeenCalled();
+    });
+
+    it('does not fail a WhatsApp delivery when only the SENT log write fails', async () => {
+      boot();
+      (sendWhatsappSpy as import('vitest').Mock).mockResolvedValue({ messageId: 'wa_1', providerPayload: {} });
+      createLog.mockRejectedValueOnce(new Error('connection reset'));
+      vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+      await expect(
+        processor?.({ name: 'send-whatsapp', data: { phone: '9876543210', template: 'OrderConfirmed', data: {} } })
+      ).resolves.toBeUndefined();
+      expect(sendWhatsappSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('passes a per-job idempotency key to the email provider', async () => {
+      boot();
+      (sendEmailSpy as import('vitest').Mock).mockResolvedValue({ messageId: 'em_2', providerPayload: {} });
+
+      await processor?.({
+        name: 'send-email',
+        id: 'job_42',
+        data: { to: 'c@example.com', template: 'OrderConfirmed', data: {} }
+      } as { name: string; data: unknown });
+
+      expect(sendEmailSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ to: 'c@example.com', idempotencyKey: 'notifications:job_42:email' })
+      );
+    });
+  });
 });

@@ -62,6 +62,8 @@ type RefundsQueue = Pick<Queue, 'add'>;
 
 type OrderProcessingWorkerDeps = {
   PrismaClient?: typeof RealPrismaClient;
+  /** Shared process-wide client (workers/index.ts) — avoids one connection pool per worker. */
+  prisma?: RealPrismaClient;
   Worker?: typeof Worker;
   sendTechnicalFailureAlert?: typeof sendTechnicalFailureAlert;
 };
@@ -85,6 +87,8 @@ type GenerateCreditNoteJobData = {
   orderId: string;
   reason: string;
   refundAmountPaise?: number;
+  /** Provider refund the note documents — dedupes redelivered jobs. */
+  providerRefundId?: string;
 };
 
 type ProcessOrderUpdateJobData = {
@@ -106,6 +110,44 @@ type CaptureRecoveryData = {
 };
 
 const CREDIT_NOTE_AUDIT_PREFIX = 'CREDIT_NOTE|';
+
+/**
+ * Delayed re-check for a payment.captured that matched no local Payment row.
+ * Must outlive the 30-minute checkout session (prepare-checkout's Redis TTL) so a
+ * late-but-legitimate confirm-prepaid always wins over the automatic refund.
+ */
+export const ORPHAN_CAPTURE_CHECK_JOB = 'orphan-capture-check';
+
+/**
+ * Money captured but no local Payment row yet: either confirm-prepaid has not run (normal,
+ * usually lands within seconds) or it never will (tab closed, network drop, stale Razorpay
+ * order). Re-check once the checkout session can no longer be confirmed; if still orphaned,
+ * the check refunds it and alerts the merchant. Deterministic jobId → at most one per payment.
+ */
+async function scheduleOrphanCaptureCheck(
+  queue: { add: (name: string, data: unknown, opts?: { jobId?: string; delay?: number }) => Promise<unknown> },
+  data: { providerOrderId?: string | null; providerPaymentId?: string | null }
+): Promise<void> {
+  if (!data.providerOrderId || !data.providerPaymentId) {
+    return;
+  }
+  const orphanCheck: OrphanCaptureCheckJobData = {
+    providerOrderId: data.providerOrderId,
+    providerPaymentId: data.providerPaymentId
+  };
+  await queue.add(ORPHAN_CAPTURE_CHECK_JOB, orphanCheck, {
+    jobId: `orphan-capture-check-${data.providerPaymentId}`,
+    delay: ORPHAN_CAPTURE_CHECK_DELAY_MS
+  });
+}
+export const ORPHAN_CAPTURE_CHECK_DELAY_MS = 45 * 60 * 1000;
+/** Refunds-queue job that refunds a capture with no local order (see refunds.worker.ts). */
+export const REFUND_ORPHAN_CAPTURE_JOB = 'refund-orphan-capture';
+
+type OrphanCaptureCheckJobData = {
+  providerOrderId: string;
+  providerPaymentId: string;
+};
 
 function parseJsonPayload(payload: string): Prisma.InputJsonValue {
   try {
@@ -292,7 +334,7 @@ export function createOrderProcessingWorker(
   const PrismaClientCtor = deps?.PrismaClient ?? RealPrismaClient;
   const WorkerCtor = deps?.Worker ?? Worker;
   const alertFn = deps?.sendTechnicalFailureAlert ?? sendTechnicalFailureAlert;
-  const prisma = new PrismaClientCtor();
+  const prisma = deps?.prisma ?? new PrismaClientCtor();
   const notificationsQueue = notificationsQueueArg ?? new Queue('notifications', { connection });
   const orderProcessingQueue = orderProcessingQueueArg ?? new Queue('order-processing', { connection });
   const analyticsQueue = analyticsQueueArg ?? new Queue('analytics', { connection });
@@ -305,6 +347,11 @@ export function createOrderProcessingWorker(
       if (job.name === 'generate-credit-note') {
         const creditNoteData = job.data as GenerateCreditNoteJobData;
         await generateCreditNoteForOrder(prisma, creditNoteData, invoiceStorageAdapter);
+        return;
+      }
+
+      if (job.name === ORPHAN_CAPTURE_CHECK_JOB) {
+        await handleOrphanCaptureCheck(prisma, job.data as OrphanCaptureCheckJobData, refundsQueue);
         return;
       }
 
@@ -337,6 +384,9 @@ export function createOrderProcessingWorker(
         const data = job.data as PaymentWebhookJobData & { orderId?: string };
         const resolvedOrderId = await resolveOrderIdFromWebhookData(prisma, data);
         if (!resolvedOrderId) {
+          // Live payment.captured webhooks arrive under this alias (see
+          // OrdersService.processPaymentWebhook), so the orphan check must run here too.
+          await scheduleOrphanCaptureCheck(orderProcessingQueue, data);
           return;
         }
         await enqueueOutboxOrQueue(
@@ -370,6 +420,11 @@ export function createOrderProcessingWorker(
       if (normalizedEvent === 'payment.captured') {
         const resolvedOrderId = await resolveOrderIdFromWebhookData(prisma, data);
         if (!resolvedOrderId) {
+          // Money captured but no local Payment row: either confirm-prepaid has not run
+          // yet (normal, it usually lands within seconds), or it never will (tab closed,
+          // network drop, stale Razorpay order). Re-check once the checkout session can
+          // no longer be confirmed; if still orphaned, refund it and alert the merchant.
+          await scheduleOrphanCaptureCheck(orderProcessingQueue, data);
           return;
         }
         await enqueueOutboxOrQueue(
@@ -405,12 +460,17 @@ export function createOrderProcessingWorker(
         // Ignore late payment.* events for an already-captured payment. refund.*
         // events are ABOUT a captured payment, so they must pass — this guard
         // used to drop every refund.processed, so refunds never finalised.
+        //
+        // The guard is by STATUS, not by payment id: Razorpay lets a customer fail
+        // with pay_A and then succeed with pay_B on the same order_id, and a late
+        // pay_A payment.failed must never overwrite the captured pay_B (that hid the
+        // capture from cancel/refund and pointed refunds at the wrong payment).
         const isRefundEvent = normalizedEvent.startsWith('refund.');
-        if (
-          !isRefundEvent &&
-          payment.providerPaymentId === data.providerPaymentId &&
-          payment.status === PAYMENT_STATUS.CAPTURED
-        ) {
+        const moneyCaptured =
+          payment.status === PAYMENT_STATUS.CAPTURED ||
+          payment.status === PAYMENT_STATUS.PARTIALLY_REFUNDED ||
+          payment.status === PAYMENT_STATUS.REFUNDED;
+        if (!isRefundEvent && moneyCaptured) {
           return;
         }
 
@@ -542,30 +602,27 @@ export function createOrderProcessingWorker(
             });
           }
 
+          // One credit note per provider refund. Keyed by the refund id, NOT the amount:
+          // an amount key collapsed two equal partial refunds into a single document.
+          const creditNotePayload = {
+            orderId: order.id,
+            reason: `Refund processed (${processedRefundAmount} paise)`,
+            refundAmountPaise: processedRefundAmount,
+            ...(data.providerRefundId ? { providerRefundId: data.providerRefundId } : {})
+          };
+          const creditNoteJobId = `generate-credit-note-${order.id}-${data.providerRefundId ?? `${processedRefundAmount}-${nextRefundedAmount}`}`;
           const outboxDelegate = (tx as unknown as { outboxMessage?: Prisma.TransactionClient['outboxMessage'] }).outboxMessage;
           if (outboxDelegate) {
             await outboxDelegate.create({
               data: {
                 queueName: 'orderProcessing',
                 jobName: 'generate-credit-note',
-                payload: {
-                  orderId: order.id,
-                  reason: `Refund processed (${processedRefundAmount} paise)`,
-                  refundAmountPaise: processedRefundAmount
-                } as Prisma.InputJsonValue,
-                jobId: `generate-credit-note-${order.id}-${processedRefundAmount}`
+                payload: creditNotePayload as Prisma.InputJsonValue,
+                jobId: creditNoteJobId
               }
             });
           } else {
-            await orderProcessingQueue.add(
-              'generate-credit-note',
-              {
-                orderId: order.id,
-                reason: `Refund processed (${processedRefundAmount} paise)`,
-                refundAmountPaise: processedRefundAmount
-              },
-              { jobId: `generate-credit-note-${order.id}-${processedRefundAmount}` }
-            );
+            await orderProcessingQueue.add('generate-credit-note', creditNotePayload, { jobId: creditNoteJobId });
           }
           return;
         }
@@ -889,6 +946,11 @@ async function handleProcessOrderUpdate(
         await handlePostCaptureRecovery(prisma, data, refundsQueue, {
           cancelReason: 'Auto-cancelled due to insufficient stock after payment capture',
           refundReason: 'Auto-refund due to insufficient stock after payment capture'
+        }, {
+          // New PREPAID flow: the order was born CONFIRMED (payment already CAPTURED),
+          // so recovery must cancel from CONFIRMED — otherwise the paid order is stranded.
+          allowConfirmed: data.triggeredBy === 'PREPAID_CONFIRMED',
+          notificationsQueue
         });
       }
       return;
@@ -902,6 +964,9 @@ async function handleProcessOrderUpdate(
         await handlePostCaptureRecovery(prisma, data, refundsQueue, {
           cancelReason: 'Auto-cancelled due to coupon usage limit reached after payment capture',
           refundReason: 'Auto-refund due to coupon usage limit reached after payment capture'
+        }, {
+          allowConfirmed: data.triggeredBy === 'PREPAID_CONFIRMED',
+          notificationsQueue
         });
       }
       return;
@@ -965,6 +1030,35 @@ async function handleProcessOrderUpdate(
     },
     occurredAt: new Date().toISOString()
   }, analyticsQueue, `analytics-${ANALYTICS_EVENT_TYPE.PURCHASE}-order-${sideEffectsTarget.id}`);
+}
+
+async function handleOrphanCaptureCheck(
+  prisma: RealPrismaClient,
+  data: OrphanCaptureCheckJobData,
+  refundsQueue: RefundsQueue
+): Promise<void> {
+  const payment = await prisma.payment.findFirst({
+    where: {
+      OR: [{ providerOrderId: data.providerOrderId }, { providerPaymentId: data.providerPaymentId }]
+    },
+    select: { id: true }
+  });
+  if (payment) {
+    // confirm-prepaid (or the old flow) recorded it in the meantime — nothing is orphaned.
+    return;
+  }
+
+  // The refunds worker verifies the Razorpay order was created by this platform before
+  // refunding, and alerts the merchant once the refund is issued.
+  await refundsQueue.add(
+    REFUND_ORPHAN_CAPTURE_JOB,
+    {
+      providerPaymentId: data.providerPaymentId,
+      providerOrderId: data.providerOrderId,
+      reason: 'Automatic refund: payment captured but no order was created'
+    },
+    { jobId: `refund-orphan-capture-${data.providerPaymentId}` }
+  );
 }
 
 async function handleCodSideEffectsFailure(
@@ -1046,7 +1140,12 @@ async function handlePostCaptureRecovery(
   reason: {
     cancelReason: string;
     refundReason: string;
-  }
+  },
+  options: {
+    /** Also cancel from CONFIRMED (new-flow PREPAID orders are born CONFIRMED + CAPTURED). */
+    allowConfirmed?: boolean;
+    notificationsQueue?: NotificationsQueue;
+  } = {}
 ): Promise<void> {
   const recovery = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     if (!data.providerOrderId && !data.orderId) {
@@ -1070,11 +1169,39 @@ async function handlePostCaptureRecovery(
       where: { id: payment.orderId },
       select: {
         id: true,
-        status: true
+        status: true,
+        user: { select: { email: true, phone: true } }
       }
     });
     if (!order) {
       return null;
+    }
+
+    if (options.allowConfirmed && order.status === ORDER_STATUS.CONFIRMED) {
+      // The deduction transaction rolled back, so no stock left the shelf and there is
+      // nothing to restore. The coupon slot was finalized by confirmPrepaid — give it back.
+      const cancelledConfirmed = await tx.order.updateMany({
+        where: { id: order.id, status: ORDER_STATUS.CONFIRMED },
+        data: { status: ORDER_STATUS.CANCELLED }
+      });
+      if (cancelledConfirmed.count === 0) {
+        return null;
+      }
+      await releaseReservationsForOrder(tx, order.id);
+      await releaseCouponUsageForOrder(tx, order.id);
+      await tx.orderStatusHistory.create({
+        data: {
+          orderId: order.id,
+          fromStatus: ORDER_STATUS.CONFIRMED,
+          toStatus: ORDER_STATUS.CANCELLED,
+          triggeredBy: 'SYSTEM',
+          note: reason.cancelReason
+        }
+      });
+      return {
+        orderId: order.id,
+        notify: { email: order.user?.email ?? null, phone: order.user?.phone ?? null }
+      };
     }
 
     if (payment.status !== PAYMENT_STATUS.CAPTURED) {
@@ -1115,11 +1242,27 @@ async function handlePostCaptureRecovery(
       });
     }
 
-    return { orderId: order.id };
+    return { orderId: order.id, notify: null };
   });
 
   if (!recovery) {
     return;
+  }
+
+  if (recovery.notify && options.notificationsQueue && (recovery.notify.email || recovery.notify.phone)) {
+    await enqueueOutboxOrQueue(
+      prisma,
+      'notifications',
+      'send-primary',
+      {
+        email: recovery.notify.email,
+        phone: recovery.notify.phone,
+        template: 'OrderCancelled',
+        data: { orderId: recovery.orderId }
+      },
+      options.notificationsQueue,
+      `notifications:primary:${recovery.orderId}:OrderCancelled:post-capture-recovery`
+    );
   }
 
   await enqueueOutboxOrQueue(
@@ -1135,6 +1278,33 @@ async function handlePostCaptureRecovery(
     refundsQueue,
     `auto-refund:${data.providerPaymentId ?? data.orderId ?? 'unknown'}`
   );
+}
+
+/**
+ * Credit-note serial. The first note keeps the historical `CN-<year>-<seq>` (the invoice
+ * number minus its `INV-` prefix — `CN-INV-…` breached CGST Rule 53's 16-char serial
+ * limit). Each further note on the same order gets its own suffix (`CN-2026-00042-2`), so a
+ * second partial refund never reuses — or overwrites the stored PDF of — the first one.
+ */
+export function buildCreditNoteNumber(invoiceNumber: string, sequence: number): string {
+  const base = `CN-${invoiceNumber.replace(/^INV-/, '')}`;
+  return sequence <= 1 ? base : `${base}-${sequence}`;
+}
+
+function parseCreditNoteAudit(note: string | null): { providerRefundId?: string } | null {
+  if (!note || !note.startsWith(CREDIT_NOTE_AUDIT_PREFIX)) {
+    return null;
+  }
+  try {
+    const parsed: unknown = JSON.parse(note.slice(CREDIT_NOTE_AUDIT_PREFIX.length));
+    if (parsed && typeof parsed === 'object') {
+      const refundId = (parsed as Record<string, unknown>)['providerRefundId'];
+      return typeof refundId === 'string' ? { providerRefundId: refundId } : {};
+    }
+  } catch {
+    // Malformed legacy audit row — still counts toward the sequence.
+  }
+  return {};
 }
 
 async function generateCreditNoteForOrder(
@@ -1167,11 +1337,21 @@ async function generateCreditNoteForOrder(
     }
 
     const shippingAddress = (order.shippingAddress ?? {}) as ShippingAddress;
-    // Serial derived from the invoice number MINUS its `INV-` prefix: `CN-<year>-<seq>`
-    // (e.g. CN-2026-00042, 13 chars). `CN-INV-…` breached CGST Rule 53's 16-char
-    // serial limit for sequential invoice numbers (CN- + 14 = 17 chars). The full
-    // original invoice number still prints via `originalInvoiceNumber` below.
-    const creditNoteNumber = `CN-${originalInvoice.invoiceNumber.replace(/^INV-/, '')}`;
+
+    // Every credit note already issued for this order is recorded as a CREDIT_NOTE| audit row.
+    const priorCreditNotes = await tx.orderStatusHistory.findMany({
+      where: { orderId: order.id, note: { startsWith: CREDIT_NOTE_AUDIT_PREFIX } },
+      select: { note: true }
+    });
+    if (
+      data.providerRefundId &&
+      priorCreditNotes.some((row) => parseCreditNoteAudit(row.note)?.providerRefundId === data.providerRefundId)
+    ) {
+      // Redelivered job for a refund that already has its document.
+      return;
+    }
+
+    const creditNoteNumber = buildCreditNoteNumber(originalInvoice.invoiceNumber, priorCreditNotes.length + 1);
     const content = await renderCreditNotePdfBuffer({
       creditNoteNumber,
       originalInvoiceNumber: originalInvoice.invoiceNumber,
@@ -1200,7 +1380,8 @@ async function generateCreditNoteForOrder(
     const auditPayload = JSON.stringify({
       creditNoteNumber,
       originalInvoiceNumber: originalInvoice.invoiceNumber,
-      reason: data.reason
+      reason: data.reason,
+      ...(data.providerRefundId ? { providerRefundId: data.providerRefundId } : {})
     });
 
     await tx.orderStatusHistory.create({

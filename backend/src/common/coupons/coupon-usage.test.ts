@@ -186,4 +186,69 @@ describe('coupon usage helpers', () => {
       data: { coupons: { set: [] } }
     });
   });
+
+  describe('atomic finalize (CAS on the live row)', () => {
+    function casTx(rows: Array<{ usesCount: number; maxUsesTotal: number | null; maxUsesPerUser: number | null }>, perUserUsed = 0) {
+      const findUnique = vi.fn();
+      rows.forEach((row) => findUnique.mockResolvedValueOnce(row));
+      return {
+        coupon: {
+          findUnique,
+          updateMany: vi.fn(),
+          // Plain function: the atomic path is taken only when update is not a vi mock.
+          update: async () => undefined
+        },
+        couponUsage: {
+          findUnique: vi.fn().mockResolvedValue(null),
+          create: vi.fn().mockResolvedValue(undefined),
+          count: vi.fn().mockResolvedValue(perUserUsed)
+        }
+      };
+    }
+    const input = { orderId: 'order_1', userId: 'user_1', discountAmount: 500, coupons: [{ id: 'coupon_1', usesCount: 0 }] };
+
+    it('increments with a compare-and-set on the freshly read usesCount', async () => {
+      const tx = casTx([{ usesCount: 7, maxUsesTotal: 10, maxUsesPerUser: null }]);
+      tx.coupon.updateMany.mockResolvedValue({ count: 1 });
+
+      await expect(finalizeCouponUsageForOrder(tx, input)).resolves.toEqual({ limitExceeded: false });
+
+      expect(tx.coupon.updateMany).toHaveBeenCalledWith({
+        where: { id: 'coupon_1', usesCount: 7 },
+        data: { usesCount: { increment: 1 } }
+      });
+      expect(tx.couponUsage.create).toHaveBeenCalledOnce();
+    });
+
+    it('re-reads after losing the race and refuses the slot the winner took (cap 100 never becomes 101)', async () => {
+      const tx = casTx([
+        { usesCount: 99, maxUsesTotal: 100, maxUsesPerUser: null },
+        { usesCount: 100, maxUsesTotal: 100, maxUsesPerUser: null }
+      ]);
+      tx.coupon.updateMany.mockResolvedValueOnce({ count: 0 });
+
+      await expect(finalizeCouponUsageForOrder(tx, input)).rejects.toMatchObject({ code: 'COUPON_USAGE_EXCEEDED' });
+      expect(tx.coupon.updateMany).toHaveBeenCalledTimes(1);
+      expect(tx.couponUsage.create).not.toHaveBeenCalled();
+    });
+
+    it('enforces maxUsesPerUser at finalize (a once-per-user coupon cannot be redeemed twice)', async () => {
+      const tx = casTx([{ usesCount: 3, maxUsesTotal: null, maxUsesPerUser: 1 }], 1);
+
+      await expect(finalizeCouponUsageForOrder(tx, input)).rejects.toMatchObject({ code: 'COUPON_USAGE_EXCEEDED' });
+      expect(tx.couponUsage.count).toHaveBeenCalledWith({
+        where: { couponId: 'coupon_1', userId: 'user_1', orderId: { not: 'order_1' } }
+      });
+      expect(tx.coupon.updateMany).not.toHaveBeenCalled();
+    });
+
+    it("reports instead of throwing in 'report' mode (post-capture callers)", async () => {
+      const tx = casTx([{ usesCount: 5, maxUsesTotal: 5, maxUsesPerUser: null }]);
+
+      await expect(
+        finalizeCouponUsageForOrder(tx, input, { onLimitExceeded: 'report' })
+      ).resolves.toEqual({ limitExceeded: true });
+      expect(tx.couponUsage.create).not.toHaveBeenCalled();
+    });
+  });
 });

@@ -13,6 +13,7 @@ import { formatPrice } from "@/lib/format-price";
 import { APP_NAME } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
 import { createIdempotencyKey } from "@/lib/idempotency";
+import { confirmWithRetry, shouldRedirectPaymentToLogin } from "@/lib/checkout-submit";
 
 function PaymentContent() {
   const searchParams = useSearchParams();
@@ -20,6 +21,7 @@ function PaymentContent() {
   const orderId = searchParams ? searchParams.get("orderId") : null;
   const accessToken = useAuthStore((s) => s.accessToken);
   const user = useAuthStore((s) => s.user);
+  const sessionStatus = useAuthStore((s) => s.storefrontSessionStatus);
   const clearCart = useCartStore((s) => s.clearCart);
   const clearPendingMerge = useCartStore((s) => s.clearPendingMerge);
   const [order, setOrder] = useState<OrderSummary | null>(null);
@@ -27,12 +29,14 @@ function PaymentContent() {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  // Only signed-out customers go to sign-in — and only after the cookie
+  // restore has finished, so a returning customer is not bounced (or looped).
   useEffect(() => {
-    if (!isReady || !orderId || !accessToken) return;
+    if (!shouldRedirectPaymentToLogin({ isReady, orderId, accessToken, sessionStatus })) return;
     replace(
       `/login?redirect=${encodeURIComponent(`/checkout/payment?orderId=${orderId}`)}`,
     );
-  }, [accessToken, isReady, orderId, replace]);
+  }, [accessToken, isReady, orderId, replace, sessionStatus]);
 
   useEffect(() => {
     let cancelled = false;
@@ -96,14 +100,18 @@ function PaymentContent() {
           razorpay_signature: string;
         }) => {
           try {
-            await verifyPayment(
-              {
-                orderId: order.id,
-                razorpayPaymentId: response.razorpay_payment_id,
-                razorpaySignature: response.razorpay_signature,
-              },
-              accessToken,
-              verifyKey,
+            // Money is already captured: retry the SAME verify (same key) on
+            // timeouts/5xx instead of surfacing a one-shot failure.
+            await confirmWithRetry(() =>
+              verifyPayment(
+                {
+                  orderId: order.id,
+                  razorpayPaymentId: response.razorpay_payment_id,
+                  razorpaySignature: response.razorpay_signature,
+                },
+                useAuthStore.getState().accessToken ?? accessToken,
+                verifyKey,
+              ),
             );
             clearPendingMerge();
             clearCart();
@@ -138,7 +146,11 @@ function PaymentContent() {
   }
 
   if (!accessToken) {
-    return <p className="text-sm text-muted-foreground">Redirecting to sign in…</p>;
+    return (
+      <p className="text-sm text-muted-foreground" role="status">
+        {sessionStatus === "checking" ? "Checking your session…" : "Redirecting to sign in…"}
+      </p>
+    );
   }
 
   if (!order) {

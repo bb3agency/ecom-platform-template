@@ -24,6 +24,7 @@ import { formatAdminDate } from "@/lib/admin-format";
 import { getApiErrorMessage } from "@/lib/error-messages";
 import { shippingProviderLabel } from "@/lib/shipping-provider-labels";
 import { useAuthenticatedApi } from "@/hooks/use-authenticated-api";
+import { useRequestSequence } from "@/hooks/use-request-sequence";
 import { useAdminDataRefreshEffect } from "@/hooks/use-admin-data-refresh-effect";
 import {
   Truck,
@@ -92,7 +93,9 @@ export function AdminShipmentsList({
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
 
+  const listRequests = useRequestSequence();
   const load = useCallback(async () => {
+    const ticket = listRequests.begin();
     setLoading(true);
     setError(null);
     try {
@@ -106,14 +109,16 @@ export function AdminShipmentsList({
           to: toIsoDateRange(to, true),
         })}`,
       );
+      if (!listRequests.isLatest(ticket)) return;
       setData(coercePaginatedResponse(response));
     } catch (err) {
+      if (!listRequests.isLatest(ticket)) return;
       setError(getApiErrorMessage(err));
       setData(null);
     } finally {
-      setLoading(false);
+      if (listRequests.isLatest(ticket)) setLoading(false);
     }
-  }, [api, page, status, search, from, to]);
+  }, [api, listRequests, page, status, search, from, to]);
 
   useEffect(() => {
     void load();

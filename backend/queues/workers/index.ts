@@ -12,8 +12,9 @@ import {
 import { validateBootstrapEnv } from '@config/app.config';
 import { refreshFeatureFlags, featureFlags } from '@config/feature-flags';
 import prismaClient from '../../src/database/prisma.service';
+import { warnIfDatabasePoolUnsized } from '../../src/config/database-pool';
 import { applyOpsConfigRuntimeOverlay, type OpsConfigRuntimePrismaLike } from '../../src/modules/ops/ops-config-runtime';
-import { dlqJobOptions } from '../queue-registry';
+import { defaultJobOptions, dlqJobOptions } from '../queue-registry';
 import { createOrderProcessingWorker } from './order-processing.worker';
 import { createShippingWorker } from './shipping.worker';
 import { createNotificationsWorker } from './notifications.worker';
@@ -202,6 +203,8 @@ async function bootstrapWorkers(): Promise<void> {
   }
 
   const logger = pino();
+  // Advisory only (production): the worker process shares one pool across all workers.
+  warnIfDatabasePoolUnsized(logger, 'workers');
   logger.info({
     appliedKeys: overlayReport.appliedKeys,
     skippedBootstrapKeys: overlayReport.skippedBootstrapKeys,
@@ -348,16 +351,28 @@ async function bootstrapWorkers(): Promise<void> {
     });
   }
 
-  const orderProcessingWorker = createOrderProcessingWorker(workerRedis);
-  const shippingWorker = createShippingWorker(workerRedis);
-  const notificationsWorker = createNotificationsWorker(workerRedis);
-  const inventoryAlertsWorker = createInventoryAlertsWorker(workerRedis);
-  const refundsWorker = createRefundsWorker(workerRedis);
-  const cartCleanupWorker = createCartCleanupWorker(workerRedis);
-  const analyticsWorker = createAnalyticsWorker(workerRedis);
-  const outboxDispatchWorker = createOutboxDispatchWorker(workerRedis);
-  const reconciliationWorker = createReconciliationWorker(workerRedis);
-  const deadLetterWorker = createDeadLetterWorker(workerRedis);
+  // be-rel-08: every worker shares the single process-wide PrismaClient so the
+  // worker process holds one connection pool (closed by shutdown()) instead of
+  // eleven. Size it with `connection_limit` in DATABASE_URL.
+  const sharedWorkerDeps = { prisma: prismaClient };
+  const orderProcessingWorker = createOrderProcessingWorker(
+    workerRedis,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    sharedWorkerDeps
+  );
+  const shippingWorker = createShippingWorker(workerRedis, undefined, sharedWorkerDeps);
+  const notificationsWorker = createNotificationsWorker(workerRedis, sharedWorkerDeps);
+  const inventoryAlertsWorker = createInventoryAlertsWorker(workerRedis, sharedWorkerDeps);
+  const refundsWorker = createRefundsWorker(workerRedis, sharedWorkerDeps);
+  const cartCleanupWorker = createCartCleanupWorker(workerRedis, sharedWorkerDeps);
+  const analyticsWorker = createAnalyticsWorker(workerRedis, sharedWorkerDeps);
+  const outboxDispatchWorker = createOutboxDispatchWorker(workerRedis, sharedWorkerDeps);
+  const reconciliationWorker = createReconciliationWorker(workerRedis, sharedWorkerDeps);
+  const deadLetterWorker = createDeadLetterWorker(workerRedis, sharedWorkerDeps);
 
   // --- DLQ connection fix (R3) ---
   // Use workerRedis.duplicate() to preserve password, TLS, and db config from the
@@ -463,7 +478,11 @@ async function bootstrapWorkers(): Promise<void> {
   const shiprocketActive =
     Boolean((process.env.SHIPROCKET_EMAIL ?? '').trim()) &&
     Boolean((process.env.SHIPROCKET_PASSWORD ?? '').trim());
-  if (shiprocketActive) {
+  // The booking-intent sweep (in-flight booking recovery) is needed for Delhivery
+  // too, so the scheduler queue also starts for Delhivery-only deployments; the
+  // Shiprocket-specific repeatables below stay gated on Shiprocket credentials.
+  const delhiveryActive = Boolean((process.env.DELHIVERY_API_KEY ?? '').trim());
+  if (shiprocketActive || delhiveryActive) {
     shiprocketRefreshConnection = guardRedisDuplicate(
       workerRedis,
       workerRedisLog,
@@ -475,54 +494,78 @@ async function bootstrapWorkers(): Promise<void> {
         )
       }
     );
-    shiprocketRefreshQueue = new Queue('shipping', { connection: shiprocketRefreshConnection });
-    shiprocketRefreshQueue
-      .add(
-        'shiprocket-token-refresh',
-        {},
-        {
-          repeat: { every: 9 * 24 * 60 * 60 * 1000 },
-          jobId: 'shiprocket-token-refresh-repeatable'
-        }
-      )
-      .catch((err: unknown) => {
-        logger.warn({ err }, 'Failed to register shiprocket-token-refresh repeatable job');
-        void sendTechnicalFailureAlert({
-          prisma: prismaClient,
-          template: 'ShiprocketTokenRefreshSchedule',
-          channel: 'UNKNOWN',
-          recipient: 'shiprocket-scheduler',
-          errorMessage: err instanceof Error ? err.message : String(err),
-          failureStage: 'CORE_LOGIC',
-          domain: 'shipping',
-          component: 'shiprocket-token-refresh-schedule'
+    // be-rel-12: registry defaults (attempts/backoff + removeOnComplete/removeOnFail
+    // age caps) so each repeatable run is retried on a transient error and does not
+    // accumulate in Redis forever.
+    shiprocketRefreshQueue = new Queue('shipping', {
+      connection: shiprocketRefreshConnection,
+      defaultJobOptions
+    });
+    if (shiprocketActive) {
+      shiprocketRefreshQueue
+        .add(
+          'shiprocket-token-refresh',
+          {},
+          {
+            repeat: { every: 9 * 24 * 60 * 60 * 1000 },
+            jobId: 'shiprocket-token-refresh-repeatable'
+          }
+        )
+        .catch((err: unknown) => {
+          logger.warn({ err }, 'Failed to register shiprocket-token-refresh repeatable job');
+          void sendTechnicalFailureAlert({
+            prisma: prismaClient,
+            template: 'ShiprocketTokenRefreshSchedule',
+            channel: 'UNKNOWN',
+            recipient: 'shiprocket-scheduler',
+            errorMessage: err instanceof Error ? err.message : String(err),
+            failureStage: 'CORE_LOGIC',
+            domain: 'shipping',
+            component: 'shiprocket-token-refresh-schedule'
+          });
         });
-      });
 
-    // Background shipment status polling: runs every 3 min so a status change made
-    // on the courier dashboard (e.g. a Shiprocket cancellation) — or a webhook that
-    // never arrived — propagates to the site, fires the customer notification, and
-    // triggers cancellation refunds almost immediately, not up to half an hour later.
-    const POLL_SHIPMENT_INTERVAL_MS = 3 * 60 * 1000;
-    // Remove the legacy 30-min repeatable so we don't run two overlapping schedules
-    // (BullMQ keys repeatables by their repeat options — changing `every` orphans the
-    // old one instead of replacing it).
-    void shiprocketRefreshQueue
-      .removeRepeatable('poll-shipment-statuses', { every: 30 * 60 * 1000 }, 'poll-shipment-statuses-repeatable')
-      .catch(() => {
-        // Best-effort cleanup — a missing legacy schedule is fine.
-      });
+      // Background shipment status polling: runs every 3 min so a status change made
+      // on the courier dashboard (e.g. a Shiprocket cancellation) — or a webhook that
+      // never arrived — propagates to the site, fires the customer notification, and
+      // triggers cancellation refunds almost immediately, not up to half an hour later.
+      const POLL_SHIPMENT_INTERVAL_MS = 3 * 60 * 1000;
+      // Remove the legacy 30-min repeatable so we don't run two overlapping schedules
+      // (BullMQ keys repeatables by their repeat options — changing `every` orphans the
+      // old one instead of replacing it).
+      void shiprocketRefreshQueue
+        .removeRepeatable('poll-shipment-statuses', { every: 30 * 60 * 1000 }, 'poll-shipment-statuses-repeatable')
+        .catch(() => {
+          // Best-effort cleanup — a missing legacy schedule is fine.
+        });
+      shiprocketRefreshQueue
+        .add(
+          'poll-shipment-statuses',
+          {},
+          {
+            repeat: { every: POLL_SHIPMENT_INTERVAL_MS },
+            jobId: 'poll-shipment-statuses-repeatable'
+          }
+        )
+        .catch((err: unknown) => {
+          logger.warn({ err }, 'Failed to register poll-shipment-statuses repeatable job');
+        });
+    }
+
+    // In-flight courier booking recovery: every 10 min, resolve booking intents
+    // (PENDING shipment, no AWB) that no create-shipment attempt has touched for
+    // 15 min — look the booking up at the courier and adopt / re-enqueue / release.
     shiprocketRefreshQueue
       .add(
-        'poll-shipment-statuses',
+        'reconcile-booking-intents',
         {},
         {
-          repeat: { every: POLL_SHIPMENT_INTERVAL_MS },
-          jobId: 'poll-shipment-statuses-repeatable'
+          repeat: { every: 10 * 60 * 1000 },
+          jobId: 'reconcile-booking-intents-repeatable'
         }
       )
       .catch((err: unknown) => {
-        logger.warn({ err }, 'Failed to register poll-shipment-statuses repeatable job');
+        logger.warn({ err }, 'Failed to register reconcile-booking-intents repeatable job');
       });
   }
 

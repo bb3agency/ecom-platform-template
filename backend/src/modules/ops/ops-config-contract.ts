@@ -92,7 +92,8 @@ export const OPS_CONFIG_OVERVIEW_GROUPS: Array<{
       { key: 'RAZORPAY_WEBHOOK_SECRET', mutableViaOps: true, requiresRestart: true },
       { key: 'RAZORPAY_WEBHOOK_SECRET_OLD', mutableViaOps: true, requiresRestart: true, note: 'Optional secret used during webhook secret rotation.' },
       { key: 'RAZORPAY_WEBHOOK_ALLOWLIST_CIDR', mutableViaOps: true, requiresRestart: true, runtimeSource: 'db-overlay' },
-      { key: 'RAZORPAY_WEBHOOK_MAX_SKEW_SECONDS', mutableViaOps: true, requiresRestart: true }
+      { key: 'RAZORPAY_WEBHOOK_MAX_SKEW_SECONDS', mutableViaOps: true, requiresRestart: true },
+      { key: 'RAZORPAY_RECONCILE_ENABLED', mutableViaOps: true, requiresRestart: true, note: 'Scheduled Razorpay capture reconciliation (every 30 min). Defaults to true when PAYMENT_PROVIDER=razorpay; set false to disable.' }
     ]
   },
   {

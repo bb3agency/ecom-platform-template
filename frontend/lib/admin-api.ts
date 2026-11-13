@@ -1060,10 +1060,20 @@ export function buildAdminQuery(
   return qs ? `?${qs}` : "";
 }
 
-/** Convert YYYY-MM-DD date input to ISO range for admin export/analytics. */
+/**
+ * Convert a YYYY-MM-DD picker date to the ISO instant where that day starts (or
+ * ends, with `endOfDay`) in the admin's own time zone.
+ *
+ * This is the single definition of "a day" for every admin list, KPI, trend and
+ * export. It used to emit UTC midnight (`...T00:00:00.000Z`), which splits an IST
+ * day at 05:30 — so a CSV export, a KPI and the table under it disagreed about
+ * which orders fell in the same picked range.
+ */
 export function toIsoDateRange(date: string, endOfDay = false): string {
   if (!date) return "";
-  return endOfDay ? `${date}T23:59:59.999Z` : `${date}T00:00:00.000Z`;
+  const local = new Date(endOfDay ? `${date}T23:59:59.999` : `${date}T00:00:00.000`);
+  if (Number.isNaN(local.getTime())) return "";
+  return local.toISOString();
 }
 
 export function buildOrdersExportQuery(params: {

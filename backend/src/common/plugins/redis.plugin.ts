@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import Redis from 'ioredis';
 import {
+  API_REDIS_MAX_RETRIES_PER_REQUEST,
   attachRedisErrorListener,
   buildStandardRedisOptions,
   waitForRedisReady,
@@ -31,7 +32,13 @@ export async function registerRedisPlugin(fastify: FastifyInstance, deps: RedisP
   const redisCtor = deps.redisCtor ?? ((url: string, options: Record<string, unknown>) => new Redis(url, options) as unknown as RedisClientLike);
   const redisUrl = deps.redisUrl ?? redisConfig.url;
   const redisReadyTimeoutMs = deps.readyTimeoutMs ?? 20_000;
-  const redis = redisCtor(redisUrl, buildStandardRedisOptions());
+  // Non-blocking request-path client: fail commands fast during an outage (be-rel-07).
+  // Duplicates (BullMQ producer queues, restart subscriber) inherit this — none of
+  // them issue blocking commands; worker connections are built separately.
+  const redis = redisCtor(
+    redisUrl,
+    buildStandardRedisOptions({ maxRetriesPerRequest: API_REDIS_MAX_RETRIES_PER_REQUEST })
+  );
 
   attachRedisErrorListener(redis as unknown as RedisEventClient, fastify.log, 'redis-primary', {
     onPersistentError: (err) => {

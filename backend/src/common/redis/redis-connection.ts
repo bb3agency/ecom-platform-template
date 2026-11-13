@@ -38,6 +38,15 @@ type IORedisDuplicateClass = {
 
 let guardedDuplicatePatchInstalled = false;
 
+/**
+ * be-rel-07: retries per command for NON-blocking API clients (request-path
+ * reads/writes, rate limits, idempotency/webhook locks, health ping, BullMQ
+ * producers). With `null` ioredis queues commands forever while reconnecting,
+ * so a Redis outage hangs every request instead of failing fast. Blocking
+ * BullMQ Worker connections keep `null` (BullMQ requires it and forces it).
+ */
+export const API_REDIS_MAX_RETRIES_PER_REQUEST = 2;
+
 export function buildStandardRedisOptions(
   overrides: Record<string, unknown> = {}
 ): Record<string, unknown> {

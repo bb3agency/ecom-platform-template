@@ -131,7 +131,11 @@ POSTGRES_DB=client_annapoorna
 POSTGRES_PORT=5432
 # URL-encode special characters if present
 DATABASE_URL=postgresql://annapoorna_app:StrongRandomPass123!@host.docker.internal:5432/client_annapoorna
+# Recommended in production — size the Prisma pool explicitly (see note below):
+# DATABASE_URL=postgresql://annapoorna_app:StrongRandomPass123!@host.docker.internal:5432/client_annapoorna?connection_limit=10&pool_timeout=20
 ```
+
+> **Prisma pool sizing on a shared VPS:** each client's API and workers processes hold one Prisma pool each, so one client uses about `2 * connection_limit` Postgres connections (more with extra replicas). Without `connection_limit`, Prisma uses `num_cpus * 2 + 1` per process, which across several clients on one host Postgres can exhaust `max_connections` (`SHOW max_connections;`, default 100). Append `?connection_limit=10&pool_timeout=20` and keep the sum across all clients under `max_connections` minus headroom for migrations, backups and `psql`. Production startup logs a warning (not a failure) when `connection_limit` is missing. Details: `ENV_VS_DB_CONFIG_REFERENCE.md` → `DATABASE_URL`.
 
 **3. Verify connectivity from container:**
 ```bash

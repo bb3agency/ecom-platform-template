@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import { resetAuthSessionRestoreState } from "@/hooks/use-auth-session-restore";
+import { registerStorefrontAuth } from "@/lib/storefront-api-client";
 import type { User } from "@/types/user";
 
 export type StorefrontSessionStatus = "checking" | "authenticated" | "guest";
@@ -61,3 +62,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     return perms.includes(permission) || perms.includes("*");
   },
 }));
+
+// Wire the storefront API modules (orders, payments, cart, addresses, reviews,
+// wishlist) to this in-memory session so they refresh-on-401 and retry once.
+// On refresh failure the session is cleared and the page's own auth guard
+// (checkout sign-in prompt, account layout, payment page) takes over.
+registerStorefrontAuth({
+  getAccessToken: () => useAuthStore.getState().accessToken,
+  setAccessToken: (token) => useAuthStore.getState().setAccessToken(token),
+  onAuthFailure: () => {
+    if (useAuthStore.getState().accessToken) {
+      useAuthStore.getState().clearSession();
+    }
+  },
+});

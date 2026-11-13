@@ -631,4 +631,68 @@ describe('DelhiveryAdapter', () => {
     const adapter = new DelhiveryAdapter({ apiKey: 'test_key' });
     await expect(adapter.cancelShipment('56555510000140')).rejects.toMatchObject({ statusCode: 422 });
   });
+
+  describe('in-flight booking recovery (findShipmentByReference)', () => {
+    const respond = (body: unknown, status = 200) => ({
+      ok: status >= 200 && status < 300,
+      status,
+      text: async () => JSON.stringify(body)
+    });
+
+    it('looks the booking up by our order reference and returns the live AWB', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(respond({
+        ShipmentData: [
+          { Shipment: { AWB: 'OLD-AWB', ReferenceNo: 'ORD-2026-00042', Status: { Status: 'Cancelled' } } },
+          { Shipment: { AWB: 'LIVE-AWB', ReferenceNo: 'ORD-2026-00042', Status: { Status: 'Manifested' } } }
+        ]
+      }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      const adapter = new DelhiveryAdapter({ apiKey: 'test_key', baseUrl: 'https://track.delhivery.com' });
+      const result = await adapter.findShipmentByReference('ORD-2026-00042');
+
+      expect(result).toMatchObject({
+        state: 'found',
+        awbNumber: 'LIVE-AWB',
+        trackingUrl: 'https://www.delhivery.com/track/package/LIVE-AWB'
+      });
+      const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe('https://track.delhivery.com/api/v1/packages/json/?ref_ids=ORD-2026-00042');
+    });
+
+    it('treats "No such waybill or Order Id found" (200 or non-2xx) as not_found', async () => {
+      const fetchMock = vi.fn()
+        .mockResolvedValueOnce(respond({ Error: 'No such waybill or Order Id found' }))
+        .mockResolvedValueOnce(respond({ Error: 'No such waybill or Order Id found' }, 404));
+      vi.stubGlobal('fetch', fetchMock);
+
+      const adapter = new DelhiveryAdapter({ apiKey: 'test_key' });
+      await expect(adapter.findShipmentByReference('ORD-2026-00042')).resolves.toMatchObject({ state: 'not_found' });
+      await expect(adapter.findShipmentByReference('ORD-2026-00042')).resolves.toMatchObject({ state: 'not_found' });
+    });
+
+    it('reports cancelled when only cancelled packages carry the reference', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(respond({
+        ShipmentData: [{ Shipment: { AWB: 'OLD-AWB', ReferenceNo: 'ORD-2026-00042', Status: { Status: 'Cancelled' } } }]
+      }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      const adapter = new DelhiveryAdapter({ apiKey: 'test_key' });
+      await expect(adapter.findShipmentByReference('ORD-2026-00042')).resolves.toMatchObject({
+        state: 'cancelled',
+        awbNumber: 'OLD-AWB'
+      });
+    });
+
+    it('throws on an auth failure or unexpected response so the caller never books blind', async () => {
+      const fetchMock = vi.fn()
+        .mockResolvedValueOnce(respond({ detail: 'Invalid token' }, 401))
+        .mockResolvedValueOnce(respond({ Error: 'Rate limited' }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      const adapter = new DelhiveryAdapter({ apiKey: 'test_key' });
+      await expect(adapter.findShipmentByReference('ORD-2026-00042')).rejects.toMatchObject({ statusCode: 422 });
+      await expect(adapter.findShipmentByReference('ORD-2026-00042')).rejects.toMatchObject({ statusCode: 422 });
+    });
+  });
 });
