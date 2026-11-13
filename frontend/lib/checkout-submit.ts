@@ -36,6 +36,69 @@ export function isOutcomeUnknownError(error: unknown): boolean {
   return error instanceof TypeError;
 }
 
+// ── Price changed between cart and checkout ──────────────────────────────────
+
+export interface PriceChangedItem {
+  variantId: string;
+  previousPricePaise: number;
+  currentPricePaise: number;
+}
+
+/**
+ * 409 PRICE_CHANGED from POST /orders or /payments/prepare-checkout: a price
+ * moved after the customer saw it. The backend has already re-priced the cart,
+ * so the fix is to reload cart + delivery quote and let the customer review the
+ * new total. The 4xx is final for its idempotency key (next submit gets new keys).
+ */
+export function isPriceChangedError(error: unknown): error is ApiError {
+  return error instanceof ApiError && error.code === "PRICE_CHANGED";
+}
+
+/** `error.details.items` of a PRICE_CHANGED error; malformed entries are dropped. */
+export function getPriceChangedItems(error: unknown): PriceChangedItem[] {
+  if (!isPriceChangedError(error)) return [];
+  const items = error.details?.items;
+  if (!Array.isArray(items)) return [];
+  return items.filter((item): item is PriceChangedItem => {
+    if (!item || typeof item !== "object") return false;
+    const candidate = item as Record<string, unknown>;
+    return (
+      typeof candidate.variantId === "string" &&
+      typeof candidate.previousPricePaise === "number" &&
+      typeof candidate.currentPricePaise === "number"
+    );
+  });
+}
+
+export interface RefreshAfterPriceChangeDeps<TCart> {
+  /** Reloads the (already re-priced) cart from the backend. */
+  loadCart: () => Promise<TCart>;
+  setCart: (cart: TCart) => void;
+  /** Re-requests the delivery quote (tax breakup depends on line prices). */
+  requote: () => void;
+}
+
+/**
+ * Reload cart and quote after PRICE_CHANGED so the updated total shows. Never
+ * throws: if the reload fails the error banner stays and the next submit (or a
+ * page refresh) picks the new prices up. Returns whether the cart was reloaded.
+ */
+export async function refreshAfterPriceChange<TCart>({
+  loadCart,
+  setCart,
+  requote,
+}: RefreshAfterPriceChangeDeps<TCart>): Promise<boolean> {
+  let reloaded = false;
+  try {
+    setCart(await loadCart());
+    reloaded = true;
+  } catch {
+    // Keep the last known cart; the PRICE_CHANGED message stays visible.
+  }
+  requote();
+  return reloaded;
+}
+
 // ── Idempotency keys across submit retries ───────────────────────────────────
 
 export interface SubmitAttemptKeys {

@@ -5,13 +5,17 @@ import {
   confirmWithRetry,
   findMatchingSavedAddress,
   getCheckoutSubmitState,
+  getPriceChangedItems,
   isOutcomeUnknownError,
+  isPriceChangedError,
   isRetryableCheckoutError,
+  refreshAfterPriceChange,
   resolveSubmitAttemptKeys,
   settleSubmitAttemptKeys,
   shouldRedirectPaymentToLogin,
   type CheckoutSubmitStateInput,
 } from "@/lib/checkout-submit";
+import { getApiErrorMessage } from "@/lib/error-messages";
 
 const timeout = () => new ApiError("REQUEST_TIMEOUT", "Request timed out", 408);
 const validation = () => new ApiError("VALIDATION_ERROR", "Cart is empty", 400);
@@ -213,5 +217,58 @@ describe("shouldRedirectPaymentToLogin", () => {
     expect(
       shouldRedirectPaymentToLogin({ isReady: false, orderId: "o", accessToken: null, sessionStatus: "guest" }),
     ).toBe(false);
+  });
+});
+
+describe("PRICE_CHANGED handling", () => {
+  const priceChanged = () =>
+    new ApiError("PRICE_CHANGED", "Prices changed", 409, {
+      items: [
+        { variantId: "var_1", previousPricePaise: 10000, currentPricePaise: 12000 },
+        { variantId: 42, previousPricePaise: "x" },
+      ],
+    });
+
+  it("is recognised by code, shows the customer copy and is not retried with the same keys", () => {
+    const err = priceChanged();
+    expect(isPriceChangedError(err)).toBe(true);
+    expect(isPriceChangedError(new ApiError("CONFLICT", "x", 409))).toBe(false);
+    expect(getApiErrorMessage(err)).toBe(
+      "Some prices in your cart changed. Please review the updated total.",
+    );
+    expect(isRetryableCheckoutError(err)).toBe(false);
+  });
+
+  it("reads well-formed details.items only", () => {
+    expect(getPriceChangedItems(priceChanged())).toEqual([
+      { variantId: "var_1", previousPricePaise: 10000, currentPricePaise: 12000 },
+    ]);
+    expect(getPriceChangedItems(new ApiError("PRICE_CHANGED", "x", 409))).toEqual([]);
+    expect(getPriceChangedItems(validation())).toEqual([]);
+  });
+
+  it("reloads the re-priced cart and re-requests the quote", async () => {
+    const repriced = { id: "cart_1", subtotal: 12000 };
+    const setCart = vi.fn();
+    const requote = vi.fn();
+    await expect(
+      refreshAfterPriceChange({ loadCart: async () => repriced, setCart, requote }),
+    ).resolves.toBe(true);
+    expect(setCart).toHaveBeenCalledWith(repriced);
+    expect(requote).toHaveBeenCalledOnce();
+  });
+
+  it("never throws when the cart reload fails, and still re-quotes", async () => {
+    const setCart = vi.fn();
+    const requote = vi.fn();
+    await expect(
+      refreshAfterPriceChange({
+        loadCart: () => Promise.reject(new TypeError("Failed to fetch")),
+        setCart,
+        requote,
+      }),
+    ).resolves.toBe(false);
+    expect(setCart).not.toHaveBeenCalled();
+    expect(requote).toHaveBeenCalledOnce();
   });
 });

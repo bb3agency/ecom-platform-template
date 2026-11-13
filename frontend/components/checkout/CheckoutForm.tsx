@@ -8,7 +8,13 @@ import { z } from "zod";
 import Link from "next/link";
 import { useSafeRouter } from "@/lib/use-safe-router";
 import { MapPin, AlertTriangle, ShoppingBag, Truck, Tag } from "lucide-react";
-import { checkPincodeServiceability, getDeliveryRates, applyCartCoupon, removeCartCoupon } from "@/lib/cart-api";
+import {
+  checkPincodeServiceability,
+  getCart,
+  getDeliveryRates,
+  applyCartCoupon,
+  removeCartCoupon,
+} from "@/lib/cart-api";
 import { getApiErrorMessage, getApiErrorMessageWithHint } from "@/lib/error-messages";
 import { ApiError } from "@/lib/api";
 import {
@@ -21,6 +27,8 @@ import {
   findMatchingSavedAddress,
   getCheckoutSubmitState,
   isOutcomeUnknownError,
+  isPriceChangedError,
+  refreshAfterPriceChange,
   resolveSubmitAttemptKeys,
   settleSubmitAttemptKeys,
   type SubmitAttemptKeys,
@@ -504,7 +512,16 @@ export function CheckoutForm() {
   };
 
   const reportSubmitError = (err: unknown) => {
-    if (err instanceof ApiError && err.code === "LOCAL_DELIVERY_ONLY_UNAVAILABLE") {
+    if (isPriceChangedError(err)) {
+      // The backend already re-priced the cart: reload it and the delivery quote so
+      // the new total shows, and keep the message up until the customer resubmits.
+      setError(getApiErrorMessage(err));
+      void refreshAfterPriceChange({
+        loadCart: () => getCart(useAuthStore.getState().accessToken ?? accessToken),
+        setCart,
+        requote: () => setQuoteRetryNonce((n) => n + 1),
+      });
+    } else if (err instanceof ApiError && err.code === "LOCAL_DELIVERY_ONLY_UNAVAILABLE") {
       // The pincode changed (or the whitelist did) between quoting and submitting. Re-raise
       // the blocking notice so the customer sees exactly what to remove.
       const details = err.details as
