@@ -64,6 +64,8 @@ class CircuitBreakerPaymentAdapter implements PaymentProviderAdapter {
 
   readonly findRefundByReceipt?: PaymentProviderAdapter['findRefundByReceipt'];
 
+  readonly listCapturedPayments?: PaymentProviderAdapter['listCapturedPayments'];
+
   constructor(
     private readonly delegate: PaymentProviderAdapter,
     private readonly failureThreshold = 5,
@@ -76,6 +78,14 @@ class CircuitBreakerPaymentAdapter implements PaymentProviderAdapter {
       this.findRefundByReceipt = async (input) => {
         this.assertClosed();
         return lookup(input);
+      };
+    }
+    // Same rule for the capture listing: absent on adapters without a provider ledger.
+    const listCaptured = delegate.listCapturedPayments?.bind(delegate);
+    if (listCaptured) {
+      this.listCapturedPayments = async (input) => {
+        this.assertClosed();
+        return listCaptured(input);
       };
     }
   }

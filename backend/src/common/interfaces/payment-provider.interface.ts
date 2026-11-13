@@ -36,6 +36,33 @@ export type FindRefundByReceiptInput = {
   receipt: string;
 };
 
+export type ListCapturedPaymentsInput = {
+  /** Inclusive lower bound on the payment's creation time. */
+  from: Date;
+  /** Inclusive upper bound on the payment's creation time. */
+  to: Date;
+  /** Page size (the provider caps it; Razorpay allows 1–100). */
+  count: number;
+  /** Number of payments to skip — offset pagination. */
+  skip: number;
+};
+
+export type ProviderCapturedPayment = {
+  providerPaymentId: string;
+  /** Null for payments not taken against a provider order (cannot be ours). */
+  providerOrderId: string | null;
+  amount: number;
+  currency: string;
+  createdAt: Date;
+};
+
+export type ListCapturedPaymentsResult = {
+  /** Only payments still in the captured state (fully refunded ones are excluded). */
+  items: ProviderCapturedPayment[];
+  /** True when the provider returned a full page, so another page may follow. */
+  hasMore: boolean;
+};
+
 export interface PaymentProviderAdapter {
   createOrder(input: CreatePaymentOrderInput): Promise<CreatePaymentOrderResult>;
   verifyPaymentSignature(input: {
@@ -63,4 +90,11 @@ export interface PaymentProviderAdapter {
    * payments from links, POS or other tools that must never be auto-refunded.
    */
   fetchOrderNotes?(providerOrderId: string): Promise<Record<string, string> | null>;
+  /**
+   * One page of payments created in [from, to] that are still captured. Used by the
+   * scheduled capture reconciliation to notice a capture whose `payment.captured`
+   * webhook never arrived. Rejects when the provider cannot be asked. Optional:
+   * adapters without a provider-side payment ledger (COD/noop) do not implement it.
+   */
+  listCapturedPayments?: ((input: ListCapturedPaymentsInput) => Promise<ListCapturedPaymentsResult>) | undefined;
 }

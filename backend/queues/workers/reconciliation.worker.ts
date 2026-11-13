@@ -3,8 +3,15 @@ import { Queue, Worker, type ConnectionOptions } from 'bullmq';
 import { releaseCouponUsageForOrder, clearUnfinalizedCouponLinks } from '@common/coupons/coupon-usage';
 import { releaseReservationsForOrder } from '@common/orders/release-reservations';
 import { restoreOrderInventoryOnCancel } from '@common/orders/restore-inventory-on-cancel';
+import {
+  RAZORPAY_CAPTURE_RECONCILE_JOB,
+  isRazorpayCaptureReconcileEnabled
+} from '@common/payments/razorpay-capture-reconcile-config';
+import type { PaymentProviderAdapter } from '@common/interfaces/payment-provider.interface';
+import { createPaymentProvider } from '@modules/payments/payment-provider';
 import { sendTechnicalFailureAlert } from '../../src/modules/notifications/notification-failure-alert';
 import { defaultJobOptions } from '../queue-registry';
+import { RAZORPAY_RECONCILE_ISSUE, runRazorpayCaptureReconcile } from './razorpay-capture-reconcile';
 
 const STALE_PENDING_PAYMENT_MS = 30 * 60 * 1000;
 
@@ -12,11 +19,15 @@ const STALE_PENDING_PAYMENT_MS = 30 * 60 * 1000;
 // Set RECONCILIATION_AUTO_HEAL_ISSUES to a comma-separated list of issue types
 // to enable. Omitting or setting to an empty string disables all auto-heals
 // without a code deploy — useful during fraud investigations or incident triage.
-// Default: all four safe types are enabled.
+// Default: every safe type below is enabled. The two RAZORPAY_* keys gate the
+// scheduled capture reconciliation's heal (re-drive payment.captured) and its
+// orphan-capture refund; detection and issue rows happen regardless.
 const DEFAULT_AUTO_HEAL_ISSUES = [
   'PAYMENT_CAPTURED_ORDER_NOT_CONFIRMED',
   'REFUNDED_STATUS_MISMATCH',
-  'STALE_PENDING_PAYMENT'
+  'STALE_PENDING_PAYMENT',
+  RAZORPAY_RECONCILE_ISSUE.webhookMissing,
+  RAZORPAY_RECONCILE_ISSUE.orphanCapture
 ];
 function resolveAutoHealSet(): ReadonlySet<string> {
   const raw = process.env.RECONCILIATION_AUTO_HEAL_ISSUES;
@@ -69,6 +80,7 @@ type ReconciliationWorkerDeps = {
   Worker?: typeof Worker;
   Queue?: typeof Queue;
   sendTechnicalFailureAlert?: typeof sendTechnicalFailureAlert;
+  createPaymentProvider?: () => PaymentProviderAdapter;
 };
 
 export function createReconciliationWorker(
@@ -80,10 +92,40 @@ export function createReconciliationWorker(
   const QueueCtor = deps?.Queue ?? Queue;
   const alertFn = deps?.sendTechnicalFailureAlert ?? sendTechnicalFailureAlert;
   const prisma = deps?.prisma ?? new PrismaClientCtor();
+  const resolvePaymentProvider = deps?.createPaymentProvider ?? createPaymentProvider;
+  // Created on the first capture-reconcile run, so a COD/noop deployment never builds one.
+  let paymentProvider: PaymentProviderAdapter | null = null;
+
+  const runCaptureReconcile = async (): Promise<void> => {
+    // Re-checked at run time: a scheduler registered before the flag was switched off
+    // (or before PAYMENT_PROVIDER changed) must not reach the provider.
+    if (!isRazorpayCaptureReconcileEnabled()) {
+      return;
+    }
+    paymentProvider ??= resolvePaymentProvider();
+    const orderProcessingQueue = new QueueCtor('order-processing', { connection, defaultJobOptions });
+    const refundsQueue = new QueueCtor('refunds', { connection, defaultJobOptions });
+    try {
+      await runRazorpayCaptureReconcile({
+        prisma,
+        provider: paymentProvider,
+        orderProcessingQueue,
+        refundsQueue,
+        autoHealIssues: resolveAutoHealSet(),
+        alert: alertFn
+      });
+    } finally {
+      await Promise.allSettled([orderProcessingQueue.close(), refundsQueue.close()]);
+    }
+  };
 
   const worker = new WorkerCtor(
     'reconciliation',
     async (job) => {
+      if (job.name === RAZORPAY_CAPTURE_RECONCILE_JOB) {
+        await runCaptureReconcile();
+        return;
+      }
       if (job.name !== 'run-order-lifecycle-check') {
         return;
       }

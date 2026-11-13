@@ -1,9 +1,11 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 
 const state = vi.hoisted(() => ({
   upsertJobScheduler: vi.fn().mockResolvedValue(undefined),
   upsertCartCleanupScheduler: vi.fn().mockResolvedValue(undefined),
+  upsertReconciliationScheduler: vi.fn().mockResolvedValue(undefined),
+  removeReconciliationScheduler: vi.fn().mockResolvedValue(true),
   close: vi.fn().mockResolvedValue(undefined),
   quit: vi.fn().mockResolvedValue(undefined)
 }));
@@ -22,6 +24,11 @@ vi.mock('@queues/queue-registry', () => ({
     cartCleanup: {
       close: state.close,
       upsertJobScheduler: state.upsertCartCleanupScheduler
+    },
+    reconciliation: {
+      close: state.close,
+      upsertJobScheduler: state.upsertReconciliationScheduler,
+      removeJobScheduler: state.removeReconciliationScheduler
     }
   })
 }));
@@ -93,5 +100,72 @@ describe('registerBullmqPlugin', () => {
     expect(hooks.length).toBe(1);
 
     immediateSpy.mockRestore();
+  });
+});
+
+describe('registerBullmqPlugin — Razorpay capture reconciliation scheduler', () => {
+  async function register(): Promise<void> {
+    const immediateSpy = vi
+      .spyOn(globalThis, 'setImmediate')
+      .mockImplementation(((callback: (...args: unknown[]) => void, ...args: unknown[]) => {
+        callback(...args);
+        return 0 as unknown as NodeJS.Immediate;
+      }) as typeof setImmediate);
+    const fastify = {
+      redis: { duplicate: () => ({ quit: state.quit, on: vi.fn() }) },
+      log: { info: vi.fn(), error: vi.fn() },
+      decorate: vi.fn(),
+      addHook: vi.fn()
+    } as unknown as FastifyInstance;
+    await registerBullmqPlugin(fastify);
+    await vi.waitFor(() => {
+      expect(fastify.log.info).toHaveBeenCalledWith('BullMQ job schedulers registered');
+    });
+    immediateSpy.mockRestore();
+  }
+
+  beforeEach(() => {
+    state.upsertReconciliationScheduler.mockClear();
+    state.removeReconciliationScheduler.mockClear();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('schedules razorpay-capture-reconcile every 30 minutes when Razorpay is the provider', async () => {
+    vi.stubEnv('PAYMENT_PROVIDER', 'razorpay');
+    vi.stubEnv('RAZORPAY_RECONCILE_ENABLED', '');
+
+    await register();
+
+    expect(state.upsertReconciliationScheduler).toHaveBeenCalledWith(
+      'reconciliation:razorpay-capture-reconcile',
+      { every: 30 * 60 * 1000 },
+      { name: 'razorpay-capture-reconcile', data: {} }
+    );
+    expect(state.removeReconciliationScheduler).not.toHaveBeenCalled();
+  });
+
+  it('removes the schedule when the flag is off', async () => {
+    vi.stubEnv('PAYMENT_PROVIDER', 'razorpay');
+    vi.stubEnv('RAZORPAY_RECONCILE_ENABLED', 'false');
+
+    await register();
+
+    expect(state.removeReconciliationScheduler).toHaveBeenCalledWith('reconciliation:razorpay-capture-reconcile');
+    expect(state.upsertReconciliationScheduler).not.toHaveBeenCalledWith(
+      'reconciliation:razorpay-capture-reconcile',
+      expect.anything(),
+      expect.anything()
+    );
+  });
+
+  it('removes the schedule for non-Razorpay providers', async () => {
+    vi.stubEnv('PAYMENT_PROVIDER', 'cod');
+
+    await register();
+
+    expect(state.removeReconciliationScheduler).toHaveBeenCalledWith('reconciliation:razorpay-capture-reconcile');
   });
 });

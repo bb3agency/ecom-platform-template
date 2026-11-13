@@ -431,3 +431,140 @@ describe('reconciliation worker', () => {
     });
   });
 });
+
+describe('reconciliation worker — razorpay-capture-reconcile job', () => {
+  type CaptureDeps = NonNullable<Parameters<typeof createReconciliationWorker>[1]>;
+
+  function build() {
+    let captured: ((job: { name: string }) => Promise<void>) | undefined;
+    const queueAdd = vi.fn(async () => undefined);
+    const queueClose = vi.fn(async () => undefined);
+    const queueNames: string[] = [];
+    const listCapturedPayments = vi.fn(async () => ({
+      items: [
+        {
+          providerPaymentId: 'pay_orphan',
+          providerOrderId: 'order_o',
+          amount: 5000,
+          currency: 'INR',
+          createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000)
+        }
+      ],
+      hasMore: false
+    }));
+    const createPaymentProvider = vi.fn(() => ({ listCapturedPayments }));
+    const prisma = {
+      payment: { findMany: vi.fn(async () => []) },
+      reconciliationIssue: {
+        findFirst: vi.fn(async () => null),
+        create: vi.fn(async () => undefined),
+        findMany: vi.fn(async () => []),
+        updateMany: vi.fn(async () => ({ count: 0 }))
+      }
+    };
+    function MockWorker(_name: string, proc: (job: { name: string }) => Promise<void>) {
+      captured = proc;
+      return { on: vi.fn() };
+    }
+    function MockQueue(name: string) {
+      queueNames.push(name);
+      return { add: queueAdd, close: queueClose };
+    }
+    createReconciliationWorker({} as never, {
+      Worker: MockWorker as unknown as NonNullable<CaptureDeps['Worker']>,
+      Queue: MockQueue as unknown as NonNullable<CaptureDeps['Queue']>,
+      prisma: prisma as unknown as NonNullable<CaptureDeps['prisma']>,
+      sendTechnicalFailureAlert: vi.fn().mockResolvedValue(undefined),
+      createPaymentProvider: createPaymentProvider as unknown as NonNullable<CaptureDeps['createPaymentProvider']>
+    });
+    return {
+      run: async () => captured?.({ name: 'razorpay-capture-reconcile' }),
+      queueAdd,
+      queueClose,
+      queueNames,
+      listCapturedPayments,
+      createPaymentProvider,
+      prisma
+    };
+  }
+
+  const savedAutoHeal = process.env.RECONCILIATION_AUTO_HEAL_ISSUES;
+
+  beforeEach(() => {
+    // Exercise the DEFAULT auto-heal set unless a test stubs it.
+    delete process.env.RECONCILIATION_AUTO_HEAL_ISSUES;
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    if (savedAutoHeal === undefined) {
+      delete process.env.RECONCILIATION_AUTO_HEAL_ISSUES;
+    } else {
+      process.env.RECONCILIATION_AUTO_HEAL_ISSUES = savedAutoHeal;
+    }
+  });
+
+  it('runs the capture reconciliation when Razorpay is the provider and the flag is on by default', async () => {
+    vi.stubEnv('PAYMENT_PROVIDER', 'razorpay');
+    vi.stubEnv('RAZORPAY_RECONCILE_ENABLED', '');
+    const harness = build();
+
+    await harness.run();
+
+    expect(harness.listCapturedPayments).toHaveBeenCalledTimes(1);
+    expect(harness.queueAdd).toHaveBeenCalledWith(
+      'refund-orphan-capture',
+      expect.objectContaining({ providerPaymentId: 'pay_orphan' }),
+      { jobId: 'refund-orphan-capture-pay_orphan' }
+    );
+    expect(harness.queueNames.sort()).toEqual(['order-processing', 'refunds']);
+    expect(harness.queueClose).toHaveBeenCalledTimes(2);
+    // The lifecycle scan is a different job — it must not run here.
+    expect(harness.prisma.reconciliationIssue.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('builds the payment provider once across runs', async () => {
+    vi.stubEnv('PAYMENT_PROVIDER', 'razorpay');
+    const harness = build();
+
+    await harness.run();
+    await harness.run();
+
+    expect(harness.createPaymentProvider).toHaveBeenCalledTimes(1);
+    expect(harness.listCapturedPayments).toHaveBeenCalledTimes(2);
+  });
+
+  it('does nothing when RAZORPAY_RECONCILE_ENABLED=false', async () => {
+    vi.stubEnv('PAYMENT_PROVIDER', 'razorpay');
+    vi.stubEnv('RAZORPAY_RECONCILE_ENABLED', 'false');
+    const harness = build();
+
+    await harness.run();
+
+    expect(harness.createPaymentProvider).not.toHaveBeenCalled();
+    expect(harness.queueNames).toEqual([]);
+  });
+
+  it('does nothing when the provider is not Razorpay', async () => {
+    vi.stubEnv('PAYMENT_PROVIDER', 'cod');
+    vi.stubEnv('RAZORPAY_RECONCILE_ENABLED', 'true');
+    const harness = build();
+
+    await harness.run();
+
+    expect(harness.createPaymentProvider).not.toHaveBeenCalled();
+  });
+
+  it('respects RECONCILIATION_AUTO_HEAL_ISSUES: detection only when the orphan refund is not enabled', async () => {
+    vi.stubEnv('PAYMENT_PROVIDER', 'razorpay');
+    vi.stubEnv('RECONCILIATION_AUTO_HEAL_ISSUES', 'PAYMENT_CAPTURED_ORDER_NOT_CONFIRMED');
+    const harness = build();
+
+    await harness.run();
+
+    expect(harness.queueAdd).not.toHaveBeenCalled();
+    expect(harness.prisma.reconciliationIssue.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ issueType: 'RAZORPAY_ORPHAN_CAPTURE' }) })
+    );
+  });
+});

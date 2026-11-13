@@ -92,6 +92,7 @@ const ENV_RUNTIME_CONTRACT = {
     requiredEnv('PAYMENT_CB_FAILURE_THRESHOLD', { dbOverlay: true }),
     requiredEnv('PAYMENT_CB_COOLDOWN_MS', { dbOverlay: true }),
     requiredEnv('RAZORPAY_WEBHOOK_MAX_SKEW_SECONDS', { dbOverlay: true }),
+    requiredEnv('RAZORPAY_RECONCILE_ENABLED', { dbOverlay: true }),
     requiredEnv('TURNSTILE_SECRET_KEY'),
     requiredEnv('AUDIT_ANCHOR_SECRET'),
     requiredEnv('REDIS_KEY_PEPPER'),

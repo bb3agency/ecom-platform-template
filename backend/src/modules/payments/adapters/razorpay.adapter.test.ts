@@ -96,3 +96,89 @@ describe('RazorpayAdapter refund idempotency (be-rel-03)', () => {
     await expect(adapter.findRefundByReceipt({ providerPaymentId: 'pay_1', receipt: 'rf_x' })).resolves.toBeNull();
   });
 });
+
+describe('RazorpayAdapter.listCapturedPayments (capture reconciliation)', () => {
+  const adapter = new RazorpayAdapter('rzp_test_key', 'rzp_test_secret', 'rzp_webhook_secret');
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('pages GET /payments with unix-second from/to and count/skip', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ items: [] }) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await adapter.listCapturedPayments({
+      from: new Date('2026-11-10T00:00:00Z'),
+      to: new Date('2026-11-12T00:00:00Z'),
+      count: 100,
+      skip: 200
+    });
+
+    const url = new URL(String(fetchMock.mock.calls[0]?.[0]));
+    expect(url.pathname).toBe('/v1/payments');
+    expect(url.searchParams.get('from')).toBe(String(Date.parse('2026-11-10T00:00:00Z') / 1000));
+    expect(url.searchParams.get('to')).toBe(String(Date.parse('2026-11-12T00:00:00Z') / 1000));
+    expect(url.searchParams.get('count')).toBe('100');
+    expect(url.searchParams.get('skip')).toBe('200');
+    expect((fetchMock.mock.calls[0]?.[1] as RequestInit).method).toBe('GET');
+  });
+
+  it('clamps count to the Razorpay maximum of 100', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ items: [] }) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await adapter.listCapturedPayments({ from: new Date(0), to: new Date(1000), count: 500, skip: 0 });
+
+    expect(new URL(String(fetchMock.mock.calls[0]?.[0])).searchParams.get('count')).toBe('100');
+  });
+
+  it('returns only captured payments and judges hasMore on the raw page size', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          items: [
+            { id: 'pay_cap', order_id: 'order_1', status: 'captured', amount: 5000, currency: 'INR', created_at: 1_700_000_000 },
+            { id: 'pay_ref', order_id: 'order_2', status: 'refunded', amount: 5000, currency: 'INR', created_at: 1_700_000_000 },
+            { id: 'pay_nolink', status: 'captured', amount: 700, currency: 'INR', created_at: 1_700_000_100 }
+          ]
+        })
+      })
+    );
+
+    const result = await adapter.listCapturedPayments({ from: new Date(0), to: new Date(1000), count: 3, skip: 0 });
+
+    expect(result.hasMore).toBe(true);
+    expect(result.items).toEqual([
+      {
+        providerPaymentId: 'pay_cap',
+        providerOrderId: 'order_1',
+        amount: 5000,
+        currency: 'INR',
+        createdAt: new Date(1_700_000_000 * 1000)
+      },
+      {
+        providerPaymentId: 'pay_nolink',
+        providerOrderId: null,
+        amount: 700,
+        currency: 'INR',
+        createdAt: new Date(1_700_000_100 * 1000)
+      }
+    ]);
+  });
+
+  it('reports no further pages on a short page', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ items: [] }) }));
+    const result = await adapter.listCapturedPayments({ from: new Date(0), to: new Date(1000), count: 100, skip: 0 });
+    expect(result).toEqual({ items: [], hasMore: false });
+  });
+
+  it('rejects when Razorpay cannot be asked', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 502, json: async () => ({}) }));
+    await expect(
+      adapter.listCapturedPayments({ from: new Date(0), to: new Date(1000), count: 100, skip: 0 })
+    ).rejects.toThrow();
+  });
+});

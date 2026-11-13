@@ -117,6 +117,19 @@
 
 ---
 
+## [2026-11-13] Scheduled Razorpay capture reconciliation
+
+**Context:** Captures whose `payment.captured` webhook never arrived were invisible: the orphan-capture refund and the capture heal were both triggered only by that webhook.
+
+**Decision:**
+1. New repeatable `reconciliation:razorpay-capture-reconcile` (every 30 min) pages Razorpay `GET /payments` (last 48 h, `count=100`, max 20 pages) via optional adapter method `listCapturedPayments` (circuit-breaker pass-through).
+2. Local payment captured → skip; `CREATED`/`FAILED` → synthetic `payment-webhook` (`payment.captured`); no local row and older than 45 min → existing `refund-orphan-capture` (which re-checks and verifies provenance); second capture on a paid Razorpay order → manual-review issue + alert, never auto-refunded.
+3. Findings are `ReconciliationIssue` rows (`RAZORPAY_CAPTURE_WEBHOOK_MISSING`, `RAZORPAY_ORPHAN_CAPTURE`, `RAZORPAY_DUPLICATE_CAPTURE`). The two actions are gated by `RECONCILIATION_AUTO_HEAL_ISSUES` (in the default set); the job by `RAZORPAY_RECONCILE_ENABLED` (default true, Razorpay only).
+
+**Affected files:** `razorpay-capture-reconcile.ts`, `reconciliation.worker.ts`, `bullmq.plugin.ts`, `razorpay.adapter.ts`, `payment-provider.ts`, `payment-provider.interface.ts`, `ops-config-contract.ts`, `REFUND_LIFECYCLE.md` §9.
+
+---
+
 ## [2026-06-10] Reconciliation auto-heal defaults — three safe types; shipment mismatch manual
 
 **Context:** Default auto-heal included `ORDER_SHIPPED_WITHOUT_SHIPMENT`, which could auto-transition orders without operator review. Refund mismatch heal did not restore inventory or clear coupon links. Stale abandoned `PAYMENT_FAILED` orders were detected but not consistently cleaned up.

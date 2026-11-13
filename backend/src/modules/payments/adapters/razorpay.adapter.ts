@@ -6,6 +6,8 @@ import {
   FindRefundByReceiptInput,
   InitiateRefundInput,
   InitiateRefundResult,
+  ListCapturedPaymentsInput,
+  ListCapturedPaymentsResult,
   PaymentProviderAdapter
 } from '@common/interfaces/payment-provider.interface';
 
@@ -27,6 +29,22 @@ type RazorpayRefundResponse = {
 type RazorpayRefundListResponse = {
   items?: RazorpayRefundResponse[];
 };
+
+type RazorpayPaymentEntity = {
+  id?: unknown;
+  order_id?: unknown;
+  status?: unknown;
+  amount?: unknown;
+  currency?: unknown;
+  created_at?: unknown;
+};
+
+type RazorpayPaymentListResponse = {
+  items?: RazorpayPaymentEntity[];
+};
+
+/** Razorpay caps `count` on collection endpoints at 100. */
+const RAZORPAY_MAX_PAGE_SIZE = 100;
 
 export class RazorpayAdapter implements PaymentProviderAdapter {
   private signaturesEqual(left: string, right: string): boolean {
@@ -140,6 +158,38 @@ export class RazorpayAdapter implements PaymentProviderAdapter {
     return Object.fromEntries(
       Object.entries(notes).filter((entry): entry is [string, string] => typeof entry[1] === 'string')
     );
+  }
+
+  async listCapturedPayments(input: ListCapturedPaymentsInput): Promise<ListCapturedPaymentsResult> {
+    const count = Math.min(Math.max(Math.trunc(input.count), 1), RAZORPAY_MAX_PAGE_SIZE);
+    const query = new URLSearchParams({
+      from: String(Math.floor(input.from.getTime() / 1000)),
+      to: String(Math.floor(input.to.getTime() / 1000)),
+      count: String(count),
+      skip: String(Math.max(Math.trunc(input.skip), 0))
+    });
+    const response = await this.request<RazorpayPaymentListResponse>(`/payments?${query.toString()}`, {
+      method: 'GET'
+    });
+    const rawItems = response.items ?? [];
+    const items = rawItems.flatMap((payment) => {
+      if (payment.status !== 'captured' || typeof payment.id !== 'string' || payment.id.length === 0) {
+        return [];
+      }
+      return [
+        {
+          providerPaymentId: payment.id,
+          providerOrderId:
+            typeof payment.order_id === 'string' && payment.order_id.length > 0 ? payment.order_id : null,
+          amount: typeof payment.amount === 'number' ? payment.amount : 0,
+          currency: typeof payment.currency === 'string' ? payment.currency : 'INR',
+          createdAt: new Date((typeof payment.created_at === 'number' ? payment.created_at : 0) * 1000)
+        }
+      ];
+    });
+    // hasMore is judged on the RAW page: filtering out non-captured payments must
+    // not end the walk early.
+    return { items, hasMore: rawItems.length >= count };
   }
 
   private async request<T>(path: string, init: RequestInit): Promise<T> {

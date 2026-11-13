@@ -214,7 +214,7 @@ These are runtime tuning values — safe to adjust without security concern.
 | `HOT_SKU_COOLDOWN_SECONDS` | Cooldown after hot SKU purchase | `30` |
 | `HOT_SKU_SHARD_COUNT` | Redis shard count for hot SKU counters | `8` |
 | `CART_RESERVATION_TTL_MINUTES` | How long a cart reservation holds stock | `15` |
-| `RECONCILIATION_AUTO_HEAL_ISSUES` | Issue types the reconciliation worker auto-resolves (comma-separated). Unset = default safe set: `PAYMENT_CAPTURED_ORDER_NOT_CONFIRMED`, `REFUNDED_STATUS_MISMATCH`, `STALE_PENDING_PAYMENT` (also heals stale `PAYMENT_FAILED` abandon). Empty string = disable all auto-heals. `ORDER_SHIPPED_WITHOUT_SHIPMENT` is **not** in the default set (manual review). | *(default safe set when unset)* |
+| `RECONCILIATION_AUTO_HEAL_ISSUES` | Issue types the reconciliation worker auto-resolves (comma-separated). Unset = default safe set: `PAYMENT_CAPTURED_ORDER_NOT_CONFIRMED`, `REFUNDED_STATUS_MISMATCH`, `STALE_PENDING_PAYMENT` (also heals stale `PAYMENT_FAILED` abandon), plus the Razorpay capture reconciliation actions `RAZORPAY_CAPTURE_WEBHOOK_MISSING` (re-drive `payment.captured`) and `RAZORPAY_ORPHAN_CAPTURE` (queue `refund-orphan-capture`) — see `REFUND_LIFECYCLE.md` §9. Empty string = disable all auto-heals. `ORDER_SHIPPED_WITHOUT_SHIPMENT` is **not** in the default set (manual review). | *(default safe set when unset)* |
 | `RESTART_PAYMENT_DRAIN_TIMEOUT_MS` | Max time (ms) the `scheduled-process-restart` BullMQ job waits for all `PENDING_PAYMENT` orders to reach a terminal state before proceeding with the restart. If the timeout elapses, a `ProcessRestartPaymentDrainTimeout` alert is sent and the restart proceeds anyway. **Workers process only** — not consumed by the API process. Set lower (e.g. `10000`) in staging/test environments. | `300000` (5 min) |
 | `RESTART_QUEUE_DRAIN_TIMEOUT_MS` | Max time (ms) the `scheduled-process-restart` BullMQ job waits for **all BullMQ queues** to reach `getActiveCount() === 0` after pausing `outboxDispatch` first, then all other producer queues. Timeout → `ProcessRestartQueueDrainTimeout` alert sent (with per-queue active counts); restart proceeds anyway because in-flight jobs that exceed the budget will retry from BullMQ's durable `attempts` state when containers come back. **Workers process only**. Lower this in staging (e.g. `5000`) for fast iteration. | `60000` (60 s) |
 | `RESTART_QUEUE_PAUSE_GRACE_MS` | Settle delay (ms) between pausing `outboxDispatch` and pausing all other producer queues. Gives the in-flight outbox publish loop time to commit rows it has already claimed before downstream queues are frozen. Async `sleep()` — workers stay responsive. **Workers process only**. | `1500` |
@@ -289,6 +289,10 @@ These are stored AES-256-GCM encrypted in the `OpsConfigSecret` table and applie
 **`RAZORPAY_WEBHOOK_MAX_SKEW_SECONDS`**
 - **What:** Maximum age of a webhook event's timestamp before it is rejected. Prevents replay attacks of captured webhook payloads.
 - **Default:** `300` (5 minutes).
+
+**`RAZORPAY_RECONCILE_ENABLED`**
+- **What:** Scheduled Razorpay capture reconciliation (`reconciliation:razorpay-capture-reconcile`, every 30 min). Pages Razorpay's captured payments for the last 48 h and heals captures whose `payment.captured` webhook never arrived (or refunds orphan captures our checkout created). See `REFUND_LIFECYCLE.md` §9.
+- **Default:** `true` — but only ever active when `PAYMENT_PROVIDER=razorpay`. `false`/`0` removes the job schedule on the next API restart (the worker also re-checks per run). DB overlay, restart to apply.
 
 **`PAYMENT_PROVIDER_FAILOVER_ENABLED`**, **`PAYMENT_CB_FAILURE_THRESHOLD`**, **`PAYMENT_CB_COOLDOWN_MS`**
 - **What:** Circuit-breaker controls for the payment provider. If the provider fails `THRESHOLD` times, it trips open and returns errors immediately for `COOLDOWN_MS` milliseconds before retrying.

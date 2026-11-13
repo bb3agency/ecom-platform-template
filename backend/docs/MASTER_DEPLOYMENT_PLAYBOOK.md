@@ -2036,6 +2036,7 @@ Token: <SHIPROCKET_WEBHOOK_TOKEN>
 | `RAZORPAY_WEBHOOK_SECRET_OLD` | No | `old-webhook-secret` | Overlap key during secret rotation. System tries both. Remove after rotation. |
 | `RAZORPAY_WEBHOOK_ALLOWLIST_CIDR` | **Prod** | `52.66.0.0/16` | Comma-separated CIDRs. **Mandatory in production-like profiles — startup hard-fails if empty.** |
 | `RAZORPAY_WEBHOOK_MAX_SKEW_SECONDS` | No | `300` | Reject webhooks with timestamp older than this. Default: `300`. |
+| `RAZORPAY_RECONCILE_ENABLED` | No | `true` | Scheduled capture reconciliation every 30 min (heals missed `payment.captured` webhooks, refunds orphan captures). Only active when `PAYMENT_PROVIDER=razorpay`. See `REFUND_LIFECYCLE.md` §9. |
 
 ### F.5 Shipping provider
 
