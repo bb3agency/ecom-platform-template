@@ -16,6 +16,12 @@ export type InitiateRefundInput = {
   providerPaymentId: string;
   amount?: number;
   notes?: Record<string, string>;
+  /**
+   * Stable per-refund-job identifier (<= 40 chars). Sent to the provider so an
+   * attempt whose outcome is unknown (timeout / network error after the provider
+   * accepted it) can be found again with findRefundByReceipt instead of re-sent.
+   */
+  receipt?: string;
 };
 
 export type InitiateRefundResult = {
@@ -24,10 +30,10 @@ export type InitiateRefundResult = {
   amount: number;
 };
 
-export type FindRefundByReferenceInput = {
+export type FindRefundByReceiptInput = {
   providerPaymentId: string;
-  /** Value previously sent as `notes.refundReference` on initiateRefund. */
-  reference: string;
+  /** Value previously sent as `receipt` (and `notes.refundAttemptId`) on initiateRefund. */
+  receipt: string;
 };
 
 export interface PaymentProviderAdapter {
@@ -40,12 +46,16 @@ export interface PaymentProviderAdapter {
   verifyWebhookSignature(input: { payload: Buffer; signature: string; previousSecret?: string }): boolean;
   initiateRefund(input: InitiateRefundInput): Promise<InitiateRefundResult>;
   /**
-   * Look up a refund this platform already asked for (matched on `notes.refundReference`).
-   * Used before re-sending a refund whose earlier attempt ended ambiguously (timeout or
-   * network error) so a refund the provider DID accept is never issued twice.
-   * Optional: providers without refunds (COD/noop) omit it.
+   * Look up a refund previously created with `receipt` for this payment (matched on
+   * `receipt` or `notes.refundAttemptId`). Used before re-sending a refund whose earlier
+   * attempt ended ambiguously (timeout or network error) so a refund the provider DID
+   * accept is never issued twice. Refunds in status 'failed' are ignored: adopting one
+   * would hold the refund reservation for money that never moved.
+   * Resolves null when the provider definitely has no such (non-failed) refund;
+   * rejects when the provider cannot be asked. Optional: adapters that cannot
+   * refund (COD/noop) do not implement it.
    */
-  findRefundByReference?(input: FindRefundByReferenceInput): Promise<InitiateRefundResult | null>;
+  findRefundByReceipt?: ((input: FindRefundByReceiptInput) => Promise<InitiateRefundResult | null>) | undefined;
   /**
    * The notes stored on a provider order, or null when it does not exist. Lets the platform
    * prove an order was created by its own checkout (notes.userId / notes.orderId) before

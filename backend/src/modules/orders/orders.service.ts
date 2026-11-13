@@ -2201,86 +2201,42 @@ export class OrdersService {
 
     const inboxEventKey = normalizedEventId ?? `${markerEvent}:${providerPaymentId}`;
     const payloadHash = createHash('sha256').update(webhookRawBytes).digest('hex');
-    const inboxState = await this.claimWebhookInboxEvent(
-      'razorpay',
-      inboxEventKey,
-      payloadHash,
-      eventName
-    );
-    if (inboxState !== 'claimed') {
-      recordWebhookEvent({
-        provider: 'razorpay',
-        event: eventName,
-        result: 'duplicate',
-        durationMs: Date.now() - startedAt
-      });
-      return { received: true };
-    }
-
     const idempotencyKey = this.buildScopedKey('rzp:webhook', providerPaymentId);
-    const existingMarker = await this.fastify.redis.get(idempotencyKey);
-    const processedEvents = new Set(
-      (existingMarker ?? '')
-        .split(',')
-        .map((entry) => entry.trim())
-        .filter((entry) => entry.length > 0)
-    );
-    if (processedEvents.has(markerEvent)) {
-      await this.markWebhookInboxEvent('razorpay', inboxEventKey, 'PROCESSED');
-      recordWebhookEvent({
-        provider: 'razorpay',
-        event: eventName,
-        result: 'duplicate',
-        durationMs: Date.now() - startedAt
-      });
-      return { received: true };
-    }
-    const nextMarker = [...processedEvents, markerEvent].join(',');
-    let createdMarker = false;
-    if (!existingMarker) {
-      const lock = await this.fastify.redis.set(idempotencyKey, nextMarker, 'EX', 86400, 'NX');
-      if (lock !== 'OK') {
-        const concurrentMarker = await this.fastify.redis.get(idempotencyKey);
-        const concurrentEvents = new Set(
-          (concurrentMarker ?? '')
-            .split(',')
-            .map((entry) => entry.trim())
-            .filter((entry) => entry.length > 0)
-        );
-        if (concurrentEvents.has(markerEvent)) {
-          await this.markWebhookInboxEvent('razorpay', inboxEventKey, 'PROCESSED');
-          recordWebhookEvent({
-            provider: 'razorpay',
-            event: eventName,
-            result: 'duplicate',
-            durationMs: Date.now() - startedAt
-          });
-          return { received: true };
-        }
-        concurrentEvents.add(markerEvent);
-        await this.fastify.redis.set(idempotencyKey, [...concurrentEvents].join(','), 'EX', 86400);
-      } else {
-        createdMarker = true;
-      }
-    } else {
-      await this.fastify.redis.set(idempotencyKey, nextMarker, 'EX', 86400);
-    }
-
     const paymentJobName =
       eventName === 'payment.captured' ? 'deduct-inventory' : 'payment-webhook';
+    // Rollback state for the failure handler below (be-rel-05).
+    let inboxClaimed = false;
+    let existingMarker: string | null = null;
+    let createdMarker = false;
+    let markerTouched = false;
+    let markerBefore: string | null = null;
+    let captureKeySet = false;
+    try {
+      const inboxState = await this.claimWebhookInboxEvent(
+        'razorpay',
+        inboxEventKey,
+        payloadHash,
+        eventName
+      );
+      inboxClaimed = inboxState === 'claimed';
+      if (inboxState !== 'claimed') {
+        recordWebhookEvent({
+          provider: 'razorpay',
+          event: eventName,
+          result: 'duplicate',
+          durationMs: Date.now() - startedAt
+        });
+        return { received: true };
+      }
 
-    if (paymentJobName === 'deduct-inventory') {
-      const captureKey = this.buildScopedKey('rzp:capture', providerPaymentId);
-      const captureLock = await this.fastify.redis.set(captureKey, '1', 'EX', 86400, 'NX');
-      if (captureLock !== 'OK') {
-        if (eventIdKey) {
-          await this.fastify.redis.del(eventIdKey);
-        }
-        if (createdMarker) {
-          await this.fastify.redis.del(idempotencyKey);
-        } else if (existingMarker) {
-          await this.fastify.redis.set(idempotencyKey, existingMarker, 'EX', 86400);
-        }
+      existingMarker = await this.fastify.redis.get(idempotencyKey);
+      const processedEvents = new Set(
+        (existingMarker ?? '')
+          .split(',')
+          .map((entry) => entry.trim())
+          .filter((entry) => entry.length > 0)
+      );
+      if (processedEvents.has(markerEvent)) {
         await this.markWebhookInboxEvent('razorpay', inboxEventKey, 'PROCESSED');
         recordWebhookEvent({
           provider: 'razorpay',
@@ -2290,6 +2246,80 @@ export class OrdersService {
         });
         return { received: true };
       }
+      const nextMarker = [...processedEvents, markerEvent].join(',');
+      if (!existingMarker) {
+        const lock = await this.fastify.redis.set(idempotencyKey, nextMarker, 'EX', 86400, 'NX');
+        if (lock !== 'OK') {
+          const concurrentMarker = await this.fastify.redis.get(idempotencyKey);
+          const concurrentEvents = new Set(
+            (concurrentMarker ?? '')
+              .split(',')
+              .map((entry) => entry.trim())
+              .filter((entry) => entry.length > 0)
+          );
+          if (concurrentEvents.has(markerEvent)) {
+            await this.markWebhookInboxEvent('razorpay', inboxEventKey, 'PROCESSED');
+            recordWebhookEvent({
+              provider: 'razorpay',
+              event: eventName,
+              result: 'duplicate',
+              durationMs: Date.now() - startedAt
+            });
+            return { received: true };
+          }
+          concurrentEvents.add(markerEvent);
+          await this.fastify.redis.set(idempotencyKey, [...concurrentEvents].join(','), 'EX', 86400);
+          markerBefore = concurrentMarker;
+          markerTouched = true;
+        } else {
+          createdMarker = true;
+          markerTouched = true;
+        }
+      } else {
+        await this.fastify.redis.set(idempotencyKey, nextMarker, 'EX', 86400);
+        markerBefore = existingMarker;
+        markerTouched = true;
+      }
+
+      if (paymentJobName === 'deduct-inventory') {
+        const captureKey = this.buildScopedKey('rzp:capture', providerPaymentId);
+        const captureLock = await this.fastify.redis.set(captureKey, '1', 'EX', 86400, 'NX');
+        captureKeySet = captureLock === 'OK';
+        if (captureLock !== 'OK') {
+          if (eventIdKey) {
+            await this.fastify.redis.del(eventIdKey);
+          }
+          if (createdMarker) {
+            await this.fastify.redis.del(idempotencyKey);
+          } else if (existingMarker) {
+            await this.fastify.redis.set(idempotencyKey, existingMarker, 'EX', 86400);
+          }
+          await this.markWebhookInboxEvent('razorpay', inboxEventKey, 'PROCESSED');
+          recordWebhookEvent({
+            provider: 'razorpay',
+            event: eventName,
+            result: 'duplicate',
+            durationMs: Date.now() - startedAt
+          });
+          return { received: true };
+        }
+      }
+    } catch (error) {
+      // be-rel-05: the 24h event-id lock above was taken BEFORE the inbox claim and
+      // marker writes. If any of them throws (Postgres blip, pool exhaustion, Redis
+      // error) the route returns 5xx and Razorpay retries — but a retained lock
+      // would ack every retry as a duplicate and silently lose the event. Undo
+      // everything this delivery reserved so the retry can be processed.
+      await this.releaseRazorpayWebhookReservation({
+        eventIdKey,
+        idempotencyKey,
+        markerTouched,
+        markerBefore,
+        captureKey: captureKeySet ? this.buildScopedKey('rzp:capture', providerPaymentId) : null,
+        inboxEventKey: inboxClaimed ? inboxEventKey : null,
+        lastError: error instanceof Error ? error.message : 'Payment webhook processing failed'
+      });
+      throw error;
     }
     try {
       await this.enqueueOutboxMessage(
@@ -2357,6 +2387,20 @@ export class OrdersService {
       return { received: true };
     }
 
+    // be-rel-05: the outbox row is durable now — move the inbox row out of
+    // PROCESSING so it is not mistaken for an in-flight / crashed claim. Best
+    // effort: the event is already safely enqueued, so never fail the ack here.
+    if (inboxClaimed) {
+      try {
+        await this.markWebhookInboxEvent('razorpay', inboxEventKey, 'ENQUEUED');
+      } catch (markError) {
+        this.fastify.log?.warn(
+          { eventName, err: markError instanceof Error ? markError.message : String(markError) },
+          'Unable to mark payment webhook inbox event ENQUEUED'
+        );
+      }
+    }
+
     recordWebhookEvent({
       provider: 'razorpay',
       event: eventName,
@@ -2364,6 +2408,53 @@ export class OrdersService {
       durationMs: Date.now() - startedAt
     });
     return { received: true };
+  }
+
+  /**
+   * Best-effort rollback of everything a Razorpay webhook delivery reserved
+   * before it failed, so the provider's retry is processed instead of being
+   * acknowledged as a duplicate. Never throws — the original error is rethrown
+   * by the caller.
+   */
+  private async releaseRazorpayWebhookReservation(input: {
+    eventIdKey: string | null;
+    idempotencyKey: string;
+    markerTouched: boolean;
+    /** Marker value before this delivery wrote it; null means the key did not exist. */
+    markerBefore: string | null;
+    captureKey: string | null;
+    inboxEventKey: string | null;
+    lastError: string;
+  }): Promise<void> {
+    const steps: Array<() => Promise<unknown>> = [];
+    if (input.eventIdKey) {
+      const { eventIdKey } = input;
+      steps.push(() => this.fastify.redis.del(eventIdKey));
+    }
+    if (input.markerTouched) {
+      const previous = input.markerBefore;
+      steps.push(() =>
+        previous === null
+          ? this.fastify.redis.del(input.idempotencyKey)
+          : this.fastify.redis.set(input.idempotencyKey, previous, 'EX', 86400)
+      );
+    }
+    if (input.captureKey) {
+      const { captureKey } = input;
+      steps.push(() => this.fastify.redis.del(captureKey));
+    }
+    if (input.inboxEventKey) {
+      const { inboxEventKey } = input;
+      steps.push(() => this.markWebhookInboxEvent('razorpay', inboxEventKey, 'FAILED', input.lastError.slice(0, 500)));
+    }
+    const results = await Promise.allSettled(steps.map((step) => step()));
+    const failures = results.filter((result) => result.status === 'rejected');
+    if (failures.length > 0) {
+      this.fastify.log?.error(
+        { failures: failures.length },
+        'Unable to fully release Razorpay webhook reservation after a processing failure'
+      );
+    }
   }
 
   async getShippingTracking(userId: string, awb: string) {

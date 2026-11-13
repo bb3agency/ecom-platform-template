@@ -98,4 +98,26 @@ describe('ResendAdapter', () => {
       })
     ).rejects.toThrow(/Resend request failed: 502.*Bad Gateway/);
   });
+  it('sends the Idempotency-Key header only when a key is supplied (be-rel-09)', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ id: 'email_456' })
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const adapter = new ResendAdapter({ apiKey: 'resend_key', fromEmail: 'noreply@example.com' });
+
+    await adapter.sendEmail({
+      to: 'user@example.com',
+      template: 'OrderConfirmed',
+      data: { orderId: 'order_123' },
+      idempotencyKey: 'notifications:job_1:email'
+    });
+    await adapter.sendEmail({ to: 'user@example.com', template: 'OrderConfirmed', data: { orderId: 'order_123' } });
+
+    const withKey = (fetchMock.mock.calls[0] as [string, RequestInit])[1].headers as Record<string, string>;
+    const withoutKey = (fetchMock.mock.calls[1] as [string, RequestInit])[1].headers as Record<string, string>;
+    expect(withKey['Idempotency-Key']).toBe('notifications:job_1:email');
+    expect(withoutKey['Idempotency-Key']).toBeUndefined();
+  });
 });

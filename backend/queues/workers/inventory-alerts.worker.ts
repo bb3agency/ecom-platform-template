@@ -4,6 +4,8 @@ import { sendTechnicalFailureAlert } from '../../src/modules/notifications/notif
 
 type InventoryAlertsWorkerDeps = {
   PrismaClient?: typeof RealPrismaClient;
+  /** Shared process-wide client (workers/index.ts) — avoids one connection pool per worker. */
+  prisma?: RealPrismaClient;
   Worker?: typeof Worker;
 };
 
@@ -13,7 +15,7 @@ export function createInventoryAlertsWorker(
 ): Worker {
   const PrismaClientCtor = deps?.PrismaClient ?? RealPrismaClient;
   const WorkerCtor = deps?.Worker ?? Worker;
-  const prisma = new PrismaClientCtor();
+  const prisma = deps?.prisma ?? new PrismaClientCtor();
 
   return new WorkerCtor(
     'inventory-alerts',

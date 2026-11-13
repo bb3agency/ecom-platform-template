@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DelayedError } from 'bullmq';
 
-import { createRefundsWorker } from './refunds.worker';
+import { buildRefundReceipt, createRefundsWorker } from './refunds.worker';
 import { PaymentProviderError } from '../../src/common/errors/payment-provider-error';
 import { REFUND_AUTO_RETRY_DELAYS_MS } from '../../src/common/payments/refund-retry-policy';
 
@@ -23,7 +23,7 @@ describe('refunds worker', () => {
   let processor: undefined | ((job: TestJob, token?: string) => Promise<void>);
   let failedHandler: ((job: unknown, error: Error) => void) | undefined;
   const razorpayInitiateRefund = vi.fn();
-  const findRefundByReference = vi.fn();
+  const findRefundByReceipt = vi.fn();
   const fetchOrderNotes = vi.fn();
   const paymentFindFirst = vi.fn();
   const orderFindUnique = vi.fn();
@@ -62,7 +62,7 @@ describe('refunds worker', () => {
       verifyPaymentSignature: vi.fn(),
       verifyWebhookSignature: vi.fn(),
       initiateRefund: razorpayInitiateRefund,
-      findRefundByReference,
+      findRefundByReceipt,
       fetchOrderNotes
     };
   }
@@ -123,8 +123,8 @@ describe('refunds worker', () => {
     failedHandler = undefined;
     sendTechnicalFailureAlert.mockReset();
     razorpayInitiateRefund.mockReset();
-    findRefundByReference.mockReset();
-    findRefundByReference.mockResolvedValue(null);
+    findRefundByReceipt.mockReset();
+    findRefundByReceipt.mockResolvedValue(null);
     fetchOrderNotes.mockReset();
     fetchOrderNotes.mockResolvedValue({ userId: 'user_1' });
     paymentFindFirst.mockReset();
@@ -291,7 +291,7 @@ describe('refunds worker', () => {
     expect(tx.payment.updateMany).not.toHaveBeenCalled();
   });
 
-  it('first attempt sends a stable refundReference and does not look anything up', async () => {
+  it('first attempt sends the stable per-job receipt and does not look anything up', async () => {
     startWorker();
     orderFindUnique.mockResolvedValue(capturedOrder());
     razorpayInitiateRefund.mockResolvedValue({ providerRefundId: 'rfnd_1', status: 'processed', amount: 10000 });
@@ -299,23 +299,28 @@ describe('refunds worker', () => {
 
     await processor?.(makeJob({ orderId: 'order_1', reason: 'r' }, { id: 'job_ref', attemptsMade: 0 }));
 
-    expect(findRefundByReference).not.toHaveBeenCalled();
+    expect(findRefundByReceipt).not.toHaveBeenCalled();
     expect(razorpayInitiateRefund).toHaveBeenCalledWith(
-      expect.objectContaining({ notes: expect.objectContaining({ refundReference: 'job_ref:order_1' }) })
+      expect.objectContaining({ receipt: buildRefundReceipt({ id: 'job_ref' }, 'order_1') })
     );
+    // One dedupe mechanism only: the old notes.refundReference is gone.
+    expect(razorpayInitiateRefund.mock.calls[0]?.[0].notes).not.toHaveProperty('refundReference');
   });
 
-  it('a retry after an ambiguous failure adopts the refund the provider already accepted (no double refund)', async () => {
+  it('a slow-round retry (attemptsMade reset) still looks up by receipt before sending', async () => {
     startWorker();
     orderFindUnique.mockResolvedValue(capturedOrder());
     tx.payment.updateMany.mockResolvedValue({ count: 1 });
-    findRefundByReference.mockResolvedValue({ providerRefundId: 'rfnd_first', status: 'processed', amount: 2500 });
+    findRefundByReceipt.mockResolvedValue({ providerRefundId: 'rfnd_first', status: 'processed', amount: 2500 });
 
     await processor?.(
-      makeJob({ orderId: 'order_1', reason: 'r', refundAmountPaise: 2500 }, { id: 'job_ref', attemptsMade: 1 })
+      makeJob({ orderId: 'order_1', reason: 'r', refundAmountPaise: 2500, autoRetryRound: 1 }, { id: 'job_ref', attemptsMade: 0 })
     );
 
-    expect(findRefundByReference).toHaveBeenCalledWith({ providerPaymentId: 'pay_1', reference: 'job_ref:order_1' });
+    expect(findRefundByReceipt).toHaveBeenCalledWith({
+      providerPaymentId: 'pay_1',
+      receipt: buildRefundReceipt({ id: 'job_ref' }, 'order_1')
+    });
     expect(razorpayInitiateRefund).not.toHaveBeenCalled();
     // Reservation kept (one updateMany: the reserve) — finalised by refund.processed.
     expect(tx.payment.updateMany).toHaveBeenCalledTimes(1);
@@ -324,7 +329,7 @@ describe('refunds worker', () => {
     });
   });
 
-  it('a retry with no matching provider refund sends the refund again', async () => {
+  it('a retry with no matching (non-failed) provider refund sends the refund again with the same receipt', async () => {
     startWorker();
     orderFindUnique.mockResolvedValue(capturedOrder());
     tx.payment.updateMany.mockResolvedValue({ count: 1 });
@@ -332,8 +337,25 @@ describe('refunds worker', () => {
 
     await processor?.(makeJob({ orderId: 'order_1', reason: 'r' }, { id: 'job_ref', attemptsMade: 2 }));
 
-    expect(findRefundByReference).toHaveBeenCalledOnce();
+    expect(findRefundByReceipt).toHaveBeenCalledOnce();
     expect(razorpayInitiateRefund).toHaveBeenCalledOnce();
+    expect(razorpayInitiateRefund).toHaveBeenCalledWith(
+      expect.objectContaining({ receipt: buildRefundReceipt({ id: 'job_ref' }, 'order_1') })
+    );
+  });
+
+  it('admin retry, refund.failed re-queue and orphan-capture jobs each get their own stable receipt', () => {
+    const ids = [
+      'initiate-razorpay-refund-order_1-admin-retry-1700000000000',
+      'initiate-razorpay-refund-order_1-provider-failed-rfnd_1',
+      'refund-orphan-capture-pay_o'
+    ];
+    const receipts = ids.map((id) => buildRefundReceipt({ id }, 'order_1'));
+    expect(new Set(receipts).size).toBe(ids.length);
+    for (const [index, id] of ids.entries()) {
+      expect(buildRefundReceipt({ id }, 'other')).toBe(receipts[index]);
+      expect(receipts[index]?.length).toBeLessThanOrEqual(40);
+    }
   });
 
   it('refunds an orphan capture in full when no payment row exists', async () => {
@@ -349,7 +371,8 @@ describe('refunds worker', () => {
     expect(fetchOrderNotes).toHaveBeenCalledWith('order_rzp_o');
     expect(razorpayInitiateRefund).toHaveBeenCalledWith({
       providerPaymentId: 'pay_o',
-      notes: { providerOrderId: 'order_rzp_o', reason: 'orphan', refundReference: 'job_1:pay_o' }
+      receipt: buildRefundReceipt({ id: 'job_1' }, 'pay_o'),
+      notes: { providerOrderId: 'order_rzp_o', reason: 'orphan' }
     });
     expect(sendTechnicalFailureAlert).toHaveBeenCalledWith(
       expect.objectContaining({ template: 'OrphanPaymentCapture', recipient: 'pay_o', terminalFailure: false })
@@ -368,6 +391,37 @@ describe('refunds worker', () => {
 
     expect(razorpayInitiateRefund).not.toHaveBeenCalled();
     expect(sendTechnicalFailureAlert).not.toHaveBeenCalled();
+  });
+
+  it('an orphan-capture retry adopts the refund an ambiguous earlier attempt created', async () => {
+    startWorker();
+    paymentFindFirst.mockResolvedValue(null);
+    findRefundByReceipt.mockResolvedValue({ providerRefundId: 'rfnd_o', status: 'processed', amount: 9000 });
+
+    await processor?.({
+      ...makeJob({ providerPaymentId: 'pay_o', providerOrderId: 'order_rzp_o', reason: 'orphan' }, { attemptsMade: 1 }),
+      name: 'refund-orphan-capture'
+    });
+
+    expect(findRefundByReceipt).toHaveBeenCalledWith({
+      providerPaymentId: 'pay_o',
+      receipt: buildRefundReceipt({ id: 'job_1' }, 'pay_o')
+    });
+    expect(razorpayInitiateRefund).not.toHaveBeenCalled();
+  });
+
+  it('an orphan-capture retry does not send blind when the provider cannot be asked', async () => {
+    startWorker();
+    paymentFindFirst.mockResolvedValue(null);
+    findRefundByReceipt.mockRejectedValue(new Error('timeout'));
+
+    await expect(
+      processor?.({
+        ...makeJob({ providerPaymentId: 'pay_o', providerOrderId: 'order_rzp_o', reason: 'orphan' }, { attemptsMade: 1 }),
+        name: 'refund-orphan-capture'
+      })
+    ).rejects.toThrow('timeout');
+    expect(razorpayInitiateRefund).not.toHaveBeenCalled();
   });
 
   it('skips the orphan refund when the order was materialised in the meantime', async () => {
@@ -423,5 +477,102 @@ describe('refunds worker', () => {
     await expect(
       processor?.(makeJob({ orderId: 'order_1', reason: 'Order cancelled and refunded by admin' }))
     ).rejects.toThrow('Missing provider payment id for refund');
+  });
+  describe('be-rel-03: unknown-outcome refunds are reconciled, never re-sent blind', () => {
+    const findRefundByReceipt = vi.fn();
+    const timeout = () => Object.assign(new Error('The operation was aborted due to timeout'), { name: 'TimeoutError' });
+
+    function startWorkerWithLookup() {
+      createRefundsWorker({} as never, {
+        Worker: MockWorker as unknown as RefundsWorkerType,
+        PrismaClient: MockPrismaClient as unknown as RefundsPrismaType,
+        createPaymentProvider: () => ({ ...mockCreatePaymentProvider(), findRefundByReceipt }),
+        sendTechnicalFailureAlert,
+        now: () => NOW
+      });
+    }
+
+    beforeEach(() => {
+      findRefundByReceipt.mockReset();
+    });
+
+    it('sends a stable per-job receipt (<= 40 chars) with the refund', async () => {
+      startWorkerWithLookup();
+      orderFindUnique.mockResolvedValue(capturedOrder());
+      razorpayInitiateRefund.mockResolvedValue({ providerRefundId: 'rfnd_1', status: 'processed', amount: 10000 });
+      tx.payment.updateMany.mockResolvedValue({ count: 1 });
+
+      await processor?.(makeJob({ orderId: 'order_1', reason: 'r' }));
+
+      const receipt = buildRefundReceipt({ id: 'job_1' }, 'order_1');
+      expect(receipt.length).toBeLessThanOrEqual(40);
+      expect(buildRefundReceipt({ id: 'job_1' }, 'order_1')).toBe(receipt);
+      expect(buildRefundReceipt({ id: 'job_2' }, 'order_1')).not.toBe(receipt);
+      expect(razorpayInitiateRefund).toHaveBeenCalledWith(expect.objectContaining({ receipt }));
+      // First attempt: no lookup needed.
+      expect(findRefundByReceipt).not.toHaveBeenCalled();
+    });
+
+    it('a timeout whose refund the provider DID accept is treated as success: reservation kept, no retry', async () => {
+      startWorkerWithLookup();
+      orderFindUnique.mockResolvedValue(capturedOrder());
+      razorpayInitiateRefund.mockRejectedValue(timeout());
+      findRefundByReceipt.mockResolvedValue({ providerRefundId: 'rfnd_late', status: 'processed', amount: 10000 });
+      tx.payment.updateMany.mockResolvedValue({ count: 1 });
+      const job = makeJob({ orderId: 'order_1', reason: 'r' });
+
+      await expect(processor?.(job, 'tok')).resolves.toBeUndefined();
+
+      // Only the reservation increment — never the release decrement.
+      expect(tx.payment.updateMany).toHaveBeenCalledTimes(1);
+      expect(tx.payment.updateMany).not.toHaveBeenCalledWith(
+        expect.objectContaining({ data: { refundPendingAmountPaise: { decrement: 10000 } } })
+      );
+      expect(tx.orderStatusHistory.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ note: expect.stringContaining('rfnd_late') }) })
+      );
+    });
+
+    it('a timeout with no refund at the provider releases the reservation and retries', async () => {
+      startWorkerWithLookup();
+      orderFindUnique.mockResolvedValue(capturedOrder());
+      razorpayInitiateRefund.mockRejectedValue(timeout());
+      findRefundByReceipt.mockResolvedValue(null);
+      tx.payment.updateMany.mockResolvedValue({ count: 1 });
+
+      await expect(processor?.(makeJob({ orderId: 'order_1', reason: 'r' }), 'tok')).rejects.toThrow('timeout');
+
+      expect(tx.payment.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { refundPendingAmountPaise: { decrement: 10000 } } })
+      );
+    });
+
+    it('on retry, finds the earlier accepted refund and does NOT call the provider again', async () => {
+      startWorkerWithLookup();
+      orderFindUnique.mockResolvedValue(capturedOrder());
+      findRefundByReceipt.mockResolvedValue({ providerRefundId: 'rfnd_first', status: 'processed', amount: 5000 });
+      tx.payment.updateMany.mockResolvedValue({ count: 1 });
+
+      await processor?.(makeJob({ orderId: 'order_1', reason: 'r', refundAmountPaise: 5000 }, { attemptsMade: 1 }));
+
+      expect(razorpayInitiateRefund).not.toHaveBeenCalled();
+      expect(findRefundByReceipt).toHaveBeenCalledWith({
+        providerPaymentId: 'pay_1',
+        receipt: buildRefundReceipt({ id: 'job_1' }, 'order_1')
+      });
+    });
+
+    it('on retry, if the provider cannot be asked, it does not send blind', async () => {
+      startWorkerWithLookup();
+      orderFindUnique.mockResolvedValue(capturedOrder());
+      findRefundByReceipt.mockRejectedValue(timeout());
+      tx.payment.updateMany.mockResolvedValue({ count: 1 });
+
+      await expect(
+        processor?.(makeJob({ orderId: 'order_1', reason: 'r' }, { attemptsMade: 1 }), 'tok')
+      ).rejects.toThrow();
+
+      expect(razorpayInitiateRefund).not.toHaveBeenCalled();
+    });
   });
 });

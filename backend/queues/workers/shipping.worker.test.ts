@@ -1402,5 +1402,142 @@ describe('shipping worker error and retry behavior', () => {
     // Global provider's createShipment was called (backward compat path)
     expect(state.createShipment).toHaveBeenCalledTimes(1);
   });
-});
+  describe('be-rel-02: create-shipment idempotency across retries', () => {
+    const baseOrder = {
+      id: 'order_idem',
+      orderNumber: 'ORD-IDEM-001',
+      total: 1000,
+      status: 'PROCESSING',
+      selectedShippingProvider: 'DELHIVERY',
+      shippingAddress: {
+        fullName: 'Test Customer',
+        phone: '9999999999',
+        line1: 'Street 1',
+        city: 'Hyderabad',
+        state: 'Telangana',
+        pincode: '500001'
+      },
+      payment: { status: 'CAPTURED' },
+      user: { email: 'c@example.com', phone: null },
+      items: [{ variantId: 'v1', quantity: 1, productName: 'Spice', sku: 'S1', unitPrice: 1000 }]
+    };
 
+    it('persists the AWB before Phase 3, so a Phase 3 failure leaves the booking recorded', async () => {
+      boot();
+      state.tx.order.findUnique
+        .mockResolvedValueOnce({ ...baseOrder, shipment: null })
+        .mockResolvedValueOnce({ id: 'order_idem', status: 'PROCESSING', shipment: null });
+      state.tx.productVariant.findMany.mockResolvedValue([
+        { id: 'v1', weight: 300, hsnCode: '1001', product: { attributes: {} } }
+      ]);
+      state.createShipment.mockResolvedValue({ awbNumber: 'AWB-IDEM', trackingUrl: 'https://t/AWB-IDEM', providerPayload: {} });
+      state.tx.order.update.mockResolvedValue(undefined);
+      state.tx.orderStatusHistory.create.mockRejectedValue(new Error('deadlock detected'));
+
+      await expect(
+        state.processor?.({ name: 'create-shipment', data: { orderId: 'order_idem' } })
+      ).rejects.toThrow('deadlock detected');
+
+      expect(state.createShipment).toHaveBeenCalledTimes(1);
+      expect(state.tx.shipment.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ orderId: 'order_idem', status: 'BOOKED', awbNumber: 'AWB-IDEM', provider: 'DELHIVERY' })
+      });
+    });
+
+    it('on retry with a BOOKED shipment, resumes Phase 3 without booking the courier again', async () => {
+      boot();
+      state.tx.order.findUnique
+        .mockResolvedValueOnce({
+          ...baseOrder,
+          shipment: {
+            id: 'ship_idem',
+            provider: 'DELHIVERY',
+            status: 'BOOKED',
+            awbNumber: 'AWB-IDEM',
+            trackingUrl: 'https://t/AWB-IDEM',
+            estimatedDelivery: null,
+            shiprocketShipmentId: null
+          }
+        })
+        .mockResolvedValueOnce({ id: 'order_idem', status: 'PROCESSING', shipment: { id: 'ship_idem', awbNumber: 'AWB-IDEM' } });
+      state.tx.order.update.mockResolvedValue(undefined);
+      state.tx.orderStatusHistory.create.mockResolvedValue(undefined);
+
+      await state.processor?.({ name: 'create-shipment', data: { orderId: 'order_idem' } });
+
+      expect(state.createShipment).not.toHaveBeenCalled();
+      expect(state.tx.shipment.create).not.toHaveBeenCalled();
+      expect(state.tx.order.update).toHaveBeenCalledWith({ where: { id: 'order_idem' }, data: { status: 'SHIPPED' } });
+      expect(state.tx.orderStatusHistory.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ toStatus: 'SHIPPED' }) })
+      );
+    });
+
+    it('still skips when the existing shipment is not BOOKED (e.g. CANCELLED)', async () => {
+      boot();
+      state.tx.order.findUnique.mockResolvedValueOnce({
+        ...baseOrder,
+        shipment: { id: 'ship_idem', provider: 'DELHIVERY', status: 'CANCELLED', awbNumber: 'AWB-OLD' }
+      });
+
+      await state.processor?.({ name: 'create-shipment', data: { orderId: 'order_idem' } });
+
+      expect(state.createShipment).not.toHaveBeenCalled();
+      expect(state.tx.order.update).not.toHaveBeenCalled();
+    });
+  });
+
+  it('be-rel-06: Shiprocket compensating cancel uses the Shiprocket ORDER id, not the AWB, and marks the shipment CANCELLED', async () => {
+    boot();
+    const order = {
+      id: 'order_sr_comp',
+      orderNumber: 'ORD-SR-COMP',
+      total: 1000,
+      status: 'PROCESSING',
+      selectedShippingProvider: 'SHIPROCKET',
+      shippingAddress: {
+        fullName: 'Test Customer',
+        phone: '9999999999',
+        line1: 'Street 1',
+        city: 'Hyderabad',
+        state: 'Telangana',
+        pincode: '500001'
+      },
+      payment: { status: 'CAPTURED' },
+      shipment: null,
+      items: [{ variantId: 'v1', quantity: 1, productName: 'Spice', sku: 'S1', unitPrice: 1000 }]
+    };
+    state.tx.order.findUnique
+      .mockResolvedValueOnce(order)
+      .mockResolvedValueOnce({ id: 'order_sr_comp', status: 'CANCELLED', shipment: null });
+    state.tx.productVariant.findMany.mockResolvedValue([
+      { id: 'v1', weight: 300, hsnCode: '1001', product: { attributes: {} } }
+    ]);
+    state.createShipment.mockResolvedValue({
+      awbNumber: 'SR-AWB-1',
+      shiprocketOrderId: '998877',
+      shiprocketShipmentId: '554433',
+      providerPayload: {}
+    });
+    state.tx.order.update.mockResolvedValue(undefined);
+    state.cancelShipmentShiprocket.mockResolvedValue({ cancelled: true, providerPayload: {} });
+    state.shipment.updateMany.mockResolvedValue({ count: 1 });
+
+    await state.processor?.({ name: 'create-shipment', data: { orderId: 'order_sr_comp' } });
+
+    expect(state.cancelShipmentShiprocket).toHaveBeenCalledWith('998877');
+    expect(state.cancelShipmentShiprocket).not.toHaveBeenCalledWith('SR-AWB-1');
+    expect(state.shipment.updateMany).toHaveBeenCalledWith({
+      where: { orderId: 'order_sr_comp', awbNumber: 'SR-AWB-1' },
+      data: { status: 'CANCELLED' }
+    });
+    // Booking was persisted with the Shiprocket order id for later cancels.
+    expect(state.tx.order.update).toHaveBeenCalledWith({
+      where: { id: 'order_sr_comp' },
+      data: { shiprocketOrderId: '998877' }
+    });
+    expect(state.tx.order.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'SHIPPED' }) })
+    );
+  });
+});

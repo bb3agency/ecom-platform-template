@@ -62,6 +62,8 @@ type RefundsQueue = Pick<Queue, 'add'>;
 
 type OrderProcessingWorkerDeps = {
   PrismaClient?: typeof RealPrismaClient;
+  /** Shared process-wide client (workers/index.ts) — avoids one connection pool per worker. */
+  prisma?: RealPrismaClient;
   Worker?: typeof Worker;
   sendTechnicalFailureAlert?: typeof sendTechnicalFailureAlert;
 };
@@ -309,7 +311,7 @@ export function createOrderProcessingWorker(
   const PrismaClientCtor = deps?.PrismaClient ?? RealPrismaClient;
   const WorkerCtor = deps?.Worker ?? Worker;
   const alertFn = deps?.sendTechnicalFailureAlert ?? sendTechnicalFailureAlert;
-  const prisma = new PrismaClientCtor();
+  const prisma = deps?.prisma ?? new PrismaClientCtor();
   const notificationsQueue = notificationsQueueArg ?? new Queue('notifications', { connection });
   const orderProcessingQueue = orderProcessingQueueArg ?? new Queue('order-processing', { connection });
   const analyticsQueue = analyticsQueueArg ?? new Queue('analytics', { connection });

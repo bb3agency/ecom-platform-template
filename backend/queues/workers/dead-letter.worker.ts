@@ -4,6 +4,8 @@ import { sendTechnicalFailureAlert } from '../../src/modules/notifications/notif
 
 type DeadLetterWorkerDeps = {
   PrismaClient?: typeof RealPrismaClient;
+  /** Shared process-wide client (workers/index.ts) — avoids one connection pool per worker. */
+  prisma?: RealPrismaClient;
   Worker?: typeof Worker;
   sendTechnicalFailureAlert?: typeof sendTechnicalFailureAlert;
 };
@@ -22,7 +24,7 @@ export function createDeadLetterWorker(connection: ConnectionOptions, deps?: Dea
   const PrismaClientCtor = deps?.PrismaClient ?? RealPrismaClient;
   const WorkerCtor = deps?.Worker ?? Worker;
   const alertFn = deps?.sendTechnicalFailureAlert ?? sendTechnicalFailureAlert;
-  const prisma = new PrismaClientCtor();
+  const prisma = deps?.prisma ?? new PrismaClientCtor();
 
   // Notification delivery jobs that can flood the DLQ when a provider is down.
   // These get deduped via WORKER_TERMINAL cooldown rather than firing per-job.
@@ -34,19 +36,23 @@ export function createDeadLetterWorker(connection: ConnectionOptions, deps?: Dea
       // No-op: DLQ is a holding pen for admin inspection.
       // Jobs are retained indefinitely (removeOnComplete: false, removeOnFail: false).
       // Admins can retry individual jobs via Bull Board UI.
-      const isNotificationDelivery = NOTIFICATION_DELIVERY_JOBS.has(job.name);
+      // DLQ entries are enqueued as 'dead-letter-entry' by worker-logging; the
+      // original job/queue names live in the payload. Fall back to job.name for
+      // entries added by hand (e.g. Bull Board).
+      const { jobName: originalJobName, sourceQueue } = readDeadLetterPayload(job.data, job.name);
+      const isNotificationDelivery = NOTIFICATION_DELIVERY_JOBS.has(originalJobName);
       void alertFn({
         prisma,
         template: 'DeadLetterJobArrival',
         channel: 'UNKNOWN',
         recipient: 'dead-letter-queue',
-        errorMessage: `Job "${job.name}" (id: ${job.id ?? 'unknown'}) arrived in the dead-letter queue after exhausting all retries`,
+        errorMessage: `Job "${originalJobName}"${sourceQueue ? ` from queue "${sourceQueue}"` : ''} (id: ${job.id ?? 'unknown'}) arrived in the dead-letter queue after exhausting all retries`,
         failureStage: 'WORKER_TERMINAL',
         queueName: 'dead-letter',
-        jobName: job.name,
+        jobName: originalJobName,
         jobId: job.id ?? 'unknown',
         domain: 'workers',
-        component: isNotificationDelivery ? `dead-letter-${job.name}` : 'dead-letter-worker',
+        component: isNotificationDelivery ? `dead-letter-${originalJobName}` : 'dead-letter-worker',
         // Notification delivery jobs use cooldown dedup (not per-job) to avoid
         // flooding admins when a provider like Resend is temporarily down.
         terminalFailure: !isNotificationDelivery
@@ -60,4 +66,15 @@ export function createDeadLetterWorker(connection: ConnectionOptions, deps?: Dea
   );
 
   return worker;
+}
+
+function readDeadLetterPayload(data: unknown, fallbackJobName: string): { jobName: string; sourceQueue: string | null } {
+  if (typeof data !== 'object' || data === null) {
+    return { jobName: fallbackJobName, sourceQueue: null };
+  }
+  const { jobName, sourceQueue } = data as { jobName?: unknown; sourceQueue?: unknown };
+  return {
+    jobName: typeof jobName === 'string' && jobName.length > 0 ? jobName : fallbackJobName,
+    sourceQueue: typeof sourceQueue === 'string' && sourceQueue.length > 0 ? sourceQueue : null
+  };
 }

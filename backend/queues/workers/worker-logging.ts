@@ -25,11 +25,35 @@ type JobLike = {
   id?: string | undefined;
   name: string;
   attemptsMade: number;
+  discarded?: boolean;
   data?: unknown;
   opts?: {
     attempts?: number;
   };
 };
+
+/**
+ * BullMQ increments `job.attemptsMade` inside moveToCompleted/moveToFailed, i.e.
+ * BEFORE the worker emits 'completed'/'failed'. In those handlers `attemptsMade`
+ * therefore already counts the attempt that just finished (1 on the first run).
+ * Only the 'active' event sees the pre-increment value.
+ */
+function finishedAttemptNumber(job: JobLike): number {
+  return Math.max(1, job.attemptsMade);
+}
+
+/**
+ * Mirrors BullMQ's Job.shouldRetryJob: a failure is terminal when no attempts
+ * remain, when the processor threw UnrecoverableError, or the job was discarded.
+ */
+export function isTerminalFailure(job: JobLike, error?: Error): boolean {
+  const maxAttempts = Math.max(1, Number(job.opts?.attempts ?? 1));
+  return (
+    job.attemptsMade >= maxAttempts ||
+    job.discarded === true ||
+    error?.name === 'UnrecoverableError'
+  );
+}
 
 const startedAtByJobId = new Map<string, number>();
 
@@ -83,7 +107,7 @@ export function attachWorkerLogging(
         queue: worker.name,
         jobName: job.name,
         jobId,
-        attempt: job.attemptsMade + 1,
+        attempt: finishedAttemptNumber(job),
         status: 'success',
         durationMs
       },
@@ -96,8 +120,8 @@ export function attachWorkerLogging(
     const jobId = resolveJobId(job);
     const durationMs = resolveDurationMs(jobId);
     const maxAttempts = Math.max(1, Number(job.opts?.attempts ?? 1));
-    const attemptNumber = Math.max(1, job.attemptsMade + 1);
-    const terminalFailure = attemptNumber >= maxAttempts;
+    const attemptNumber = finishedAttemptNumber(job);
+    const terminalFailure = isTerminalFailure(job, error);
     logger.error(
       {
         queue: worker.name,

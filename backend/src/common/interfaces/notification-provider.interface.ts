@@ -2,6 +2,12 @@ export type SendEmailInput = {
   to: string;
   template: string;
   data: Record<string, unknown>;
+  /**
+   * Stable per-delivery key (e.g. `notifications:<jobId>:email`). Sent as the
+   * provider's Idempotency-Key so a retry after a timeout / lost response cannot
+   * deliver the same email twice.
+   */
+  idempotencyKey?: string;
 };
 
 export type SendSmsInput = {

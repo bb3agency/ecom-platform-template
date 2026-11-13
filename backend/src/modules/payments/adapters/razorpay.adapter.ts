@@ -3,7 +3,7 @@ import { PaymentProviderError } from '@common/errors/payment-provider-error';
 import {
   CreatePaymentOrderInput,
   CreatePaymentOrderResult,
-  FindRefundByReferenceInput,
+  FindRefundByReceiptInput,
   InitiateRefundInput,
   InitiateRefundResult,
   PaymentProviderAdapter
@@ -20,7 +20,8 @@ type RazorpayRefundResponse = {
   id: string;
   amount: number;
   status: string;
-  notes?: Record<string, unknown> | unknown[];
+  receipt?: string | null;
+  notes?: Record<string, unknown> | unknown[] | null;
 };
 
 type RazorpayRefundListResponse = {
@@ -94,7 +95,11 @@ export class RazorpayAdapter implements PaymentProviderAdapter {
       method: 'POST',
       body: JSON.stringify({
         ...(input.amount !== undefined ? { amount: input.amount } : {}),
-        notes: input.notes ?? {}
+        ...(input.receipt ? { receipt: input.receipt } : {}),
+        notes: {
+          ...(input.notes ?? {}),
+          ...(input.receipt ? { refundAttemptId: input.receipt } : {})
+        }
       })
     });
 
@@ -105,18 +110,17 @@ export class RazorpayAdapter implements PaymentProviderAdapter {
     };
   }
 
-  async findRefundByReference(input: FindRefundByReferenceInput): Promise<InitiateRefundResult | null> {
+  async findRefundByReceipt(input: FindRefundByReceiptInput): Promise<InitiateRefundResult | null> {
     const response = await this.request<RazorpayRefundListResponse>(
       `/payments/${encodeURIComponent(input.providerPaymentId)}/refunds?count=100`,
       { method: 'GET' }
     );
     const match = (response.items ?? []).find((refund) => {
-      const notes = refund.notes;
-      return (
-        notes !== undefined &&
-        !Array.isArray(notes) &&
-        notes['refundReference'] === input.reference
-      );
+      if (refund.status === 'failed') {
+        return false;
+      }
+      const notes = refund.notes && !Array.isArray(refund.notes) ? refund.notes : {};
+      return refund.receipt === input.receipt || notes['refundAttemptId'] === input.receipt;
     });
     return match ? { providerRefundId: match.id, status: match.status, amount: match.amount } : null;
   }

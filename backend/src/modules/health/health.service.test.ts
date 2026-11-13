@@ -76,3 +76,56 @@ describe('HealthService queue freshness threshold', () => {
     expect(result.runtimeConfigMissingKeys).toContain('REPLAY_APPROVAL_TOKEN');
   });
 });
+
+describe('HealthService probe timeouts (be-rel-07)', () => {
+  const never = () => new Promise<never>(() => undefined);
+
+  it('reports redis disconnected instead of hanging when PING never resolves', async () => {
+    const fastify = buildFastify(10);
+    fastify.redis.ping = vi.fn(never);
+    const service = new HealthService(fastify as never, 20);
+
+    const result = await service.check();
+
+    expect(result.redis).toBe('disconnected');
+    expect(result.database).toBe('connected');
+    expect(result.status).toBe('degraded');
+  });
+
+  it('readiness answers not_ready / redis_down with unknown queue freshness when Redis hangs', async () => {
+    const fastify = buildFastify(10);
+    fastify.redis.ping = vi.fn(never);
+    const getJobCounts = vi.fn(never);
+    fastify.queues.orderProcessing.getJobCounts = getJobCounts;
+    const service = new HealthService(fastify as never, 20);
+
+    const result = await service.checkReadiness();
+
+    expect(result.status).toBe('not_ready');
+    expect(result.degradationMode).toBe('redis_down');
+    expect(result.queues.workerFreshness).toBe('unknown');
+    expect(getJobCounts).not.toHaveBeenCalled();
+  });
+
+  it('reports database disconnected when the DB probe hangs', async () => {
+    const fastify = buildFastify(10);
+    fastify.prisma.$queryRaw = vi.fn(never);
+    const service = new HealthService(fastify as never, 20);
+
+    const result = await service.checkReadiness();
+
+    expect(result.database).toBe('disconnected');
+    expect(result.degradationMode).toBe('database_down');
+  });
+
+  it('falls back to unknown queue freshness when queue counts time out', async () => {
+    const fastify = buildFastify(10);
+    fastify.queues.orderProcessing.getJobCounts = vi.fn(never);
+    const service = new HealthService(fastify as never, 20);
+
+    const result = await service.checkReadiness();
+
+    expect(result.redis).toBe('connected');
+    expect(result.queues.workerFreshness).toBe('unknown');
+  });
+});

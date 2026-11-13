@@ -14,6 +14,8 @@ const analyticsEventTypes = new Set<AnalyticsEventType>(Object.values(AnalyticsE
 
 type AnalyticsWorkerDeps = {
   PrismaClient?: typeof RealPrismaClient;
+  /** Shared process-wide client (workers/index.ts) — avoids one connection pool per worker. */
+  prisma?: RealPrismaClient;
   Worker?: typeof Worker;
   sendTechnicalFailureAlert?: typeof sendTechnicalFailureAlert;
 };
@@ -25,7 +27,7 @@ export function createAnalyticsWorker(
   const PrismaClientCtor = deps?.PrismaClient ?? RealPrismaClient;
   const WorkerCtor = deps?.Worker ?? Worker;
   const alertFn = deps?.sendTechnicalFailureAlert ?? sendTechnicalFailureAlert;
-  const prisma = new PrismaClientCtor();
+  const prisma = deps?.prisma ?? new PrismaClientCtor();
 
   const worker = new WorkerCtor(
     'analytics',

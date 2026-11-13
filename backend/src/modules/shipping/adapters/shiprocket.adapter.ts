@@ -118,6 +118,9 @@ type ShiprocketLabelResponse = {
   status?: number;
 };
 
+// "Ohh! This AWB has been cancelled." / "Order is already canceled" / "has already been cancelled".
+const SHIPROCKET_ALREADY_CANCELLED_PATTERN = /\b(?:already\s+(?:been\s+)?cancel+ed|has\s+been\s+cancel+ed)\b/i;
+
 export default class ShiprocketAdapter implements ShippingProviderAdapter {
   private readonly email: string;
   private readonly password: string;
@@ -522,8 +525,11 @@ export default class ShiprocketAdapter implements ShippingProviderAdapter {
       // the poll/sync/webhook pipeline propagates the cancellation (order flip,
       // customer notification, refund) instead of swallowing it as a provider
       // outage forever. Matches "cancel"/"canceled"/"cancelled" case-insensitively.
+      // Match ONLY explicit "already cancelled" phrasings — a bare /cancel/ would
+      // also swallow rejections such as "Invalid order id to cancel" and report a
+      // live booking as cancelled.
       const message = error instanceof Error ? error.message : '';
-      if (/cancel/i.test(message)) {
+      if (SHIPROCKET_ALREADY_CANCELLED_PATTERN.test(message)) {
         return {
           status: 'CANCELLED',
           events: [
@@ -588,8 +594,11 @@ export default class ShiprocketAdapter implements ShippingProviderAdapter {
       // order/AWB with an HTTP error ("Ohh! This AWB has been cancelled." /
       // "Order is already canceled"). The desired end-state is already true —
       // treat it as success so compensating cancels and retries don't dead-letter.
+      // Match ONLY explicit "already cancelled" phrasings — a bare /cancel/ would
+      // also swallow rejections such as "Invalid order id to cancel" and report a
+      // live booking as cancelled.
       const message = error instanceof Error ? error.message : '';
-      if (/cancel/i.test(message)) {
+      if (SHIPROCKET_ALREADY_CANCELLED_PATTERN.test(message)) {
         return { cancelled: true, providerPayload: { alreadyCancelled: true, message: message.slice(0, 200) } };
       }
       throw error;

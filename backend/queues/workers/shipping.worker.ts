@@ -26,6 +26,8 @@ type NotificationsQueue = Pick<Queue, 'add'>;
 
 type ShippingWorkerDeps = {
   PrismaClient?: typeof RealPrismaClient;
+  /** Shared process-wide client (workers/index.ts) — avoids one connection pool per worker. */
+  prisma?: RealPrismaClient;
   Worker?: typeof Worker;
   createShippingProvider?: typeof createShippingProvider;
   createShippingAdapterForProvider?: (providerKey: 'delhivery' | 'shiprocket') => ReturnType<typeof createShippingAdapterForProvider>;
@@ -400,6 +402,13 @@ async function updateOrderStatusWithCasCompat(
   return true;
 }
 
+function estimatedDaysFrom(estimatedDelivery: Date | null | undefined): number | undefined {
+  if (!estimatedDelivery) {
+    return undefined;
+  }
+  return Math.max(0, Math.ceil((estimatedDelivery.getTime() - Date.now()) / (24 * 60 * 60 * 1000)));
+}
+
 export function createShippingWorker(
   connection: ConnectionOptions,
   notificationsQueueArg?: NotificationsQueue,
@@ -410,9 +419,142 @@ export function createShippingWorker(
   const shippingProviderFactory = deps?.createShippingProvider ?? createShippingProvider;
   const shippingAdapterFactory = deps?.createShippingAdapterForProvider ?? createShippingAdapterForProvider;
   const alertFn = deps?.sendTechnicalFailureAlert ?? sendTechnicalFailureAlert;
-  const prisma = new PrismaClientCtor();
+  const prisma = deps?.prisma ?? new PrismaClientCtor();
   const notificationsQueue = notificationsQueueArg ?? new Queue('notifications', { connection });
   const shippingProvider = shippingProviderFactory();
+
+  type BookedShipment = {
+    awbNumber: string;
+    trackingUrl?: string | null | undefined;
+    estimatedDays?: number | null | undefined;
+    shiprocketOrderId?: string | null | undefined;
+    shiprocketShipmentId?: string | null | undefined;
+  };
+  type BookableOrder = {
+    id: string;
+    orderNumber?: string | null;
+    user?: { email: string | null; phone: string | null } | null;
+  };
+
+  /**
+   * Phase 3 of create-shipment: the courier booking is already persisted on the
+   * Shipment row. Re-check the order is still shippable, CAS it to SHIPPED and
+   * notify; if it was cancelled while the provider call was in flight, cancel the
+   * booking at the courier (compensating action). Safe to re-run on retry.
+   */
+  const finalizeBookedShipment = async (input: {
+    order: BookableOrder;
+    provider: ShippingProvider;
+    adapter: typeof shippingProvider;
+    booking: BookedShipment;
+  }): Promise<void> => {
+    const { order, provider, adapter, booking } = input;
+    const outcome: { cancelBooking: boolean } = { cancelBooking: false };
+    await prisma.$transaction(async (tx) => {
+      const freshOrder = await tx.order.findUnique({
+        where: { id: order.id },
+        select: {
+          id: true,
+          status: true,
+          shipment: {
+            select: {
+              id: true,
+              awbNumber: true
+            }
+          }
+        }
+      });
+      if (
+        !freshOrder ||
+        freshOrder.status === OrderStatus.CANCELLED ||
+        (freshOrder.status !== OrderStatus.CONFIRMED && freshOrder.status !== OrderStatus.PROCESSING) ||
+        !canTransitionOrder(freshOrder.status, OrderStatus.SHIPPED)
+      ) {
+        outcome.cancelBooking = true;
+        return;
+      }
+
+      const shipped = await updateOrderStatusWithCasCompat(tx, {
+        orderId: order.id,
+        fromStatus: freshOrder.status,
+        toStatus: OrderStatus.SHIPPED
+      });
+
+      if (!shipped) {
+        outcome.cancelBooking = true;
+        return;
+      }
+
+      const providerLabel = provider === ShippingProvider.SHIPROCKET ? 'Shiprocket' : 'Delhivery';
+      await tx.orderStatusHistory.create({
+        data: {
+          orderId: order.id,
+          fromStatus: freshOrder.status,
+          toStatus: OrderStatus.SHIPPED,
+          triggeredBy: 'ADMIN',
+          note: `Shipment booked by admin via ${providerLabel}`
+        }
+      });
+
+      // Notify customer immediately on shipment booking
+      const userEmail = order.user?.email;
+      const userPhone = order.user?.phone;
+      if (userEmail || userPhone) {
+        const estimatedDeliveryText =
+          booking.estimatedDays != null
+            ? `Estimated delivery in ${booking.estimatedDays} day${booking.estimatedDays === 1 ? '' : 's'}. `
+            : '';
+        await enqueueNotificationOutboxOrQueue(tx, notificationsQueue, 'send-primary', {
+          email: userEmail,
+          phone: userPhone,
+          template: 'OrderShipped',
+          data: {
+            orderId: order.id,
+            orderNumber: order.orderNumber ?? order.id,
+            awb: booking.awbNumber,
+            trackingUrl: booking.trackingUrl ?? '',
+            estimatedDeliveryText,
+            ...(booking.estimatedDays != null ? { estimatedDays: booking.estimatedDays } : {})
+          }
+        }, `shipping:primary:${order.id}:shipped`);
+      }
+    });
+
+    if (!outcome.cancelBooking) {
+      return;
+    }
+    // be-rel-06: Shiprocket's /orders/cancel keys off the Shiprocket ORDER id —
+    // the AWB cancels nothing there. Same precedence as the cancel-shipment job.
+    // Delhivery cancels by AWB.
+    const cancelIdentifier =
+      provider === ShippingProvider.SHIPROCKET
+        ? (booking.shiprocketOrderId ?? booking.shiprocketShipmentId ?? booking.awbNumber)
+        : booking.awbNumber;
+    try {
+      if (!adapter) {
+        throw new Error(`No ${provider} adapter configured to cancel orphaned booking ${booking.awbNumber}`);
+      }
+      // Use the same adapter that created the AWB, not the global env-based one.
+      await adapter.cancelShipment(cancelIdentifier);
+      await prisma.shipment.updateMany({
+        where: { orderId: order.id, awbNumber: booking.awbNumber },
+        data: { status: ShipmentStatus.CANCELLED }
+      });
+    } catch (error) {
+      await alertFn({
+        prisma,
+        template: 'ShipmentCancellation',
+        channel: 'UNKNOWN',
+        recipient: order.id,
+        errorMessage: error instanceof Error ? error.message : 'Unknown shipment cancel error',
+        failureStage: 'CORE_LOGIC',
+        domain: 'shipping',
+        component: 'create-shipment-compensating-cancel',
+        queueName: 'shipping',
+        jobName: 'create-shipment'
+      });
+    }
+  };
 
   const worker = new WorkerCtor(
     'shipping',
@@ -458,10 +600,35 @@ export function createShippingWorker(
           return;
         }
 
-        // Idempotency guard: if a shipment with an AWB already exists for this
-        // order (e.g. retry after a successful provider call but failed DB write),
-        // skip the external call entirely and let Phase 3 re-persist the result.
+        // Idempotency guard (be-rel-02): the courier booking is persisted in its own
+        // short write right after the provider call (Phase 2b). A retry that finds a
+        // BOOKED shipment with an AWB on a still-unshipped order therefore resumes
+        // Phase 3 from the stored booking instead of calling the courier again
+        // (which would double-book or orphan the first AWB). Any other existing AWB
+        // (e.g. a CANCELLED booking) is left alone, as before.
         if (order.shipment?.awbNumber) {
+          if (order.shipment.status !== ShipmentStatus.BOOKED) {
+            return;
+          }
+          const storedProvider = order.shipment.provider;
+          const resumeAdapter =
+            storedProvider === ShippingProvider.SHIPROCKET
+              ? shippingAdapterFactory('shiprocket')
+              : storedProvider === ShippingProvider.DELHIVERY
+                ? shippingAdapterFactory('delhivery')
+                : null;
+          await finalizeBookedShipment({
+            order,
+            provider: storedProvider,
+            adapter: resumeAdapter ?? shippingProvider,
+            booking: {
+              awbNumber: order.shipment.awbNumber,
+              trackingUrl: order.shipment.trackingUrl,
+              estimatedDays: estimatedDaysFrom(order.shipment.estimatedDelivery),
+              shiprocketOrderId: (order as Record<string, unknown>)['shiprocketOrderId'] as string | null | undefined,
+              shiprocketShipmentId: order.shipment.shiprocketShipmentId
+            }
+          });
           return;
         }
 
@@ -677,49 +844,20 @@ export function createShippingWorker(
             ? ShippingProvider.SHIPROCKET
             : ShippingProvider.DELHIVERY);
 
-        const shiprocketFields = {
-          ...(shipment.shiprocketShipmentId != null
-            ? { shiprocketShipmentId: shipment.shiprocketShipmentId }
-            : {}),
-          ...(shipment.labelUrl != null ? { labelUrl: shipment.labelUrl } : {})
-        };
+        const estimatedDelivery =
+          shipment.estimatedDays != null
+            ? new Date(Date.now() + shipment.estimatedDays * 24 * 60 * 60 * 1000)
+            : null;
 
-        // --- Phase 3: short write-only transaction (result persistence) ---
-        // Re-check order is still shippable before persisting AWB. If the order was
-        // cancelled while the provider call was in flight, compensate by cancelling AWB.
-        let awbToCancel: string | null = null;
+        // --- Phase 2b: persist the courier booking immediately (be-rel-02) ---
+        // The AWB now exists at the courier. Record it in its own short write BEFORE
+        // any status/notification work so that if Phase 3 fails (DB blip, deadlock,
+        // crash) the BullMQ retry sees the stored AWB and resumes Phase 3 instead of
+        // booking the courier a second time.
         await prisma.$transaction(async (tx) => {
-          const freshOrder = await tx.order.findUnique({
-            where: { id: order.id },
-            select: {
-              id: true,
-              status: true,
-              shipment: {
-                select: {
-                  id: true,
-                  awbNumber: true
-                }
-              }
-            }
-          });
-          if (
-            !freshOrder ||
-            freshOrder.status === OrderStatus.CANCELLED ||
-            (freshOrder.status !== OrderStatus.CONFIRMED && freshOrder.status !== OrderStatus.PROCESSING) ||
-            !canTransitionOrder(freshOrder.status, OrderStatus.SHIPPED)
-          ) {
-            awbToCancel = shipment.awbNumber;
-            return;
-          }
-
-          const estimatedDelivery =
-            shipment.estimatedDays != null
-              ? new Date(Date.now() + shipment.estimatedDays * 24 * 60 * 60 * 1000)
-              : null;
-
           await upsertShipmentCompat(tx, {
             orderId: order.id,
-            existingShipmentId: freshOrder.shipment?.id ?? order.shipment?.id,
+            existingShipmentId: order.shipment?.id,
             data: {
               provider: resolvedProvider,
               status: ShipmentStatus.BOOKED,
@@ -727,77 +865,33 @@ export function createShippingWorker(
               ...(shipment.trackingUrl ? { trackingUrl: shipment.trackingUrl } : {}),
               ...(estimatedDelivery ? { estimatedDelivery } : {}),
               webhookPayload: sanitizeProviderPayload(shipment.providerPayload),
-              ...shiprocketFields
+              ...(shipment.shiprocketShipmentId != null
+                ? { shiprocketShipmentId: shipment.shiprocketShipmentId }
+                : {}),
+              ...(shipment.labelUrl != null ? { labelUrl: shipment.labelUrl } : {})
             }
           });
-
-          const shipped = await updateOrderStatusWithCasCompat(tx, {
-            orderId: order.id,
-            fromStatus: freshOrder.status,
-            toStatus: OrderStatus.SHIPPED,
-            extraData: {
-              ...(shipment.shiprocketOrderId != null ? { shiprocketOrderId: shipment.shiprocketOrderId } : {})
-            }
-          });
-
-          if (shipped) {
-            const providerLabel = resolvedProvider === ShippingProvider.SHIPROCKET ? 'Shiprocket' : 'Delhivery';
-            await tx.orderStatusHistory.create({
-              data: {
-                orderId: order.id,
-                fromStatus: freshOrder.status,
-                toStatus: OrderStatus.SHIPPED,
-                triggeredBy: 'ADMIN',
-                note: `Shipment booked by admin via ${providerLabel}`
-              }
+          if (shipment.shiprocketOrderId != null) {
+            // Needed by any later cancel (Shiprocket cancels by ORDER id).
+            await tx.order.update({
+              where: { id: order.id },
+              data: { shiprocketOrderId: shipment.shiprocketOrderId }
             });
-
-            // Notify customer immediately on shipment booking
-            const userEmail = order.user?.email;
-            const userPhone = order.user?.phone;
-            if (userEmail || userPhone) {
-              const estimatedDeliveryText =
-                shipment.estimatedDays != null
-                  ? `Estimated delivery in ${shipment.estimatedDays} day${shipment.estimatedDays === 1 ? '' : 's'}. `
-                  : '';
-              await enqueueNotificationOutboxOrQueue(tx, notificationsQueue, 'send-primary', {
-                email: userEmail,
-                phone: userPhone,
-                template: 'OrderShipped',
-                data: {
-                  orderId: order.id,
-                  orderNumber: (order as typeof order & { orderNumber?: string }).orderNumber ?? order.id,
-                  awb: shipment.awbNumber,
-                  trackingUrl: shipment.trackingUrl ?? '',
-                  estimatedDeliveryText,
-                  ...(shipment.estimatedDays != null ? { estimatedDays: shipment.estimatedDays } : {})
-                }
-              }, `shipping:primary:${order.id}:shipped`);
-            }
-          } else {
-            awbToCancel = shipment.awbNumber;
           }
         });
 
-        if (awbToCancel) {
-          try {
-            // Use the same adapter that created the AWB, not the global env-based one.
-            await effectiveShippingProvider.cancelShipment(awbToCancel);
-          } catch (error) {
-            await alertFn({
-              prisma,
-              template: 'ShipmentCancellation',
-              channel: 'UNKNOWN',
-              recipient: order.id,
-              errorMessage: error instanceof Error ? error.message : 'Unknown shipment cancel error',
-              failureStage: 'CORE_LOGIC',
-              domain: 'shipping',
-              component: 'create-shipment-compensating-cancel',
-              queueName: 'shipping',
-              jobName: 'create-shipment'
-            });
+        await finalizeBookedShipment({
+          order,
+          provider: resolvedProvider,
+          adapter: effectiveShippingProvider,
+          booking: {
+            awbNumber: shipment.awbNumber,
+            trackingUrl: shipment.trackingUrl,
+            estimatedDays: shipment.estimatedDays,
+            shiprocketOrderId: shipment.shiprocketOrderId,
+            shiprocketShipmentId: shipment.shiprocketShipmentId
           }
-        }
+        });
         return;
       }
 
