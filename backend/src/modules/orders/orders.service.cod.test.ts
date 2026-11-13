@@ -89,7 +89,7 @@ describe('OrdersService createOrder — COD', () => {
         })
       },
       orderItem: { create: vi.fn().mockResolvedValue(undefined) },
-      orderStatusHistory: { create: vi.fn().mockResolvedValue(undefined) },
+      orderStatusHistory: { create: vi.fn().mockResolvedValue(undefined), findFirst: vi.fn().mockResolvedValue(null) },
       cartItem: { deleteMany: vi.fn().mockResolvedValue(undefined) },
       payment: { create: vi.fn().mockResolvedValue({ id: 'pay_1' }) }
     };
@@ -803,7 +803,7 @@ describe('OrdersService cancelMyOrder — cancellation window', () => {
       storeSettings: {
         findUnique: vi.fn().mockResolvedValue({ cancellationWindowHours: windowHours })
       },
-      orderStatusHistory: { create: vi.fn().mockResolvedValue(undefined) },
+      orderStatusHistory: { create: vi.fn().mockResolvedValue(undefined), findFirst: vi.fn().mockResolvedValue(null) },
       inventory: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
       couponUsage: {
         findMany: vi.fn().mockResolvedValue([]),

@@ -23,13 +23,17 @@ describe('refunds worker', () => {
   let processor: undefined | ((job: TestJob, token?: string) => Promise<void>);
   let failedHandler: ((job: unknown, error: Error) => void) | undefined;
   const razorpayInitiateRefund = vi.fn();
+  const findRefundByReference = vi.fn();
+  const fetchOrderNotes = vi.fn();
+  const paymentFindFirst = vi.fn();
   const orderFindUnique = vi.fn();
   const tx = {
     order: {
       findUnique: orderFindUnique
     },
     payment: {
-      updateMany: vi.fn()
+      updateMany: vi.fn(),
+      findFirst: paymentFindFirst
     },
     orderStatusHistory: {
       create: vi.fn()
@@ -57,7 +61,9 @@ describe('refunds worker', () => {
       createOrder: vi.fn(),
       verifyPaymentSignature: vi.fn(),
       verifyWebhookSignature: vi.fn(),
-      initiateRefund: razorpayInitiateRefund
+      initiateRefund: razorpayInitiateRefund,
+      findRefundByReference,
+      fetchOrderNotes
     };
   }
 
@@ -117,6 +123,11 @@ describe('refunds worker', () => {
     failedHandler = undefined;
     sendTechnicalFailureAlert.mockReset();
     razorpayInitiateRefund.mockReset();
+    findRefundByReference.mockReset();
+    findRefundByReference.mockResolvedValue(null);
+    fetchOrderNotes.mockReset();
+    fetchOrderNotes.mockResolvedValue({ userId: 'user_1' });
+    paymentFindFirst.mockReset();
     orderFindUnique.mockReset();
     tx.payment.updateMany.mockReset();
     tx.orderStatusHistory.create.mockReset();
@@ -278,6 +289,97 @@ describe('refunds worker', () => {
 
     expect(razorpayInitiateRefund).not.toHaveBeenCalled();
     expect(tx.payment.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('first attempt sends a stable refundReference and does not look anything up', async () => {
+    startWorker();
+    orderFindUnique.mockResolvedValue(capturedOrder());
+    razorpayInitiateRefund.mockResolvedValue({ providerRefundId: 'rfnd_1', status: 'processed', amount: 10000 });
+    tx.payment.updateMany.mockResolvedValue({ count: 1 });
+
+    await processor?.(makeJob({ orderId: 'order_1', reason: 'r' }, { id: 'job_ref', attemptsMade: 0 }));
+
+    expect(findRefundByReference).not.toHaveBeenCalled();
+    expect(razorpayInitiateRefund).toHaveBeenCalledWith(
+      expect.objectContaining({ notes: expect.objectContaining({ refundReference: 'job_ref:order_1' }) })
+    );
+  });
+
+  it('a retry after an ambiguous failure adopts the refund the provider already accepted (no double refund)', async () => {
+    startWorker();
+    orderFindUnique.mockResolvedValue(capturedOrder());
+    tx.payment.updateMany.mockResolvedValue({ count: 1 });
+    findRefundByReference.mockResolvedValue({ providerRefundId: 'rfnd_first', status: 'processed', amount: 2500 });
+
+    await processor?.(
+      makeJob({ orderId: 'order_1', reason: 'r', refundAmountPaise: 2500 }, { id: 'job_ref', attemptsMade: 1 })
+    );
+
+    expect(findRefundByReference).toHaveBeenCalledWith({ providerPaymentId: 'pay_1', reference: 'job_ref:order_1' });
+    expect(razorpayInitiateRefund).not.toHaveBeenCalled();
+    // Reservation kept (one updateMany: the reserve) — finalised by refund.processed.
+    expect(tx.payment.updateMany).toHaveBeenCalledTimes(1);
+    expect(tx.orderStatusHistory.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ note: expect.stringContaining('ref rfnd_first') })
+    });
+  });
+
+  it('a retry with no matching provider refund sends the refund again', async () => {
+    startWorker();
+    orderFindUnique.mockResolvedValue(capturedOrder());
+    tx.payment.updateMany.mockResolvedValue({ count: 1 });
+    razorpayInitiateRefund.mockResolvedValue({ providerRefundId: 'rfnd_2', status: 'processed', amount: 10000 });
+
+    await processor?.(makeJob({ orderId: 'order_1', reason: 'r' }, { id: 'job_ref', attemptsMade: 2 }));
+
+    expect(findRefundByReference).toHaveBeenCalledOnce();
+    expect(razorpayInitiateRefund).toHaveBeenCalledOnce();
+  });
+
+  it('refunds an orphan capture in full when no payment row exists', async () => {
+    startWorker();
+    paymentFindFirst.mockResolvedValue(null);
+    razorpayInitiateRefund.mockResolvedValue({ providerRefundId: 'rfnd_o', status: 'processed', amount: 9000 });
+
+    await processor?.({
+      ...makeJob({ providerPaymentId: 'pay_o', providerOrderId: 'order_rzp_o', reason: 'orphan' }),
+      name: 'refund-orphan-capture'
+    });
+
+    expect(fetchOrderNotes).toHaveBeenCalledWith('order_rzp_o');
+    expect(razorpayInitiateRefund).toHaveBeenCalledWith({
+      providerPaymentId: 'pay_o',
+      notes: { providerOrderId: 'order_rzp_o', reason: 'orphan', refundReference: 'job_1:pay_o' }
+    });
+    expect(sendTechnicalFailureAlert).toHaveBeenCalledWith(
+      expect.objectContaining({ template: 'OrphanPaymentCapture', recipient: 'pay_o', terminalFailure: false })
+    );
+  });
+
+  it('never refunds a capture on a Razorpay order this platform did not create (payment links, POS)', async () => {
+    startWorker();
+    paymentFindFirst.mockResolvedValue(null);
+    fetchOrderNotes.mockResolvedValue({ source: 'payment_link' });
+
+    await processor?.({
+      ...makeJob({ providerPaymentId: 'pay_x', providerOrderId: 'order_rzp_x', reason: 'orphan' }),
+      name: 'refund-orphan-capture'
+    });
+
+    expect(razorpayInitiateRefund).not.toHaveBeenCalled();
+    expect(sendTechnicalFailureAlert).not.toHaveBeenCalled();
+  });
+
+  it('skips the orphan refund when the order was materialised in the meantime', async () => {
+    startWorker();
+    paymentFindFirst.mockResolvedValue({ id: 'payment_late' });
+
+    await processor?.({
+      ...makeJob({ providerPaymentId: 'pay_o', providerOrderId: 'order_rzp_o', reason: 'orphan' }),
+      name: 'refund-orphan-capture'
+    });
+
+    expect(razorpayInitiateRefund).not.toHaveBeenCalled();
   });
 
   it('sends terminal failure alert when refund job exhausts all attempts', () => {

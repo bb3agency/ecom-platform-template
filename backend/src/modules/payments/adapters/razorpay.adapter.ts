@@ -3,6 +3,7 @@ import { PaymentProviderError } from '@common/errors/payment-provider-error';
 import {
   CreatePaymentOrderInput,
   CreatePaymentOrderResult,
+  FindRefundByReferenceInput,
   InitiateRefundInput,
   InitiateRefundResult,
   PaymentProviderAdapter
@@ -19,6 +20,11 @@ type RazorpayRefundResponse = {
   id: string;
   amount: number;
   status: string;
+  notes?: Record<string, unknown> | unknown[];
+};
+
+type RazorpayRefundListResponse = {
+  items?: RazorpayRefundResponse[];
 };
 
 export class RazorpayAdapter implements PaymentProviderAdapter {
@@ -97,6 +103,39 @@ export class RazorpayAdapter implements PaymentProviderAdapter {
       status: response.status,
       amount: response.amount
     };
+  }
+
+  async findRefundByReference(input: FindRefundByReferenceInput): Promise<InitiateRefundResult | null> {
+    const response = await this.request<RazorpayRefundListResponse>(
+      `/payments/${encodeURIComponent(input.providerPaymentId)}/refunds?count=100`,
+      { method: 'GET' }
+    );
+    const match = (response.items ?? []).find((refund) => {
+      const notes = refund.notes;
+      return (
+        notes !== undefined &&
+        !Array.isArray(notes) &&
+        notes['refundReference'] === input.reference
+      );
+    });
+    return match ? { providerRefundId: match.id, status: match.status, amount: match.amount } : null;
+  }
+
+  async fetchOrderNotes(providerOrderId: string): Promise<Record<string, string> | null> {
+    const order = await this.request<{ id?: string; notes?: Record<string, unknown> | unknown[] }>(
+      `/orders/${encodeURIComponent(providerOrderId)}`,
+      { method: 'GET' }
+    );
+    if (!order.id) {
+      return null;
+    }
+    const notes = order.notes;
+    if (!notes || Array.isArray(notes)) {
+      return {};
+    }
+    return Object.fromEntries(
+      Object.entries(notes).filter((entry): entry is [string, string] => typeof entry[1] === 'string')
+    );
   }
 
   private async request<T>(path: string, init: RequestInit): Promise<T> {

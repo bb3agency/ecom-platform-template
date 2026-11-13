@@ -107,6 +107,17 @@ class CircuitBreakerPaymentAdapter implements PaymentProviderAdapter {
     return this.delegate.verifyWebhookSignature(input);
   }
 
+  async findRefundByReference(
+    input: Parameters<NonNullable<PaymentProviderAdapter['findRefundByReference']>>[0]
+  ) {
+    // Read-only lookup: never trips or consults the breaker — it is what makes a retry safe.
+    return this.delegate.findRefundByReference ? this.delegate.findRefundByReference(input) : null;
+  }
+
+  async fetchOrderNotes(providerOrderId: string) {
+    return this.delegate.fetchOrderNotes ? this.delegate.fetchOrderNotes(providerOrderId) : null;
+  }
+
   async initiateRefund(input: Parameters<PaymentProviderAdapter['initiateRefund']>[0]) {
     this.assertClosed();
     try {

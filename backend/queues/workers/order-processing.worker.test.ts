@@ -26,7 +26,8 @@ const state = {
     },
     orderStatusHistory: {
       create: vi.fn(),
-      findFirst: vi.fn()
+      findFirst: vi.fn(),
+      findMany: vi.fn().mockResolvedValue([])
     },
     coupon: {
       update: vi.fn(),
@@ -117,6 +118,8 @@ describe('order-processing worker error and retry behavior', () => {
     state.tx.order.updateMany.mockReset();
     state.tx.orderStatusHistory.create.mockReset();
     state.tx.orderStatusHistory.findFirst.mockReset();
+    state.tx.orderStatusHistory.findMany.mockReset();
+    state.tx.orderStatusHistory.findMany.mockResolvedValue([]);
     state.tx.coupon.update.mockReset();
     state.tx.coupon.updateMany.mockReset();
     state.tx.couponUsage.findUnique.mockReset();
@@ -1075,6 +1078,187 @@ describe('order-processing worker error and retry behavior', () => {
         })
       })
     );
+  });
+
+  it('new-flow PREPAID: insufficient stock after capture cancels the CONFIRMED order and queues the refund', async () => {
+    boot();
+    state.tx.orderStatusHistory.findFirst.mockResolvedValue(null);
+    const confirmedOrder = {
+      id: 'order_new_1',
+      orderNumber: 'ORD-NEW1',
+      userId: 'user_1',
+      status: 'CONFIRMED',
+      discountAmount: 0,
+      coupons: [],
+      user: { email: 'customer@example.com', phone: null },
+      items: [{ variantId: 'variant_1', quantity: 1 }],
+      payment: { id: 'payment_new_1', status: 'CAPTURED' }
+    };
+    state.tx.order.findUnique.mockResolvedValue(confirmedOrder);
+    state.tx.inventory.updateMany.mockResolvedValue({ count: 0 });
+    state.tx.payment.findFirst.mockResolvedValue({ id: 'payment_new_1', orderId: 'order_new_1', status: 'CAPTURED' });
+    state.tx.order.updateMany.mockResolvedValue({ count: 1 });
+
+    await state.processor?.({
+      name: 'process-order-update',
+      data: {
+        orderId: 'order_new_1',
+        toStatus: 'CONFIRMED',
+        triggeredBy: 'PREPAID_CONFIRMED',
+        providerOrderId: 'order_rzp_new_1',
+        providerPaymentId: 'pay_new_1'
+      }
+    });
+
+    expect(state.tx.order.updateMany).toHaveBeenCalledWith({
+      where: { id: 'order_new_1', status: 'CONFIRMED' },
+      data: { status: 'CANCELLED' }
+    });
+    expect(state.tx.orderStatusHistory.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ fromStatus: 'CONFIRMED', toStatus: 'CANCELLED', triggeredBy: 'SYSTEM' })
+    });
+    // Captured payment untouched; full auto-refund queued; customer told.
+    expect(state.tx.payment.update).not.toHaveBeenCalled();
+    expect(state.notificationsAdd).toHaveBeenCalledWith(
+      'initiate-razorpay-refund',
+      expect.objectContaining({ orderId: 'order_new_1', initiatedBy: 'SYSTEM' }),
+      { jobId: 'auto-refund-pay_new_1' }
+    );
+    expect(state.notificationsAdd).toHaveBeenCalledWith(
+      'send-primary',
+      expect.objectContaining({ template: 'OrderCancelled' }),
+      expect.anything()
+    );
+  });
+
+  it('a late payment.failed for an earlier attempt never overwrites a captured payment', async () => {
+    boot();
+    state.tx.payment.findFirst.mockResolvedValue({
+      id: 'payment_1',
+      orderId: 'order_1',
+      providerPaymentId: 'pay_B',
+      status: 'CAPTURED'
+    });
+
+    await state.processor?.({
+      name: 'payment-webhook',
+      data: { providerOrderId: 'order_rzp_1', providerPaymentId: 'pay_A', event: 'payment.failed', payload: '{}' }
+    });
+
+    expect(state.tx.payment.update).not.toHaveBeenCalled();
+    expect(state.notificationsAdd).not.toHaveBeenCalled();
+  });
+
+  it('payment.captured with no local payment schedules a delayed orphan-capture check', async () => {
+    boot();
+    state.paymentFindFirst.mockResolvedValue(null);
+
+    await state.processor?.({
+      name: 'payment-webhook',
+      data: { providerOrderId: 'order_rzp_orphan', providerPaymentId: 'pay_orphan', event: 'payment.captured', payload: '{}' }
+    });
+
+    expect(state.notificationsAdd).toHaveBeenCalledWith(
+      'orphan-capture-check',
+      { providerOrderId: 'order_rzp_orphan', providerPaymentId: 'pay_orphan' },
+      { jobId: 'orphan-capture-check-pay_orphan', delay: 45 * 60 * 1000 }
+    );
+  });
+
+  it('orphan-capture check queues the refund when still no order exists', async () => {
+    boot();
+    state.paymentFindFirst.mockResolvedValue(null);
+
+    await state.processor?.({
+      name: 'orphan-capture-check',
+      data: { providerOrderId: 'order_rzp_orphan', providerPaymentId: 'pay_orphan' }
+    });
+
+    expect(state.notificationsAdd).toHaveBeenCalledWith(
+      'refund-orphan-capture',
+      expect.objectContaining({ providerPaymentId: 'pay_orphan', providerOrderId: 'order_rzp_orphan' }),
+      { jobId: 'refund-orphan-capture-pay_orphan' }
+    );
+  });
+
+  it('orphan-capture check does nothing once confirm-prepaid recorded the payment', async () => {
+    boot();
+    state.paymentFindFirst.mockResolvedValue({ id: 'payment_late' });
+
+    await state.processor?.({
+      name: 'orphan-capture-check',
+      data: { providerOrderId: 'order_rzp_late', providerPaymentId: 'pay_late' }
+    });
+
+    expect(state.notificationsAdd).not.toHaveBeenCalled();
+    expect(sendTechnicalFailureAlert).not.toHaveBeenCalled();
+  });
+
+  it('keys the credit-note job by provider refund id so equal partial refunds each get one', async () => {
+    boot();
+    state.tx.payment.findFirst.mockResolvedValue({
+      id: 'payment_1',
+      orderId: 'order_1',
+      providerPaymentId: 'pay_1',
+      status: 'CAPTURED',
+      amount: 100000,
+      refundedAmountPaise: 0,
+      refundPendingAmountPaise: 20000
+    });
+    state.tx.order.findUnique.mockResolvedValue({ id: 'order_1', status: 'DELIVERED', user: { email: null, phone: null } });
+
+    await state.processor?.({
+      name: 'payment-webhook',
+      data: {
+        providerOrderId: 'order_rzp_1',
+        providerPaymentId: 'pay_1',
+        providerRefundId: 'rfnd_A',
+        refundAmountPaise: 20000,
+        event: 'refund.processed',
+        payload: '{}'
+      }
+    });
+
+    expect(state.notificationsAdd).toHaveBeenCalledWith(
+      'generate-credit-note',
+      expect.objectContaining({ orderId: 'order_1', refundAmountPaise: 20000, providerRefundId: 'rfnd_A' }),
+      { jobId: 'generate-credit-note-order_1-rfnd_A' }
+    );
+  });
+
+  it('gives a second credit note on the same order its own serial and skips a redelivered refund', async () => {
+    const invoiceStorageAdapter = {
+      uploadInvoicePdf: vi.fn().mockResolvedValue({ storageReference: 'cn.pdf', providerPayload: {} }),
+      readInvoicePdf: vi.fn()
+    };
+    boot(invoiceStorageAdapter);
+    state.tx.invoice.findUnique.mockResolvedValue({ id: 'inv_1', invoiceNumber: 'INV-2026-00042' });
+    state.tx.order.findUnique.mockResolvedValue({
+      id: 'order_1',
+      orderNumber: 'ORD-1',
+      status: 'DELIVERED',
+      total: 100000,
+      payment: { amount: 100000 },
+      shippingAddress: { fullName: 'Test Customer' }
+    });
+    state.tx.orderStatusHistory.findMany.mockResolvedValue([
+      { note: 'CREDIT_NOTE|{"creditNoteNumber":"CN-2026-00042","originalInvoiceNumber":"INV-2026-00042","reason":"r","providerRefundId":"rfnd_A"}' }
+    ]);
+
+    await state.processor?.({
+      name: 'generate-credit-note',
+      data: { orderId: 'order_1', reason: 'Refund processed (20000 paise)', refundAmountPaise: 20000, providerRefundId: 'rfnd_B' }
+    });
+    expect(invoiceStorageAdapter.uploadInvoicePdf).toHaveBeenCalledWith(
+      expect.objectContaining({ invoiceNumber: 'CN-2026-00042-2' })
+    );
+
+    invoiceStorageAdapter.uploadInvoicePdf.mockClear();
+    await state.processor?.({
+      name: 'generate-credit-note',
+      data: { orderId: 'order_1', reason: 'Refund processed (20000 paise)', refundAmountPaise: 20000, providerRefundId: 'rfnd_A' }
+    });
+    expect(invoiceStorageAdapter.uploadInvoicePdf).not.toHaveBeenCalled();
   });
 
   it('sends terminal failure alert when order-processing job exhausts all attempts', () => {

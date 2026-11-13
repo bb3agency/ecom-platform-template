@@ -49,6 +49,7 @@ import { recordCheckoutPath, recordWebhookEvent } from '@common/observability/me
 import { isStorefrontCouponsEnabled } from '@common/coupons/coupons-feature';
 import { assertCouponWithinUsageLimits, finalizeCouponUsageForOrder, releaseCouponUsageForOrder, type CouponLimitClient } from '@common/coupons/coupon-usage';
 import { restoreOrderInventoryOnCancel } from '@common/orders/restore-inventory-on-cancel';
+import { releaseReservationsForOrder } from '@common/orders/release-reservations';
 import {
   AdminRetriggerNotificationInput,
   AdminOrderExportQuery,
@@ -92,6 +93,38 @@ type CheckoutCartItem = {
   };
 };
 
+type PriceCheckCartLine = {
+  id: string;
+  variantId: string;
+  priceSnapshot: number;
+  variant: { price?: number | null };
+};
+
+type StaleCartPrice = {
+  cartItemId: string;
+  variantId: string;
+  previousPricePaise: number;
+  currentPricePaise: number;
+};
+
+/** Cart lines whose add-time snapshot no longer matches the live variant price. */
+export function findStaleCartPrices(lines: PriceCheckCartLine[]): StaleCartPrice[] {
+  return lines.flatMap((line) => {
+    const livePrice = line.variant.price;
+    if (typeof livePrice !== 'number' || livePrice === line.priceSnapshot) {
+      return [];
+    }
+    return [
+      {
+        cartItemId: line.id,
+        variantId: line.variantId,
+        previousPricePaise: line.priceSnapshot,
+        currentPricePaise: livePrice
+      }
+    ];
+  });
+}
+
 /** One order's worth of a cart after splitting across fulfilment channels. */
 type FulfilmentGroup = {
   channel: 'LOCAL' | 'COURIER';
@@ -117,6 +150,35 @@ export class OrdersService {
     this.razorpayAdapter = createPaymentProvider();
     this.settingsService = new SettingsService(fastify);
     this.checkoutRisk = fastify.checkoutRisk ?? new CheckoutRiskService(fastify);
+  }
+
+  /**
+   * Re-price stale cart lines from the live variant price (outside any checkout transaction,
+   * so the refresh survives the rejection) and refuse checkout with PRICE_CHANGED so the
+   * customer reviews the new total before paying. Never charge a days-old snapshot.
+   */
+  private async rejectStaleCartPrices(stale: StaleCartPrice[]): Promise<void> {
+    if (stale.length === 0) {
+      return;
+    }
+    for (const line of stale) {
+      await this.fastify.prisma.cartItem.update({
+        where: { id: line.cartItemId },
+        data: { priceSnapshot: line.currentPricePaise }
+      });
+    }
+    throw new AppError(
+      ERROR_CODES.PRICE_CHANGED,
+      'Some prices in your cart have changed. Please review the updated total before paying.',
+      409,
+      {
+        items: stale.map(({ variantId, previousPricePaise, currentPricePaise }) => ({
+          variantId,
+          previousPricePaise,
+          currentPricePaise
+        }))
+      }
+    );
   }
 
   private async updateOrderStatusWithCas(input: {
@@ -612,6 +674,7 @@ export class OrdersService {
       );
     }
 
+    let stalePrices: StaleCartPrice[] = [];
     const createdOrder = await this.fastify.prisma.$transaction(async (tx) => {
       const cart = await tx.cart.findFirst({
         where: { userId },
@@ -649,6 +712,13 @@ export class OrdersService {
           `"${inactiveItem.variant.product.name}" is no longer available. Remove it from your cart to continue.`,
           400
         );
+      }
+
+      stalePrices = findStaleCartPrices(cart.items);
+      if (stalePrices.length > 0) {
+        // Abort the transaction; the snapshots are refreshed outside it (below) so the
+        // refresh is not rolled back with the rejected checkout.
+        throw new AppError(ERROR_CODES.PRICE_CHANGED, 'Cart prices changed', 409);
       }
 
       const storeSettings = await tx.storeSettings.findUnique({
@@ -875,6 +945,11 @@ export class OrdersService {
         exposeProviderReferences: false,
         exposeInternalReferences: false
       });
+    }).catch(async (error: unknown) => {
+      if (stalePrices.length > 0) {
+        await this.rejectStaleCartPrices(stalePrices);
+      }
+      throw error;
     });
     recordCheckoutPath('/api/v1/orders', 'success');
 
@@ -1345,7 +1420,8 @@ export class OrdersService {
 
   async initiatePayment(userId: string, input: InitiatePaymentInput, opts?: { clientIp?: string }) {
     const order = await this.fastify.prisma.order.findFirst({
-      where: { id: input.orderId, userId }
+      where: { id: input.orderId, userId },
+      include: { payment: true }
     });
     if (!order) {
       throw new AppError(ERROR_CODES.NOT_FOUND, 'Order not found', 404);
@@ -1372,6 +1448,36 @@ export class OrdersService {
       orderTotalPaise: order.total,
       ...(opts?.clientIp !== undefined ? { clientIp: opts.clientIp } : {})
     });
+
+    // Reuse the Razorpay order already issued for this order while it is still payable for
+    // the same amount. Minting a new one on every initiate/retry orphaned the previous
+    // order_id: a customer paying it from a still-open modal or second tab was charged, but
+    // the webhook and verify could no longer match the payment to this order. Razorpay
+    // accepts further attempts on an order_id after a failed one, so FAILED reuses too.
+    const reusablePayment = order.payment;
+    if (
+      reusablePayment &&
+      reusablePayment.provider === PaymentProvider.RAZORPAY &&
+      reusablePayment.providerOrderId &&
+      reusablePayment.amount === order.total &&
+      (reusablePayment.status === PaymentStatus.CREATED || reusablePayment.status === PaymentStatus.FAILED)
+    ) {
+      const payment =
+        reusablePayment.status === PaymentStatus.FAILED
+          ? await this.fastify.prisma.payment.update({
+              where: { id: reusablePayment.id },
+              data: { status: PaymentStatus.CREATED }
+            })
+          : reusablePayment;
+      recordCheckoutPath('/api/v1/payments/initiate', 'success');
+      return {
+        orderId: order.id,
+        provider: payment.provider,
+        providerOrderId: payment.providerOrderId,
+        amount: payment.amount,
+        currency: payment.currency
+      };
+    }
 
     let razorpayOrder: { providerOrderId: string; amount: number; currency: string };
     try {
@@ -1577,8 +1683,29 @@ export class OrdersService {
       select: { minOrderValuePaise: true }
     });
 
+    await this.rejectStaleCartPrices(findStaleCartPrices(cart.items));
+
+    // Same availability rule as createOrder: stock held by OTHER carts' live reservations is
+    // not available to this shopper. Raw inventory.quantity let two shoppers both pay for
+    // the last unit, and the loser's paid order could never be fulfilled.
+    const reservationDelegate = (
+      this.fastify.prisma as unknown as { cartReservation?: Prisma.TransactionClient['cartReservation'] }
+    ).cartReservation;
     for (const item of cart.items) {
-      const available = Math.max((item.variant.inventory?.quantity ?? 0), 0);
+      const reservedByOtherCarts = reservationDelegate
+        ? await reservationDelegate.aggregate({
+            where: {
+              variantId: item.variantId,
+              cartId: { not: cart.id },
+              expiresAt: { gt: new Date() }
+            },
+            _sum: { quantity: true }
+          })
+        : { _sum: { quantity: 0 } };
+      const available = Math.max(
+        (item.variant.inventory?.quantity ?? 0) - (reservedByOtherCarts._sum.quantity ?? 0),
+        0
+      );
       if (available < item.quantity) {
         throw new AppError(ERROR_CODES.INSUFFICIENT_STOCK, `Insufficient stock for variant ${item.variantId}`, 422);
       }
@@ -1740,7 +1867,9 @@ export class OrdersService {
       where: { providerOrderId: input.razorpayOrderId },
       include: { order: { include: { items: true, payment: true, invoice: { select: { invoiceNumber: true, pdfUrl: true, issuedAt: true } }, shipment: { include: { events: { orderBy: { occurredAt: 'desc' } } } }, statusHistory: { orderBy: { createdAt: 'desc' } }, couponUsages: { include: { coupon: { select: { code: true } } } } } } }
     });
-    if (existing?.order && existing.order.status === OrderStatus.CONFIRMED) {
+    if (existing?.order) {
+      // Any order already materialised for this Razorpay order (CONFIRMED, or auto-cancelled
+      // and refunded) is THE result — never create a second order for one payment.
       return this.serializeOrder(existing.order, { exposeProviderReferences: false, exposeInternalReferences: false });
     }
 
@@ -1840,12 +1969,66 @@ export class OrdersService {
         await tx.cartItem.deleteMany({ where: { cartId: session.cartId } });
         await tx.cart.update({ where: { id: session.cartId }, data: { couponId: null } });
 
-        if (effectiveCoupon) {
-          await finalizeCouponUsageForOrder(tx, {
-            orderId: order.id,
-            userId,
-            discountAmount: session.discountAmount,
-            coupons: [{ id: effectiveCoupon.id, usesCount: effectiveCoupon.usesCount }]
+        // The money is already captured: from here on NOTHING may throw for a business
+        // reason, or the rollback strands the payment with no order. A coupon whose last
+        // slot (or this customer's per-user allowance) was used since prepare-checkout is
+        // reported, and the order is cancelled + fully refunded instead.
+        const couponOutcome = effectiveCoupon
+          ? await finalizeCouponUsageForOrder(
+              tx,
+              {
+                orderId: order.id,
+                userId,
+                discountAmount: session.discountAmount,
+                coupons: [{ id: effectiveCoupon.id, usesCount: effectiveCoupon.usesCount }]
+              },
+              { onLimitExceeded: 'report' }
+            )
+          : { limitExceeded: false };
+
+        if (couponOutcome.limitExceeded) {
+          await tx.order.update({ where: { id: order.id }, data: { status: OrderStatus.CANCELLED } });
+          await releaseReservationsForOrder(tx, order.id);
+          await tx.orderStatusHistory.create({
+            data: {
+              orderId: order.id,
+              fromStatus: OrderStatus.CONFIRMED,
+              toStatus: OrderStatus.CANCELLED,
+              triggeredBy: 'SYSTEM',
+              note: 'Auto-cancelled: the coupon usage limit was reached before payment completed. Full refund issued.'
+            }
+          });
+          await tx.outboxMessage.create({
+            data: {
+              queueName: 'refunds',
+              jobName: 'initiate-razorpay-refund',
+              payload: {
+                orderId: order.id,
+                reason: 'Auto-refund: coupon usage limit reached before payment completed',
+                initiatedBy: 'SYSTEM',
+                sourceStatus: OrderStatus.CANCELLED
+              } as Prisma.InputJsonValue,
+              jobId: `auto-refund-coupon-limit-${order.id}`
+            }
+          });
+        } else {
+          // Side effects (inventory deduction, email, invoice) are enqueued in the SAME
+          // transaction as the order: a separate insert after commit could fail and leave a
+          // paid CONFIRMED order that no job would ever process.
+          await tx.outboxMessage.create({
+            data: {
+              queueName: 'orderProcessing',
+              jobName: 'process-order-update',
+              payload: {
+                orderId: order.id,
+                toStatus: OrderStatus.CONFIRMED,
+                triggeredBy: 'PREPAID_CONFIRMED',
+                note: 'Payment confirmed',
+                providerOrderId: input.razorpayOrderId,
+                providerPaymentId: input.razorpayPaymentId
+              } as Prisma.InputJsonValue,
+              jobId: `process-order-update-confirmed-${order.id}`
+            }
           });
         }
 
@@ -1862,29 +2045,31 @@ export class OrdersService {
         });
       });
 
-      // Delete checkout session from Redis
-      await this.fastify.redis.del(input.checkoutSessionId);
-
-      // Queue side effects (inventory deduction, email, invoice).
-      await this.enqueueOutboxMessage(
-        'orderProcessing',
-        'process-order-update',
-        {
-          orderId: createdOrder.id,
-          toStatus: OrderStatus.CONFIRMED,
-          triggeredBy: 'PREPAID_CONFIRMED',
-          note: 'Payment confirmed',
-          providerOrderId: input.razorpayOrderId,
-          providerPaymentId: input.razorpayPaymentId
-        },
-        `process-order-update:confirmed:${createdOrder.id}`
-      );
+      // Delete the checkout session only after the order (and its outbox job) committed.
+      // Best-effort: the order exists now, and a replay hits the idempotency check above.
+      try {
+        await this.fastify.redis.del(input.checkoutSessionId);
+      } catch (error) {
+        this.fastify.log?.warn({ err: error, orderId: createdOrder.id }, 'Failed to delete confirmed checkout session');
+      }
 
       await this.enqueueAnalyticsEvent(AnalyticsEventType.PAYMENT_INITIATED, `order:${createdOrder.id}`, userId, {
         orderId: createdOrder.id,
         provider: PaymentProvider.RAZORPAY,
         amount: session.total
       });
+
+      if (createdOrder.status === OrderStatus.CANCELLED) {
+        try {
+          const customer = await this.fastify.prisma.user.findUnique({
+            where: { id: userId },
+            select: { email: true, phone: true }
+          });
+          await this.enqueueOrderCancelledNotifications(createdOrder.id, customer?.email ?? null, customer?.phone ?? null);
+        } catch (error) {
+          this.fastify.log?.warn({ err: error, orderId: createdOrder.id }, 'Failed to notify coupon-limit auto-cancel');
+        }
+      }
 
       recordCheckoutPath('/api/v1/payments/confirm-prepaid', 'success');
       return this.serializeOrder(createdOrder, { exposeProviderReferences: false, exposeInternalReferences: false });

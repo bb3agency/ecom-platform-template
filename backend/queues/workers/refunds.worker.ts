@@ -31,7 +31,28 @@ type RefundsWorkerDeps = {
   now?: () => number;
 };
 
+type RefundOrphanCaptureJobData = {
+  providerPaymentId: string;
+  providerOrderId: string;
+  reason: string;
+};
+
 const DEFAULT_FAST_ATTEMPTS = 3;
+/** Mirrors REFUND_ORPHAN_CAPTURE_JOB in order-processing.worker.ts. */
+const REFUND_ORPHAN_CAPTURE_JOB = 'refund-orphan-capture';
+
+/**
+ * Stable per-logical-refund reference sent as `notes.refundReference`. A BullMQ retry
+ * (fast or slow round) keeps the job id, so a retry can find the refund an earlier,
+ * ambiguous attempt (timeout / network drop) may already have created.
+ */
+function refundReferenceFor(job: Job, subject: string): string {
+  return `${job.id ?? 'job'}:${subject}`;
+}
+
+function isRetryAttempt(job: Job, round: number): boolean {
+  return (job.attemptsMade ?? 0) > 0 || round > 0;
+}
 
 export function createRefundsWorker(
   connection: ConnectionOptions,
@@ -72,9 +93,70 @@ export function createRefundsWorker(
     });
   }
 
+  /** Full refund of a capture that never became a store order (no Payment row exists). */
+  async function refundOrphanCapture(job: Job): Promise<void> {
+    const data = job.data as RefundOrphanCaptureJobData;
+    // Re-check: a late confirm-prepaid may have materialised the order after all.
+    const recorded = await prisma.payment.findFirst({
+      where: {
+        OR: [{ providerOrderId: data.providerOrderId }, { providerPaymentId: data.providerPaymentId }]
+      },
+      select: { id: true }
+    });
+    if (recorded) {
+      return;
+    }
+    // Provenance: only ever refund a capture on a Razorpay order this platform created
+    // (prepare-checkout stamps notes.userId, initiate-payment notes.orderId). Payments
+    // from links, POS or other tools on the same merchant account are left alone.
+    const orderNotes = paymentProvider.fetchOrderNotes
+      ? await paymentProvider.fetchOrderNotes(data.providerOrderId)
+      : null;
+    if (!orderNotes || (!orderNotes['userId'] && !orderNotes['orderId'])) {
+      return;
+    }
+    const refundReference = refundReferenceFor(job, data.providerPaymentId);
+    if (isRetryAttempt(job, 0) && paymentProvider.findRefundByReference) {
+      const existing = await paymentProvider.findRefundByReference({
+        providerPaymentId: data.providerPaymentId,
+        reference: refundReference
+      });
+      if (existing) {
+        return;
+      }
+    }
+    // Amount omitted → the provider refunds the full captured amount.
+    const result = await paymentProvider.initiateRefund({
+      providerPaymentId: data.providerPaymentId,
+      notes: {
+        providerOrderId: data.providerOrderId,
+        reason: data.reason,
+        refundReference
+      }
+    });
+    void alertFn({
+      prisma,
+      template: 'OrphanPaymentCapture',
+      channel: 'UNKNOWN',
+      recipient: data.providerPaymentId,
+      errorMessage: `Razorpay payment ${data.providerPaymentId} (order ${data.providerOrderId}) was captured but the checkout never created a store order. It has been refunded in full automatically (refund ${result.providerRefundId}).`,
+      failureStage: 'WORKER_TERMINAL',
+      queueName: 'refunds',
+      jobName: job.name,
+      jobId: job.id ?? 'unknown',
+      domain: 'payments',
+      component: 'refunds-worker',
+      terminalFailure: false
+    });
+  }
+
   const worker = new WorkerCtor(
     'refunds',
     async (job: Job, token?: string) => {
+      if (job.name === REFUND_ORPHAN_CAPTURE_JOB) {
+        await refundOrphanCapture(job);
+        return;
+      }
       if (job.name !== 'initiate-razorpay-refund') {
         return;
       }
@@ -148,15 +230,29 @@ export function createRefundsWorker(
       }
 
       // --- Phase 2: external provider call (after the reservation is committed) ---
+      const refundReference = refundReferenceFor(job, gate.orderId);
       try {
-        const result = await paymentProvider.initiateRefund({
-          providerPaymentId: gate.providerPaymentId,
-          amount: gate.refundAmountPaise,
-          notes: {
-            orderId: gate.orderId,
-            reason: data.reason
-          }
-        });
+        // A retry after an ambiguous failure must not refund twice: if the provider
+        // already accepted the earlier attempt, adopt that refund (the reservation stays
+        // held and is finalised by the refund.processed webhook as usual).
+        const alreadyIssued =
+          isRetryAttempt(job, round) && paymentProvider.findRefundByReference
+            ? await paymentProvider.findRefundByReference({
+                providerPaymentId: gate.providerPaymentId,
+                reference: refundReference
+              })
+            : null;
+        const result =
+          alreadyIssued ??
+          (await paymentProvider.initiateRefund({
+            providerPaymentId: gate.providerPaymentId,
+            amount: gate.refundAmountPaise,
+            notes: {
+              orderId: gate.orderId,
+              reason: data.reason,
+              refundReference
+            }
+          }));
         // History is written only once the provider has accepted the refund —
         // never per attempt. The refund.processed webhook later finalises it.
         await writeRefundNote(
@@ -228,7 +324,13 @@ export function createRefundsWorker(
     if (!job) return;
     const attempts = job.opts.attempts ?? 1;
     if (job.attemptsMade < attempts) return;
-    alert(job, job.data as InitiateRazorpayRefundJobData, error instanceof Error ? error.message : String(error), true);
+    const failedData = job.data as Partial<InitiateRazorpayRefundJobData & RefundOrphanCaptureJobData>;
+    alert(
+      job,
+      { orderId: failedData.orderId ?? failedData.providerPaymentId ?? 'unknown', reason: failedData.reason ?? '' },
+      error instanceof Error ? error.message : String(error),
+      true
+    );
   });
 
   return worker;

@@ -36,7 +36,7 @@ describe('reconciliation worker', () => {
       inventory: {
         updateMany: inventoryUpdateMany
       },
-      orderStatusHistory: { create: orderStatusHistoryCreate },
+      orderStatusHistory: { create: orderStatusHistoryCreate, findFirst: vi.fn(async () => null) },
       cart: { findFirst: vi.fn(async () => ({ id: 'cart_1' })) },
       cartReservation: { deleteMany: vi.fn(async () => ({ count: 0 })) },
       couponUsage: {
