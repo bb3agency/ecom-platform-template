@@ -916,11 +916,18 @@ export class UsersService {
   async adminUnbanUser(userId: string, adminUserId: string) {
     const user = await this.fastify.prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, isBanned: true }
+      select: { id: true, isBanned: true, role: true }
     });
 
     if (!user) {
       throw new AppError(ERROR_CODES.NOT_FOUND, 'User not found', 404);
+    }
+
+    // Mirrors adminBanUser: merchant admins manage customers only. An ADMIN row is
+    // banned by ops deactivation (OTP-gated, Layer C); letting users:write clear it
+    // would bypass that control. Admin reactivation goes through the ops flow only.
+    if (user.role === 'ADMIN') {
+      throw new AppError(ERROR_CODES.FORBIDDEN, 'Cannot unban an admin user', 403);
     }
 
     if (!user.isBanned) {
