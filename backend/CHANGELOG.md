@@ -12,6 +12,20 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.5.4] - 2026-11-18
+
+### Fixed
+- **A manually attached AWB could not print a label or schedule a pickup.** Both actions are keyed by Shiprocket's own shipment id, not the AWB, so a parcel booked in the courier's dashboard and attached with `attach-awb` (0.5.2) failed with `Shipment does not have a Shiprocket shipment ID`. The merchant got the AWB and the customer got tracking, but the label still had to be printed from the courier dashboard - which is most of the reason for attaching it here in the first place.
+  Adds `findShipmentByAwb` to the Shiprocket adapter (`/orders?search=` matches an AWB as well as a channel order id) and uses it in three places: `attach-awb` resolves and stores the shipment id up front, and both `print-label` and `schedule-pickup` resolve it on demand when it is missing and persist it, so shipments attached before this release heal themselves on first use rather than needing to be re-attached.
+  The lookup is best effort. A failure never blocks the attach - the AWB and the customer's tracking matter more - and when the id genuinely cannot be found, both actions now say so and point at the courier dashboard instead of reporting a missing internal id the merchant has no way to supply.
+
+**Propagation:**
+- Severity: NORMAL - Layers: backend core (shipping adapter + interface, orders service)
+- Migration: NO - Flag: none - Breaking: NO - Design impact: none (admin console)
+- Delhivery is unaffected: its label and pickup calls key on the AWB directly.
+- Rollback: revert the commit
+
+
 ## [0.5.3] - 2026-11-18
 
 ### Added
