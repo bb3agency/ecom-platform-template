@@ -4127,6 +4127,21 @@ export class OrdersService {
       result = await provider.schedulePickup(shiprocketShipmentId);
     }
 
+    // The provider refused to raise a new pickup request because the shipment is
+    // past that stage. Nothing failed and nothing changed, so say exactly that
+    // and point the operator at the place the truth lives — never a generic
+    // "something went wrong", and never a green tick we cannot substantiate.
+    if (result.pickupNotApplicable) {
+      throw new AppError(
+        ERROR_CODES.INVALID_STATUS_TRANSITION,
+        'The courier will not raise a new pickup request for this shipment because it is past the ' +
+          'pickup-request stage. A pickup is most likely already arranged for it (check Pickups & ' +
+          'Manifests in the provider dashboard) or the parcel has already been collected. ' +
+          'Nothing was changed.',
+        409
+      );
+    }
+
     // Persist pickup state whenever the provider confirms the shipment is covered
     // — including the "already in pickup queue" case, where no new slot time is
     // returned. Without this, `pickupScheduledDate` stays null and the admin UI

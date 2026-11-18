@@ -52,3 +52,30 @@ export function payloadIndicatesExistingPickup(payload: Record<string, unknown>)
     return false;
   }
 }
+
+/**
+ * Shiprocket rejects `/courier/generate/pickup` with HTTP 400 "Invalid Status
+ * for pickup generation" when the shipment is no longer in a state where a NEW
+ * pickup request can be raised — in practice because a pickup is already
+ * arranged for it (it sits in an open Pickup ID / manifest) or because it has
+ * already been collected.
+ *
+ * Unlike the phrasings in EXISTING_PICKUP_PATTERNS this message does NOT prove
+ * a pickup exists, so it must never flip the shipment's `pickupScheduledDate`
+ * green. It is still not a system failure: nothing is wrong on our side and
+ * nothing was changed, so it is reported as a plain, explained rejection rather
+ * than an INTERNAL_ERROR.
+ */
+const PICKUP_NOT_APPLICABLE_PATTERNS: RegExp[] = [
+  /invalid status for pickup/,
+  /pickup.*not.*(?:allowed|applicable|possible)/,
+  /cannot generate pickup/
+];
+
+export function isPickupNotApplicableMessage(raw: unknown): boolean {
+  if (typeof raw !== 'string' || raw.trim().length === 0) {
+    return false;
+  }
+  const text = raw.toLowerCase();
+  return PICKUP_NOT_APPLICABLE_PATTERNS.some((pattern) => pattern.test(text));
+}

@@ -21,7 +21,11 @@ import {
   normalizeIndianShippingPhone,
   resolveShiprocketCustomerEmail
 } from '@common/shipping/shiprocket-payload';
-import { isExistingPickupMessage, payloadIndicatesExistingPickup } from '@common/shipping/pickup-detection';
+import {
+  isExistingPickupMessage,
+  isPickupNotApplicableMessage,
+  payloadIndicatesExistingPickup
+} from '@common/shipping/pickup-detection';
 
 const SHIPROCKET_BASE_URL = 'https://apiv2.shiprocket.in/v1/external';
 const DEFAULT_PICKUP_LOCATION = 'Primary';
@@ -839,6 +843,16 @@ export default class ShiprocketAdapter implements ShippingProviderAdapter {
           scheduled: true,
           alreadyScheduled: true,
           providerPayload: { note: 'already_in_pickup_queue', detail: err.message }
+        };
+      }
+      // "Invalid Status for pickup generation" — the shipment is past the
+      // pickup-request stage. Not a failure on our side and not proof of a
+      // scheduled pickup, so report it as an explained no-op.
+      if (err instanceof AppError && isPickupNotApplicableMessage(err.message)) {
+        return {
+          scheduled: false,
+          pickupNotApplicable: true,
+          providerPayload: { note: 'pickup_not_applicable', detail: err.message }
         };
       }
       throw err;
