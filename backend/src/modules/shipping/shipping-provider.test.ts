@@ -147,4 +147,30 @@ describe('dual shipping runtime', () => {
     const runtime = resolveShippingProviderRuntime({ SHIPPING_PROVIDER: 'delhivery', DELHIVERY_API_KEY: '' });
     await expect(runtime.adapter?.findShipmentByReference?.('ORD-1')).rejects.toMatchObject({ statusCode: 503 });
   });
+
+  // Regression: findShipmentByAwb was added to the Shiprocket adapter but not forwarded
+  // through the circuit breaker, which is what callers actually receive. It read as
+  // undefined, feature detection took a fully configured Shiprocket account for an
+  // unconfigured one, and the admin UI reported "Shiprocket is not configured on this
+  // server" while every other Shiprocket call was working.
+  it('exposes the AWB lookup through the circuit breaker for configured couriers', () => {
+    const adapter = createShippingAdapterForProvider('shiprocket', {
+      SHIPROCKET_EMAIL: 'a@b.c',
+      SHIPROCKET_PASSWORD: 'pw'
+    });
+
+    expect(typeof adapter?.findShipmentByAwb).toBe('function');
+  });
+
+  it('unconfigured adapters reject the AWB lookup instead of answering not_found', async () => {
+    const runtime = resolveShippingProviderRuntime({
+      SHIPPING_PROVIDER: 'shiprocket',
+      SHIPROCKET_EMAIL: '',
+      SHIPROCKET_PASSWORD: ''
+    });
+    await expect(runtime.adapter?.findShipmentByAwb?.('AWB-1')).rejects.toMatchObject({
+      statusCode: 503
+    });
+  });
+
 });

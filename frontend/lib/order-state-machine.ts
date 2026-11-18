@@ -45,7 +45,7 @@ const COURIER_FULFILMENT_STATUSES: ReadonlyArray<OrderStatusValue> = [
 
 export function manualNextStatuses(
   current: string,
-  options: { isLocalDelivery?: boolean; canRefund?: boolean; hasAwb?: boolean } = {},
+  options: { isLocalDelivery?: boolean; canRefund?: boolean } = {},
 ): OrderStatusValue[] {
   const next = ORDER_STATUS_TRANSITIONS[current as OrderStatusValue] ?? [];
   return next.filter((status) => {
@@ -53,16 +53,13 @@ export function manualNextStatuses(
     if (status === "REFUNDED") return Boolean(options.canRefund);
     if (current === "PENDING_PAYMENT" && status === "CONFIRMED") return false;
     if (options.isLocalDelivery && status === "SHIPPED") return false;
-    // A courier order takes these stages from the shipment booking, not from a person
-    // clicking through them. Advancing by hand produced orders the courier had never
-    // heard of: the shipping worker skips anything already SHIPPED, so no AWB could ever
-    // be booked, the label could not be printed, and the customer was notified with no
-    // tracking. Local delivery is exempt — manual moves are its only status driver.
-    if (
-      !options.isLocalDelivery &&
-      options.hasAwb === false &&
-      COURIER_FULFILMENT_STATUSES.includes(status)
-    ) {
+    // On a courier order these stages are facts only the courier knows. SHIPPED comes
+    // from booking the shipment; OUT_FOR_DELIVERY and DELIVERED come from the courier's
+    // webhook or the "Check courier" sync. Clicking through them by hand tells the
+    // customer their parcel is moving when it may still be on the counter, and pushes the
+    // order past the point where it can be cancelled. Local delivery is exempt — manual
+    // moves are its only status driver.
+    if (!options.isLocalDelivery && COURIER_FULFILMENT_STATUSES.includes(status)) {
       return false;
     }
     return true;

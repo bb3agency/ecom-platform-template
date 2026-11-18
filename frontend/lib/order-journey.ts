@@ -75,8 +75,6 @@ export function buildOrderJourney(input: {
   createdAt: string;
   history: JourneyHistoryEntry[];
   canRefund?: boolean;
-  /** Whether the courier booking exists. Courier stages stay locked without one. */
-  hasAwb?: boolean;
 }): OrderJourney {
   const status = input.status as OrderStatusValue;
   const flow = input.isLocalDelivery ? LOCAL_FLOW : COURIER_FLOW;
@@ -84,7 +82,6 @@ export function buildOrderJourney(input: {
     manualNextStatuses(status, {
       isLocalDelivery: input.isLocalDelivery,
       canRefund: input.canRefund,
-      ...(input.hasAwb !== undefined ? { hasAwb: input.hasAwb } : {}),
     }),
   );
 

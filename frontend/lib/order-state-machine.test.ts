@@ -41,7 +41,21 @@ describe("manualNextStatuses", () => {
 
   it("skips the courier 'shipped' hop for local delivery", () => {
     expect(manualNextStatuses("PROCESSING", { isLocalDelivery: true })).toEqual(["OUT_FOR_DELIVERY"]);
-    expect(manualNextStatuses("PROCESSING")).toEqual(["SHIPPED", "OUT_FOR_DELIVERY"]);
+  });
+
+  // On a courier order these stages are facts only the courier knows: SHIPPED comes from
+  // booking the shipment, OUT_FOR_DELIVERY and DELIVERED from the courier's webhook or
+  // the sync. Offering them as manual moves let an order be marked out for delivery while
+  // the parcel was still with the merchant, notifying the customer falsely.
+  it("offers no manual fulfilment moves on a courier order", () => {
+    expect(manualNextStatuses("PROCESSING")).toEqual([]);
+    expect(manualNextStatuses("SHIPPED")).toEqual([]);
+    expect(manualNextStatuses("OUT_FOR_DELIVERY")).toEqual([]);
+  });
+
+  // ...but local delivery keeps its whole manual path, since nothing else drives it.
+  it("keeps the full manual path for local delivery", () => {
+    expect(manualNextStatuses("OUT_FOR_DELIVERY", { isLocalDelivery: true })).toEqual(["DELIVERED"]);
   });
 
   it("returns nothing for terminal or unknown statuses", () => {

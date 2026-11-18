@@ -15,9 +15,11 @@ describe("buildOrderJourney", () => {
     expect(states(j)).toEqual([
       "CONFIRMED:done",
       "PROCESSING:current",
-      "SHIPPED:next",
-      "OUT_FOR_DELIVERY:next",
-      "DELIVERED:locked", // can't deliver before it ships
+      // Locked, not next: on a courier order these come from booking the shipment and
+      // from the courier's own updates, never from clicking through them here.
+      "SHIPPED:locked",
+      "OUT_FOR_DELIVERY:locked",
+      "DELIVERED:locked",
     ]);
     expect(j.stages[0].at).toBe(created); // confirmed falls back to order creation
     expect(j.stages[1].source).toBe("Manual");
@@ -50,7 +52,8 @@ describe("buildOrderJourney", () => {
       "PROCESSING:done", // skipped hop still counts as passed
       "SHIPPED:done",
       "OUT_FOR_DELIVERY:current",
-      "DELIVERED:next",
+      // The courier reports delivery; it is not a button here.
+      "DELIVERED:locked",
     ]);
     expect(j.stages[2].source).toBe("Courier update");
     expect(j.stages[1].at).toBeNull();
@@ -94,4 +97,22 @@ describe("buildOrderJourney", () => {
     expect(j.stages.every((s) => s.state === "locked")).toBe(true);
     expect(j.canMarkPaymentFailed).toBe(true);
   });
+
+  // Local delivery is the merchant's own van: nothing else can move it along, so its
+  // stages stay clickable.
+  it("keeps local delivery stages clickable", () => {
+    const j = buildOrderJourney({
+      status: "PROCESSING",
+      isLocalDelivery: true,
+      createdAt: created,
+      history: [{ toStatus: "PROCESSING", createdAt: "2026-10-20T12:00:00.000Z", triggeredBy: "ADMIN" }],
+    });
+    expect(states(j)).toEqual([
+      "CONFIRMED:done",
+      "PROCESSING:current",
+      "OUT_FOR_DELIVERY:next",
+      "DELIVERED:locked",
+    ]);
+  });
+
 });

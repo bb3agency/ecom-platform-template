@@ -53,6 +53,10 @@ class MissingConfigShippingAdapter implements ShippingProviderAdapter {
     this.fail();
   }
 
+  async findShipmentByAwb(): Promise<never> {
+    this.fail();
+  }
+
   async findShipmentByReference(): Promise<never> {
     this.fail();
   }
@@ -77,6 +81,26 @@ class CircuitBreakerShippingAdapter implements ShippingProviderAdapter {
         this.assertClosed();
         try {
           const result = await lookup(clientReference);
+          this.recordSuccess();
+          return result;
+        } catch (error) {
+          this.recordFailure();
+          throw error;
+        }
+      };
+    }
+
+    // Every optional adapter method has to be forwarded explicitly here. Adding one to an
+    // adapter without doing so leaves it undefined on the wrapper that callers actually
+    // receive, and feature detection then reads a fully configured provider as one that
+    // cannot do the job — which is exactly how a working Shiprocket account came to
+    // report "Shiprocket is not configured on this server".
+    const lookupByAwb = delegate.findShipmentByAwb?.bind(delegate);
+    if (lookupByAwb) {
+      this.findShipmentByAwb = async (awbNumber: string) => {
+        this.assertClosed();
+        try {
+          const result = await lookupByAwb(awbNumber);
           this.recordSuccess();
           return result;
         } catch (error) {
@@ -201,6 +225,9 @@ class CircuitBreakerShippingAdapter implements ShippingProviderAdapter {
    * with `adapter.findShipmentByReference` exactly as on the raw adapter.
    */
   findShipmentByReference?: (clientReference: string) => Promise<ShipmentLookupResult>;
+
+  /** Same contract as `findShipmentByReference`: present only when the delegate supports it. */
+  findShipmentByAwb?: (awbNumber: string) => Promise<ShipmentLookupResult>;
 }
 
 export function resolveShippingProviderRuntime(runtimeConfig: NodeJS.ProcessEnv = process.env): ShippingProviderRuntime {
