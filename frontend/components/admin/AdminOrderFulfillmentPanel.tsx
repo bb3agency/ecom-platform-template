@@ -107,6 +107,10 @@ export function AdminOrderFulfillmentPanel({
     if (success) toast.success(success);
   }, [success]);
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  // Linking a parcel that was booked outside the app (e.g. cloned and shipped from the
+  // courier's own dashboard after the original reference was cancelled).
+  const [attachAwbOpen, setAttachAwbOpen] = useState(false);
+  const [attachAwbValue, setAttachAwbValue] = useState("");
   // Cancel-order modal (reason + optional note per the design system's cancel flow).
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState("Customer Request");
@@ -305,6 +309,39 @@ export function AdminOrderFulfillmentPanel({
       setBusyAction(null);
     }
     return accepted;
+  };
+
+  const runAttachAwb = async () => {
+    if (!selectedOrderId) return;
+    const awb = attachAwbValue.trim();
+    if (!awb) { setError("Enter the AWB number from the courier."); return; }
+    setBusyAction("attach-awb");
+    setError(null);
+    setSuccess(null);
+    try {
+      const result = await api<{ awbNumber: string; customerNotified: boolean }>(
+        `/admin/orders/${selectedOrderId}/attach-awb`,
+        {
+          method: "POST",
+          idempotencyKey: createIdempotencyKey(),
+          body: JSON.stringify({ awbNumber: awb }),
+        },
+      );
+      setAttachAwbValue("");
+      setAttachAwbOpen(false);
+      setSuccess(
+        result.customerNotified
+          ? `AWB ${result.awbNumber} attached. The customer has been sent the tracking details.`
+          : `AWB ${result.awbNumber} attached, but the customer notification could not be queued — resend it from More actions.`,
+      );
+      await loadDetail(selectedOrderId);
+      if (!hideOrderPicker) await loadOrders();
+      notifyAdminDataChanged(["orders", "shipments", "dashboard"]);
+    } catch (err) {
+      setError(getApiErrorMessageWithHint(err));
+    } finally {
+      setBusyAction(null);
+    }
   };
 
   const runPrintLabel = async () => {
@@ -520,6 +557,10 @@ export function AdminOrderFulfillmentPanel({
   // The courier rejected the last booking. Booking is asynchronous, so this is the only
   // place the merchant can learn why no AWB arrived.
   const bookingFailed = Boolean(detail?.shipmentBookingError) && !shipment?.awb;
+  // Reached SHIPPED without ever being booked — advanced by hand, so the courier never
+  // received it.
+  const shippedWithoutAwb =
+    detail?.status === "SHIPPED" && !shipment?.awb && detail?.isLocalDelivery !== true;
   // Sync stays available on a DELIVERED shipment while the ORDER still lags behind —
   // it is the manual repair path that promotes the order to DELIVERED.
   const canSync =
@@ -726,6 +767,61 @@ export function AdminOrderFulfillmentPanel({
                 ? ` Last attempt ${new Date(detail.shipmentBookingFailedAt).toLocaleString()}.`
                 : ""}
             </p>
+          </div>
+        ) : null}
+
+        {/* Escape hatch when booking cannot succeed here — typically the courier
+            cancelled our reference and the parcel was re-created and shipped from the
+            courier's own dashboard. Without this the order stays "not booked" forever
+            and the customer never gets tracking. */}
+        {canWrite && fulfilmentActive && !shipment?.awb && !detail?.isLocalDelivery && (bookingFailed || shippedWithoutAwb) ? (
+          <div className="rounded-lg border border-border bg-muted/30 p-3">
+            {attachAwbOpen ? (
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium text-foreground" htmlFor="attach-awb">
+                  AWB from the courier dashboard
+                </label>
+                <p className="text-xs text-muted-foreground">
+                  Use this only for a parcel already booked with the courier outside this
+                  app. It records the AWB and sends the customer their tracking — it does
+                  not create a booking.
+                </p>
+                <input
+                  id="attach-awb"
+                  value={attachAwbValue}
+                  onChange={(event) => setAttachAwbValue(event.target.value)}
+                  placeholder="e.g. 1234567890123"
+                  className="h-10 rounded-lg border border-border bg-background px-3 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                  disabled={busyAction !== null}
+                />
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void runAttachAwb()}
+                    disabled={busyAction !== null || !attachAwbValue.trim()}
+                    className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-50"
+                  >
+                    {busyAction === "attach-awb" ? "Attaching…" : "Attach AWB"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setAttachAwbOpen(false); setAttachAwbValue(""); }}
+                    disabled={busyAction !== null}
+                    className="rounded-lg border border-border px-3 py-1.5 text-sm"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setAttachAwbOpen(true)}
+                className="text-sm font-medium text-primary hover:underline"
+              >
+                Already shipped it from the courier dashboard? Attach the AWB →
+              </button>
+            )}
           </div>
         ) : null}
 

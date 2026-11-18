@@ -627,6 +627,10 @@ model Order {
   // booking. Surfaced on the admin order detail.
   shipmentBookingError          String?
   shipmentBookingFailedAt       DateTime?
+  // How many courier booking attempts have been abandoned for this order. Couriers key
+  // an order by our client reference and refuse to reuse one that was cancelled, so each
+  // abandoned attempt bumps this and the next booking goes out under `<orderNumber>-R<n>`.
+  shipmentBookingAttempt        Int                  @default(0)
   items              OrderItem[]
   payment            Payment?
   shipment           Shipment?

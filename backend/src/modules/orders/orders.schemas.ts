@@ -1255,6 +1255,48 @@ export const adminRetryRefundSchema = {
   }
 } as const;
 
+/**
+ * Attach an AWB that already exists at the courier.
+ *
+ * Recovery path for a parcel booked outside the app — e.g. cloned and shipped from the
+ * Shiprocket dashboard after the original reference was cancelled. Without this the
+ * order stays "not booked" here forever and the customer never gets tracking.
+ */
+export const adminAttachAwbSchema = {
+  params: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['id'],
+    properties: {
+      id: { type: 'string', maxLength: 64 }
+    }
+  },
+  querystring: emptyQuerystringSchema,
+  body: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['awbNumber'],
+    properties: {
+      awbNumber: { type: 'string', minLength: 3, maxLength: 64 },
+      trackingUrl: { type: 'string', maxLength: 500 }
+    }
+  },
+  response: {
+    200: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['attached', 'awbNumber', 'status'],
+      properties: {
+        attached: { type: 'boolean' },
+        awbNumber: { type: 'string', maxLength: 64 },
+        status: { type: 'string', maxLength: 40 },
+        trackingUrl: { anyOf: [{ type: 'string', maxLength: 500 }, { type: 'null' }] },
+        customerNotified: { type: 'boolean' }
+      }
+    }
+  }
+} as const;
+
 export const adminSchedulePickupSchema = {
   params: {
     type: 'object',
