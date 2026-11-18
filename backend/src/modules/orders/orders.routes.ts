@@ -19,6 +19,7 @@ import {
   adminListOrdersSchema,
   adminOrderBoardSchema,
   adminShipOrderSchema,
+  adminAttachAwbSchema,
   adminSchedulePickupSchema,
   adminPrintLabelSchema,
   adminRetriggerNotificationSchema,
@@ -489,6 +490,22 @@ export async function registerOrdersRoutes(fastify: FastifyInstance): Promise<vo
       const adminUser = getCurrentUser(request);
       const params = request.params as { id: string };
       return ordersService.adminRetryRefund(params.id, adminUser.sub);
+    }
+  );
+
+  fastify.post(
+    '/api/v1/admin/orders/:id/attach-awb',
+    {
+      schema: adminAttachAwbSchema,
+      preHandler: [...adminGuard, adminPermissionGuard('orders:write'), loadShedGuard, idempotencyPreHandler],
+      config: {
+        rateLimit: routeRateLimitProfiles.adminWrite
+      }
+    },
+    async (request) => {
+      const params = request.params as { id: string };
+      const body = request.body as { awbNumber: string; trackingUrl?: string };
+      return ordersService.adminAttachAwb(params.id, body);
     }
   );
 

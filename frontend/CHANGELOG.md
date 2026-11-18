@@ -12,6 +12,22 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-11-18
+
+### Fixed
+- **A cancelled courier reference made an order permanently unbookable.** Couriers key an order by the client reference we send and refuse to reuse one that has been cancelled — Shiprocket answers a re-book with `HTTP 500 - order is in cancelled state`. Because every retry reused the order number, an order whose booking was cancelled at the courier (in the courier's own dashboard, or by the courier) could never be shipped from admin again. Each abandoned attempt now retires the reference (`Order.shipmentBookingAttempt`) and the next booking goes out as `<orderNumber>-R<n>`, a fresh courier order. Booking, the in-flight lookup and the booking-intent sweep all derive the reference the same way, so recovery still finds what we actually sent.
+
+### Added
+- **Attach an AWB booked outside the app** - `POST /admin/orders/:id/attach-awb` (`orders:write`). When booking cannot succeed here, the merchant typically re-creates the parcel in the courier's dashboard and ships it from there; the order then stayed "not booked" forever and the customer never received tracking. This records the AWB, marks the shipment BOOKED, moves the order to SHIPPED, clears any recorded booking failure and sends the customer their tracking. It deliberately does not call the courier - the booking was made under a reference we never issued, so there is nothing of ours to look up. Refused when an AWB already exists, for local delivery orders, and for orders past SHIPPED. Offered in the fulfilment panel only when booking failed or the order was marked shipped by hand.
+
+**Propagation:**
+- Severity: NORMAL - Layers: backend core (orders service/routes/schemas, shipping worker, Prisma, admin policy registry) + frontend core (admin fulfilment panel)
+- Migration: YES - `20261118120000_order_shipment_booking_attempt` adds one non-null `INTEGER DEFAULT 0` column to `Order`. Additive, no backfill, no downtime.
+- Flag: none - Breaking: NO - Design impact: none (admin console)
+- Operator note: the attach action trusts the operator's AWB; it is an explicit recovery tool, not a booking path.
+- Rollback: revert the commit; the column can stay.
+
+
 ## [0.5.1] - 2026-11-18
 
 ### Fixed

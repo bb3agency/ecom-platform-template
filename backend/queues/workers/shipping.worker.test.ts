@@ -382,6 +382,87 @@ describe('shipping worker error and retry behavior', () => {
     );
   });
 
+
+  // A courier will not reuse a reference it holds as cancelled — Shiprocket answers a
+  // re-book with "order is in cancelled state" — so retrying the same reference failed
+  // forever. The reference must be retired so the next attempt books a fresh one.
+  it('retires the client reference when the courier reports it cancelled', async () => {
+    boot();
+    state.tx.order.findUnique.mockResolvedValue({
+      id: 'order_dead_ref',
+      orderNumber: 'ORD-2026-00012',
+      total: 1000,
+      status: 'PROCESSING',
+      selectedShippingProvider: 'SHIPROCKET',
+      shipmentBookingAttempt: 0,
+      shippingAddress: {
+        fullName: 'Test Customer',
+        phone: '9999999999',
+        line1: 'Street 1',
+        city: 'Hyderabad',
+        state: 'Telangana',
+        pincode: '500001'
+      },
+      payment: { status: 'CAPTURED' },
+      shipment: null,
+      items: [{ variantId: 'variant_1', quantity: 1, productName: 'P', sku: 'S', unitPrice: 500 }]
+    });
+    state.tx.productVariant.findMany.mockResolvedValue([
+      { id: 'variant_1', weight: 300, product: { attributes: { hsnCode: '1001' } } }
+    ]);
+    state.createShipment.mockRejectedValue(
+      new Error('Shiprocket rejected the request (HTTP 500): order is in cancelled state.')
+    );
+
+    await expect(
+      state.processor?.({ name: 'create-shipment', data: { orderId: 'order_dead_ref' } })
+    ).rejects.toThrow(/cancelled state/);
+
+    expect(state.orderUpdateTopLevel).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'order_dead_ref' },
+        data: expect.objectContaining({ shipmentBookingAttempt: { increment: 1 } })
+      })
+    );
+  });
+
+  it('books under the retired-reference suffix once an attempt has been burned', async () => {
+    boot();
+    state.tx.order.findUnique.mockResolvedValue({
+      id: 'order_retry_ref',
+      orderNumber: 'ORD-2026-00013',
+      total: 1000,
+      status: 'PROCESSING',
+      selectedShippingProvider: 'SHIPROCKET',
+      shipmentBookingAttempt: 1,
+      shippingAddress: {
+        fullName: 'Test Customer',
+        phone: '9999999999',
+        line1: 'Street 1',
+        city: 'Hyderabad',
+        state: 'Telangana',
+        pincode: '500001'
+      },
+      payment: { status: 'CAPTURED' },
+      shipment: null,
+      items: [{ variantId: 'variant_1', quantity: 1, productName: 'P', sku: 'S', unitPrice: 500 }]
+    });
+    state.tx.productVariant.findMany.mockResolvedValue([
+      { id: 'variant_1', weight: 300, product: { attributes: { hsnCode: '1001' } } }
+    ]);
+    state.createShipment.mockResolvedValue({
+      awbNumber: 'AWB-FRESH',
+      trackingUrl: 'https://track.example/AWB-FRESH',
+      providerPayload: { ok: true }
+    });
+
+    await state.processor?.({ name: 'create-shipment', data: { orderId: 'order_retry_ref' } });
+
+    expect(state.createShipment).toHaveBeenCalledWith(
+      expect.objectContaining({ orderNumber: 'ORD-2026-00013-R2' })
+    );
+  });
+
   it('uses default shipping HSN when product attributes omit hsnCode and GST invoicing is disabled', async () => {
     featureFlags.gstInvoicing = false;
     boot();

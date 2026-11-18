@@ -10,6 +10,7 @@ import { resolveGstInvoicingEnabled } from '@common/invoicing/gst-invoicing-flag
 import { restoreOrderInventoryOnCancel } from '@common/orders/restore-inventory-on-cancel';
 import { releaseCouponUsageForOrder } from '@common/coupons/coupon-usage';
 import { resolvePickupPincode } from '@common/shipping/resolve-pickup-pincode';
+import { resolveBookingClientReference } from '@common/shipping/booking-client-reference';
 import {
   resolveDefaultShippingHsn,
   resolveShippingHsnCode
@@ -706,6 +707,22 @@ export function createShippingWorker(
     });
   };
 
+  /**
+   * Retire the client reference this order has been using at the courier.
+   *
+   * Couriers key an order by the reference we send and refuse to reuse one that has been
+   * cancelled — Shiprocket answers a re-book on a cancelled reference with
+   * `HTTP 500 — order is in cancelled state`. Bumping the attempt makes the next booking
+   * go out as `<orderNumber>-R<n>`, i.e. a fresh courier order, instead of retrying the
+   * dead reference forever.
+   */
+  const burnBookingReference = async (orderId: string): Promise<void> => {
+    await prisma.order.update({
+      where: { id: orderId },
+      data: { shipmentBookingAttempt: { increment: 1 } } as Record<string, unknown>
+    });
+  };
+
   const alertBookingIntent = async (orderId: string, errorMessage: string): Promise<void> => {
     await alertFn({
       prisma,
@@ -729,6 +746,7 @@ export function createShippingWorker(
       id: string;
       orderNumber: string;
       status: OrderStatus;
+      shipmentBookingAttempt?: number | null;
       user: { email: string | null; phone: string | null } | null;
     };
   };
@@ -748,7 +766,10 @@ export function createShippingWorker(
   const reconcileBookingIntent = async (intent: StaleBookingIntent): Promise<void> => {
     const { order, provider } = intent;
     const adapter = adapterForProvider(provider);
-    const lookup = await lookUpInFlightBooking(adapter, provider, order.orderNumber);
+    // Look up under the reference this attempt actually used, not the bare order number:
+    // after an abandoned attempt the courier holds the order under `<orderNumber>-R<n>`.
+    const clientReference = resolveBookingClientReference(order.orderNumber, order.shipmentBookingAttempt);
+    const lookup = await lookUpInFlightBooking(adapter, provider, clientReference);
 
     if (hasAwb(lookup)) {
       const booking = bookingFromLookup(lookup);
@@ -759,9 +780,14 @@ export function createShippingWorker(
 
     if (lookup.state === 'cancelled') {
       await releaseBookingIntent(intent.id);
+      // The courier will not reuse a cancelled reference, so burn it: the next booking
+      // goes out as `<orderNumber>-R<n>` and creates a fresh courier order. Without this
+      // every re-ship from admin hit the same cancelled record forever.
+      await burnBookingReference(order.id);
       await alertBookingIntent(
         order.id,
-        `Booking intent for order ${order.orderNumber} released: ${provider} reports the reference as cancelled. Re-ship from admin if still required.`
+        `Booking intent for order ${order.orderNumber} released: ${provider} reports the reference as cancelled. ` +
+          'Re-ship from admin — it will book a fresh courier reference.'
       );
       return;
     }
@@ -839,6 +865,8 @@ export function createShippingWorker(
             id: true,
             orderNumber: true,
             status: true,
+            // The sweep must look the booking up under the reference actually sent.
+            shipmentBookingAttempt: true,
             user: { select: { email: true, phone: true } }
           }
         }
@@ -950,6 +978,14 @@ export function createShippingWorker(
           return;
         }
 
+        // The reference the courier knows this order by. After an abandoned attempt it
+        // carries a `-R<n>` suffix, because couriers refuse to reuse a cancelled
+        // reference. Booking and lookup must both use this exact value.
+        const bookingClientReference = resolveBookingClientReference(
+          order.orderNumber,
+          (order as Record<string, unknown>)['shipmentBookingAttempt'] as number | null | undefined
+        );
+
         // In-flight recovery: a booking intent (PENDING shipment, no AWB) means an
         // earlier attempt may have reached the courier before crashing/stalling.
         // Look the booking up by our client reference FIRST and adopt it; only a
@@ -959,7 +995,7 @@ export function createShippingWorker(
         if (order.shipment && isBookingIntent(order.shipment)) {
           const intentProvider = order.shipment.provider;
           const lookupAdapter = adapterForProvider(intentProvider);
-          const lookup = await lookUpInFlightBooking(lookupAdapter, intentProvider, order.orderNumber);
+          const lookup = await lookUpInFlightBooking(lookupAdapter, intentProvider, bookingClientReference);
           if (hasAwb(lookup)) {
             const booking = bookingFromLookup(lookup);
             await persistCourierBooking({
@@ -972,9 +1008,13 @@ export function createShippingWorker(
             return;
           }
           if (lookup.state === 'cancelled') {
+            // Burn the dead reference now so the admin's next "Ship order" books a fresh
+            // courier order instead of hitting the same cancelled record again.
+            await releaseBookingIntent(order.shipment.id);
+            await burnBookingReference(order.id);
             throw new Error(
-              `In-flight booking for order ${order.orderNumber} is cancelled at ${intentProvider}; ` +
-                'the booking-intent sweep releases it — re-ship from admin afterwards.'
+              `In-flight booking for order ${order.orderNumber} is cancelled at ${intentProvider}. ` +
+                'The reference has been retired — re-ship from admin to book a fresh one.'
             );
           }
           if (lookup.state === 'found') {
@@ -1156,7 +1196,8 @@ export function createShippingWorker(
         });
 
         const shipmentInput = {
-          orderNumber: order.orderNumber,
+          // What the courier files this shipment under (Shiprocket `order_id`).
+          orderNumber: bookingClientReference,
           amountRupees: order.total / 100,
           subtotalRupees: orderSubtotalPaise / 100,
           shippingChargeRupees: orderShippingChargePaise / 100,
@@ -1205,7 +1246,7 @@ export function createShippingWorker(
         const intentShipmentId = intentProvider
           ? await writeBookingIntent({
               orderId: order.id,
-              clientReference: order.orderNumber,
+              clientReference: bookingClientReference,
               provider: intentProvider,
               existing: order.shipment
             })
@@ -1223,12 +1264,18 @@ export function createShippingWorker(
           // can tell the merchant why no AWB arrived — otherwise it reaches only the
           // worker log and an ops email, neither of which a merchant can read, and the
           // order just sits with no AWB and no explanation.
+          const reason = error instanceof Error ? error.message : String(error);
+          // The courier rejected the reference itself as cancelled, so it will reject
+          // every retry on it too. Retire it here as well as in the sweep, so the next
+          // "Ship order" books a fresh courier order rather than looping on a dead one.
+          const referenceIsDead = /cancel+ed state|order is in cancell?ed/i.test(reason);
           try {
             await prisma.order.update({
               where: { id: order.id },
               data: {
-                shipmentBookingError: (error instanceof Error ? error.message : String(error)).slice(0, 1000),
-                shipmentBookingFailedAt: new Date()
+                shipmentBookingError: reason.slice(0, 1000),
+                shipmentBookingFailedAt: new Date(),
+                ...(referenceIsDead ? { shipmentBookingAttempt: { increment: 1 } } : {})
               } as Record<string, unknown>
             });
           } catch {

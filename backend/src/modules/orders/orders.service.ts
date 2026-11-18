@@ -10,6 +10,7 @@ import {
   PaymentStatus,
   Prisma,
   PrismaClient,
+  ShipmentStatus,
   ShippingProvider
 } from '@prisma/client';
 import { FastifyInstance } from 'fastify';
@@ -3788,6 +3789,135 @@ export class OrdersService {
         409
       );
     }
+  }
+
+  /**
+   * Attach an AWB that already exists at the courier.
+   *
+   * Recovery path for a parcel booked outside the app. The usual cause: the original
+   * client reference was cancelled at the courier, so the merchant cloned the order in
+   * the courier's own dashboard and shipped it from there. That parcel is real and moving,
+   * but nothing here knows its AWB — the order stays "not booked", the label cannot be
+   * printed, and the customer never receives tracking. This links the two back together.
+   *
+   * It does NOT talk to the courier: the AWB is taken on the operator's word, because the
+   * booking we would otherwise look up was made under a reference we never issued.
+   */
+  async adminAttachAwb(orderId: string, input: { awbNumber: string; trackingUrl?: string }) {
+    const awbNumber = input.awbNumber.trim();
+    if (!awbNumber) {
+      throw new AppError(ERROR_CODES.VALIDATION_ERROR, 'AWB number is required', 422);
+    }
+
+    const existing = await this.fastify.prisma.order.findUnique({
+      where: { id: orderId },
+      include: { shipment: true }
+    });
+    if (!existing) {
+      throw new AppError(ERROR_CODES.NOT_FOUND, 'Order not found', 404);
+    }
+
+    const selectedProvider =
+      ((existing as Record<string, unknown>)['selectedShippingProvider'] as string | null) ?? null;
+    if (selectedProvider === 'LOCAL') {
+      throw new AppError(
+        ERROR_CODES.VALIDATION_ERROR,
+        'This is a local delivery order — no courier AWB applies.',
+        422
+      );
+    }
+    if (existing.shipment?.awbNumber) {
+      throw new AppError(
+        ERROR_CODES.VALIDATION_ERROR,
+        `This order already has AWB ${existing.shipment.awbNumber}.`,
+        409
+      );
+    }
+    const attachableStatuses: ReadonlyArray<OrderStatus> = [
+      OrderStatus.CONFIRMED,
+      OrderStatus.PROCESSING,
+      OrderStatus.SHIPPED
+    ];
+    if (!attachableStatuses.includes(existing.status)) {
+      throw new AppError(
+        ERROR_CODES.INVALID_STATUS_TRANSITION,
+        `Cannot attach an AWB to a ${existing.status.toLowerCase().replace(/_/g, ' ')} order.`,
+        422
+      );
+    }
+
+    const provider =
+      selectedProvider === 'DELHIVERY'
+        ? ShippingProvider.DELHIVERY
+        : selectedProvider === 'SHIPROCKET'
+          ? ShippingProvider.SHIPROCKET
+          : (existing.shipment?.provider ?? ShippingProvider.SHIPROCKET);
+
+    const trackingUrl =
+      input.trackingUrl?.trim() ||
+      (provider === ShippingProvider.SHIPROCKET
+        ? `https://shiprocket.co/tracking/${awbNumber}`
+        : `https://www.delhivery.com/track/package/${awbNumber}`);
+
+    await this.fastify.prisma.$transaction(async (tx) => {
+      await tx.shipment.upsert({
+        where: { orderId: existing.id },
+        create: {
+          orderId: existing.id,
+          provider,
+          status: ShipmentStatus.BOOKED,
+          awbNumber,
+          trackingUrl
+        },
+        update: {
+          provider,
+          status: ShipmentStatus.BOOKED,
+          awbNumber,
+          trackingUrl
+        }
+      });
+
+      await tx.order.update({
+        where: { id: existing.id },
+        data: {
+          ...(existing.status === OrderStatus.SHIPPED ? {} : { status: OrderStatus.SHIPPED }),
+          // The order is genuinely booked now, so any recorded booking failure is history.
+          shipmentBookingError: null,
+          shipmentBookingFailedAt: null
+        } as Record<string, unknown>
+      });
+
+      await tx.orderStatusHistory.create({
+        data: {
+          orderId: existing.id,
+          fromStatus: existing.status,
+          toStatus: OrderStatus.SHIPPED,
+          triggeredBy: 'ADMIN',
+          note: `AWB ${awbNumber} attached manually (booked outside the app at ${provider})`
+        }
+      });
+    });
+
+    // Tell the customer, now that there is finally something to track.
+    let customerNotified = false;
+    try {
+      await this.adminRetriggerNotification(existing.id, { template: 'OrderShipped' } as never);
+      customerNotified = true;
+    } catch (error) {
+      // The AWB is attached either way — a notification failure must not undo it.
+      this.fastify.log.error(
+        { orderId: existing.id, error: error instanceof Error ? error.message : 'unknown' },
+        'Attached AWB but failed to queue the shipped notification'
+      );
+    }
+
+    return {
+      attached: true,
+      awbNumber,
+      status: OrderStatus.SHIPPED as string,
+      trackingUrl,
+      customerNotified
+    };
   }
 
   async adminSchedulePickup(orderId: string) {
