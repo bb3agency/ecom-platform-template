@@ -25,6 +25,7 @@ type ShipmentStatus =
 
 const ORDER_STATUS = {
   PAYMENT_FAILED: 'PAYMENT_FAILED',
+  SHIPPED: 'SHIPPED',
   CONFIRMED: 'CONFIRMED',
   OUT_FOR_DELIVERY: 'OUT_FOR_DELIVERY',
   DELIVERED: 'DELIVERED',
@@ -200,3 +201,26 @@ export function mapShipmentStatusToOrderStatus(shipmentStatus: ShipmentStatus): 
   return null;
 }
 
+/**
+ * The order stage the courier's CURRENT tracking implies — including the
+ * shipment stages mapShipmentStatusToOrderStatus deliberately leaves unmapped
+ * (BOOKED, PICKED_UP and IN_TRANSIT all mean "with the courier, not yet out
+ * for delivery", i.e. order SHIPPED).
+ *
+ * Only the explicit admin "check courier" sync may use this, and only to
+ * CORRECT an order that ran ahead of its shipment. It must never drive a
+ * webhook: webhooks arrive out of order, so a late BOOKED push would undo a
+ * genuine OUT_FOR_DELIVERY.
+ */
+export function mapShipmentStatusToCourierOrderStage(
+  shipmentStatus: ShipmentStatus
+): OrderStatus | null {
+  if (
+    shipmentStatus === SHIPMENT_STATUS.BOOKED ||
+    shipmentStatus === SHIPMENT_STATUS.PICKED_UP ||
+    shipmentStatus === SHIPMENT_STATUS.IN_TRANSIT
+  ) {
+    return ORDER_STATUS.SHIPPED;
+  }
+  return mapShipmentStatusToOrderStatus(shipmentStatus);
+}

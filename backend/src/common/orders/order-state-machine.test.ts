@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { ORDER_STATUS_TRANSITIONS, canTransitionOrder } from './order-state-machine';
+import {
+  ORDER_STATUS_TRANSITIONS,
+  canCorrectOrderFromCourierEvidence,
+  canTransitionOrder
+} from './order-state-machine';
 
 const ORDER_STATUSES = [
   'PENDING_PAYMENT',
@@ -46,3 +50,25 @@ describe('order state machine', () => {
   });
 });
 
+describe('canCorrectOrderFromCourierEvidence', () => {
+  it('allows walking an out-for-delivery order back to shipped', () => {
+    expect(canCorrectOrderFromCourierEvidence('OUT_FOR_DELIVERY', 'SHIPPED')).toBe(true);
+  });
+
+  it('never walks a delivered order back', () => {
+    expect(canCorrectOrderFromCourierEvidence('DELIVERED', 'SHIPPED')).toBe(false);
+    expect(canCorrectOrderFromCourierEvidence('DELIVERED', 'OUT_FOR_DELIVERY')).toBe(false);
+  });
+
+  it('is not a general reverse gear', () => {
+    expect(canCorrectOrderFromCourierEvidence('OUT_FOR_DELIVERY', 'PROCESSING')).toBe(false);
+    expect(canCorrectOrderFromCourierEvidence('OUT_FOR_DELIVERY', 'CONFIRMED')).toBe(false);
+    expect(canCorrectOrderFromCourierEvidence('SHIPPED', 'PROCESSING')).toBe(false);
+    expect(canCorrectOrderFromCourierEvidence('REFUNDED', 'DELIVERED')).toBe(false);
+  });
+
+  it('stays out of the forward transition table', () => {
+    expect(ORDER_STATUS_TRANSITIONS.OUT_FOR_DELIVERY).not.toContain('SHIPPED');
+    expect(canTransitionOrder('OUT_FOR_DELIVERY', 'SHIPPED')).toBe(false);
+  });
+});

@@ -30,8 +30,12 @@ import { normalizeShippingWebhookPayload, readStrictDelhiveryOccurredAt } from '
 import { buildWebhookInboxRedriveSpec, type WebhookInboxRedriveSpec } from '@common/reliability/webhook-inbox-reclaim';
 import type { CheckoutRiskAssessmentPort } from '@common/interfaces/checkout-risk.interface';
 import { PaymentProviderAdapter } from '@common/interfaces/payment-provider.interface';
-import { canTransitionOrder } from '@common/orders/order-state-machine';
-import { mapShipmentWebhookStatus, mapShipmentStatusToOrderStatus } from '@common/orders/webhook-status-mappers';
+import { canTransitionOrder, canCorrectOrderFromCourierEvidence } from '@common/orders/order-state-machine';
+import {
+  mapShipmentWebhookStatus,
+  mapShipmentStatusToOrderStatus,
+  mapShipmentStatusToCourierOrderStage
+} from '@common/orders/webhook-status-mappers';
 import { CartService } from '@modules/cart/cart.service';
 import { createPaymentProvider } from '@modules/payments/payment-provider';
 import { createShippingAdapterForProvider } from '@modules/shipping/shipping-provider';
@@ -6248,7 +6252,20 @@ export class OrdersService {
       shipment.order.status !== nextOrderStatus &&
       canTransitionOrder(shipment.order.status, nextOrderStatus);
 
-    if (!shipmentChanged && !orderLagging) {
+    // The order can also have run AHEAD of the shipment — e.g. an operator set
+    // OUT_FOR_DELIVERY by hand before the courier ever collected the parcel.
+    // On this deliberate "check courier" action the courier's own tracking is
+    // the authority, so walk the order back to the stage the shipment is
+    // actually at. Narrow by design (see ORDER_COURIER_CORRECTIONS) and never
+    // reachable from a webhook, which can arrive out of order.
+    const courierStage = mapShipmentStatusToCourierOrderStage(nextShipmentStatus);
+    const orderAhead =
+      !orderLagging &&
+      courierStage != null &&
+      shipment.order.status !== courierStage &&
+      canCorrectOrderFromCourierEvidence(shipment.order.status, courierStage);
+
+    if (!shipmentChanged && !orderLagging && !orderAhead) {
       return {
         synced: false,
         message: `Status already up to date: ${shipment.status}`,
@@ -6280,6 +6297,24 @@ export class OrdersService {
             };
           }),
           skipDuplicates: false
+        });
+      }
+
+      if (orderAhead && courierStage) {
+        await tx.order.update({
+          where: { id: shipment.order.id },
+          data: { status: courierStage }
+        });
+        await tx.orderStatusHistory.create({
+          data: {
+            orderId: shipment.order.id,
+            fromStatus: shipment.order.status,
+            toStatus: courierStage,
+            triggeredBy: 'COURIER_SYNC_CORRECTION',
+            note:
+              `Corrected from ${shipment.provider} tracking: courier reports ${latestStatus}, ` +
+              `so the order was ahead of the shipment`
+          }
         });
       }
 
@@ -6431,9 +6466,15 @@ export class OrdersService {
       synced: true,
       message: shipmentChanged
         ? `Synced: ${shipment.status} → ${nextShipmentStatus}`
-        : `Order status repaired: ${shipment.order.status} → ${nextOrderStatus}`,
+        : orderAhead
+          ? `Order status corrected to match the courier: ${shipment.order.status} → ${courierStage as string}`
+          : `Order status repaired: ${shipment.order.status} → ${nextOrderStatus}`,
       shipmentStatus: nextShipmentStatus,
-      orderStatus: orderLagging ? (nextOrderStatus as string) : shipment.order.status
+      orderStatus: orderLagging
+        ? (nextOrderStatus as string)
+        : orderAhead
+          ? (courierStage as string)
+          : shipment.order.status
     };
   }
 
