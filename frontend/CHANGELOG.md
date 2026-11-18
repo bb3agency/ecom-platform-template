@@ -12,6 +12,21 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-11-18
+
+### Added
+- **Re-book a shipment the courier cancelled.** When a booking is cancelled at the courier - in the courier's own dashboard, or by the courier - the AWB on it is dead, but the order is still a live, paid order the merchant may want to ship again. The dead AWB made the order look finished: `resolveShipActionState` answered "Order is already shipped", the Ship action was disabled, and the worker returned early on any existing AWB. There was no way to re-book from admin at all.
+  Re-booking is now allowed from CONFIRMED/PROCESSING/SHIPPED when the shipment is CANCELLED. `adminShipOrder` retires the client reference first (the courier will not reuse a cancelled one), so the new booking goes out as `<orderNumber>-R<n>` - a new courier shipment, because a cancelled booking cannot be revived.
+  The worker requires an explicit `rebook` flag on the job to book over a CANCELLED shipment. A cancelled shipment alone is deliberately NOT enough: a replayed or stray `create-shipment` job would otherwise create a brand-new courier shipment for an order whose shipment was cancelled on purpose. Only a human pressing "Ship order" sets it, and the existing be-rel-02 idempotency guarantee is unchanged.
+  In admin, a cancelled shipment now explains itself and re-enables Ship order. Pickup and label still require a live AWB and stay disabled.
+
+**Propagation:**
+- Severity: NORMAL - Layers: backend core (orders service, shipping worker) + frontend core (admin fulfilment panel)
+- Migration: NO - Flag: none - Breaking: NO - Design impact: none (admin console)
+- Behaviour change: a CANCELLED shipment no longer makes the order terminal for fulfilment. Pickup/label remain gated on a live AWB.
+- Rollback: revert the commit
+
+
 ## [0.5.2] - 2026-11-18
 
 ### Fixed

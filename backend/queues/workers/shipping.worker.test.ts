@@ -463,6 +463,78 @@ describe('shipping worker error and retry behavior', () => {
     );
   });
 
+
+  // The courier cancelled a booking we had made (in the courier's own dashboard, or by
+  // the courier). The AWB on it is dead but the order is still live and paid, so an
+  // admin re-ship has to book again. The worker used to return early on any existing AWB.
+  it('re-books an order whose shipment was cancelled at the courier', async () => {
+    boot();
+    state.tx.order.findUnique.mockResolvedValue({
+      id: 'order_rebook',
+      orderNumber: 'ORD-2026-00014',
+      total: 1000,
+      status: 'SHIPPED',
+      selectedShippingProvider: 'SHIPROCKET',
+      shipmentBookingAttempt: 1,
+      shippingAddress: {
+        fullName: 'Test Customer',
+        phone: '9999999999',
+        line1: 'Street 1',
+        city: 'Hyderabad',
+        state: 'Telangana',
+        pincode: '500001'
+      },
+      payment: { status: 'CAPTURED' },
+      shipment: { id: 'shp_old', awbNumber: 'AWB-DEAD', status: 'CANCELLED', provider: 'SHIPROCKET' },
+      items: [{ variantId: 'variant_1', quantity: 1, productName: 'P', sku: 'S', unitPrice: 500 }]
+    });
+    state.tx.productVariant.findMany.mockResolvedValue([
+      { id: 'variant_1', weight: 300, product: { attributes: { hsnCode: '1001' } } }
+    ]);
+    // Re-booking turns the existing (cancelled) row back into a booking intent first.
+    state.shipment.updateMany.mockResolvedValue({ count: 1 });
+    state.createShipment.mockResolvedValue({
+      awbNumber: 'AWB-NEW',
+      trackingUrl: 'https://track.example/AWB-NEW',
+      providerPayload: { ok: true }
+    });
+
+    // `rebook` is what adminShipOrder sets when a human re-ships a cancelled shipment.
+    await state.processor?.({ name: 'create-shipment', data: { orderId: 'order_rebook', rebook: true } });
+
+    // Booked again, and under the fresh reference — the cancelled one is dead at the courier.
+    expect(state.createShipment).toHaveBeenCalledWith(
+      expect.objectContaining({ orderNumber: 'ORD-2026-00014-R2' })
+    );
+  });
+
+  it('still does not re-book a live BOOKED shipment', async () => {
+    boot();
+    state.tx.order.findUnique.mockResolvedValue({
+      id: 'order_live',
+      orderNumber: 'ORD-2026-00015',
+      total: 1000,
+      status: 'SHIPPED',
+      selectedShippingProvider: 'SHIPROCKET',
+      shipmentBookingAttempt: 0,
+      shippingAddress: {
+        fullName: 'Test Customer',
+        phone: '9999999999',
+        line1: 'Street 1',
+        city: 'Hyderabad',
+        state: 'Telangana',
+        pincode: '500001'
+      },
+      payment: { status: 'CAPTURED' },
+      shipment: { id: 'shp_live', awbNumber: 'AWB-LIVE', status: 'BOOKED', provider: 'SHIPROCKET' },
+      items: [{ variantId: 'variant_1', quantity: 1, productName: 'P', sku: 'S', unitPrice: 500 }]
+    });
+
+    await state.processor?.({ name: 'create-shipment', data: { orderId: 'order_live', rebook: true } });
+
+    expect(state.createShipment).not.toHaveBeenCalled();
+  });
+
   it('uses default shipping HSN when product attributes omit hsnCode and GST invoicing is disabled', async () => {
     featureFlags.gstInvoicing = false;
     boot();

@@ -284,13 +284,25 @@ export class OrdersService {
     // courier on that path, and the worker skips anything already SHIPPED, so the order was
     // stranded for good — no AWB, no label, and a shipped notification with no tracking.
     // Treat that exact state as bookable rather than finished.
+    const isCourier = input.selectedShippingProvider !== 'LOCAL';
     const isShippedWithoutAwb =
-      input.status === OrderStatus.SHIPPED &&
-      !input.awbNumber &&
-      input.selectedShippingProvider !== 'LOCAL';
+      input.status === OrderStatus.SHIPPED && !input.awbNumber && isCourier;
+
+    // Re-booking: the shipment was cancelled at the courier (cancelled in the courier's
+    // own dashboard, or by the courier). The parcel is not going anywhere, but the order
+    // is still a live, paid order the merchant may well want to ship again. Without this
+    // the AWB on the dead booking made the order look finished and the Ship action stayed
+    // disabled, leaving no way to re-book from admin.
+    const canRebookCancelledShipment =
+      input.shipmentStatus === 'CANCELLED' &&
+      isCourier &&
+      (input.status === OrderStatus.SHIPPED ||
+        input.status === OrderStatus.CONFIRMED ||
+        input.status === OrderStatus.PROCESSING);
 
     if (
       !isShippedWithoutAwb &&
+      !canRebookCancelledShipment &&
       input.status !== OrderStatus.CONFIRMED &&
       input.status !== OrderStatus.PROCESSING
     ) {
@@ -309,6 +321,9 @@ export class OrdersService {
         canShipNow: false,
         shipBlockReason: reasonByStatus[input.status] ?? 'Order is not in a shippable state.'
       };
+    }
+    if (canRebookCancelledShipment) {
+      return { canShipNow: true, shipBlockReason: null };
     }
     if (!input.awbNumber && input.shipmentStatus === 'PENDING') {
       // Booking intent: a courier booking is in flight (or awaiting recovery by the
@@ -3725,12 +3740,18 @@ export class OrdersService {
       );
     }
 
-    // SHIPPED -> SHIPPED is not a transition the state machine allows, but an order that
-    // was marked SHIPPED by hand still has no AWB and must be bookable. Skip the
-    // transition check for exactly that recovery case; resolveShipActionState authorises it.
+    // SHIPPED -> SHIPPED is not a transition the state machine allows, but two cases still
+    // need booking from that state: an order marked SHIPPED by hand (no AWB at all), and a
+    // shipment the courier cancelled (dead AWB, order still live and paid). Skip the
+    // transition check for those; resolveShipActionState is what authorises them.
+    const shipmentCancelled = existing.shipment?.status === ShipmentStatus.CANCELLED;
     const needsAwbRecovery =
       existing.status === OrderStatus.SHIPPED && !existing.shipment?.awbNumber;
-    if (!needsAwbRecovery && !canTransitionOrder(existing.status, OrderStatus.SHIPPED)) {
+    if (
+      !needsAwbRecovery &&
+      !shipmentCancelled &&
+      !canTransitionOrder(existing.status, OrderStatus.SHIPPED)
+    ) {
       throw new AppError(
         ERROR_CODES.INVALID_STATUS_TRANSITION,
         'Order cannot be shipped at current status',
@@ -3756,6 +3777,16 @@ export class OrdersService {
       );
     }
 
+    // The courier will not reuse a reference it holds as cancelled, so retire it before
+    // enqueueing: the worker then books `<orderNumber>-R<n>`, a fresh courier order,
+    // instead of failing on the dead one.
+    if (shipmentCancelled) {
+      await this.fastify.prisma.order.update({
+        where: { id: existing.id },
+        data: { shipmentBookingAttempt: { increment: 1 } } as Record<string, unknown>
+      });
+    }
+
     try {
       // No fixed jobId here — the shipping worker's own idempotency guard (skip if AWB
       // already exists) handles deduplication safely. A fixed jobId caused BullMQ to
@@ -3766,7 +3797,11 @@ export class OrdersService {
         'shipping',
         'create-shipment',
         {
-          orderId: existing.id
+          orderId: existing.id,
+          // Explicit re-ship over a shipment the courier cancelled. The worker refuses to
+          // book over a CANCELLED shipment without this, so a replayed job cannot create
+          // a second courier shipment by itself.
+          ...(shipmentCancelled ? { rebook: true } : {})
         }
       );
     } catch {
