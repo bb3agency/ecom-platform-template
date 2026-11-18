@@ -6,6 +6,7 @@ const state = {
   processor: undefined as undefined | ((job: { name: string; data: unknown }) => Promise<void>),
   notificationsAdd: vi.fn(),
   createShipment: vi.fn(),
+  orderUpdateTopLevel: vi.fn(),
   cancelShipmentDelhivery: vi.fn(),
   cancelShipmentShiprocket: vi.fn(),
   trackShipmentDelhivery: vi.fn(),
@@ -70,7 +71,9 @@ function MockWorker(_name: string, processor: (job: { name: string; data: unknow
 function MockPrismaClient() {
   return {
     order: {
-      findUnique: state.tx.order.findUnique
+      findUnique: state.tx.order.findUnique,
+      // Used outside $transaction to record a terminal booking failure on the order.
+      update: state.orderUpdateTopLevel
     },
     storeSettings: {
       findUnique: state.tx.storeSettings.findUnique
@@ -181,6 +184,8 @@ describe('shipping worker error and retry behavior', () => {
     state.tx.productVariant.findMany.mockReset();
     state.tx.storeSettings.findUnique.mockReset();
     state.tx.order.findUnique.mockReset();
+    state.orderUpdateTopLevel.mockReset();
+    state.orderUpdateTopLevel.mockResolvedValue(undefined);
     state.tx.order.update.mockReset();
     state.tx.orderStatusHistory.create.mockReset();
     state.tx.orderStatusHistory.findFirst.mockReset();
@@ -258,13 +263,123 @@ describe('shipping worker error and retry behavior', () => {
     expect(state.tx.shipment.create).toHaveBeenCalledTimes(1);
     expect(state.tx.order.update).toHaveBeenCalledWith({
       where: { id: 'order_1' },
-      data: { status: 'SHIPPED' }
+      // Booking success also clears any failure recorded by an earlier attempt, so the
+      // admin order page stops showing a stale courier error beside a live shipment.
+      data: { status: 'SHIPPED', shipmentBookingError: null, shipmentBookingFailedAt: null }
     });
     // The booked weight must be the FULL sealed-parcel weight: items (2×300g) PLUS
     // the packaging (carton/tape/void-fill) weight. Booking items-only weight (600g
     // exactly) under-declares and gets re-billed a higher slab at the courier hub.
     const bookedInput = state.createShipment.mock.calls[0]?.[0] as { totalWeightGrams: number };
     expect(bookedInput.totalWeightGrams).toBeGreaterThan(600);
+  });
+
+
+  // Regression: an order manually advanced to SHIPPED from the admin status UI never had
+  // an AWB booked. The worker used to return early for anything SHIPPED, so the AWB could
+  // never be obtained and the label never printed. Booking must still run in that state.
+  it('books an AWB for an order marked SHIPPED by hand with no AWB', async () => {
+    boot();
+    state.tx.order.findUnique.mockResolvedValue({
+      id: 'order_recover',
+      orderNumber: 'ORD-2026-00009',
+      total: 1000,
+      status: 'SHIPPED',
+      selectedShippingProvider: 'SHIPROCKET',
+      shippingAddress: {
+        fullName: 'Test Customer',
+        phone: '9999999999',
+        line1: 'Street 1',
+        city: 'Hyderabad',
+        state: 'Telangana',
+        pincode: '500001'
+      },
+      payment: { status: 'CAPTURED' },
+      shipment: null,
+      items: [{ variantId: 'variant_1', quantity: 1, productName: 'Test Product', sku: 'SKU-1', unitPrice: 500 }]
+    });
+    state.tx.productVariant.findMany.mockResolvedValue([
+      { id: 'variant_1', weight: 300, product: { attributes: { hsnCode: '1001' } } }
+    ]);
+    state.createShipment.mockResolvedValue({
+      awbNumber: 'AWB-RECOVERED',
+      trackingUrl: 'https://track.example/AWB-RECOVERED',
+      shiprocketShipmentId: 'SR-1',
+      providerPayload: { ok: true }
+    });
+
+    await state.processor?.({ name: 'create-shipment', data: { orderId: 'order_recover' } });
+
+    expect(state.createShipment).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not rebook an order that is SHIPPED and already has an AWB', async () => {
+    boot();
+    state.tx.order.findUnique.mockResolvedValue({
+      id: 'order_booked',
+      orderNumber: 'ORD-2026-00010',
+      total: 1000,
+      status: 'SHIPPED',
+      selectedShippingProvider: 'SHIPROCKET',
+      shippingAddress: {
+        fullName: 'Test Customer',
+        phone: '9999999999',
+        line1: 'Street 1',
+        city: 'Hyderabad',
+        state: 'Telangana',
+        pincode: '500001'
+      },
+      payment: { status: 'CAPTURED' },
+      shipment: { awbNumber: 'AWB-EXISTING', status: 'BOOKED' },
+      items: [{ variantId: 'variant_1', quantity: 1, productName: 'P', sku: 'S', unitPrice: 500 }]
+    });
+
+    await state.processor?.({ name: 'create-shipment', data: { orderId: 'order_booked' } });
+
+    expect(state.createShipment).not.toHaveBeenCalled();
+  });
+
+  // The merchant's only window into an async booking failure is the order page, so the
+  // reason must be persisted rather than living solely in worker logs and an ops email.
+  it('records the courier rejection on the order when booking fails', async () => {
+    boot();
+    state.tx.order.findUnique.mockResolvedValue({
+      id: 'order_fail',
+      orderNumber: 'ORD-2026-00011',
+      total: 1000,
+      status: 'PROCESSING',
+      selectedShippingProvider: 'SHIPROCKET',
+      shippingAddress: {
+        fullName: 'Test Customer',
+        phone: '9999999999',
+        line1: 'Street 1',
+        city: 'Hyderabad',
+        state: 'Telangana',
+        pincode: '500001'
+      },
+      payment: { status: 'CAPTURED' },
+      shipment: null,
+      items: [{ variantId: 'variant_1', quantity: 1, productName: 'P', sku: 'S', unitPrice: 500 }]
+    });
+    state.tx.productVariant.findMany.mockResolvedValue([
+      { id: 'variant_1', weight: 300, product: { attributes: { hsnCode: '1001' } } }
+    ]);
+    state.createShipment.mockRejectedValue(
+      new Error('Shiprocket AWB assignment failed: Insufficient wallet balance')
+    );
+
+    await expect(
+      state.processor?.({ name: 'create-shipment', data: { orderId: 'order_fail' } })
+    ).rejects.toThrow(/Insufficient wallet balance/);
+
+    expect(state.orderUpdateTopLevel).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'order_fail' },
+        data: expect.objectContaining({
+          shipmentBookingError: expect.stringContaining('Insufficient wallet balance')
+        })
+      })
+    );
   });
 
   it('uses default shipping HSN when product attributes omit hsnCode and GST invoicing is disabled', async () => {
@@ -1489,7 +1604,7 @@ describe('shipping worker error and retry behavior', () => {
 
       expect(state.createShipment).not.toHaveBeenCalled();
       expect(state.tx.shipment.create).not.toHaveBeenCalled();
-      expect(state.tx.order.update).toHaveBeenCalledWith({ where: { id: 'order_idem' }, data: { status: 'SHIPPED' } });
+      expect(state.tx.order.update).toHaveBeenCalledWith({ where: { id: 'order_idem' }, data: { status: 'SHIPPED', shipmentBookingError: null, shipmentBookingFailedAt: null } });
       expect(state.tx.orderStatusHistory.create).toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ toStatus: 'SHIPPED' }) })
       );
@@ -1660,7 +1775,7 @@ describe('shipping worker error and retry behavior', () => {
         where: { id: 'ship_intent' },
         data: expect.objectContaining({ provider: 'DELHIVERY', status: 'BOOKED', awbNumber: 'AWB-ADOPT' })
       });
-      expect(state.tx.order.update).toHaveBeenCalledWith({ where: { id: 'order_flight' }, data: { status: 'SHIPPED' } });
+      expect(state.tx.order.update).toHaveBeenCalledWith({ where: { id: 'order_flight' }, data: { status: 'SHIPPED', shipmentBookingError: null, shipmentBookingFailedAt: null } });
     });
 
     it('no booking at the courier: the retry re-books once, re-arming the intent first', async () => {
@@ -1811,7 +1926,7 @@ describe('shipping worker error and retry behavior', () => {
           where: { id: 'ship_intent' },
           data: expect.objectContaining({ status: 'BOOKED', awbNumber: 'AWB-SWEPT' })
         });
-        expect(state.tx.order.update).toHaveBeenCalledWith({ where: { id: 'order_flight' }, data: { status: 'SHIPPED' } });
+        expect(state.tx.order.update).toHaveBeenCalledWith({ where: { id: 'order_flight' }, data: { status: 'SHIPPED', shipmentBookingError: null, shipmentBookingFailedAt: null } });
       });
 
       it('adopted booking for an order cancelled meanwhile is cancelled at the courier', async () => {

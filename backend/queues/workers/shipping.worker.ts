@@ -473,11 +473,16 @@ export function createShippingWorker(
           }
         }
       });
+      // Recovery case: the order is already SHIPPED but carries no AWB, so this booking
+      // attaches the missing one rather than performing a transition.
+      const freshNeedsAwbRecovery =
+        freshOrder?.status === OrderStatus.SHIPPED && !freshOrder.shipment?.awbNumber;
       if (
         !freshOrder ||
         freshOrder.status === OrderStatus.CANCELLED ||
-        (freshOrder.status !== OrderStatus.CONFIRMED && freshOrder.status !== OrderStatus.PROCESSING) ||
-        !canTransitionOrder(freshOrder.status, OrderStatus.SHIPPED)
+        (!freshNeedsAwbRecovery &&
+          ((freshOrder.status !== OrderStatus.CONFIRMED && freshOrder.status !== OrderStatus.PROCESSING) ||
+            !canTransitionOrder(freshOrder.status, OrderStatus.SHIPPED)))
       ) {
         outcome.cancelBooking = true;
         return;
@@ -486,7 +491,10 @@ export function createShippingWorker(
       const shipped = await updateOrderStatusWithCasCompat(tx, {
         orderId: order.id,
         fromStatus: freshOrder.status,
-        toStatus: OrderStatus.SHIPPED
+        toStatus: OrderStatus.SHIPPED,
+        // The AWB is booked, so clear any failure an earlier attempt recorded — otherwise
+        // the admin order page keeps showing a stale courier error beside a live shipment.
+        extraData: { shipmentBookingError: null, shipmentBookingFailedAt: null }
       });
 
       if (!shipped) {
@@ -887,13 +895,26 @@ export function createShippingWorker(
           return;
         }
 
-        if (order.status === OrderStatus.SHIPPED || order.status === OrderStatus.OUT_FOR_DELIVERY || order.status === OrderStatus.DELIVERED) {
+        // An order reaches SHIPPED without an AWB when an admin advanced the status by
+        // hand instead of using Ship order, so the courier never received it. Booking
+        // still has to run for it: only treat SHIPPED as done when a real AWB exists.
+        // Past SHIPPED there is nothing left to book.
+        const needsAwbRecovery =
+          order.status === OrderStatus.SHIPPED && !order.shipment?.awbNumber;
+        if (order.status === OrderStatus.OUT_FOR_DELIVERY || order.status === OrderStatus.DELIVERED) {
           return;
         }
-        if (order.status !== OrderStatus.PROCESSING && order.status !== OrderStatus.CONFIRMED) {
+        if (order.status === OrderStatus.SHIPPED && !needsAwbRecovery) {
           return;
         }
-        if (!canTransitionOrder(order.status, OrderStatus.SHIPPED)) {
+        if (
+          !needsAwbRecovery &&
+          order.status !== OrderStatus.PROCESSING &&
+          order.status !== OrderStatus.CONFIRMED
+        ) {
+          return;
+        }
+        if (!needsAwbRecovery && !canTransitionOrder(order.status, OrderStatus.SHIPPED)) {
           return;
         }
 
@@ -1191,10 +1212,30 @@ export function createShippingWorker(
           : undefined;
 
         // --- Phase 2: external provider call (no DB connection held) ---
-        const shipment = await effectiveShippingProvider.createShipment({
-          ...shipmentInput,
-          ...(resumeProviderOrder ? { existingProviderOrder: resumeProviderOrder } : {})
-        });
+        let shipment;
+        try {
+          shipment = await effectiveShippingProvider.createShipment({
+            ...shipmentInput,
+            ...(resumeProviderOrder ? { existingProviderOrder: resumeProviderOrder } : {})
+          });
+        } catch (error) {
+          // Booking failed at the courier. Record the reason on the order so the admin UI
+          // can tell the merchant why no AWB arrived — otherwise it reaches only the
+          // worker log and an ops email, neither of which a merchant can read, and the
+          // order just sits with no AWB and no explanation.
+          try {
+            await prisma.order.update({
+              where: { id: order.id },
+              data: {
+                shipmentBookingError: (error instanceof Error ? error.message : String(error)).slice(0, 1000),
+                shipmentBookingFailedAt: new Date()
+              } as Record<string, unknown>
+            });
+          } catch {
+            // Never let failure bookkeeping mask the original provider error.
+          }
+          throw error;
+        }
 
         // Determine which provider handled this shipment.
         // Prefer the order-level selection; fall back to shipment response signature

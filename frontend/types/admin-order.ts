@@ -48,6 +48,13 @@ export interface AdminOrderDetail {
   shippingChargeQuotedPaise: number | null;
   /** Merchant-fulfilled local delivery order — no courier is ever booked. */
   isLocalDelivery?: boolean;
+  /**
+   * Why the last "Ship order" produced no AWB. Booking happens asynchronously in the
+   * shipping worker, so without this the merchant sees an order sitting with no AWB and
+   * no explanation — the reason otherwise reaches only the worker log and an ops email.
+   */
+  shipmentBookingError?: string | null;
+  shipmentBookingFailedAt?: string | null;
   /** Delivery address snapshot — shown prominently for local delivery orders. */
   shippingAddress?: {
     fullName: string;

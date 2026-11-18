@@ -12,6 +12,22 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-11-18
+
+### Fixed
+- **A courier order could be marked SHIPPED by hand, stranding it with no AWB.** The admin "Order progress" panel let an operator advance a courier order straight to SHIPPED without booking the courier. Nothing books a shipment on that path, and the shipping worker returns early for any order already SHIPPED — so the AWB could never be obtained afterwards, `print-label` kept returning 422, `resolveShipActionState` reported "Order is already shipped" (disabling the Ship action), and the customer received a shipped notification carrying no tracking. The order was stranded with no route back.
+  - `adminUpdateOrderStatus` now rejects SHIPPED/OUT_FOR_DELIVERY/DELIVERED (409) for a courier order with no AWB. Local delivery is exempt — manual updates are its only status driver.
+  - `resolveShipActionState`, `adminShipOrder` and both worker guards (phase 1 and the phase 3 CAS) now treat SHIPPED-with-no-AWB as **bookable** rather than finished, so orders already stranded recover by pressing "Ship order". The AWB is attached and the status stays SHIPPED — no manual DB edit.
+- **Shipment booking failures were invisible to the merchant.** Booking runs in a worker, so a courier rejection (empty Shiprocket wallet, pickup address not activated, route unserviceable) reached only the worker log and an ops email. After 60s the admin panel showed a **green success** message telling the merchant to "check worker logs". The terminal failure is now persisted on the order (`shipmentBookingError` / `shipmentBookingFailedAt`) and rendered as an error with the courier's own words; it is cleared on a successful booking.
+
+**Propagation:**
+- Severity: HIGH - Layers: backend core (orders service + schemas, shipping worker, Prisma) + frontend core (admin order panels, order state machine)
+- Migration: YES - `20261118000000_order_shipment_booking_failure` adds two nullable columns to `Order` (`shipmentBookingError`, `shipmentBookingFailedAt`). Additive, no backfill, no downtime.
+- Flag: none - Breaking: NO - Design impact: none (admin console)
+- Admin-only data: the courier's rejection reason is explicitly stripped from the customer order schema.
+- Rollback: revert the commit; the columns can stay.
+
+
 ## [0.5.0] - 2026-11-13
 
 ### Fixed — checkout & auth (engine)

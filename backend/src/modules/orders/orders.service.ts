@@ -278,7 +278,21 @@ export class OrdersService {
         shipBlockReason: 'Local delivery order — fulfil directly and update the status manually.'
       };
     }
-    if (input.status !== OrderStatus.CONFIRMED && input.status !== OrderStatus.PROCESSING) {
+    // Recovery: an order can reach SHIPPED with no AWB when an admin advanced the status
+    // from the "Update order status" dropdown instead of using Ship order. Nothing books a
+    // courier on that path, and the worker skips anything already SHIPPED, so the order was
+    // stranded for good — no AWB, no label, and a shipped notification with no tracking.
+    // Treat that exact state as bookable rather than finished.
+    const isShippedWithoutAwb =
+      input.status === OrderStatus.SHIPPED &&
+      !input.awbNumber &&
+      input.selectedShippingProvider !== 'LOCAL';
+
+    if (
+      !isShippedWithoutAwb &&
+      input.status !== OrderStatus.CONFIRMED &&
+      input.status !== OrderStatus.PROCESSING
+    ) {
       // Give a status-specific reason so the admin sees an accurate state instead of a
       // generic "not shippable" message once the order has progressed past booking.
       const reasonByStatus: Partial<Record<OrderStatus, string>> = {
@@ -3364,6 +3378,32 @@ export class OrdersService {
         );
       }
 
+      // A courier-fulfilled order must take SHIPPED from the Ship action, which books the
+      // AWB. Letting the manual dropdown jump straight to SHIPPED produced an order the
+      // courier had never heard of: the shipping worker skips anything already SHIPPED, so
+      // no AWB could ever be booked, the label could not be printed, and the customer was
+      // notified with no tracking. Local delivery is exempt — manual updates are its only
+      // status driver.
+      const orderShippingProvider =
+        ((existing as Record<string, unknown>)['selectedShippingProvider'] as string | null) ?? null;
+      const manualFulfilmentStatuses: ReadonlyArray<OrderStatus> = [
+        OrderStatus.SHIPPED,
+        OrderStatus.OUT_FOR_DELIVERY,
+        OrderStatus.DELIVERED
+      ];
+      if (
+        orderShippingProvider !== 'LOCAL' &&
+        manualFulfilmentStatuses.includes(input.status) &&
+        !existing.shipment?.awbNumber
+      ) {
+        throw new AppError(
+          ERROR_CODES.INVALID_STATUS_TRANSITION,
+          'Book the courier first — use "Ship order" in Fulfilment to get an AWB. ' +
+            'Marking a courier order shipped by hand leaves it with no AWB and no label.',
+          409
+        );
+      }
+
       if (input.status === OrderStatus.REFUNDED) {
         if (
           (existing.payment?.status !== PaymentStatus.CAPTURED &&
@@ -3684,7 +3724,12 @@ export class OrdersService {
       );
     }
 
-    if (!canTransitionOrder(existing.status, OrderStatus.SHIPPED)) {
+    // SHIPPED -> SHIPPED is not a transition the state machine allows, but an order that
+    // was marked SHIPPED by hand still has no AWB and must be bookable. Skip the
+    // transition check for exactly that recovery case; resolveShipActionState authorises it.
+    const needsAwbRecovery =
+      existing.status === OrderStatus.SHIPPED && !existing.shipment?.awbNumber;
+    if (!needsAwbRecovery && !canTransitionOrder(existing.status, OrderStatus.SHIPPED)) {
       throw new AppError(
         ERROR_CODES.INVALID_STATUS_TRANSITION,
         'Order cannot be shipped at current status',
@@ -5214,6 +5259,18 @@ export class OrdersService {
         : {}),
       ...((order as Record<string, unknown>)['selectedShippingProvider'] != null
         ? { selectedShippingProvider: (order as Record<string, unknown>)['selectedShippingProvider'] as string }
+        : {}),
+      // Why the last "Ship order" produced no AWB. Booking is asynchronous, so this is the
+      // merchant's only visibility into a courier rejection — it otherwise reaches only
+      // the worker log and an ops email. Admin-only.
+      ...(exposeInternalReferences
+        ? {
+            shipmentBookingError:
+              ((order as Record<string, unknown>)['shipmentBookingError'] as string | null) ?? null,
+            shipmentBookingFailedAt:
+              ((order as Record<string, unknown>)['shipmentBookingFailedAt'] as Date | null)?.toISOString() ??
+              null
+          }
         : {}),
       discountAmount: order.discountAmount,
       ...(order.couponUsages && order.couponUsages.length > 0 && order.couponUsages[0]?.coupon
