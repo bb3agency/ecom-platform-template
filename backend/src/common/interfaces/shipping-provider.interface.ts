@@ -114,6 +114,14 @@ export type SchedulePickupResult = {
    * no new pickup slot was created. Pickup is warehouse-level, not per-order.
    */
   alreadyScheduled?: boolean;
+  /**
+   * True when the provider refused to raise a NEW pickup request because the
+   * shipment is past the pickup-request stage (Shiprocket: "Invalid Status for
+   * pickup generation"). Unlike `alreadyScheduled` this is NOT proof that a
+   * pickup exists, so it must never be persisted as a scheduled pickup — the
+   * caller reports it as an explained no-op instead of a system failure.
+   */
+  pickupNotApplicable?: boolean;
   providerPayload: Record<string, unknown>;
 };
 

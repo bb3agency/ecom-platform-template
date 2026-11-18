@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { isExistingPickupMessage, payloadIndicatesExistingPickup } from './pickup-detection';
+import {
+  isExistingPickupMessage,
+  isPickupNotApplicableMessage,
+  payloadIndicatesExistingPickup
+} from './pickup-detection';
 
 describe('isExistingPickupMessage', () => {
   it('matches provider phrases for an already-arranged pickup', () => {
@@ -44,5 +48,42 @@ describe('payloadIndicatesExistingPickup', () => {
   it('returns false for a normal success payload', () => {
     expect(payloadIndicatesExistingPickup({ pickup_id: 12345, success: true })).toBe(false);
     expect(payloadIndicatesExistingPickup({ status: 1, pickup_token_number: 'PKP1' })).toBe(false);
+  });
+});
+
+describe('isPickupNotApplicableMessage', () => {
+  it("matches Shiprocket's refusal to raise a new pickup request", () => {
+    const positives = [
+      'Shiprocket rejected the request (HTTP 400): Invalid Status for pickup generation',
+      'invalid status for pickup generation',
+      'Pickup is not allowed for this shipment',
+      'Cannot generate pickup for this AWB'
+    ];
+    for (const message of positives) {
+      expect(isPickupNotApplicableMessage(message)).toBe(true);
+    }
+  });
+
+  it('stays distinct from a proven already-scheduled pickup', () => {
+    // "Invalid Status for pickup generation" must NOT be read as proof that a
+    // pickup exists — that would tick "Pickup scheduled" on an unsubstantiated
+    // signal (the shipment may instead be cancelled or already collected).
+    expect(isExistingPickupMessage('Invalid Status for pickup generation')).toBe(false);
+    expect(isPickupNotApplicableMessage('Already in Pickup Queue.')).toBe(false);
+  });
+
+  it('does not match unrelated failures or empty input', () => {
+    const negatives = [
+      'Invalid order id',
+      'Ohh! This AWB has been cancelled.',
+      'Request failed with status code 500',
+      '',
+      '   '
+    ];
+    for (const message of negatives) {
+      expect(isPickupNotApplicableMessage(message)).toBe(false);
+    }
+    expect(isPickupNotApplicableMessage(null)).toBe(false);
+    expect(isPickupNotApplicableMessage(42)).toBe(false);
   });
 });

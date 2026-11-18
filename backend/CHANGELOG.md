@@ -12,6 +12,20 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.5.7] - 2026-11-18
+
+### Fixed
+- **A pickup the courier had already arranged was reported as a system failure.** Shiprocket rejects `/courier/generate/pickup` with HTTP 400 "Invalid Status for pickup generation" when the shipment is past the pickup-request stage - in practice because a pickup already exists for it (it sits in an open Pickup ID / manifest) or the parcel has been collected. That wording matches none of the already-scheduled phrasings in `pickup-detection`, so it fell through to a generic `INTERNAL_ERROR` and the operator was told "Something went wrong. Please try again." on an order where nothing was wrong and nothing needed doing.
+  It is deliberately **not** folded into `isExistingPickupMessage`: the message does not prove a pickup exists - a cancelled or delivered AWB produces it too - and treating it as success would tick "Pickup scheduled" on a signal we cannot substantiate, which is the same class of mistake as the manual "out for delivery" flag removed in 0.5.6. It gets its own classifier (`isPickupNotApplicableMessage` -> `SchedulePickupResult.pickupNotApplicable`), never persists a pickup date, and surfaces as a 409 stating what happened, what it usually means, where to confirm it, and that nothing was changed.
+
+**Propagation:**
+- Severity: NORMAL - Layers: backend core (pickup detection, Shiprocket adapter, orders service) + frontend core (admin fulfilment panel)
+- Migration: NO - Flag: none - Breaking: NO - Design impact: none (admin console)
+- Contract change: schedule-pickup may now return 409 `INVALID_STATUS_TRANSITION` where it previously returned a 422/500 `INTERNAL_ERROR` for this provider state.
+- Delhivery is unaffected: the classifier only runs on a provider error that matches the new patterns.
+- Rollback: revert the commit
+
+
 ## [0.5.6] - 2026-11-18
 
 ### Fixed

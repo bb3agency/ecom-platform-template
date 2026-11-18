@@ -12,6 +12,17 @@ Each entry MUST carry the **Propagation** block.
 
 ## [Unreleased]
 
+## [0.5.7] - 2026-11-18
+
+### Fixed
+- **The pickup error now leads with the real reason instead of generic copy.** A schedule-pickup rejection rendered as "This status change is not allowed right now." followed by the backend's explanation - a sentence describing an action the operator never took, stapled to the front of the one that mattered. The specific backend reason is now shown on its own, with the generic code copy kept only as a fallback for when the backend gives nothing specific. Pairs with the backend classifying Shiprocket's "Invalid Status for pickup generation" as an explained no-op rather than an internal error.
+
+**Propagation:**
+- Severity: NORMAL - Layers: frontend core (admin fulfilment panel)
+- Migration: NO - Flag: none - Breaking: NO - Design impact: none (admin console)
+- Rollback: revert the commit
+
+
 ## [0.5.6] - 2026-11-18
 
 ### Fixed

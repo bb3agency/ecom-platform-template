@@ -430,13 +430,15 @@ export function AdminOrderFulfillmentPanel({
       notifyAdminDataChanged(["orders", "shipments", "dashboard"]);
     } catch (err) {
       // Surface the provider's real reason (e.g. Delhivery pickup-window
-      // rejection) to the operator instead of the generic retry copy.
+      // rejection, or Shiprocket refusing a pickup for a shipment already past
+      // that stage) INSTEAD of the generic copy, not after it. The generic line
+      // ("This status change is not allowed right now.") describes an action the
+      // operator never took, so prefixing it with that misreads a benign no-op
+      // as a system failure. Fall back to the generic copy only when the backend
+      // gave nothing specific.
       const detail = getOpsErrorDetail(err);
-      setError(
-        detail
-          ? `${getApiErrorMessageWithHint(err)} ${detail}`
-          : getApiErrorMessageWithHint(err),
-      );
+      const specificReason = detail?.replace(/^Server:\s*/, "").trim();
+      setError(specificReason || getApiErrorMessageWithHint(err));
     } finally {
       setBusyAction(null);
     }
