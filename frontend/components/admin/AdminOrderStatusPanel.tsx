@@ -78,6 +78,9 @@ export function AdminOrderStatusPanel({ order, onUpdated }: AdminOrderStatusPane
     createdAt: order.createdAt,
     history,
     canRefund,
+    // Without a booked AWB the courier stages are not a person's to click — booking the
+    // shipment is what moves them. The backend refuses these transitions too.
+    hasAwb: Boolean(shipment?.awb),
   });
 
   async function move(status: OrderStatusValue) {
@@ -148,6 +151,14 @@ export function AdminOrderStatusPanel({ order, onUpdated }: AdminOrderStatusPane
             : journey.offTrack.status === "PAYMENT_FAILED"
               ? "Payment failed. The customer can retry from their account."
               : `This order is ${journey.offTrack.label.toLowerCase()}. No further steps.`}
+        </Notice>
+      ) : null}
+
+      {!isLocal && !shipment?.awb && !journey.offTrack ? (
+        <Notice tone="warning" className="mb-4">
+          {order.status === "SHIPPED"
+            ? "This order was marked shipped by hand, so no courier booking exists — there is no AWB and no label. Book it with “Ship order” in Fulfilment; the status stays Shipped and the customer gets tracking."
+            : "Book the courier with “Ship order” in Fulfilment to move this order forward. Marking it shipped by hand would leave it with no AWB and no printable label."}
         </Notice>
       ) : null}
 

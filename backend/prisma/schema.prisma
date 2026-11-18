@@ -621,6 +621,12 @@ model Order {
   shiprocketOrderId             String?
   selectedShippingProvider      ShippingProvider?
   shippingChargeQuotedPaise     Int?
+  // Last terminal failure from the async shipment-booking worker. Booking happens off
+  // the request, so without this the merchant clicks "Ship order", nothing arrives, and
+  // the reason exists only in worker logs and an ops email. Cleared on a successful
+  // booking. Surfaced on the admin order detail.
+  shipmentBookingError          String?
+  shipmentBookingFailedAt       DateTime?
   items              OrderItem[]
   payment            Payment?
   shipment           Shipment?

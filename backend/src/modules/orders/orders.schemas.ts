@@ -516,6 +516,12 @@ const adminOrderDetailSchema = {
     canShipNow: { type: 'boolean' },
     shipBlockReason: { anyOf: [{ type: 'string', maxLength: 240 }, { type: 'null' }] },
     // Merchant-fulfilled local delivery (selectedShippingProvider = LOCAL) — no courier involved.
+    // Last terminal shipment-booking failure. Booking is asynchronous, so this is the
+    // merchant's only visibility into a courier rejection (empty wallet, pickup address
+    // not activated, route unserviceable). Admin-only: stripped from the customer schema
+    // below. maxLength matches the 1000 chars the shipping worker stores.
+    shipmentBookingError: { anyOf: [{ type: 'string', maxLength: 1000 }, { type: 'null' }] },
+    shipmentBookingFailedAt: { anyOf: [{ type: 'string', maxLength: 64 }, { type: 'null' }] },
     isLocalDelivery: { type: 'boolean' },
     shippingMode: { type: 'string', enum: ['MANUAL'], maxLength: 10 },
     notes: { anyOf: [{ type: 'string', maxLength: 2000 }, { type: 'null' }] },
@@ -669,7 +675,12 @@ const adminOrderDetailSchema = {
 } as const;
 
 const adminOrderDetailSchemaWithoutUserIdProperties = Object.fromEntries(
-  Object.entries(adminOrderDetailSchema.properties).filter(([key]) => key !== 'userId')
+  Object.entries(adminOrderDetailSchema.properties).filter(
+    ([key]) =>
+      // Admin-only: a courier's rejection reason is internal operations detail and must
+      // never reach the customer order page.
+      !['userId', 'shipmentBookingError', 'shipmentBookingFailedAt'].includes(key)
+  )
 ) as typeof adminOrderDetailSchema.properties;
 
 const customerOrderDetailSchema = {

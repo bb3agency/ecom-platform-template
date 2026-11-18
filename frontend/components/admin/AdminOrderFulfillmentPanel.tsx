@@ -247,7 +247,22 @@ export function AdminOrderFulfillmentPanel({
           } catch { /* ignore transient */ }
         }
         if (!cancelled) {
-          setSuccess("Shipment queued but AWB not yet assigned. Check worker logs or refresh in a minute.");
+          // This is a failure, not a success. The worker records the courier's reason on
+          // the order, so re-read it and show that instead of a green banner telling a
+          // merchant to go and read worker logs they have no access to.
+          let reason: string | null = null;
+          try {
+            const latest = await api<AdminOrderDetail>(`/admin/orders/${orderId}`);
+            if (!cancelled) setDetail(latest);
+            reason = latest.shipmentBookingError ?? null;
+          } catch { /* fall through to the generic message */ }
+          if (cancelled) return;
+          setSuccess(null);
+          setError(
+            reason
+              ? `Courier did not return an AWB: ${reason}`
+              : "The courier has not returned an AWB yet. Refresh in a minute — if it stays empty, the booking failed and the reason will appear here.",
+          );
         }
       })();
     },
@@ -502,6 +517,9 @@ export function AdminOrderFulfillmentPanel({
     detail?.status !== "DELIVERED";
   const canPrintLabel = fulfilmentActive && hasShipment;
   const canShip = fulfilmentActive && detail?.canShipNow === true;
+  // The courier rejected the last booking. Booking is asynchronous, so this is the only
+  // place the merchant can learn why no AWB arrived.
+  const bookingFailed = Boolean(detail?.shipmentBookingError) && !shipment?.awb;
   // Sync stays available on a DELIVERED shipment while the ORDER still lags behind —
   // it is the manual repair path that promotes the order to DELIVERED.
   const canSync =
@@ -688,6 +706,29 @@ export function AdminOrderFulfillmentPanel({
           </div>
         ) : null}
 
+        {/* The courier's own reason for refusing the booking. Without this the merchant
+            only sees an order with no AWB and no explanation — the reason lives in the
+            worker log and an ops email, neither of which they can reach. */}
+        {bookingFailed ? (
+          <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3">
+            <p className="text-sm font-semibold text-destructive">
+              Courier did not return an AWB
+            </p>
+            <p className="mt-1 break-words text-sm text-foreground">
+              {detail?.shipmentBookingError}
+            </p>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Fix the cause with{" "}
+              {shippingProviderLabel(detail?.selectedShippingProvider ?? null)} (wallet
+              balance, pickup address activated, destination serviceable), then press
+              “Ship order” again.
+              {detail?.shipmentBookingFailedAt
+                ? ` Last attempt ${new Date(detail.shipmentBookingFailedAt).toLocaleString()}.`
+                : ""}
+            </p>
+          </div>
+        ) : null}
+
         {/* Order info grid */}
         {detail && detail.id === selectedOrderId ? (
           <div className="grid min-w-0 grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
@@ -755,11 +796,19 @@ export function AdminOrderFulfillmentPanel({
                     valueNode={
                       <span className="flex items-center gap-1.5">
                         <span className="font-medium">{shippingProviderLabel(detail.selectedShippingProvider)}</span>
-                        {!shipment?.awb && (
+                        {/* Only claim a booking is in flight when one actually is. The
+                            badge used to show on any order with a provider locked at
+                            checkout, so an order nobody had tried to ship still read
+                            "Awaiting AWB" — which made a failed booking look pending. */}
+                        {!shipment?.awb && bookingFailed ? (
+                          <span className="rounded-sm bg-destructive/10 px-1.5 py-0.5 text-xs font-medium text-destructive">
+                            Booking failed
+                          </span>
+                        ) : !shipment?.awb && busyAction === "ship" ? (
                           <span className="rounded-sm bg-warning-soft px-1.5 py-0.5 text-xs font-medium text-warning">
                             Awaiting AWB
                           </span>
-                        )}
+                        ) : null}
                       </span>
                     }
                   />

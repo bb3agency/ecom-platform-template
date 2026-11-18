@@ -75,11 +75,17 @@ export function buildOrderJourney(input: {
   createdAt: string;
   history: JourneyHistoryEntry[];
   canRefund?: boolean;
+  /** Whether the courier booking exists. Courier stages stay locked without one. */
+  hasAwb?: boolean;
 }): OrderJourney {
   const status = input.status as OrderStatusValue;
   const flow = input.isLocalDelivery ? LOCAL_FLOW : COURIER_FLOW;
   const allowed = new Set(
-    manualNextStatuses(status, { isLocalDelivery: input.isLocalDelivery, canRefund: input.canRefund }),
+    manualNextStatuses(status, {
+      isLocalDelivery: input.isLocalDelivery,
+      canRefund: input.canRefund,
+      ...(input.hasAwb !== undefined ? { hasAwb: input.hasAwb } : {}),
+    }),
   );
 
   // Latest time each status was reached (history is oldest → newest).
