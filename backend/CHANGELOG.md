@@ -12,6 +12,19 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.5.8] - 2026-11-19
+
+### Fixed
+- **An order that ran ahead of its shipment had no repair path.** 0.5.6 made OUT_FOR_DELIVERY courier-driven, but orders already advanced by hand stayed there with the parcel still uncollected, and nothing could bring them back: `OUT_FOR_DELIVERY` only transitions to `DELIVERED`, and `mapShipmentStatusToOrderStatus` returns null for every pre-delivery shipment stage - so "Check courier", the designated repair path, answered "Status already up to date" while the order said out for delivery and the courier said booked.
+  "Check courier" is an explicit operator action, so the courier's own tracking is now the authority on it and may walk the order back to the stage the shipment is actually at. The scope is deliberately narrow: a new `mapShipmentStatusToCourierOrderStage` (sync path only) reads BOOKED/PICKED_UP/IN_TRANSIT as order SHIPPED, while `mapShipmentStatusToOrderStatus` is left untouched so a late BOOKED webhook still cannot undo a genuine OUT_FOR_DELIVERY; `ORDER_COURIER_CORRECTIONS` allows `OUT_FOR_DELIVERY -> SHIPPED` and nothing else, and sits outside `ORDER_STATUS_TRANSITIONS` so neither a webhook nor a manual status change can reach it. DELIVERED is never walked back - notifications, COD capture and invoicing have already fired against it. A correction writes an `OrderStatusHistory` row (`triggeredBy: COURIER_SYNC_CORRECTION`) naming the provider status that justified it, and sends the customer nothing.
+
+**Propagation:**
+- Severity: NORMAL - Layers: backend core only (order state machine, webhook status mappers, orders service)
+- Migration: NO - Flag: none - Breaking: NO - Design impact: none
+- Contract change: none. `POST /admin/shipments/:id/sync` keeps its response shape; `synced` can now be true for a backwards correction, with the reason in `message`.
+- No frontend change required: the admin fulfilment panel already renders the sync `message` and reloads on `synced`.
+- Rollback: revert the commit
+
 ## [0.5.7] - 2026-11-18
 
 ### Fixed

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   mapPaymentEventToStatuses,
+  mapShipmentStatusToCourierOrderStage,
   mapShipmentStatusToOrderStatus,
   mapShipmentWebhookStatus
 } from './webhook-status-mappers';
@@ -95,3 +96,28 @@ describe('webhook status mappers', () => {
   });
 });
 
+describe('mapShipmentStatusToCourierOrderStage', () => {
+  it('reads pre-delivery courier stages as SHIPPED', () => {
+    expect(mapShipmentStatusToCourierOrderStage('BOOKED')).toBe('SHIPPED');
+    expect(mapShipmentStatusToCourierOrderStage('PICKED_UP')).toBe('SHIPPED');
+    expect(mapShipmentStatusToCourierOrderStage('IN_TRANSIT')).toBe('SHIPPED');
+  });
+
+  it('agrees with the webhook mapper on every stage that mapper handles', () => {
+    expect(mapShipmentStatusToCourierOrderStage('OUT_FOR_DELIVERY')).toBe('OUT_FOR_DELIVERY');
+    expect(mapShipmentStatusToCourierOrderStage('DELIVERED')).toBe('DELIVERED');
+    expect(mapShipmentStatusToCourierOrderStage('CANCELLED')).toBe('CANCELLED');
+  });
+
+  it('stays unmapped for stages that imply no order stage', () => {
+    expect(mapShipmentStatusToCourierOrderStage('PENDING')).toBeNull();
+    expect(mapShipmentStatusToCourierOrderStage('FAILED_DELIVERY')).toBeNull();
+    expect(mapShipmentStatusToCourierOrderStage('RTO_INITIATED')).toBeNull();
+  });
+
+  it('leaves the webhook mapper unchanged, so a stale webhook cannot walk an order back', () => {
+    expect(mapShipmentStatusToOrderStatus('BOOKED')).toBeNull();
+    expect(mapShipmentStatusToOrderStatus('PICKED_UP')).toBeNull();
+    expect(mapShipmentStatusToOrderStatus('IN_TRANSIT')).toBeNull();
+  });
+});
