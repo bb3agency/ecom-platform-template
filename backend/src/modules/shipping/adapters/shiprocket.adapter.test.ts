@@ -953,4 +953,91 @@ describe('ShiprocketAdapter', () => {
       expect(JSON.parse((assignCall?.[1] as RequestInit).body as string)).toMatchObject({ shipment_id: [202] });
     });
   });
+
+  // A parcel booked in the Shiprocket dashboard is only known to us by its AWB, but label
+  // generation and pickup scheduling are keyed by Shiprocket's own shipment id. The
+  // orders search matches the channel order id and does not reliably match an AWB, so the
+  // AWB-native tracking endpoint is tried first.
+  describe('findShipmentByAwb', () => {
+    it("reads the shipment id from the AWB tracking endpoint", async () => {
+      const calls: string[] = [];
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (url: string) => {
+          calls.push(String(url));
+          if (String(url).includes('/auth/login')) {
+            return { ok: true, status: 200, text: async () => JSON.stringify({ token: 't' }) };
+          }
+          return {
+            ok: true,
+            status: 200,
+            text: async () =>
+              JSON.stringify({
+                tracking_data: {
+                  shipment_track: [{ id: 555, shipment_id: 777, order_id: 999 }]
+                }
+              })
+          };
+        })
+      );
+      const adapter = new ShiprocketAdapter({ email: 'a@b.c', password: 'pw' });
+
+      const result = await adapter.findShipmentByAwb('7D137089279');
+
+      expect(result.state).toBe('found');
+      expect(result).toMatchObject({
+        shiprocketShipmentId: '777',
+        shiprocketOrderId: '999'
+      });
+      expect(calls.some((u) => u.includes('/courier/track/awb/7D137089279'))).toBe(true);
+    });
+
+    it('falls back to the orders search when tracking yields no shipment id', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (url: string) => {
+          const u = String(url);
+          if (u.includes('/auth/login')) {
+            return { ok: true, status: 200, text: async () => JSON.stringify({ token: 't' }) };
+          }
+          if (u.includes('/courier/track/awb/')) {
+            return { ok: true, status: 200, text: async () => JSON.stringify({ tracking_data: {} }) };
+          }
+          return {
+            ok: true,
+            status: 200,
+            text: async () =>
+              JSON.stringify({
+                data: [{ id: 42, shipments: [{ id: 84, awb: '7D137089279' }] }]
+              })
+          };
+        })
+      );
+      const adapter = new ShiprocketAdapter({ email: 'a@b.c', password: 'pw' });
+
+      const result = await adapter.findShipmentByAwb('7D137089279');
+
+      expect(result).toMatchObject({ shiprocketShipmentId: '84', shiprocketOrderId: '42' });
+    });
+
+    it('reports not_found when neither lookup knows the AWB', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (url: string) => {
+          const u = String(url);
+          if (u.includes('/auth/login')) {
+            return { ok: true, status: 200, text: async () => JSON.stringify({ token: 't' }) };
+          }
+          if (u.includes('/courier/track/awb/')) {
+            return { ok: true, status: 200, text: async () => JSON.stringify({ tracking_data: {} }) };
+          }
+          return { ok: true, status: 200, text: async () => JSON.stringify({ data: [] }) };
+        })
+      );
+      const adapter = new ShiprocketAdapter({ email: 'a@b.c', password: 'pw' });
+
+      expect((await adapter.findShipmentByAwb('NOPE')).state).toBe('not_found');
+    });
+  });
+
 });

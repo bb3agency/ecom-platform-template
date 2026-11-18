@@ -3838,7 +3838,10 @@ export class OrdersService {
    * It does NOT talk to the courier: the AWB is taken on the operator's word, because the
    * booking we would otherwise look up was made under a reference we never issued.
    */
-  async adminAttachAwb(orderId: string, input: { awbNumber: string; trackingUrl?: string }) {
+  async adminAttachAwb(
+    orderId: string,
+    input: { awbNumber: string; trackingUrl?: string; shiprocketShipmentId?: string }
+  ) {
     const awbNumber = input.awbNumber.trim();
     if (!awbNumber) {
       throw new AppError(ERROR_CODES.VALIDATION_ERROR, 'AWB number is required', 422);
@@ -3898,9 +3901,11 @@ export class OrdersService {
     // not the AWB, so resolve it now from the AWB. Without it both actions fail on a
     // manually attached shipment. Best effort: a failed lookup must not block the attach,
     // and both actions retry the resolution on demand.
-    let providerShipmentId: string | null = null;
+    // An id typed in by the operator wins: they are reading it off the courier's own
+    // dashboard, which beats any lookup we can make.
+    let providerShipmentId: string | null = input.shiprocketShipmentId?.trim() || null;
     let providerOrderId: string | null = null;
-    if (provider === ShippingProvider.SHIPROCKET) {
+    if (provider === ShippingProvider.SHIPROCKET && !providerShipmentId) {
       const adapter = createShippingAdapterForProvider('shiprocket');
       if (adapter?.findShipmentByAwb) {
         try {
@@ -4003,11 +4008,32 @@ export class OrdersService {
     if (!shipment.awbNumber) return null;
 
     const provider = createShippingAdapterForProvider('shiprocket');
-    if (!provider?.findShipmentByAwb) return null;
+    if (!provider?.findShipmentByAwb) {
+      // Not the same failure as "the courier doesn't know this AWB" — this is a server
+      // configuration problem, and saying "could not find it at Shiprocket" would send
+      // the merchant hunting in the dashboard for something that is wrong here.
+      throw new AppError(
+        ERROR_CODES.CONFIG_NOT_READY,
+        'Shiprocket is not configured on this server, so the shipment cannot be looked up. ' +
+          'Check the Shiprocket credentials in Ops config.',
+        503
+      );
+    }
 
     try {
       const lookup = await provider.findShipmentByAwb(shipment.awbNumber);
-      if (lookup.state !== 'found' || !lookup.shiprocketShipmentId) return null;
+      if (lookup.state !== 'found' || !lookup.shiprocketShipmentId) {
+        this.fastify.log.error(
+          {
+            shipmentId: shipment.id,
+            awbNumber: shipment.awbNumber,
+            lookupState: lookup.state,
+            providerPayload: lookup.providerPayload
+          },
+          'Shiprocket does not recognise this AWB — cannot resolve its shipment id'
+        );
+        return null;
+      }
       await this.fastify.prisma.shipment.update({
         where: { id: shipment.id },
         data: {
@@ -4073,8 +4099,9 @@ export class OrdersService {
       if (!shiprocketShipmentId) {
         throw new AppError(
           ERROR_CODES.VALIDATION_ERROR,
-          'Could not find this shipment at Shiprocket from its AWB, so pickup cannot be scheduled here. ' +
-            'If the parcel was booked in the Shiprocket dashboard, schedule the pickup there.',
+          'Shiprocket does not recognise this AWB, so pickup cannot be scheduled here. ' +
+            'Open the shipment in the Shiprocket dashboard and re-attach it with its Shipment ID, ' +
+            'or schedule the pickup there.',
           422
         );
       }
@@ -4149,8 +4176,9 @@ export class OrdersService {
     if (!shiprocketShipmentId) {
       throw new AppError(
         ERROR_CODES.VALIDATION_ERROR,
-        'Could not find this shipment at Shiprocket from its AWB, so the label cannot be generated here. ' +
-          'If the parcel was booked in the Shiprocket dashboard, print the label there.',
+        'Shiprocket does not recognise this AWB, so the label cannot be generated here. ' +
+          'Open the shipment in the Shiprocket dashboard and re-attach it with its Shipment ID, ' +
+          'or print the label there.',
         422
       );
     }

@@ -84,6 +84,27 @@ type ShiprocketTrackActivity = {
   location?: string;
 };
 
+/** `/courier/track/awb/{awb}` — the entries carry Shiprocket's own shipment/order ids. */
+type ShiprocketTrackByAwbResponse = {
+  tracking_data?: {
+    shipment_track?: Array<Record<string, unknown>>;
+  };
+};
+
+/** Reads the first key that holds a usable id, tolerating number or string. */
+function firstIdLike(
+  source: Record<string, unknown> | undefined,
+  keys: string[]
+): string | undefined {
+  if (!source) return undefined;
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+    if (typeof value === 'string' && value.trim().length > 0) return value.trim();
+  }
+  return undefined;
+}
+
 type ShiprocketTrackResponse = {
   tracking_data?: {
     shipment_status?: number;
@@ -623,6 +644,38 @@ export default class ShiprocketAdapter implements ShippingProviderAdapter {
    */
   async findShipmentByAwb(awbNumber: string): Promise<ShipmentLookupResult> {
     const wanted = awbNumber.trim();
+
+    // 1) AWB-native lookup. /courier/track/awb/{awb} is keyed by the AWB itself, and its
+    //    shipment_track entries carry Shiprocket's own shipment/order ids. This is tried
+    //    first because the orders search below matches the channel order id and does not
+    //    reliably match an AWB — which is why an earlier version of this method found
+    //    nothing for a parcel booked in the dashboard.
+    try {
+      const tracked = await this.request<ShiprocketTrackByAwbResponse>(
+        `/courier/track/awb/${encodeURIComponent(wanted)}`
+      );
+      const track = tracked.tracking_data?.shipment_track;
+      const entry = Array.isArray(track) ? track[0] : undefined;
+      // Shiprocket is inconsistent about which key holds the shipment id here, so read
+      // every spelling seen in the wild rather than betting on one.
+      const shipmentId = firstIdLike(entry, ['shipment_id', 'id']);
+      const orderId = firstIdLike(entry, ['order_id', 'channel_order_id']);
+      if (shipmentId) {
+        return {
+          state: 'found',
+          awbNumber: wanted,
+          trackingUrl: `https://shiprocket.co/tracking/${wanted}`,
+          shiprocketShipmentId: shipmentId,
+          ...(orderId ? { shiprocketOrderId: orderId } : {}),
+          providerPayload: { matchedBy: 'track-awb' }
+        };
+      }
+    } catch {
+      // Fall through to the orders search — a tracking miss is not fatal.
+    }
+
+    // 2) Orders search. Kept as a fallback: it does match an AWB for some accounts, and
+    //    it returns the richer shipment record when it does.
     const payload = await this.request<ShiprocketOrdersListResponse>(
       `/orders?search=${encodeURIComponent(wanted)}&per_page=50`
     );
@@ -656,10 +709,10 @@ export default class ShiprocketAdapter implements ShippingProviderAdapter {
         ...(order.id != null ? { shiprocketOrderId: String(order.id) } : {}),
         ...(shipmentId ? { shiprocketShipmentId: shipmentId } : {}),
         ...(typeof match.courier === 'string' && match.courier ? { courierName: match.courier } : {}),
-        providerPayload: { matchedBy: 'awb' }
+        providerPayload: { matchedBy: 'orders-search' }
       };
     }
-    return { state: 'not_found', providerPayload: { matchedBy: 'awb', matchCount: 0 } };
+    return { state: 'not_found', providerPayload: { matchedBy: 'none', searched: wanted } };
   }
 
   async trackShipment(awbNumber: string): Promise<TrackShipmentResult> {

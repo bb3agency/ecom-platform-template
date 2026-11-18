@@ -12,6 +12,23 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.5.5] - 2026-11-18
+
+### Fixed
+- **Resolving a manually attached AWB to its Shiprocket shipment id now actually works.** 0.5.4 looked the AWB up through `/orders?search=`, which matches the channel order id and does **not** reliably match an AWB - so for a parcel booked in the Shiprocket dashboard it found nothing, and label generation and pickup scheduling still refused. The lookup now tries the AWB-native `/courier/track/awb/{awb}` first, whose `shipment_track` entries carry Shiprocket's own shipment and order ids (read across every key spelling Shiprocket uses for them), and falls back to the orders search. A miss is logged with the AWB and the provider payload, so a future failure is diagnosable instead of silent.
+- **"Shiprocket is not configured" is no longer reported as "could not find this shipment".** Both collapsed into one 422 telling the merchant to go looking in the courier dashboard, when the actual problem was a server-side credential gap. A missing adapter now returns 503 `CONFIG_NOT_READY` naming Ops config; only a genuinely unrecognised AWB returns the 422.
+
+### Added
+- **`shiprocketShipmentId` may be supplied when attaching an AWB.** The automatic lookup depends on the courier recognising the AWB; this is the path that cannot fail. The id is shown on the shipment in the Shiprocket dashboard, the admin form exposes it as an optional field, and an operator-supplied value takes precedence over any lookup. The label and pickup errors now point at it.
+
+**Propagation:**
+- Severity: NORMAL - Layers: backend core (shipping adapter, orders service/routes/schemas) + frontend core (admin fulfilment panel)
+- Migration: NO - Flag: none - Breaking: NO - Design impact: none (admin console)
+- Contract change: print-label / schedule-pickup may now return 503 `CONFIG_NOT_READY` where they previously returned 422 for an unconfigured provider.
+- Delhivery is unaffected: its label and pickup calls key on the AWB directly.
+- Rollback: revert the commit
+
+
 ## [0.5.4] - 2026-11-18
 
 ### Fixed

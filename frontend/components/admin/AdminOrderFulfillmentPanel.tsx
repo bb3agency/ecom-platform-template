@@ -111,6 +111,10 @@ export function AdminOrderFulfillmentPanel({
   // courier's own dashboard after the original reference was cancelled).
   const [attachAwbOpen, setAttachAwbOpen] = useState(false);
   const [attachAwbValue, setAttachAwbValue] = useState("");
+  // Optional: Shiprocket's own Shipment ID. Resolved from the AWB automatically when the
+  // courier recognises it; typed in from the dashboard when it does not. Label and pickup
+  // are keyed by this id, not the AWB.
+  const [attachShipmentId, setAttachShipmentId] = useState("");
   // Cancel-order modal (reason + optional note per the design system's cancel flow).
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState("Customer Request");
@@ -324,10 +328,14 @@ export function AdminOrderFulfillmentPanel({
         {
           method: "POST",
           idempotencyKey: createIdempotencyKey(),
-          body: JSON.stringify({ awbNumber: awb }),
+          body: JSON.stringify({
+            awbNumber: awb,
+            ...(attachShipmentId.trim() ? { shiprocketShipmentId: attachShipmentId.trim() } : {}),
+          }),
         },
       );
       setAttachAwbValue("");
+      setAttachShipmentId("");
       setAttachAwbOpen(false);
       setSuccess(
         result.customerNotified
@@ -816,6 +824,22 @@ export function AdminOrderFulfillmentPanel({
                   className="h-10 rounded-lg border border-border bg-background px-3 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
                   disabled={busyAction !== null}
                 />
+                <label className="text-sm font-medium text-foreground" htmlFor="attach-shipment-id">
+                  Shiprocket Shipment ID <span className="font-normal text-muted-foreground">(optional)</span>
+                </label>
+                <p className="text-xs text-muted-foreground">
+                  Only needed if printing the label or scheduling pickup here fails
+                  afterwards — normally this is found from the AWB automatically. It is
+                  shown on the shipment in the Shiprocket dashboard.
+                </p>
+                <input
+                  id="attach-shipment-id"
+                  value={attachShipmentId}
+                  onChange={(event) => setAttachShipmentId(event.target.value)}
+                  placeholder="e.g. 123456789"
+                  className="h-10 rounded-lg border border-border bg-background px-3 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                  disabled={busyAction !== null}
+                />
                 <div className="flex gap-2">
                   <button
                     type="button"
@@ -827,7 +851,7 @@ export function AdminOrderFulfillmentPanel({
                   </button>
                   <button
                     type="button"
-                    onClick={() => { setAttachAwbOpen(false); setAttachAwbValue(""); }}
+                    onClick={() => { setAttachAwbOpen(false); setAttachAwbValue(""); setAttachShipmentId(""); }}
                     disabled={busyAction !== null}
                     className="rounded-lg border border-border px-3 py-1.5 text-sm"
                   >

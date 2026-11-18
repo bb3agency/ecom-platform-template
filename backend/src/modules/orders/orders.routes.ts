@@ -504,7 +504,11 @@ export async function registerOrdersRoutes(fastify: FastifyInstance): Promise<vo
     },
     async (request) => {
       const params = request.params as { id: string };
-      const body = request.body as { awbNumber: string; trackingUrl?: string };
+      const body = request.body as {
+        awbNumber: string;
+        trackingUrl?: string;
+        shiprocketShipmentId?: string;
+      };
       return ordersService.adminAttachAwb(params.id, body);
     }
   );

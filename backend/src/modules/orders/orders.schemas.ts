@@ -1278,7 +1278,14 @@ export const adminAttachAwbSchema = {
     required: ['awbNumber'],
     properties: {
       awbNumber: { type: 'string', minLength: 3, maxLength: 64 },
-      trackingUrl: { type: 'string', maxLength: 500 }
+      trackingUrl: { type: 'string', maxLength: 500 },
+      /**
+       * Shiprocket's own Shipment ID, from its dashboard. Optional: it is resolved from
+       * the AWB automatically when possible. Supplying it is the guaranteed path when
+       * Shiprocket does not recognise the AWB through either lookup, because label
+       * generation and pickup scheduling are keyed by this id rather than the AWB.
+       */
+      shiprocketShipmentId: { type: 'string', maxLength: 64 }
     }
   },
   response: {
