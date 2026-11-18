@@ -608,6 +608,60 @@ export default class ShiprocketAdapter implements ShippingProviderAdapter {
     };
   }
 
+  /**
+   * Find a shipment at Shiprocket by its AWB.
+   *
+   * Needed for a parcel booked outside the app: the merchant re-creates the order in the
+   * Shiprocket dashboard (usually after the original reference was cancelled) and we only
+   * learn its AWB. Label generation and pickup scheduling are keyed by Shiprocket's own
+   * shipment id, not the AWB, so without this they fail with "Shipment does not have a
+   * Shiprocket shipment ID" and the merchant is stuck printing from the dashboard.
+   *
+   * `/orders?search=` matches the AWB as well as the channel order id, so the same
+   * endpoint serves both lookups; here the match is on the shipment's AWB rather than
+   * the order's reference, since the reference is one we never issued.
+   */
+  async findShipmentByAwb(awbNumber: string): Promise<ShipmentLookupResult> {
+    const wanted = awbNumber.trim();
+    const payload = await this.request<ShiprocketOrdersListResponse>(
+      `/orders?search=${encodeURIComponent(wanted)}&per_page=50`
+    );
+    if (!Array.isArray(payload.data)) {
+      throw new AppError(
+        ERROR_CODES.INTERNAL_ERROR,
+        'Shiprocket order lookup returned an unexpected response shape',
+        422
+      );
+    }
+    const entries: unknown[] = payload.data;
+    const sameAwb = (shipment: ShiprocketListedShipment | undefined): boolean => {
+      const raw = shipment?.awb ?? shipment?.awb_code;
+      return typeof raw === 'string' && raw.trim() === wanted;
+    };
+    for (const entry of entries) {
+      if (!entry || typeof entry !== 'object') continue;
+      const order = entry as ShiprocketListedOrder;
+      const shipments = Array.isArray(order.shipments)
+        ? order.shipments
+        : order.shipments
+          ? [order.shipments]
+          : [];
+      const match = shipments.find(sameAwb);
+      if (!match) continue;
+      const shipmentId = match.id != null ? String(match.id) : undefined;
+      return {
+        state: 'found',
+        awbNumber: wanted,
+        trackingUrl: `https://shiprocket.co/tracking/${wanted}`,
+        ...(order.id != null ? { shiprocketOrderId: String(order.id) } : {}),
+        ...(shipmentId ? { shiprocketShipmentId: shipmentId } : {}),
+        ...(typeof match.courier === 'string' && match.courier ? { courierName: match.courier } : {}),
+        providerPayload: { matchedBy: 'awb' }
+      };
+    }
+    return { state: 'not_found', providerPayload: { matchedBy: 'awb', matchCount: 0 } };
+  }
+
   async trackShipment(awbNumber: string): Promise<TrackShipmentResult> {
     let payload: ShiprocketTrackResponse;
     try {

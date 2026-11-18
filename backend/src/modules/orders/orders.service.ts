@@ -3894,6 +3894,30 @@ export class OrdersService {
         ? `https://shiprocket.co/tracking/${awbNumber}`
         : `https://www.delhivery.com/track/package/${awbNumber}`);
 
+    // Label generation and pickup scheduling are keyed by Shiprocket's own shipment id,
+    // not the AWB, so resolve it now from the AWB. Without it both actions fail on a
+    // manually attached shipment. Best effort: a failed lookup must not block the attach,
+    // and both actions retry the resolution on demand.
+    let providerShipmentId: string | null = null;
+    let providerOrderId: string | null = null;
+    if (provider === ShippingProvider.SHIPROCKET) {
+      const adapter = createShippingAdapterForProvider('shiprocket');
+      if (adapter?.findShipmentByAwb) {
+        try {
+          const lookup = await adapter.findShipmentByAwb(awbNumber);
+          if (lookup.state === 'found') {
+            providerShipmentId = lookup.shiprocketShipmentId ?? null;
+            providerOrderId = lookup.shiprocketOrderId ?? null;
+          }
+        } catch (error) {
+          this.fastify.log.error(
+            { orderId: existing.id, error: error instanceof Error ? error.message : 'unknown' },
+            'Attaching AWB: could not resolve the Shiprocket shipment id'
+          );
+        }
+      }
+    }
+
     await this.fastify.prisma.$transaction(async (tx) => {
       await tx.shipment.upsert({
         where: { orderId: existing.id },
@@ -3902,13 +3926,15 @@ export class OrdersService {
           provider,
           status: ShipmentStatus.BOOKED,
           awbNumber,
-          trackingUrl
+          trackingUrl,
+          ...(providerShipmentId ? { shiprocketShipmentId: providerShipmentId } : {})
         },
         update: {
           provider,
           status: ShipmentStatus.BOOKED,
           awbNumber,
-          trackingUrl
+          trackingUrl,
+          ...(providerShipmentId ? { shiprocketShipmentId: providerShipmentId } : {})
         }
       });
 
@@ -3918,7 +3944,9 @@ export class OrdersService {
           ...(existing.status === OrderStatus.SHIPPED ? {} : { status: OrderStatus.SHIPPED }),
           // The order is genuinely booked now, so any recorded booking failure is history.
           shipmentBookingError: null,
-          shipmentBookingFailedAt: null
+          shipmentBookingFailedAt: null,
+          // Needed by any later cancel, which Shiprocket keys by ORDER id.
+          ...(providerOrderId ? { shiprocketOrderId: providerOrderId } : {})
         } as Record<string, unknown>
       });
 
@@ -3955,6 +3983,57 @@ export class OrdersService {
     };
   }
 
+  /**
+   * Resolve (and persist) Shiprocket's own shipment id for a shipment we only know by AWB.
+   *
+   * A manually attached AWB — a parcel booked in the courier's dashboard — has no
+   * Shiprocket shipment id, but label generation and pickup scheduling are keyed by it,
+   * not by the AWB. Rather than making the merchant re-attach or print from the dashboard,
+   * look it up by AWB on first use and store it, so this happens once per shipment.
+   *
+   * Returns null when it cannot be resolved; callers surface an actionable message
+   * instead of the raw "no Shiprocket shipment ID".
+   */
+  private async resolveShiprocketShipmentId(shipment: {
+    id: string;
+    awbNumber: string | null;
+    shiprocketShipmentId?: string | null;
+  }): Promise<string | null> {
+    if (shipment.shiprocketShipmentId) return shipment.shiprocketShipmentId;
+    if (!shipment.awbNumber) return null;
+
+    const provider = createShippingAdapterForProvider('shiprocket');
+    if (!provider?.findShipmentByAwb) return null;
+
+    try {
+      const lookup = await provider.findShipmentByAwb(shipment.awbNumber);
+      if (lookup.state !== 'found' || !lookup.shiprocketShipmentId) return null;
+      await this.fastify.prisma.shipment.update({
+        where: { id: shipment.id },
+        data: {
+          shiprocketShipmentId: lookup.shiprocketShipmentId
+        } as Record<string, unknown>
+      });
+      if (lookup.shiprocketOrderId) {
+        // Needed by any later cancel, which Shiprocket keys by ORDER id.
+        await this.fastify.prisma.order.updateMany({
+          where: { shipment: { id: shipment.id } },
+          data: { shiprocketOrderId: lookup.shiprocketOrderId } as Record<string, unknown>
+        });
+      }
+      return lookup.shiprocketShipmentId;
+    } catch (error) {
+      this.fastify.log.error(
+        {
+          shipmentId: shipment.id,
+          error: error instanceof Error ? error.message : 'unknown'
+        },
+        'Could not resolve the Shiprocket shipment id from the AWB'
+      );
+      return null;
+    }
+  }
+
   async adminSchedulePickup(orderId: string) {
     await this.assertOrderFulfilmentActive(orderId, 'schedule pickup');
     const shipment = await this.fastify.prisma.shipment.findFirst({
@@ -3986,11 +4065,16 @@ export class OrdersService {
       result = await provider.schedulePickup(shipmentExt.awbNumber ?? '');
     } else {
       // Shiprocket (and legacy single-provider) path
-      const shiprocketShipmentId = shipmentExt.shiprocketShipmentId;
+      const shiprocketShipmentId = await this.resolveShiprocketShipmentId({
+        id: shipment.id,
+        awbNumber: shipmentExt.awbNumber ?? null,
+        shiprocketShipmentId: shipmentExt.shiprocketShipmentId ?? null
+      });
       if (!shiprocketShipmentId) {
         throw new AppError(
           ERROR_CODES.VALIDATION_ERROR,
-          'Shipment does not have a Shiprocket shipment ID — schedule pickup requires a Shiprocket shipment',
+          'Could not find this shipment at Shiprocket from its AWB, so pickup cannot be scheduled here. ' +
+            'If the parcel was booked in the Shiprocket dashboard, schedule the pickup there.',
           422
         );
       }
@@ -4057,11 +4141,16 @@ export class OrdersService {
     if (shipmentExt.labelUrl) {
       return { labelUrl: shipmentExt.labelUrl };
     }
-    const shiprocketShipmentId = shipmentExt.shiprocketShipmentId;
+    const shiprocketShipmentId = await this.resolveShiprocketShipmentId({
+      id: shipment.id,
+      awbNumber: shipmentExt.awbNumber ?? null,
+      shiprocketShipmentId: shipmentExt.shiprocketShipmentId ?? null
+    });
     if (!shiprocketShipmentId) {
       throw new AppError(
         ERROR_CODES.VALIDATION_ERROR,
-        'Shipment does not have a Shiprocket shipment ID — label generation requires a Shiprocket shipment',
+        'Could not find this shipment at Shiprocket from its AWB, so the label cannot be generated here. ' +
+          'If the parcel was booked in the Shiprocket dashboard, print the label there.',
         422
       );
     }

@@ -165,4 +165,10 @@ export interface ShippingProviderAdapter {
   generateLabel?(shiprocketShipmentId: string): Promise<GenerateLabelResult>;
   /** Look a booking up by our client reference (order number). Throws when the answer is not definite. */
   findShipmentByReference?(clientReference: string): Promise<ShipmentLookupResult>;
+  /**
+   * Find a shipment by AWB, for a parcel booked outside the app under a reference we
+   * never issued. Providers whose label/pickup calls key on their own shipment id need
+   * this to make a manually attached AWB fully usable.
+   */
+  findShipmentByAwb?(awbNumber: string): Promise<ShipmentLookupResult>;
 }

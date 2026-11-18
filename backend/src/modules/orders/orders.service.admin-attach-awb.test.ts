@@ -1,8 +1,17 @@
 import { OrderStatus } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ERROR_CODES } from '@common/errors/error-codes';
 import { OrdersService } from './orders.service';
+
+const findShipmentByAwb = vi.fn();
+vi.mock('@modules/shipping/shipping-provider', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return {
+    ...actual,
+    createShippingAdapterForProvider: () => ({ findShipmentByAwb })
+  };
+});
 
 /**
  * Recovery path for a parcel booked outside the app — the merchant cloned the order in
@@ -29,6 +38,12 @@ describe('OrdersService adminAttachAwb', () => {
     vi.spyOn(service, 'adminRetriggerNotification').mockResolvedValue({ queuedJobs: 1 } as never);
     return { tx, service };
   }
+
+  beforeEach(() => {
+    findShipmentByAwb.mockReset();
+    // Default: the courier does not recognise the AWB, so nothing extra is stored.
+    findShipmentByAwb.mockResolvedValue({ state: 'not_found', providerPayload: {} });
+  });
 
   const baseOrder = {
     id: 'order_1',
@@ -62,6 +77,47 @@ describe('OrdersService adminAttachAwb', () => {
         data: expect.objectContaining({ triggeredBy: 'ADMIN' })
       })
     );
+  });
+
+
+  // Label generation and pickup scheduling are keyed by Shiprocket's own shipment id, not
+  // the AWB. Resolving it at attach time is what makes those two actions work on a parcel
+  // booked in the courier dashboard; without it both fail with "no Shiprocket shipment ID".
+  it("stores Shiprocket's shipment id resolved from the AWB", async () => {
+    findShipmentByAwb.mockResolvedValue({
+      state: 'found',
+      awbNumber: '7D137089279',
+      shiprocketShipmentId: 'SR-SHIP-99',
+      shiprocketOrderId: 'SR-ORD-99',
+      providerPayload: {}
+    });
+    const { tx, service } = buildHarness({ ...baseOrder });
+
+    await service.adminAttachAwb('order_1', { awbNumber: '7D137089279' });
+
+    expect(tx.shipment.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ shiprocketShipmentId: 'SR-SHIP-99' })
+      })
+    );
+    // The order-level id is what a later cancel needs.
+    expect(tx.order.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ shiprocketOrderId: 'SR-ORD-99' })
+      })
+    );
+  });
+
+  it('still attaches the AWB when the courier lookup fails', async () => {
+    findShipmentByAwb.mockRejectedValue(new Error('Shiprocket unreachable'));
+    const { tx, service } = buildHarness({ ...baseOrder });
+
+    const result = await service.adminAttachAwb('order_1', { awbNumber: '7D137089279' });
+
+    // The AWB and the customer's tracking matter more than the id, which label/pickup
+    // resolve on demand later.
+    expect(result.attached).toBe(true);
+    expect(tx.shipment.upsert).toHaveBeenCalled();
   });
 
   it('refuses when the order already has an AWB, so a live booking is never overwritten', async () => {
