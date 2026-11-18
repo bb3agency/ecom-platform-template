@@ -157,12 +157,27 @@ describe('OrdersService adminUpdateOrderStatus', () => {
     expect(tx.order.update).toHaveBeenCalled();
   });
 
-  it('allows manual status advance once a courier AWB exists', async () => {
+  // Previously this allowed a manual advance as soon as an AWB existed. That is what let
+  // an order be marked "out for delivery" while the parcel was still with the merchant:
+  // the customer was told it was on its way, and the order moved past the point where it
+  // could be cancelled. On a courier order these stages belong to the courier.
+  it('refuses a manual advance even once a courier AWB exists', async () => {
     const { tx, service } = buildHarness(
       buildOrder({
         status: OrderStatus.SHIPPED,
         shipment: { awbNumber: 'AWB123', status: 'BOOKED' }
       })
+    );
+
+    await expect(
+      service.adminUpdateOrderStatus('order_1', { status: OrderStatus.OUT_FOR_DELIVERY })
+    ).rejects.toMatchObject({ statusCode: 409 });
+    expect(tx.order.update).not.toHaveBeenCalled();
+  });
+
+  it('still allows local delivery to be advanced through its own stages', async () => {
+    const { tx, service } = buildHarness(
+      buildOrder({ status: OrderStatus.PROCESSING, selectedShippingProvider: 'LOCAL' })
     );
 
     await service.adminUpdateOrderStatus('order_1', { status: OrderStatus.OUT_FOR_DELIVERY });

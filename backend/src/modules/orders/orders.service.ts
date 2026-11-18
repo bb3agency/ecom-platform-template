@@ -3407,15 +3407,21 @@ export class OrdersService {
         OrderStatus.OUT_FOR_DELIVERY,
         OrderStatus.DELIVERED
       ];
-      if (
-        orderShippingProvider !== 'LOCAL' &&
-        manualFulfilmentStatuses.includes(input.status) &&
-        !existing.shipment?.awbNumber
-      ) {
+      if (orderShippingProvider !== 'LOCAL' && manualFulfilmentStatuses.includes(input.status)) {
+        // On a courier order these three stages are facts only the courier knows. SHIPPED
+        // comes from booking the shipment; OUT_FOR_DELIVERY and DELIVERED come from the
+        // courier's webhook or the "Check courier" sync. Setting them by hand tells the
+        // customer their parcel is moving when it may still be sitting on the counter —
+        // which is exactly what happened to an order marked out for delivery before the
+        // courier had picked it up — and pushes the order past the point where it can be
+        // cancelled. Local delivery is exempt: manual updates are its only status driver.
+        const guidance =
+          input.status === OrderStatus.SHIPPED
+            ? 'Use "Ship order" in Fulfilment to book the courier — that is what marks it shipped.'
+            : 'This updates itself from the courier. Use "Check courier" on the order to pull the latest status now.';
         throw new AppError(
           ERROR_CODES.INVALID_STATUS_TRANSITION,
-          'Book the courier first — use "Ship order" in Fulfilment to get an AWB. ' +
-            'Marking a courier order shipped by hand leaves it with no AWB and no label.',
+          `A courier order cannot be moved to ${input.status.replace(/_/g, ' ').toLowerCase()} by hand. ${guidance}`,
           409
         );
       }
@@ -4007,17 +4013,26 @@ export class OrdersService {
     if (shipment.shiprocketShipmentId) return shipment.shiprocketShipmentId;
     if (!shipment.awbNumber) return null;
 
+    // `createShippingAdapterForProvider` returns null only when the provider is genuinely
+    // unconfigured — that, and nothing else, is a configuration problem. A missing method
+    // on an otherwise working adapter means this build cannot look shipments up by AWB,
+    // which is a capability gap, not a credential gap. Conflating the two reported a
+    // fully working Shiprocket account as "not configured on this server".
     const provider = createShippingAdapterForProvider('shiprocket');
-    if (!provider?.findShipmentByAwb) {
-      // Not the same failure as "the courier doesn't know this AWB" — this is a server
-      // configuration problem, and saying "could not find it at Shiprocket" would send
-      // the merchant hunting in the dashboard for something that is wrong here.
+    if (!provider) {
       throw new AppError(
         ERROR_CODES.CONFIG_NOT_READY,
         'Shiprocket is not configured on this server, so the shipment cannot be looked up. ' +
           'Check the Shiprocket credentials in Ops config.',
         503
       );
+    }
+    if (!provider.findShipmentByAwb) {
+      this.fastify.log.error(
+        { shipmentId: shipment.id },
+        'Shipping adapter exposes no findShipmentByAwb — cannot resolve the shipment id'
+      );
+      return null;
     }
 
     try {

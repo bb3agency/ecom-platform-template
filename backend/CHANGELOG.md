@@ -12,6 +12,21 @@ Each entry MUST carry the **Propagation** block (layers · migration · flag · 
 
 ## [Unreleased]
 
+## [0.5.6] - 2026-11-18
+
+### Fixed
+- **A working Shiprocket account was reported as "not configured on this server".** `findShipmentByAwb` was added to the Shiprocket adapter in 0.5.5 but never forwarded through `CircuitBreakerShippingAdapter`, which is what callers actually receive. It read as `undefined`, and the feature detection behind it took that for an unconfigured provider - so label generation and pickup scheduling blamed the credentials while every other Shiprocket call was working. Optional adapter methods have to be forwarded explicitly in the wrapper's constructor, as `findShipmentByReference` already was.
+  Feature detection no longer doubles as a configuration check either: only a null adapter (the factory returns null when the provider is genuinely unconfigured) reports `CONFIG_NOT_READY`; a missing method is a capability gap and is logged, not blamed on credentials.
+- **A courier order could be marked "out for delivery" before the courier had picked it up.** 0.5.1 blocked manual SHIPPED/OUT_FOR_DELIVERY/DELIVERED only while the order had no AWB, so attaching one re-opened those buttons. An order was then advanced by hand while the parcel was still with the merchant: the customer was told it was on its way, and the order moved past the point where it can be cancelled.
+  On a courier order all three stages are now courier-driven, AWB or not. SHIPPED comes from booking the shipment; OUT_FOR_DELIVERY and DELIVERED come from the courier's webhook or the "Check courier" sync, which is the repair path when an update is missed. Local delivery keeps its full manual path - nothing else drives it.
+
+**Propagation:**
+- Severity: HIGH - Layers: backend core (shipping provider wrapper, orders service) + frontend core (order state machine, journey, admin panels)
+- Migration: NO - Flag: none - Breaking: NO - Design impact: none (admin console)
+- Behaviour change: the admin "Order progress" panel no longer offers Out for delivery / Delivered on courier orders. Operators who relied on those buttons use "Check courier" instead.
+- Rollback: revert the commit
+
+
 ## [0.5.5] - 2026-11-18
 
 ### Fixed
