@@ -535,6 +535,11 @@ export function AdminOrderFulfillmentPanel({
   const delivered = detail?.status === "DELIVERED" || shipment?.status === "DELIVERED";
   const fulfilmentActive =
     Boolean(detail) && !isLocal && !orderTerminal && !shipmentCancelled && !delivered;
+  // A cancelled shipment ends that booking, not the order: the order is still paid and
+  // live, so re-booking has to stay reachable. Pickup and label still need a live AWB and
+  // stay off `fulfilmentActive`; only shipping again is re-enabled here.
+  const canRebookCancelled =
+    Boolean(detail) && !isLocal && !orderTerminal && !delivered && shipmentCancelled;
   // Admin can cancel up to and including SHIPPED (in transit). Once OUT_FOR_DELIVERY /
   // DELIVERED / terminal, cancellation is no longer possible — mirrors the backend guard.
   const cancellableStatuses = ["CONFIRMED", "PROCESSING", "SHIPPED"];
@@ -553,7 +558,7 @@ export function AdminOrderFulfillmentPanel({
     !pickupWasScheduled &&
     detail?.status !== "DELIVERED";
   const canPrintLabel = fulfilmentActive && hasShipment;
-  const canShip = fulfilmentActive && detail?.canShipNow === true;
+  const canShip = (fulfilmentActive || canRebookCancelled) && detail?.canShipNow === true;
   // The courier rejected the last booking. Booking is asynchronous, so this is the only
   // place the merchant can learn why no AWB arrived.
   const bookingFailed = Boolean(detail?.shipmentBookingError) && !shipment?.awb;
@@ -770,11 +775,28 @@ export function AdminOrderFulfillmentPanel({
           </div>
         ) : null}
 
+        {/* A cancelled booking is a dead end for the parcel but not for the order —
+            say so plainly and point at the action, since every other field still looks
+            like a normally shipped order. */}
+        {canRebookCancelled ? (
+          <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 dark:border-amber-900/50 dark:bg-amber-950/20">
+            <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+              This shipment was cancelled at the courier
+            </p>
+            <p className="mt-1 text-sm text-amber-900/90 dark:text-amber-200/90">
+              AWB {shipment?.awb ?? "—"} is no longer valid, so nothing is on its way.
+              The order is still paid and live — press “Ship order” to book it again.
+              It goes to the courier as a new shipment, because a cancelled booking cannot
+              be revived.
+            </p>
+          </div>
+        ) : null}
+
         {/* Escape hatch when booking cannot succeed here — typically the courier
             cancelled our reference and the parcel was re-created and shipped from the
             courier's own dashboard. Without this the order stays "not booked" forever
             and the customer never gets tracking. */}
-        {canWrite && fulfilmentActive && !shipment?.awb && !detail?.isLocalDelivery && (bookingFailed || shippedWithoutAwb) ? (
+        {canWrite && !detail?.isLocalDelivery && (((bookingFailed || shippedWithoutAwb) && fulfilmentActive) || canRebookCancelled) ? (
           <div className="rounded-lg border border-border bg-muted/30 p-3">
             {attachAwbOpen ? (
               <div className="flex flex-col gap-2">

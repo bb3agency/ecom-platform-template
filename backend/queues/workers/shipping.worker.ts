@@ -62,6 +62,12 @@ function parseWebhookOccurredAt(raw: string): Date {
 
 type CreateShipmentJobData = {
   orderId: string;
+  /**
+   * Explicit admin re-ship of a shipment the courier cancelled. Required before the
+   * worker will book over a CANCELLED shipment, so a replayed or stray job can never
+   * create a second courier shipment on its own.
+   */
+  rebook?: boolean;
 };
 
 type CancelShipmentJobData = {
@@ -929,20 +935,31 @@ export function createShippingWorker(
         // Past SHIPPED there is nothing left to book.
         const needsAwbRecovery =
           order.status === OrderStatus.SHIPPED && !order.shipment?.awbNumber;
+        // The courier cancelled this booking. The AWB on it is dead, but the order is
+        // still live and paid, so an admin re-ship must be allowed to book again under a
+        // fresh reference rather than being treated as already shipped.
+        //
+        // This requires an EXPLICIT `rebook` flag from adminShipOrder. A cancelled
+        // shipment alone must never be enough: a replayed or stray create-shipment job
+        // would then book a brand-new courier shipment for an order whose shipment was
+        // cancelled deliberately. Only a human pressing "Ship order" sets this.
+        const rebookingCancelledShipment =
+          data.rebook === true && order.shipment?.status === ShipmentStatus.CANCELLED;
+        const needsBooking = needsAwbRecovery || rebookingCancelledShipment;
         if (order.status === OrderStatus.OUT_FOR_DELIVERY || order.status === OrderStatus.DELIVERED) {
           return;
         }
-        if (order.status === OrderStatus.SHIPPED && !needsAwbRecovery) {
+        if (order.status === OrderStatus.SHIPPED && !needsBooking) {
           return;
         }
         if (
-          !needsAwbRecovery &&
+          !needsBooking &&
           order.status !== OrderStatus.PROCESSING &&
           order.status !== OrderStatus.CONFIRMED
         ) {
           return;
         }
-        if (!needsAwbRecovery && !canTransitionOrder(order.status, OrderStatus.SHIPPED)) {
+        if (!needsBooking && !canTransitionOrder(order.status, OrderStatus.SHIPPED)) {
           return;
         }
 
@@ -952,7 +969,7 @@ export function createShippingWorker(
         // Phase 3 from the stored booking instead of calling the courier again
         // (which would double-book or orphan the first AWB). Any other existing AWB
         // (e.g. a CANCELLED booking) is left alone, as before.
-        if (order.shipment?.awbNumber) {
+        if (order.shipment?.awbNumber && !rebookingCancelledShipment) {
           if (order.shipment.status !== ShipmentStatus.BOOKED) {
             return;
           }
