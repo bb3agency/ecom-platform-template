@@ -86,13 +86,51 @@ describe('OrdersService adminPrintLabel', () => {
     });
   });
 
-  it('throws 422 when shiprocketShipmentId is missing', async () => {
+  // A missing shipment id is no longer a dead end: it is resolved from the AWB on
+  // demand, because a parcel booked in the courier dashboard never had one. These two
+  // cases used to collapse into one generic 422, which told the merchant to go looking
+  // in Shiprocket for what was actually a server misconfiguration.
+  it('reports a configuration problem when Shiprocket is not configured', async () => {
     const fastify = buildFastify({ shiprocketShipmentId: null });
     const service = new OrdersService(fastify);
+
+    await expect(service.adminPrintLabel('order_1')).rejects.toMatchObject({
+      statusCode: 503,
+      code: 'CONFIG_NOT_READY'
+    });
+  });
+
+  it('reports an unrecognised AWB when the courier has no such shipment', async () => {
+    const fastify = buildFastify({ shiprocketShipmentId: null });
+    const service = new OrdersService(fastify);
+    vi.spyOn(
+      service as unknown as {
+        resolveShiprocketShipmentId: () => Promise<string | null>;
+      },
+      'resolveShiprocketShipmentId'
+    ).mockResolvedValue(null);
 
     await expect(service.adminPrintLabel('order_1')).rejects.toMatchObject({
       statusCode: 422,
       code: 'VALIDATION_ERROR'
     });
   });
+
+  it('proceeds once the shipment id is resolved from the AWB', async () => {
+    const fastify = buildFastify({ shiprocketShipmentId: null });
+    const service = new OrdersService(fastify);
+    const resolve = vi
+      .spyOn(
+        service as unknown as {
+          resolveShiprocketShipmentId: () => Promise<string | null>;
+        },
+        'resolveShiprocketShipmentId'
+      )
+      .mockResolvedValue('SHIP-RESOLVED');
+
+    // The provider call itself is out of scope here; reaching it is the assertion.
+    await service.adminPrintLabel('order_1').catch(() => undefined);
+    expect(resolve).toHaveBeenCalled();
+  });
+
 });
